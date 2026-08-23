@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (W517 bounded and unpublished; W516 published in `20260823031213`)
+Updated: 2026-08-23 (W518 bounded and unpublished; W516 published in `20260823031213`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,28 +8,26 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W517 follows W503's exact natural stage-5 type-`$13`
-to type-7 handoff through variant 0's complete five-script list, its authentic terminator, and all nine sequence
-list A scripts.** On loop 2 the menu gate short-circuits, posted value 2 selects variant 0, and the five variant
-scripts run before `$FFFFFFFF` selects inner state 1. Sequence list A at `$2914C8` then selects `$2914F0`,
-`$29154A`, `$2915A0`, `$291604`, `$29166C`, `$291692`, `$2916DA`, `$291700`, and `$29177C`.
-The fourteen scripts emit 343 ordered pool records and complete fourteen `$8003` lifecycles. Top-level dispatch
-coverage remains 18/20; only types 16 and 18 remain unknown.
+`docs/DOCKET.md` is authoritative. **W518 follows W503's exact natural stage-5 type-`$13`
+to type-7 handoff through variant 0, all nine sequence-list A scripts, and slot [15]'s existing normal path.**
+W517's list terminator queues type `$0F` and retires type 7. W518 commits and executes already ported
+`objSlot15` at `$291F66` without retranscribing it. Top-level dispatch coverage remains 18/20; only types 16
+and 18 remain unknown.
 
-W517's exact `$42`-byte final script emits 18 records. Its 8-record group begins at `$40000800`; its 10-record
-group begins at `$38000800`. `$8000 $0404` spaces the first 15 by five driver calls, `$8000 $1010` spaces
-the final three by 17, and `$8002 $0060` spends the exact wait. Operand 4 loads 97 calls after the final spawn
-and completes W372's existing one-node mode-0 `$290E80` primary lifecycle. The auxiliary loader stays idle
-with its cached freed handle unchanged. `$FFFF` advances cursor 32 to 36, clears all 18 records, and clears the
-primary handle. List A's `$FFFFFFFF` terminator then selects outer state 2; its existing normal arm queues type
-`$0F` and retires type 7. The bounded run stops deliberately before slot [15] at `$291F66` and does not inspect
-that ending-selection path.
+Slot [15] state 0 clears its 50-entry pool, arms drift `$20`, installs `$222838` into palette bank 2, sets its
+`$80` timer, and raises `$81309A` under the inherited nonzero gate. Its exact 47-entry schedule runs 46 text
+payloads over 35 distinct strings and 648 ordered characters through the horizontal `$2923DA` or vertical
+`$29255A` glyph table. The final `$FFFFFFFF` payload stops drift at +7,791. All 47 records spawned, 43 retired,
+and four horizontal records remain frozen. After drift stops, the timer loads the existing one-node `$291FD8`
+animation at +7,918 and posts `$28C186` with D1 zero. The resource fades all 32 bank-2 words to black, drains,
+and is freed. State 2 arrives at +8,046; at +8,047 slot [15] stages type `$0E`, clears `$81E0DA`, queues its
+own id for retirement, and both queues drain. The bounded run stops before slot [14] at `$288C6C`.
 
-The exact script and two absent sparse spawn longwords take the local export from 777 to 780 windows and from
-446,635 to 446,709 bytes. The script abuts W516. `$29053A` for index `$9E` and `$290546` for index `$A1`
-only abut prior pointer declarations, so overlap pairs remain 76. The direct W517 natural integration passes 1/1,
-both exact registry sentinels pass 2/2, and `export-tables.py --verify` passes.
-No interpreter or other production source changed. W517 is bounded and unpublished.
+W518 adds only `$2921BA+$220` for the exact text pool and adjacent `$2923DA+$180` and `$29255A+$180`
+96-longword horizontal and vertical glyph tables. They add 1,312 bytes. The local export therefore moves from
+780 to 783 windows and from 446,709 to 448,021 bytes. All three are disjoint and mutually abutting, so overlap
+pairs remain 76. The direct W518 natural integration passes 1/1, both exact registry sentinels pass 2/2, and
+`export-tables.py --verify` passes. No production source changed. W518 is bounded and unpublished.
 
 Production build `20260823031213` still publishes W512 through W516. Its quiet-tree publication passed
 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
@@ -38,9 +36,9 @@ then passed deployment and three consecutive live confirmations. The published s
 `434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`. The published registry has 777 windows,
 446,635 bytes, and 76 overlap pairs. W521 remains the next periodic publication point.
 
-The exact next executable edge after W517 is the already ported slot [15] entry at `$291F66`. Follow it only in
-a later explicitly bounded wave. Do not broaden into another sequence list, another variant, ending-selection
-reconnaissance beyond that edge, duplicate-only cleanup, or a guessed visual path.
+The exact next executable edge after W518 is the already ported slot [14] entry at `$288C6C`. Follow it only in
+a later explicitly bounded wave. Do not broaden into another ending arm, another type-7 list or variant,
+duplicate-only cleanup, or a guessed visual path.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
 and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
@@ -61,6 +59,37 @@ unknown-only, direct, Original, and later vanilla-Game paths install no mod call
 the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage remains 101/256 ported, 25
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W518 VERIFIED: SLOT [15] NORMAL PATH
+
+W517's normal type-`$0F` handoff commits the existing slot [15] entry at `$291F66`. W518 invokes
+`objSlot15` directly from the object-driver handler map and does not copy any slot behavior into the test or a new
+source module. The inherited `$813098=1` gate selects state 1. State 0 clears all 50 `$20`-byte records at
+`$81585C`, resets `$81E11C/$81E11E`, arms drift `$81E120=$20`, installs the exact `$222838` block into
+sprite palette bank 2, sets timer `$80`, and raises `$81309A`.
+
+The existing `$291FE2` schedule has 47 ten-byte entries followed by `$FFFF`. Its delay words total 7,744.
+Forty-six payloads select 35 distinct strings from `$2921BA..$2923D9`, with 648 ordered character uses and a
+maximum length of 28. Five drawable records are horizontal and 41 are vertical. The 47th payload is horizontal
+`$FFFFFFFF`, which draws nothing and stops shared drift. The direct run starts slot [15] at global frame 3,145,
+spawns all 47 entries, draws on 7,966 frames, and stops drift at relative call 7,791. At most nine records are live.
+Forty-three retire at the signed Y `$7800` boundary. Four horizontal records remain frozen: the stop marker at
+Y `$F820`, then strings `$292334`, `$292344`, and `$292354` at Y `$4860`, `$4040`, and `$3820`.
+
+The same final-spawn call decrements the timer once. Its 128th decrement therefore loads `$291FD8` at +7,918,
+127 calls after drift stops. The existing one-node mode-0 resource posts `$28C186` with D1 zero once and fades
+all 32 bank-2 words from the state-0 cartridge palette to black. It drains and is freed before state 2 appears at
++8,046. At +8,047, state 2 stages type `$0E`, clears `$81E0DA`, queues slot [15]'s long id for retirement, and
+both create and kill queues drain. The test installs a deliberate type-`$0E` boundary handler, so it throws before
+executing already ported slot [14] at `$288C6C`.
+
+The exact new windows are `$2921BA+$220`, `$2923DA+$180`, and `$29255A+$180`. The text pool begins at
+sequence entry 0's own pointer and ends exactly at the horizontal table. Each glyph table has 96 longwords;
+horizontal ends exactly where vertical begins. All three declarations are disjoint and mutually abutting. They add
+1,312 bytes, producing 783 windows, 448,021 bytes, and 76 overlap pairs. The expanded direct integration passes
+1/1, both exact registry sentinels pass 2/2, and `export-tables.py --verify` passes. No production source, full
+suite, browser export, build, publish, commit, or push was involved. The next exact address is slot [14] entry
+`$288C6C`; do not execute it as part of W518.
 
 ## W517 VERIFIED: SEQUENCE LIST A ENTRY 8
 

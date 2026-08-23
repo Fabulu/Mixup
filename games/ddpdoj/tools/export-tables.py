@@ -3280,6 +3280,12 @@ SHOT_WINDOWS.extend([
                        "$0004, and $FFFF. It stops exactly at the adjacent sequence-driver copy, $2917BE"),
     (0x29053A, 0x0004, "W517: slot [7] list-A ninth-script spawn-table longword for concrete index $9E"),
     (0x290546, 0x0004, "W517: slot [7] list-A ninth-script spawn-table longword for concrete index $A1"),
+    (0x2921BA, 0x0220, "W518: slot [15] timed-text pool, bounded below by sequence entry 0's pointer and "
+                       "above by the horizontal glyph-pointer table at $2923DA"),
+    (0x2923DA, 0x0180, "W518: slot [15] horizontal glyph-pointer table, 96 longwords selected by "
+                       "(character - $20) * 4 and ending at the vertical table $29255A"),
+    (0x29255A, 0x0180, "W518: slot [15] vertical glyph-pointer table, 96 longwords selected by "
+                       "(character - $20) * 4"),
     (0x2902EA, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $0A"),
     (0x2903F6, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $4D"),
     (0x2903FA, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $4E"),

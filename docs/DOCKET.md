@@ -28,22 +28,21 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W517 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823031213`.** Dispatch remains **18 of 20**: W503 ports and registers
+**STANDING AS OF W518 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823031213`.** Dispatch remains **18 of 20**: W503 ports and registers
 `[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
-natural loop-2 edge through type 7's complete five-script variant-0 list at `$290F66`, `$290F8E`, `$290FE2`,
-`$2910F6`, and `$291172`; W509 through W517 follow its authentic transition into inner state 1 and all nine
-sequence-list A scripts at `$2914F0`, `$29154A`, `$2915A0`, `$291604`, `$29166C`, `$291692`, `$2916DA`,
-`$291700`, and `$29177C`. Together they preserve 343 ordered presentation records and fourteen complete
-`$8003` resource lifecycles. W517 emits 18 records in 8-record `$40000800` and 10-record `$38000800`
-groups. `$8000 $0404` spaces the first 15 records by five driver calls, then `$1010` spaces the final three by
-17. After the exact `$60` wait, operand 4 completes its existing one-node `$290E80` lifecycle. `$FFFF`
-advances cursor 32 to 36 and clears the pool; list A's `$FFFFFFFF` terminator then advances type 7 to outer
-state 2, whose existing normal arm queues type `$0F` and retires type 7. W517 stops before slot [15] at
-`$291F66` and does not inspect that ending-selection path. The local registry has 780 windows, 446,709 bytes,
-and 76 overlap pairs. Production build `20260823031213` still publishes W512 through W516 from commits
-`434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`; its published registry has 777 windows, 446,635
-bytes, and 76 overlap pairs. W517 is the first unpublished wave toward the W521 publication point. The two
-without a handler are `[16] `$256E7A` and `[18] $24902A`.
+natural loop-2 edge through type 7's complete five-script variant-0 list; W509 through W517 complete all nine
+sequence-list A scripts. Together they preserve 343 ordered presentation records and fourteen complete `$8003`
+resource lifecycles. W517's terminator queues type `$0F` and retires type 7. W518 follows that exact normal edge
+through already ported slot [15] at `$291F66`: all 47 timed entries run, its 46 text payloads use the authentic
+horizontal or vertical glyph tables and shared pool, the final `$FFFFFFFF` payload stops drift after 7,791 calls,
+and 43 entries retire while four horizontal records remain frozen. The exact `$80` post-drift timer loads slot
+[15]'s one-node animation at +7,918, posts `$28C186` with D1 zero, fades its installed bank-2 palette to black,
+frees the node, reaches state 2 at +8,046, then queues type `$0E` and retires one frame later. The bounded run
+stops before already ported slot [14] at `$288C6C`. The local registry has 783 windows, 448,021 bytes, and 76
+overlap pairs. Production build `20260823031213` still publishes W512 through W516 from commits `434ac34`,
+`181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`; its published registry has 777 windows, 446,635 bytes, and 76
+overlap pairs. W518 is the second unpublished wave toward the W521 publication point. The two without a handler
+are `[16] `$256E7A` and `[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -2340,6 +2339,35 @@ passes 1/1, both exact registry sentinels pass 2/2, and `export-tables.py --veri
 web-asset export, build, commit, or publication ran. W517 is the first unpublished
 wave after W516 and the next periodic publication point remains W521.
 
+**W518 FOLLOWS SLOT [15]'S AUTHENTIC NORMAL PATH.** W517's committed type `$0F` reaches the existing
+`objSlot15` entry at `$291F66`; W518 registers that existing behavior in the direct natural integration rather
+than retranscribing it. State 0 clears all 50 `$20`-byte pool records, resets the cursor and frame counter, arms
+`$81E120` drift at `$20`, installs the exact 32-word `$222838` palette into bank 2, sets the `$80` timer, and
+raises `$81309A` because the inherited `$813098` gate is nonzero.
+
+The existing 47-entry table at `$291FE2` has 7,744 total delay words and a following `$FFFF` terminator. Its
+46 drawable payloads select 35 distinct NUL-terminated cartridge strings, 648 ordered character uses, and a
+maximum length of 28. Five drawable entries use the horizontal table at `$2923DA`; 41 use the vertical table at
+`$29255A`. The final schedule entry is the non-drawing `$FFFFFFFF` payload in horizontal mode. The natural run
+spawns all 47 records, draws on 7,966 frames, reaches at most nine live records, and stops drift at relative call
+7,791. By then 43 records have retired at the signed `$7800` bound. Four horizontal records remain frozen: the
+stop marker at Y `$F820` and strings `$292334/$292344/$292354` at Y `$4860/$4040/$3820`.
+
+The post-drift timer consumes its exact `$80` calls and loads `$291FD8` at relative call 7,918. Its existing
+one-node mode-0 animation posts `$28C186` with D1 zero once, fades all 32 installed bank-2 words to black, drains,
+and is freed. Slot [15] reaches state 2 at +8,046. On +8,047 it stages type `$0E`, clears `$81E0DA`, queues its
+own id for retirement, and both queues drain. The deliberate next handler throws before executing already ported
+slot [14] at `$288C6C`. No slot-[14] behavior, other ending arm, type-7 variant or list, adjacent `$2917BE`
+driver copy, duplicate target, or unrelated issue was followed. No production source change was needed.
+
+Three exact cartridge windows are newly required. `$2921BA+$220` contains the string pool and ends at the
+horizontal glyph table. `$2923DA+$180` contains its 96 longwords and ends at the vertical table.
+`$29255A+$180` contains the vertical table's 96 longwords. The three disjoint, mutually abutting declarations add
+1,312 bytes, taking the local registry from 780 to 783 windows and 446,709 to 448,021 bytes while overlap pairs
+remain 76. The expanded direct natural integration passes 1/1, both exact registry sentinels pass 2/2, and
+`export-tables.py --verify` passes. No full suite, web-asset export, build, publish, commit, or push ran. W518 is
+the second unpublished wave after W516; W521 remains the publication point.
+
 **W512-W516 PUBLICATION FOLLOW-UP:** Production build `20260823031213` publishes all five waves from
 source commits `434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`. Browser assets were regenerated
 first. The quiet-tree gate passed 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746
@@ -2360,9 +2388,9 @@ bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate with zero 
 gate with zero skips, the distribution build, and the ROM-leak guard. Deployment and three consecutive
 live confirmations passed.
 
-This does not yet identify every ending-selection condition or close D37. W517 completes sequence list A and
-reaches the existing normal slot [15] entry at `$291F66`. That exact next executable edge remains deliberately
-unfollowed rather than broadening this bounded wave into ending-selection or other-variant research.
+This does not yet identify every ending-selection condition or close D37. W518 follows sequence list A's normal
+slot [15] path through its concrete lifecycle and reaches the existing slot [14] entry at `$288C6C`. That exact
+next executable edge remains deliberately unfollowed rather than broadening into slot [14] or another ending arm.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
 text says otherwise: `$24910E` is `'Asic27 Test'`, `$24911A` is `'Wait or Press Any To Start !!'`, and the

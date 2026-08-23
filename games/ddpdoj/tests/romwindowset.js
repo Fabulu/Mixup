@@ -307,7 +307,16 @@
 // while both sparse longwords only abut prior declarations. Measured: 777 -> 780
 // windows, 446,635 -> 446,709 bytes, 76 -> 76 pairs.
 
-export const ROM_WINDOW_COUNT = 780;
+// ---------------------------------------------------------------------------
+// W518 ADDED THREE WINDOWS AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// Slot [15]'s `$2921BA + $220` text pool ends exactly at its horizontal
+// 96-longword glyph table `$2923DA + $180`, which ends exactly at its vertical
+// 96-longword glyph table `$29255A + $180`. All three declarations are disjoint
+// and mutually abutting. Measured: 780 -> 783 windows, 446,709 -> 448,021 bytes,
+// 76 -> 76 pairs.
+
+export const ROM_WINDOW_COUNT = 783;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -376,6 +385,7 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "abutting $29166C+$26 script plus one sparse longword, and W514 added the "
   + "abutting $291692+$48 script plus ten sparse longwords, W515 added the "
   + "abutting $2916DA+$26 script plus six sparse longwords, W516 added the "
-  + "abutting $291700+$7C script plus one sparse longword, and W517 added the "
-  + "abutting $29177C+$42 final script plus two sparse longwords; none moved the "
-  + "overlap count. See tests/romwindowset.js.";
+  + "abutting $291700+$7C script plus one sparse longword, W517 added the "
+  + "abutting $29177C+$42 final script plus two sparse longwords, and W518 "
+  + "added three mutually abutting slot-[15] text and glyph-table windows; none "
+  + "moved the overlap count. See tests/romwindowset.js.";
