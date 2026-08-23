@@ -28,7 +28,7 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W516 (2026-08-23), ATOP PUBLISHED W511.** Dispatch remains **18 of 20**: W503 ports and registers
+**STANDING AS OF W516 (2026-08-23), PUBLISHED IN BUILD `20260823031213`.** Dispatch remains **18 of 20**: W503 ports and registers
 `[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
 natural loop-2 edge through type 7's complete five-script variant-0 list at `$290F66`, `$290F8E`, `$290FE2`,
 `$2910F6`, and `$291172`; W509 through W516 follow its authentic transition into inner state 1 and sequence
@@ -40,10 +40,10 @@ cadence and `$0202` spaces the final 12 by three frames. After the exact `$C0` w
 primary and `$8005 $0000 $0003`'s two-node first phase finish together after 32 steps. Banner 0 is already
 live, so the auxiliary loader returns directly from state 2 to idle without a second phase. W516 advances
 sequence-list A's cursor from 28 to 32 and reaches `$29177C` while remaining in inner state 1. Production
-build `20260823005140` publishes W507 through W511 from commits `f942dbe`, `faab91f`, `1f1cb60`,
-`38bf2e6`, and `d7c2da0` after the full publication gate and three consecutive live confirmations. W516 is
-the fifth unpublished wave after W511 and closes the next publication batch. Browser assets must be regenerated
-before publishing. The exact next gameplay edge is sequence list A entry 8 at `$29177C`. The two without a
+build `20260823031213` publishes W512 through W516 from commits `434ac34`, `181172d`, `ff007e5`,
+`f99a3a3`, and `7f29cbb` after the full publication gate and three consecutive live confirmations. The
+published registry has 777 windows, 446,635 bytes, and 76 overlap pairs; W521 is the next periodic publication
+point. The exact next gameplay edge is sequence list A entry 8 at `$29177C`. The two without a
 handler are `[16] `$256E7A` and `[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
@@ -2299,6 +2299,13 @@ W515 is the fourth unpublished wave after W511. No full suite, web-asset export,
 ran. The next natural call fails loudly at deliberately unexported sequence-list A entry 7 script `$291700`; no
 later entry or broader path was inspected.
 
+**W512-W516 PUBLICATION FOLLOW-UP:** Production build `20260823031213` publishes all five waves from
+source commits `434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`. Browser assets were regenerated
+first. The quiet-tree gate passed 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746
+Gradius units plus the 13/13 gate with zero skips, the 27/27 Batman gate with zero skips, the distribution
+build, and the ROM-leak guard. Deployment and three consecutive live confirmations passed. The published
+registry has 777 windows, 446,635 bytes, and 76 overlap pairs. W521 is the next periodic publication point.
+
 **W507-W511 PUBLICATION FOLLOW-UP:** Production build `20260823005140` publishes all five waves from
 source commits `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. The quiet-tree gate passed
 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
@@ -2312,8 +2319,8 @@ bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate with zero 
 gate with zero skips, the distribution build, and the ROM-leak guard. Deployment and three consecutive
 live confirmations passed.
 
-This does not yet identify every ending-selection condition or close D37. After W515, the exact next
-gameplay edge is sequence list A entry 7's type-7 script at `$291700`, again following only the first concrete
+This does not yet identify every ending-selection condition or close D37. After W516, the exact next
+gameplay edge is sequence list A entry 8's type-7 script at `$29177C`, again following only the first concrete
 runtime edge rather than broadening into speculative ending-selection or other-variant research.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own

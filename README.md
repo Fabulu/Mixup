@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W513 carries the natural stage-5 type `$13` handoff through variant 0's complete five-script list and sequence list A's first five scripts, with entry 4's nine ordered pool spawns at `$30000200`, consecutive `$0000` cadence, `$60` wait, operand-0 primary resource lifecycle, and completion of W512's auxiliary phase handoff into the two-node `$290E3A` second phase; production build `20260823005140` remains published through W511, W513 is the second unpublished wave after W511, the next bounded edge is sequence list A entry 5 at `$291692`, and the full second loop and docket remain in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W516 carries the natural stage-5 type `$13` handoff through variant 0's complete five-script list and sequence list A's first eight entries, ending with 38 ordered pool spawns, exact primary and auxiliary resource lifecycles, and cursor advance to entry 8 at `$29177C`; production build `20260823031213` publishes W512 through W516, and the full second loop and docket remain in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -32,7 +32,7 @@ files that only exist after *you* run an exporter against *your* own copy.
 
 **The published site is a separate question, and the answer is not the same.**
 `tools/build-dist.mjs` reads every ROM present and blocks any file that appears
-byte-for-byte inside one - against 12 ROM files, 330 files checked, 58 of them
+byte-for-byte inside one - against 12 ROM files, 333 files checked, 58 of them
 also checked decompressed. It is not, however, absolute: **six files are
 published verbatim on purpose**, each enumerated in `PUBLISH_VERBATIM` with its
 own line of reasoning, and the list is printed on every single build. They are
@@ -174,24 +174,20 @@ npm run typecheck                               # tsc over the ports - no ROM ne
 refuses to publish on a red gate or an unexpected gate skip. `--only gradius` /
 `--only ddpdoj` gate one game; `--dry` gates and builds without deploying.
 
-At published DDPDOJ W511, its unit suite records **4,404/4,404 passing**.
+At published DDPDOJ W516, its unit suite records **4,404/4,404 passing**.
 The same publication passed all **746/746 Gradius units**, the **13/13
 Gradius gate with zero skips**, the DDPDOJ bundle and web-fetch gates, the **27/27
 Batman gate with zero skips**, the distribution build, and the repository ROM-leak
-guard. Production build `20260823005140` supersedes `20260822223516`, carries
-W507 through W511, and passed deployment plus three consecutive live confirmations.
-W511's direct natural integration passes 1/1, and its compact natural-integration,
-slot-7, ROM-registry, and coverage set passes 30/30. W512's expanded direct integration
-passes 1/1, and its compact directly affected set passes 32/32. W513's direct natural
-integration passes 1/1, and its compact directly affected set passes 63/63 with both exact
-registry sentinels included. W514's direct natural integration passes 1/1 and both focused exact
-registry sentinels pass 2/2. W515's direct natural integration passes 1/1 with no new interpreter
-arm. W516's direct natural integration passes 1/1 and likewise reuses the existing interpreter.
-`export-tables.py --verify` passes at 777 windows and 446,635 bytes with 76 overlap pairs; the
-published W511 export remains 749 windows and 446,167 bytes with the same 76 pairs. The source
-commits are `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. W516 is the fifth
-unpublished wave after W511 and closes the next publication batch. Browser assets must be
-regenerated with `export-web.mjs` before publishing.
+guard. Production build `20260823031213` supersedes `20260823005140`, carries
+W512 through W516, and passed deployment plus three consecutive live confirmations.
+W512's expanded direct integration passes 1/1, and its compact directly affected set
+passes 32/32. W513's direct natural integration passes 1/1, and its compact directly
+affected set passes 63/63 with both exact registry sentinels included. W514's direct
+natural integration passes 1/1 and both focused exact registry sentinels pass 2/2.
+W515 and W516 each pass direct natural integration 1/1 without a new interpreter arm;
+both focused exact registry sentinels pass 2/2. The published export has 777 windows,
+446,635 bytes, and 76 overlap pairs. The source commits are `434ac34`, `181172d`,
+`ff007e5`, `f99a3a3`, and `7f29cbb`. W521 is the next periodic publication point.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
 environmental skip (no emulator, no cartridge) from a skip caused by a moved
@@ -349,11 +345,10 @@ one-node `$290E76` primary resource while `$8005 $0000 $0003` runs the two-node 
 first phase for 32 steps and returns directly to idle because banner 0 is already live. `$FFFF`
 advances the cursor from 28 to 32, clears the pool, and reaches entry 8 at `$29177C`. The current
 registry has 777 windows and 446,635 bytes with 76 overlap pairs. Production
-build `20260823005140` publishes W507 through W511 after 4,404/4,404 DDPDOJ units, all bundle
+build `20260823031213` publishes W512 through W516 after 4,404/4,404 DDPDOJ units, all bundle
 and web gates, the cross-game gates, the distribution build, the ROM-leak guard, deployment,
-and three consecutive live confirmations. The five source commits are `f942dbe`, `faab91f`,
-`1f1cb60`, `38bf2e6`, and `d7c2da0`. W516 is the fifth unpublished wave after W511 and closes
-the next publication batch. Browser assets must be regenerated before publishing. The exact next
+and three consecutive live confirmations. The five source commits are `434ac34`, `181172d`,
+`ff007e5`, `f99a3a3`, and `7f29cbb`; W521 is the next periodic publication point. The exact next
 gameplay edge is sequence list A entry 8 at `$29177C`.
 
 That breadth does not mean the game is finished. The authoritative docket still

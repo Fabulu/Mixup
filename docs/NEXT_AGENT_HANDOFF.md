@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (W516 atop W511 production build `20260823005140`)
+Updated: 2026-08-23 (W516 published in production build `20260823031213`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -31,15 +31,14 @@ The exact `$7C`-byte script and one absent sparse four-byte spawn longword take 
 windows and 446,507 to 446,635 bytes. Twenty-nine distinct spawn selections and both resource descriptor sets
 reuse prior windows. The script window abuts W515 and the `$29063A` sparse longword is disjoint, so overlap
 pairs remain 76. The direct W516 natural integration passes 1/1, both focused exact registry sentinels pass 2/2,
-and `export-tables.py --verify` passes. W516 is the fifth unpublished wave after W511 and closes the next
-publication batch.
+and `export-tables.py --verify` passes. W516 is published in production build `20260823031213`.
 
-Production build `20260823005140` remains published through W511. Its quiet-tree publication passed
+Production build `20260823031213` publishes W512 through W516. Its quiet-tree publication passed
 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
 with zero skips, the 27/27 Batman gate with zero skips, the distribution build, and the ROM-leak guard,
 then passed deployment and three consecutive live confirmations. The published source commits are
-`f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. Browser assets must be regenerated with
-`export-web.mjs` before publishing W516, then the quiet-tree publication path can run. Neither action ran here.
+`434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`. The published registry has 777 windows,
+446,635 bytes, and 76 overlap pairs. W521 is the next periodic publication point.
 
 The exact next gameplay/progression target after W516 is sequence list A entry 8's type-7 script at
 `$29177C`. Only its pointer boundary was read for W516. Follow its first concrete runtime edge, and do not
@@ -117,9 +116,9 @@ No interpreter or other production source changed. Twenty-nine distinct spawn se
 windows; only index `$DE` needs a sparse pointer declaration. The script window abuts W515 and the pointer
 longword is disjoint. These two declarations add 128 bytes, producing 777 windows, 446,635 bytes, and 76
 overlap pairs. The direct natural integration passes 1/1, both focused exact registry sentinels pass 2/2, and
-`export-tables.py --verify` passes. W516 is the fifth unpublished wave after W511 and closes the next
-publication batch. No full suite, web-asset export, build, commit, push, or publication ran. Browser assets must
-be regenerated with `export-web.mjs` before publishing.
+`export-tables.py --verify` passes. W516 was committed as `7f29cbb`, browser assets were regenerated, and
+production build `20260823031213` published W512 through W516 after the complete quiet-tree gate and three
+consecutive live confirmations. W521 is the next periodic publication point.
 
 ## W515 VERIFIED: SEQUENCE LIST A ENTRY 6
 
