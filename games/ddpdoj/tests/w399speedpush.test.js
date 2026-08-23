@@ -734,13 +734,13 @@ test('W399 SECTION 7: the window set, an overlap count these five do not move, a
       '...and the SAME count without them: none of the five overlaps anything. The '
       + 'pairs beyond W393\'s 71 are W428\'s four cue scripts, none of them here.');
 
-    // The nearest declared neighbours, both sides. W551 later placed the A2
-    // prefill window below this wave, ending at $2A4702.
+    // The nearest declared neighbours, both sides. W553 later placed Hibachi's A0
+    // main-sequencer window below this wave, ending at $2A4EB6.
     const others = ws.filter(([a]) => !mine.includes(a));
     const below = Math.max(...others.filter(([a, ln]) => a + ln <= HIBACHI_A4.table)
       .map(([a, ln]) => a + ln));
-    assert.equal(below, 0x2a4702,
-      'the nearest window below is W551\'s A2 prefill list ending at $2A4702');
+    assert.equal(below, 0x2a4eb6,
+      'the nearest window below is W553\'s A0 main-sequencer table ending at $2A4EB6');
     const above = Math.min(...others.filter(([a]) => a >= HIBACHI_A4.s3Anim + 0x80).map(([a]) => a));
     // W409 CORRECTION: the nearest neighbour above is no longer W404\'s A1 gun table. A4
     // script 5\'s own emitter rows $2A6688 are declared now, $388 bytes past the end of this
