@@ -502,10 +502,10 @@ test('W443 (was W442 test 8b): the hyper beam still takes its art from $24BAE2 '
 // 9. The standing tripwire. This wave declares no window.
 // ===========================================================================
 test('W442 adds no ROM window and later waves reconcile the exact registry', () => {
-  assert.equal(ROM_WINDOW_COUNT, 742,
-    'W502 adds two windows, W503 one, W504 nine, W505 twenty, W506 twenty-one, W507 twenty-four, W508 four, W509 fourteen, and W510 ten after W501');
+  assert.equal(ROM_WINDOW_COUNT, 749,
+    'W502 adds two windows, W503 one, W504 nine, W505 twenty, W506 twenty-one, W507 twenty-four, W508 four, W509 fourteen, W510 ten, and W511 seven after W501');
   assert.equal(ROM_OVERLAP_PAIRS, 76,
-    'W502-W510 add only disjoint or abutting windows, so W497 remains the last new overlap');
+    'W502-W511 add only disjoint or abutting windows, so W497 remains the last new overlap');
 });
 
 // ===========================================================================
