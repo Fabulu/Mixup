@@ -13,7 +13,7 @@ import { ProtLatch } from '../src/protsim.js';
 import { UnportedLog } from '../src/unported.js';
 import { SHOT, runShotDriver } from '../src/weapons.js';
 import {
-  spawnShotTypeB, shotHandlers, handler253BDA, SPAWN, PS, S,
+  spawnShotTypeB, shotHandlers, handler253BDA, handler253D52, SPAWN, PS, S,
 } from '../src/shots.js';
 import {
   OPTION_BLOCKS, POD_SPAWNS, fireHandshake, OPT_ROT_ANGLE,
@@ -167,6 +167,34 @@ test('W497 Type-B player shots spawn for styles 2, 4, and 6 in normal and hyper 
         assert.equal(ram.u16(SHOT.p1Table + slots[0] * SHOT.stride), rom.u16(template),
           'the spawned type word comes from the selected $25551A template arm');
       }
+    }
+  });
+
+test('W527 earliest Type-B first hits read the style 2 and 6 descriptors',
+  { skip: SKIP }, () => {
+    const cases = [[2, 0x00, 0x24e652], [6, 0x3c, 0x24e6de]];
+    for (const [style, tableIdx, descriptor] of cases) {
+      const { ram, rom, ctx } = bench();
+      const rec = SHOT.p1Table;
+      const win = tables.rom.windows.find(
+        (w) => String(w.base).toUpperCase() === '$24E5EE');
+      assert.equal(win?.len, 0x0136,
+        'the hit family ends before the different data at $24E724');
+
+      ram.setU16(rec, 0x81c9);
+      ram.setU16(rec + S.posY, 0x2000);
+      ram.setU16(rec + S.posX, 0x1800);
+      ram.setU16(rec + S.tableIdx, tableIdx);
+      ram.setU16(rec + S.power, 0);
+      assert.equal(rom.u32(0x24e5ee + tableIdx), descriptor,
+        `style ${style} selects its cartridge hit descriptor`);
+
+      handler253D52(ram, rom, rec, ctx, PL1, 0xc9);
+      assert.equal(ram.u32(rec + S.drawOff), rom.u32(descriptor));
+      assert.equal(ram.u16(rec + S.dlWord4), rom.u16(descriptor + 4));
+      assert.equal(ram.u32(rec + S.animPtr), rom.u32(descriptor + 6));
+      assert.equal(ram.u16(rec + S.animIdx), 0x000c,
+        `style ${style} installs $10 and advances the hit animation once`);
     }
   });
 

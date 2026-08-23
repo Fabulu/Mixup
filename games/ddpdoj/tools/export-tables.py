@@ -193,6 +193,11 @@ SHOT_WINDOWS = [
     # descriptors through $24E5ED. $24E5EE is the separately named hit table.
     (0x24E512, 0x00DC, "W525 Type-B player-shot normal table and descriptors, "
                        "ending at the $24E5EE hit table"),
+    # `$253DAC..$253E30` reads the Type-B player-shot hit table at $24E5EE.
+    # Its 25 longwords end at $24E652 and select fifteen adjacent 14-byte
+    # descriptors through $24E723. $24E724 begins a different data structure.
+    (0x24E5EE, 0x0136, "W527 Type-B player-shot hit table and descriptors, "
+                       "ending before the data at $24E724"),
     # $253E5A lea $24FC8E
     (0x24FC80, 0x0100, "$24FC8E + its structs"),
     # `$24D4EA/$24D654/$24D7BC` selects the Type-B option templates at
