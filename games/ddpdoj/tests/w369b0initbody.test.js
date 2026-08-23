@@ -9,8 +9,11 @@ import { readFileSync, existsSync } from 'node:fs';
 import { INIT_BODY_ADDRESSES } from '../src/initbody.js';
 
 const ROM = 'games/ddpdoj/rip/sound/maincpu.bin';
+const TABLES = 'games/ddpdoj/rip/port/player.tables.json';
 const SKIP = !existsSync(ROM) && 'no decrypted ROM';
+const SKIP_TABLES = !existsSync(TABLES) && 'no generated ROM tables';
 const IMG = SKIP ? null : readFileSync(ROM);
+const TABLE_JSON = SKIP_TABLES ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 
 test('W369 the body is REGISTERED -- the whole point of the wave', () => {
   assert.ok(INIT_BODY_ADDRESSES.includes(0x2a42dc),
@@ -95,4 +98,19 @@ test('W369 all sixteen sub-prototypes are the LONG form, ending AT the handler',
     a0 += 2 + 26;
   }
   assert.equal(a0, 0x2a4606, 'the sixteen end exactly AT the handler $2A4606, which bounds the window');
+});
+
+test('W551 the Hibachi A2 prefill list exports all nineteen pointers and its terminator',
+  { skip: SKIP_TABLES }, () => {
+  const window = TABLE_JSON.rom.windows.find((w) => w.base === '$2A46B2');
+  assert.equal(window?.len, 0x50, 'the window ends exactly at the first scheduler routine $2A4702');
+  const bytes = Buffer.from(window.hex, 'hex');
+  const pointers = [];
+  for (let off = 0; off < bytes.length; off += 4) {
+    const value = bytes.readUInt32BE(off);
+    if (value === 0xffffffff) break;
+    pointers.push(value);
+  }
+  assert.equal(pointers.length, 19);
+  assert.equal(bytes.readUInt32BE(0x4c), 0xffffffff, 'the twentieth longword is the terminator');
 });

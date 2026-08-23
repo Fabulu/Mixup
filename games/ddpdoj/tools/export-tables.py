@@ -3876,6 +3876,9 @@ SHOT_WINDOWS.extend([
                        "walked to size this window rather than assumed -- the short form would be 16. "
                        "The span ends at $2A4606, which IS the handler address, so the prototype is "
                        "bounded above by its own handler exactly and cannot be widened by accident"),
+    (0x2A46B2, 0x0050, "W551: HIBACHI's A2 scheduler prefill list, nineteen routine pointers followed "
+                       "by the $FFFFFFFF terminator $2595B2 walks to. The exact span ends at $2A4702, "
+                       "the first pointed-to routine, so no scheduler code is exported as data"),
     (0x268DD2, 0x0068, "W353: type $1A's FIVE palette rows, 15-word record prototype and $20-byte sub "
                        "prototype, $268DD2..$268E3A -- three contiguous structures the init walks in "
                        "order. The rows are byte PAIRS indexed by $813094: 15 0a / 15 0a / 15 0a / "

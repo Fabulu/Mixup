@@ -399,7 +399,14 @@
 // init stub. Its eleven remaining stubs add 88 exact bytes and no overlap.
 // Measured: 798 -> 809 windows, 450,483 -> 450,571 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 809;
+// ---------------------------------------------------------------------------
+// W551 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$2A46B2 + $50` is Hibachi's nineteen-entry A2 scheduler list plus its
+// terminator. It ends at the first routine. Measured: 809 -> 810 windows,
+// 450,571 -> 450,651 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 810;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
