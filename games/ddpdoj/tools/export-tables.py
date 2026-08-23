@@ -185,6 +185,11 @@ SHOT_WINDOWS = [
     # $253B72 lea $24DDD6 / $253C7A lea $24DEB2 -- the per-($26,A6) tables the
     # handlers re-point the record's sprite fields from, and their structs.
     (0x24DDD0, 0x01B0, "$24DDD6 and $24DEB2 + the structs they point at"),
+    # `$253C98` reads the normal Type-B player-shot pointer table at $24E512.
+    # Its 25 longwords end at $24E576 and select the fifteen adjacent eight-byte
+    # descriptors through $24E5ED. $24E5EE is the separately named hit table.
+    (0x24E512, 0x00DC, "W525 Type-B player-shot normal table and descriptors, "
+                       "ending at the $24E5EE hit table"),
     # $253E5A lea $24FC8E
     (0x24FC80, 0x0100, "$24FC8E + its structs"),
     # `$24D4EA/$24D654/$24D7BC` selects the Type-B option templates at

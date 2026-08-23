@@ -11,8 +11,8 @@ import { RomWindows } from '../src/rom.js';
 import { MoveTables } from '../src/vectors.js';
 import { ProtLatch } from '../src/protsim.js';
 import { UnportedLog } from '../src/unported.js';
-import { SHOT } from '../src/weapons.js';
-import { spawnShotTypeB, SPAWN, PS, S } from '../src/shots.js';
+import { SHOT, runShotDriver } from '../src/weapons.js';
+import { spawnShotTypeB, shotHandlers, SPAWN, PS, S } from '../src/shots.js';
 import {
   OPTION_BLOCKS, POD_SPAWNS, fireHandshake, OPT_ROT_ANGLE,
 } from '../src/options.js';
@@ -164,6 +164,40 @@ test('W497 Type-B player shots spawn for styles 2, 4, and 6 in normal and hyper 
         const template = rom.u32(rom.u32(SPAWN.ptrTypeB + tableOffset));
         assert.equal(ram.u16(SHOT.p1Table + slots[0] * SHOT.stride), rom.u16(template),
           'the spawned type word comes from the selected $25551A template arm');
+      }
+    }
+  });
+
+test('W525 Type-B normal shots cross entry 1 for every authentic style',
+  { skip: SKIP }, () => {
+    const firstTableIndexes = new Map([[2, 0x00], [4, 0x28], [6, 0x3c]]);
+    for (const style of [2, 4, 6]) {
+      const { ram, rom, ctx } = bench();
+      seedPlayerShot(ram, style, false);
+      spawnShotTypeB(ram, rom, PL1, { soundPost() {} });
+
+      const slots = liveShotSlots(ram);
+      const records = slots.map((slot) => SHOT.p1Table + slot * SHOT.stride);
+      assert.equal(ram.u16(records[0] + S.tableIdx), firstTableIndexes.get(style),
+        `style ${style} selects its cartridge table arm`);
+      const expected = records.map((rec) => {
+        const descriptor = rom.u32(0x24e512 + ram.u16(rec + S.tableIdx));
+        return { drawOff: rom.u32(descriptor), dlWord4: rom.u16(descriptor + 4) };
+      });
+
+      assert.equal(runShotDriver(ram, rom, shotHandlers(), ctx), records.length,
+        `style ${style} arms its normal shots`);
+      assert.equal(runShotDriver(ram, rom, shotHandlers(), ctx), records.length,
+        `style ${style} carries its one-frame-old shots`);
+      assert.equal(runShotDriver(ram, rom, shotHandlers(), ctx), records.length,
+        `style ${style} crosses the entry-1 cartridge lookup`);
+      for (let i = 0; i < records.length; i++) {
+        assert.equal(ram.u16(records[i]) & 0x0f, 9,
+          `style ${style}, record ${i} advances to entry 9`);
+        assert.equal(ram.u32(records[i] + S.drawOff), expected[i].drawOff,
+          `style ${style}, record ${i} installs the selected draw offset`);
+        assert.equal(ram.u16(records[i] + S.dlWord4), expected[i].dlWord4,
+          `style ${style}, record ${i} installs the selected display word`);
       }
     }
   });
