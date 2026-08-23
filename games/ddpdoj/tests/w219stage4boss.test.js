@@ -137,6 +137,39 @@ test('W219 real clock-$2E8 spawn runs F0, MAIN0, and the visible body same pass'
     [0x863a8016, ROM.u32(0x29f414 + 0x18), 0x28c0, 0x0015]);
   });
 
+test('W536 Stage-4 MAIN0 exports and runs its whole word-speed arrival ramp',
+  { skip: SKIP }, () => {
+  assert.equal(Buffer.from(ROM.bytes(0x29f5d4, 6)).toString('hex'),
+    '397c02800008', 'MAIN0 installs $0280 in slot +$08');
+  assert.equal(Buffer.from(ROM.bytes(0x29f60c, 6)).toString('hex'),
+    '302c0008e440', 'MAIN0 reads slot +$08 and shifts it right by two');
+  assert.equal(Buffer.from(ROM.bytes(0x29f662, 10)).toString('hex'),
+    '046c000500086e00001e', 'MAIN0 subtracts 5 and loops while signed-positive');
+
+  const initial = ROM.u16(0x29f5d6);
+  const decrement = ROM.u16(0x29f664);
+  const levels = [];
+  for (let value = initial; value > 0; value -= decrement) levels.push(value >>> 2);
+  assert.equal(levels.length, 128);
+  assert.equal(new Set(levels).size, 128);
+  assert.equal(levels[2], 157, 'the exact pair-{0,4} failure index');
+  for (const level of levels) {
+    assert.ok(json.speed.quads[String(level)], `arrival speed ${level} is exported`);
+    assert.doesNotThrow(() => MT.shotVector(level, 0x02));
+  }
+
+  const { ram, log, palette, a5 } = stage4Boss();
+  const ctx = { ram, rom: ROM, tables: MT, unported: log, unportedLog: log,
+    palette, soundPost() {}, effectSpawn() {}, bulletSpawn() {} };
+  for (let frame = 0; frame < 3; frame++) {
+    for (const bucket of BUCKETS) ram.setU16(bucket.counter, 0);
+    assert.doesNotThrow(() => runHandler(0x29ef0a, ram, ROM, a5, ctx));
+  }
+  assert.equal(ram.u8(SCHED.seqDst + 0x06), 0, 'the arrival remains in its ramp phase');
+  assert.equal(ram.u16(SCHED.seqDst + 0x08), initial - 3 * decrement,
+    'the exact failure frame consumed level 157 and completed its decrement');
+});
+
 test('W219 linked damage keeps the largest delta and honors the part-flash gate',
   { skip: SKIP }, () => {
     const { ram, log, a5, a6 } = stage4Boss();

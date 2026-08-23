@@ -7730,6 +7730,9 @@ def speed_index_set(d: bytes) -> list[int]:
     # band from a LOCKSTEP with `($2A,A6)` that DOES NOT EXIST -- see
     # `boss_part_speed_indices` for the two sites that break it.
     s.update(boss_part_speed_indices(d))
+    # W536: and the Stage-4 boss arrival's word ramp. MAIN0 initializes $0280,
+    # reads `speed >> 2`, then subtracts 5 while the signed result stays positive.
+    s.update(boss4_arrival_speed_indices(d))
     return sorted(s)
 
 
@@ -7865,6 +7868,43 @@ def _boss_sub_record(d: bytes) -> bytearray:
             a0 += 4
             a1 += 4
     return rec
+
+
+# W536: Stage-4 boss MAIN0 uses a word ramp that no byte-domain inventory sees.
+# `$29F5D4` installs $0280 in slot +$08. `$29F60C` reads that word and shifts it
+# right by two before `$241D34`; `$29F662` subtracts 5, and `$29F668` repeats only
+# while the signed result is positive. Derive every resulting speed index rather
+# than adding the first observed odd value, because otherwise the arrival would
+# fail again a few frames later on the same cartridge loop.
+BOSS4_ARRIVAL_INIT = 0x29F5D4
+BOSS4_ARRIVAL_READ = 0x29F60C
+BOSS4_ARRIVAL_SUB = 0x29F662
+BOSS4_ARRIVAL_BRANCH = 0x29F668
+
+
+def boss4_arrival_speed_indices(d: bytes) -> set[int]:
+    """Every `word >> 2` speed used by Stage-4 MAIN0's exact arrival ramp."""
+    if d[BOSS4_ARRIVAL_INIT:BOSS4_ARRIVAL_INIT + 6] != bytes.fromhex(
+            "397c02800008"):
+        raise SystemExit("W536: $29F5D4 is no longer `move.w #$280,$8(a4)`")
+    if d[BOSS4_ARRIVAL_READ:BOSS4_ARRIVAL_READ + 6] != bytes.fromhex(
+            "302c0008e440"):
+        raise SystemExit("W536: $29F60C no longer reads $8(a4) then `lsr.w #2`")
+    if u16(d, BOSS4_ARRIVAL_SUB) != 0x046C or u16(d, BOSS4_ARRIVAL_SUB + 4) != 8:
+        raise SystemExit("W536: $29F662 is no longer `subi.w #n,$8(a4)`")
+    if d[BOSS4_ARRIVAL_BRANCH:BOSS4_ARRIVAL_BRANCH + 4] != bytes.fromhex(
+            "6e00001e"):
+        raise SystemExit("W536: $29F668 is no longer the signed-positive loop branch")
+
+    value = u16(d, BOSS4_ARRIVAL_INIT + 2)
+    decrement = u16(d, BOSS4_ARRIVAL_SUB + 2)
+    if decrement == 0:
+        raise SystemExit("W536: Stage-4 MAIN0's speed decrement is zero")
+    out = set()
+    while 0 < value < 0x8000:
+        out.add(value >> 2)
+        value = (value - decrement) & 0xFFFF
+    return out
 
 
 BEAM_SPARK_DRAW_TABLE = 0x242E42      # $242E24's canned bytes
