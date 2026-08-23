@@ -131,3 +131,36 @@ test('W214 real clock-$E5 root initializes five satellite pairs, fires, draws, a
     ram.u16(POOL_B.base + i * POOL_B.stride)).filter(Boolean).length, 9,
   'nine root-death effect rows are armed');
 });
+
+test('W530 type-$9C offscreen satellite wraps its RAM-backed animation read',
+  { skip: SKIP }, () => {
+    const ram = new Ram();
+    const log = new UnportedLog();
+    const palette = new PaletteState();
+    ram.setU16(0x813092, 3);
+    ram.setU16(0x813094, 6);
+    ram.setU16(0x813096, 12);
+    resetAndInstallStage26331E(ram, ROM, log);
+    ram.setU16(SPAWN.DISTANCE_CLOCK, 0x00e5);
+    ram.setU32(SPAWN.LIVE_CURSOR, 0x235b48);
+    runSpawnWalker(ram, ROM, log, MT, undefined, palette);
+
+    const a5 = findType(ram, 0x9c);
+    const root = ram.u32(a5 + 6);
+    const child = root + 0x20;
+    ram.setU32(root + 2, 0x40002000);
+    ram.setU16(0x8130d2, 1);
+    ram.setU16(child, 0x8080);
+    ram.setU32(child + 0x10, 0x04800600);
+    ram.setU8(child + 0x14, 0);
+    ram.setU8(child + 0x15, 0x40);
+    ram.setU16(child + 0x16, 0x0440);
+    ram.setU32(0x800a40, 0x12345678);
+
+    assert.doesNotThrow(() => runHandler(0x27aee0, ram, ROM, a5,
+      { tables: MT, unported: log, soundPost() {} }));
+    assert.equal(ram.u32(child + 0x0a), 0x12345678,
+      '$04800600 + $0440 wraps to the cartridge RAM read at $800A40');
+    assert.equal(ram.u8(child + 0x14), 0x40);
+    assert.equal(ram.u16(child + 0x16), 0x043c);
+  });

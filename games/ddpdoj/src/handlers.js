@@ -8613,7 +8613,9 @@ function animateDead9CSatellite(ram, rom, child) {
     ram.setU8(child + 0x14, ram.u8(child + 0x15));
     const list = ram.u32(child + 0x10);
     const cursor = ram.u16(child + 0x16);
-    ram.setU32(child + S.sprite0a, rom.u32(list + cursor));
+    const at = (list + cursor) & 0xffffff;               // $27DD0C..$27DD14 / 24-bit bus
+    ram.setU32(child + S.sprite0a,
+      at >= 0x800000 && at <= 0x81fffc ? ram.u32(at) : rom.u32(at));
     ram.setU16(child + 0x16, cursor === 0 ? 0x0c : cursor - 4);
   }
   enqueueThroughStub(ram, rom, ram.u32(child + 0x30), child);
