@@ -28,27 +28,28 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W532 (2026-08-23), WITH W531 PUBLISHED IN BUILD `20260823165848`.** W527 exports
+**STANDING AS OF W533 (2026-08-23), WITH W531 PUBLISHED IN BUILD `20260823165848`.** W527 exports
 Type-B's exact first-hit table and descriptors. W528 ports the kind-16 flying-bee waypoint arm. W529 ports
 deferred type `$A5`; W530 applies 68000 24-bit bus wrapping to type `$9C`'s RAM-backed animation read; W531
 ports the kind-19 target-tracking arm. Pair `{ship:0, style:4}` now reaches logic frame 41,031 in raw stage 3.
 The published registry is 791 windows, 449,329 bytes, and 77 overlap pairs.
 
 W532 replaces repeated seed-to-frontier runs with a static preflight and exact local checkpoints. The preflight
-walks all five spawn scripts, all five BGELEM lists, all top objects and type-5 calls, source-visible deferred
-children, type `$15`'s local children, and scripted-carrier movement children. The stage scripts contain 339,
-332, 414, 382, and 770 records. All direct stage enemy types, all BGELEM entries, and all 23 type-5 calls are
-ported. The recursive enemy closure contains 103 types and reports three unresolved dependencies:
+walks all five spawn scripts, all five BGELEM lists, progression top objects and type-5 calls, source-visible
+deferred children, type `$15`'s local children, and scripted-carrier movement children. The stage scripts contain
+339, 332, 414, 382, and 770 records. All direct stage enemy types, all BGELEM entries, and all 23 type-5 calls
+are ported. W533 resolves the preflight's initial three overbroad findings without fake registrations:
 
-- top object `$10`, handler `$256E7A`
-- top object `$12`, handler `$24902A`
-- enemy `$9A`, init `$29EAE2`, handler `$29EB7A`
+- object `$10/$256E7A` is the operator service menu and has no ordinary gameplay construction edge
+- object `$12/$24902A` is the operator ASIC27 self-test and has no ordinary gameplay construction edge
+- type `$9A` is reachable, but its mandatory registered init `$29EAE2` jumps directly to free `$263762`, so
+  handler `$29EB7A` cannot run for the Version-B type-table row
 
-The default progression probe stops before runtime while those remain. `--skip-closure` is explicit. Periodic
-checkpoints contain evolved RAM, all deterministic non-RAM `Game` state, frame counters, pair, seed and table
-identities, input, raw stage/loop, payload hashes, and explicit probe-only invulnerability. A focused exact-bundle
-test proves restored and uninterrupted stepping remain identical. Ordinary `Game` and browser construction are
-unchanged and mortal.
+The checker pins both operator handler addresses and the exact `$29EAE2` jump bytes. It now reports 18/18
+progression top objects, zero unresolved dependencies, and `CLOSED`. Periodic checkpoints contain evolved RAM,
+all deterministic non-RAM `Game` state, frame counters, pair, seed and table identities, input, raw stage/loop,
+payload hashes, and explicit probe-only invulnerability. A focused exact-bundle test proves restored and
+uninterrupted stepping remain identical. Ordinary `Game` and browser construction are unchanged and mortal.
 
 `NOTES-progression.md` records the cartridge evidence. Version-B prints `1 ROUND GAME` and
 `2 ROUND GAME`; `$80393A` values 1 and 0 select them respectively. `$2901E0` gates access to round 2 with
@@ -62,7 +63,8 @@ Production build `20260823165848` publishes W527 through W531 from commits `3324
 `292af08`, and `2873487`; repairs `4110255` and `f3b8b85` reconcile exact registries and gate assertions. Assets
 were regenerated first. The gate passed 4,414/4,414 DDPDOJ units, 748/748 Gradius units and its 13/13 gate,
 Batman 27/27, all bundle and web gates, distribution and ROM-leak guards, deployment, and three consecutive
-live confirmations. W532 is source-only infrastructure at commit `644c170` and adds no cartridge window.
+live confirmations. W532 is source-only infrastructure at commit `644c170`; W533's closure-scope refinement also
+adds no cartridge window.
 
 **D109 COMPLETED ON 2026-08-23, AHEAD OF ITS 2026-08-28 DEADLINE.** The parallel asset-free site at
 `mixup.pages.dev` boots all three games from exact player-supplied local inputs and ships no cartridge assets. Its

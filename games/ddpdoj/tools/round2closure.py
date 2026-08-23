@@ -3,8 +3,10 @@
 
 The inventory is derived from the local cartridge image and live source
 registries. It covers all five spawn scripts, all five background-element lists,
-top-level object/type-5 dispatch, source-visible deferred emissions, and the
-movement-stream child type used by scripted carriers.
+progression top objects and type-5 dispatch, source-visible deferred emissions,
+and movement-stream child types used by scripted carriers. Operator-only diagnostics
+are reported but do not block gameplay; a mandatory init that immediately frees its
+enemy closes that row without requiring its unreachable alternate handler.
 """
 from __future__ import annotations
 
@@ -36,6 +38,13 @@ BGELEM_POINTER_TABLE = 0x262302
 CARRIER_INIT_BODY = 0x272A4A
 EXPECTED_STAGE_RECORDS = (339, 332, 414, 382, 770)
 EXPECTED_BGELEM_ENTRIES = (13, 8, 14, 7, 4)
+OPERATOR_ONLY_TOP_OBJECTS = {
+    0x10: (0x256E7A, "operator service-menu dispatcher"),
+    0x12: (0x24902A, "operator ASIC27 self-test"),
+}
+MANDATORY_FREE_ENEMIES = {
+    0x9A: (0x29EAE2, 0x29EB7A, 0x263762),
+}
 
 
 def cfg_by_name(config: dict, name: str) -> dict:
@@ -170,6 +179,18 @@ def walk_all_bgelem(rom: Rom, regs: dict) -> list[list[dict]]:
     return stages
 
 
+def mandatory_free_enemy(rom: Rom, regs: dict, typ: int, row: dict) -> dict:
+    body, handler, target = MANDATORY_FREE_ENEMIES[typ]
+    if row["init_body"] != body or row["handler"] != handler:
+        raise ValueError(
+            f"type ${typ:02X} mandatory-free row changed from ${body:06X}/${handler:06X}")
+    if rom.r16(body) != 0x4EF9 or rom.r32(body + 2) != target:
+        raise ValueError(
+            f"type ${typ:02X} body is no longer jmp ${target:06X}")
+    return {"type": typ, "init_body": body, "handler": handler,
+            "free_target": target, "init_ported": body in regs["init_bodies"]}
+
+
 def unresolved_row(kind: str, row: dict, **extra) -> dict:
     return {"kind": kind, "label": row["label"],
             "addresses": row.get("addresses", []), **extra}
@@ -203,6 +224,17 @@ def build_closure(rom_path: Path = ROM_PATH) -> dict:
 
     top_rows, top_phantoms = walk_top_objects(
         rom, regs, cfg_by_name(config, "top_objects"))
+    operator_only = []
+    for typ, (handler, reason) in OPERATOR_ONLY_TOP_OBJECTS.items():
+        row = top_rows[typ]
+        if row["handler"] != handler:
+            raise ValueError(
+                f"operator-only object ${typ:02X} changed from handler ${handler:06X}")
+        operator_only.append({"object_type": typ, "handler": handler,
+                              "reason": reason, "ported": row["ported"]})
+    required_top_rows = [row for row in top_rows
+                         if int(row["key"]) not in OPERATOR_ONLY_TOP_OBJECTS]
+
     type5_rows, type5_phantoms = walk_type5(
         rom, regs, cfg_by_name(config, "type5_calls"))
     bgelem_stages = walk_all_bgelem(rom, regs)
@@ -212,8 +244,13 @@ def build_closure(rom_path: Path = ROM_PATH) -> dict:
             raise ValueError(
                 f"stage {stage + 1} BGELEM has {len(rows)} entries, expected {expected}")
 
+    mandatory_free = [mandatory_free_enemy(rom, regs, typ, enemies[typ])
+                      for typ in sorted(closure_types & MANDATORY_FREE_ENEMIES.keys())]
+    mandatory_free_closed = {row["type"] for row in mandatory_free
+                             if row["init_ported"]}
+
     unresolved = []
-    for row in top_rows:
+    for row in required_top_rows:
         if row["state"] == "unknown":
             unresolved.append(unresolved_row("top_object", row,
                                              object_type=int(row["key"])))
@@ -222,6 +259,12 @@ def build_closure(rom_path: Path = ROM_PATH) -> dict:
             unresolved.append(unresolved_row("type5", row))
     for typ in sorted(closure_types):
         row = enemies[typ]
+        if typ in MANDATORY_FREE_ENEMIES:
+            if typ not in mandatory_free_closed:
+                unresolved.append({"kind": "mandatory_free_init",
+                                   "label": f"enemy type ${typ:02X} immediate-free init",
+                                   "addresses": [row["init_body"]], "enemy_type": typ})
+            continue
         if row["state"] == "unknown":
             unresolved.append(unresolved_row(
                 "enemy_type", row, enemy_type=typ,
@@ -239,16 +282,18 @@ def build_closure(rom_path: Path = ROM_PATH) -> dict:
     stages = []
     for stage, rows in enumerate(stage_entries, 1):
         types = {row["type"] for row in rows}
-        unknown = {typ for typ in types if enemies[typ]["state"] == "unknown"}
+        unknown = {typ for typ in types
+                   if enemies[typ]["state"] == "unknown"
+                   and typ not in mandatory_free_closed}
         null = {typ for typ in types if enemies[typ]["state"] == "null"}
         stages.append({"stage": stage, "records": len(rows), "types": len(types),
                        "unknown_types": sorted(unknown), "null_markers": sorted(null)})
 
     return {
-        "schema": 1,
+        "schema": 2,
         "target": config["target"],
         "rom": str(rom_path),
-        "scope": "all five stage scripts plus global source-visible deferred closure",
+        "scope": "all five stage scripts plus progression-reachable deferred closure",
         "stages": stages,
         "direct_types": sorted(direct_types),
         "deferred_source_types": sorted(source_types),
@@ -256,8 +301,11 @@ def build_closure(rom_path: Path = ROM_PATH) -> dict:
         "closure_types": sorted(closure_types),
         "carrier_records": carrier_rows,
         "deferred_sites": deferred_sites,
-        "top_objects": {"entries": len(top_rows),
-                        "ported": sum(row["ported"] for row in top_rows)},
+        "top_objects": {"entries": len(required_top_rows),
+                        "ported": sum(row["ported"] for row in required_top_rows),
+                        "table_entries": len(top_rows),
+                        "operator_only": operator_only},
+        "mandatory_free_enemies": mandatory_free,
         "type5": {"entries": len(type5_rows),
                   "ported": sum(row["ported"] for row in type5_rows)},
         "bgelem": [{"stage": stage, "entries": len(rows),
@@ -293,7 +341,15 @@ def main() -> int:
     print(f"  deferred source types: {hex_list(report['deferred_source_types'])}")
     print(f"  carrier stream types: {hex_list(report['carrier_types'])}")
     print(f"  recursive closure: {len(report['closure_types'])} enemy types")
-    print(f"  top objects: {report['top_objects']['ported']}/{report['top_objects']['entries']} ported")
+    top = report["top_objects"]
+    print(f"  progression top objects: {top['ported']}/{top['entries']} ported")
+    for row in top["operator_only"]:
+        print(f"  operator-only object ${row['object_type']:02X} excluded: "
+              f"${row['handler']:06X} {row['reason']}")
+    for row in report["mandatory_free_enemies"]:
+        state = "ported" if row["init_ported"] else "UNPORTED"
+        print(f"  mandatory-free enemy ${row['type']:02X}: init ${row['init_body']:06X} "
+              f"jmp ${row['free_target']:06X} ({state}); handler ${row['handler']:06X} unreachable")
     print(f"  type-5 calls: {report['type5']['ported']}/{report['type5']['entries']} ported")
     for row in report["bgelem"]:
         print(f"  stage {row['stage']} BGELEM: {row['ported']}/{row['entries']} ported")

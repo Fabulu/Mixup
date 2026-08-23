@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | W532 statically inventories all five stages and adds periodic exact-harness checkpoints; the preflight found three concrete dependencies to close before six-pair round-2 progression resumes |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | W533 closes the all-five-stage static preflight and W532 supplies periodic exact-harness checkpoints; six-pair round-2 progression now resumes from local frontiers instead of logic frame 2,000 |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -370,8 +370,10 @@ kind-19 target-tracking arm. Pair `{0,4}` now reaches logic frame 41,031 in raw 
 `20260823165848` publishes W527 through W531 with 791 windows, 449,329 bytes, and 77 overlap pairs after
 4,414/4,414 DDPDOJ units and every cross-game gate. W532 adds periodic exact-harness checkpoints and a static
 round-2 preflight over all five stage scripts, all five BGELEM lists, top objects, type-5 calls, deferred children,
-and carrier movement children. It found three dependencies to close before long probes resume: top objects
-`$10/$256E7A` and `$12/$24902A`, plus enemy `$9A` init `$29EAE2` and handler `$29EB7A`. D109 is complete
+and carrier movement children. W533 proves the two remaining top-object rows are operator-only diagnostics and
+that type `$9A`'s mandatory `$29EAE2` init jumps directly to free `$263762`, making its alternate handler
+unreachable. The progression closure therefore reports 18/18 required top objects, zero unresolved dependencies,
+and `CLOSED`. D109 is complete
 ahead of deadline: the separate asset-free site boots all three games from exact local inputs without shipping
 cartridge assets. Remaining ending variants will be batched by complete family or variant rather than split into
 one commit per understood script.

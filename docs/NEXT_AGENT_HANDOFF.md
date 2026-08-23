@@ -15,17 +15,19 @@ python games/ddpdoj/tools/round2closure.py
 node games/ddpdoj/tools/progression-probe.mjs --help
 ```
 
-The static closure inventories all five stage scripts, all five BGELEM lists, top objects, type-5 calls,
+The static closure inventories all five stage scripts, all five BGELEM lists, progression top objects, type-5 calls,
 source-visible deferred children, type `$15`'s local children, and scripted-carrier movement children. Stage
 records are exactly 339, 332, 414, 382, and 770. All direct stage enemy types, all BGELEM entries, and all 23
-type-5 calls are ported. The 103-type recursive enemy closure currently reports three unresolved dependencies:
+type-5 calls are ported. W533 resolves W532's initial three overbroad findings without fake registrations:
 
-- top object `$10`, handler `$256E7A`
-- top object `$12`, handler `$24902A`
-- enemy `$9A`, init `$29EAE2`, handler `$29EB7A`
+- `$10/$256E7A` is the operator service menu, not ordinary progression
+- `$12/$24902A` is the operator ASIC27 self-test, not ordinary progression
+- reachable type `$9A` always executes registered init `$29EAE2`, whose exact `jmp $263762` frees it before
+  alternate handler `$29EB7A` can run
 
-Close those statically before bypassing the preflight. The default progression probe exits before runtime while
-any remain; `--skip-closure` is an explicit diagnostic escape, not the normal path.
+The preflight pins both operator handler addresses and the mandatory-free jump bytes. It now reports 18/18
+progression top objects, `UNRESOLVED 0`, and `CLOSED`. Do not port operator diagnostics merely to inflate
+gameplay coverage.
 
 W532 also adds periodic local exact-harness checkpoints under the gitignored
 `games/ddpdoj/probes/checkpoints/`. Each checkpoint contains evolved RAM, deterministic non-RAM `Game` state,
@@ -53,7 +55,8 @@ Production build `20260823165848` publishes W527 through W531 from `33240de`, `a
 `292af08`, and `2873487`; repairs `4110255` and `f3b8b85` reconcile the exact registries and publication
 assertions. Assets were regenerated before the quiet-tree gate. It passed 4,414/4,414 DDPDOJ units, bundle and
 web-fetch gates, 748/748 Gradius units and its 13/13 gate, Batman 27/27, distribution and ROM-leak guards,
-deployment, and three consecutive live confirmations. W532 is source-only infrastructure at `644c170`.
+deployment, and three consecutive live confirmations. W532 is source-only infrastructure at `644c170`; W533's
+closure-scope refinement also adds no cartridge window.
 
 D109 is complete ahead of its 2026-08-28 deadline. Asset-free build `20260823120247` is live at
 `mixup.pages.dev` from Cloudflare Pages project `mixup`; during that separate deployment `gbtman.pages.dev`
@@ -92,13 +95,13 @@ record W518's exact ten-byte overlap and the measured 77-pair registry. The leak
 including 58 decompressed payloads, and the deployed distribution contains 339 files totalling 20,446 KB.
 The W522-W526 publication record above supersedes this historical checkpoint.
 
-The next development phase remains gameplay, not another ending segment. Close W532's three static dependencies,
-rerun the preflight to `CLOSED`, then use the checkpoint-aware six-pair probe rather than replaying from logic frame
-2,000. Carry every authentic pair through Black Label loop 2 and fix the first concrete selector-specific,
-second-loop, or Hibachi blocker each resumed run exposes. Ordinary launches must remain mortal; invulnerable
-progression probes remain explicit local tools only. When ending work resumes, seed directly at known presentation
-entries and batch complete script-list families or whole variants. Do not return to one commit per understood
-ending script or replay the full 11,000-frame chain for every segment.
+The next development phase remains gameplay, not another ending segment. The W533 preflight is `CLOSED`; use the
+checkpoint-aware six-pair probe rather than replaying from logic frame 2,000. Carry every authentic pair through
+Black Label loop 2 and fix the first concrete selector-specific, second-loop, or Hibachi blocker each resumed run
+exposes. Ordinary launches must remain mortal; invulnerable progression probes remain explicit local tools only.
+When ending work resumes, seed directly at known presentation entries and batch complete script-list families or
+whole variants. Do not return to one commit per understood ending script or replay the full 11,000-frame chain for
+every segment.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
 and the style domain is `{2,4,6}`. Selector 0 is Type-A and selector 2 is Type-B. The cartridge census does
