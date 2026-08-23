@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (W517-W521 published in `20260823074549`)
+Updated: 2026-08-23 (W522 bounded and unpublished; W521 published in `20260823074549`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,10 +8,33 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W521 follows W503's exact natural stage-5 type-`$13`
-to type-7 handoff through variant 0, all nine sequence-list A scripts, and slots [15], [14], [12],
-and [8].** W521 invokes the already ported `objSlot8` at `$25A770` without retranscription. Top-level
-dispatch coverage remains 18/20; only types 16 and 18 remain unknown.
+`docs/DOCKET.md` is authoritative. **W522 starts the six authentic-pair Black Label progression matrix and fixes
+the first loud gameplay blocker.** The default `{ship:0, style:2}` labelled probe reaches stages 1, 2, and 3,
+then throws `UNPORTED $26725C` at logic frame 25,710. W522 ports type `$3D` init body `$267262` and handler
+`$2673FA`; the repaired probe reaches logic frame 25,730 in stage 3. Ordinary launches remain mortal. Only the
+labelled probe writes P1 invulnerability each frame. Top-level dispatch coverage remains 18/20; only types 16
+and 18 remain unknown.
+
+Type `$3D` now runs its exact stage and phase discards, movement, bounds, two-trip damage and score lifecycle,
+effects, 32-heading art, aim cadence, fire gate, kind-`$0D` shot, and both sprite emitters. Two exact disjoint ROM
+windows raise the local registry from 783 to 785 windows and from 448,021 to 448,099 bytes; overlap pairs stay
+77. The focused W522 plus centralized exact registry set passes 43/43. The coordinator independently reproduced
+the default-pair progression boundary. `export-tables.py --verify` and `git diff --check` pass. W522 is the first
+unpublished wave after W521; W526 remains the periodic publication point.
+
+`games/ddpdoj/NOTES-progression.md` now records the cartridge evidence requested before loop-2 work. Exact
+labels are `1 ROUND GAME` and `2 ROUND GAME`; `$80393A` value 0 means two-round and value 1 means one-round.
+The Black Label Version-B round-2 gate is `$2901E0`: first-round, two-round mode, no simultaneous two-player
+veto, and no continue, followed by an OR of Bee Perfect cursor `>= $0C`, miss counter `< 2`, or bomb counter
+`< 3`. There is no score arm. Type `$B0` is statically scripted. Its `$2A5C7A/$2A5C84` fork continues when
+`$813098 || $80393A`: one-round mode reaches Hibachi in round 1, two-round mode skips it in round 1, and round 2
+reaches it unconditionally. Qualification controls access to round 2 and is not rechecked at Hibachi.
+
+The next smallest confirmed production fix is separate and already cartridge-proven. In `objslot17.js`,
+`phase5_25D39C` wrongly returns when the round word is nonzero. `$25D3A2 bne $25D3C4` skips only the style
+rewrite, then the common tail must advance state 5 to 6. Correct that source and the wrong assertion in
+`w373slot17.test.js`, run its focused file, land W523, then resume the default pair beyond logic frame 25,730.
+Do not add a new `stageend.js` Hibachi branch; the authentic final fork is already implemented in `hibachiend.js`.
 
 Slot [12] still takes its inherited zero-score no-name exit and commits type 8 with cartridge state 2. Slot [8]
 constructs at integration frame 11,529, copies that seed to shared state `$812E56`, and resets its init and blink
@@ -58,9 +81,29 @@ cartridge-select flow.
 
 W492 through W496's fifteen transformative additions remain unchanged and all block replay v1. Empty,
 unknown-only, direct, Original, and later vanilla-Game paths install no mod callback or policy. W488 ports
-the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage remains 101/256 ported, 25
-unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
+the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage is 102/256 ported, 24
+unknown, and 130 null, with 95 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
+
+## W522 VERIFIED: FIRST SIX-PAIR PROGRESSION BLOCKER
+
+The authentic matrix is `{ship:0, style:2}`, `{0,4}`, `{0,6}`, `{2,2}`, `{2,4}`, and `{2,6}`. W522 starts
+with the default pair and stops at the first actual blocker as required. The explicit progression probe begins at
+logic frame 2,000, holds down plus shot, and writes only P1's invulnerability byte in the probe before each step.
+It reaches stage 2 at logic frame 11,128 and stage 3 at 23,642. Before the fix, type `$3D` initialization throws
+at `$26725C` on logic frame 25,710.
+
+The zero-length stub selects init body `$267262` and handler `$2673FA`. W522 loads the exact subrecord and enemy
+prototypes, applies rank and RNG cadence adjustments, reads the scripted position, selects heading art and
+palette, and preserves all three clock/phase discard gates. The handler runs movement, bounds, two-trip hit and
+death behavior, score and effects, cartridge heading art, aim cadence, fire reload, kind-`$0D` shot, and ordinary
+record/register emitters. After the fix, the same probe reaches logic frame 25,730 in stage 3 without the former
+failure. The other five pairs remain unrun because the wave stops after the first blocker.
+
+`$26725A+$08` and `$267366+$46` are exact disjoint windows. The registry is 785 windows, 448,099 bytes, and
+77 overlap pairs. The focused W522 regression plus W428/W442/W443 registry reconciliation set passes 43/43.
+The coordinator reran the inline progression probe through the repaired boundary. `export-tables.py --verify`,
+`git diff --check`, and the forbidden-character scan pass. No full suite, browser export, build, or publication ran.
 
 ## W521 VERIFIED: SLOT [8] STATE-2 PRESENTATION BOUNDARY
 

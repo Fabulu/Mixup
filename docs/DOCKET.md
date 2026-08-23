@@ -28,20 +28,28 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W521 (2026-08-23), PUBLISHED IN BUILD `20260823074549`.** Dispatch remains **18 of 20**: W503 ports and registers
-`[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
-natural loop-2 edge through type 7's complete five-script variant-0 list; W509 through W517 complete all nine
-sequence-list A scripts. W518 follows the normal edge through slot [15], W519 through slot [14], W520 through
-slot [12], and W521 reuses already ported slot [8] at `$25A770`. Its state-2 seed constructs the sequencer, then
-arm 2 initializes the high-score presentation at `$25B412`. Two presentation calls each queue 99 sprite records
-while the seven-node `$25BA46` chain remains live; screen state stays 0, timer stays `$F0`, and both allocation
-queues remain empty. The bounded run stops with all seven nodes at progress 4, before chain completion or any
-later slot-8 state. The registry has 783 windows, 448,021 bytes, and 77 overlap pairs. Production build
-`20260823074549` publishes W517 through W521 from commits `e28336b`, `f2266f8`, `7918d8a`, `4ce2536`, and
-`4c6a8c2`; publication repairs `e55af96` and `b2e671c` reconcile W518's exact forced overlap. The full gate and
-three live confirmations passed. W526 is the next periodic publication point. Development now pivots to exact
-one-loop/two-loop and Hibachi rules, then complete Black Label loop-2 exercise of all six ship/style pairs. The
-two dispatch types without a handler are `[16] $256E7A` and `[18] $24902A`.
+**STANDING AS OF W522 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823074549`.** W522 begins the six-pair
+Black Label loop-2 matrix with `{ship:0, style:2}`. The labelled invulnerable probe reaches stages 1, 2, and 3,
+then exposes `UNPORTED $26725C` at logic frame 25,710. W522 ports type `$3D` init body `$267262` and handler
+`$2673FA`, including its three phase gates, movement, bounds, two-trip damage lifecycle, effects, aim, firing,
+and drawing. The repaired probe reaches logic frame 25,730 in stage 3. The other five pairs remain unrun because
+this wave stops after the first concrete blocker. Two exact disjoint windows raise the local registry to 785
+windows and 448,099 bytes; overlap pairs remain 77. Dispatch remains **18 of 20**; types `[16] $256E7A` and
+`[18] $24902A` remain without handlers.
+
+`NOTES-progression.md` now records exact cartridge evidence. Version-B prints `1 ROUND GAME` and
+`2 ROUND GAME`; `$80393A` values 1 and 0 select them respectively. `$2901E0` gates access to round 2 with
+first-round/two-round/no-continue vetoes and an OR of Bee Perfect `>= $0C`, miss `< 2`, or bombs `< 3`; no
+score arm exists. Type `$B0` is statically scripted. Its `$2A5C7A/$2A5C84` fork continues when round 2 is live
+or one-round mode is selected. Therefore one-round mode reaches Hibachi in round 1, two-round mode skips it in
+round 1, and round 2 reaches it unconditionally after the preceding form. Qualification controls access to
+round 2, not Hibachi appearance at the final fork.
+
+Production build `20260823074549` publishes W517 through W521 from commits `e28336b`, `f2266f8`, `7918d8a`,
+`4ce2536`, and `4c6a8c2`; publication repairs are `e55af96` and `b2e671c`. Its registry has 783 windows,
+448,021 bytes, and 77 overlap pairs. The full gate and three live confirmations passed. W526 is the next periodic
+publication point. The next confirmed fix is `objslot17.js` phase 5: round 2 must skip only the style rewrite,
+execute the common tail, and advance state 5 to 6 rather than return and stall.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -2388,6 +2396,24 @@ No new ROM window is needed. The local registry remains exactly 783 windows, 448
 pairs. The expanded direct integration passes 1/1. Registry verification was not rerun because no declaration
 changed. No full suite, web-asset export, build, publish, commit, or push ran. W519 is the third unpublished wave
 after W516; W521 remains the publication point.
+
+**W522 FIXES THE FIRST SIX-PAIR PROGRESSION BLOCKER.** The authentic matrix is `{0,2}`, `{0,4}`, `{0,6}`,
+`{2,2}`, `{2,4}`, and `{2,6}`. W522 begins with the default pair and stops at the first loud failure. The
+explicit labelled probe starts at logic frame 2,000, holds down plus shot, and writes only P1's invulnerability
+byte before each step. It reaches stage 2 at 11,128 and stage 3 at 23,642, then type `$3D` initialization throws
+at `$26725C` on frame 25,710.
+
+The zero-length stub selects init body `$267262` and handler `$2673FA`. The port loads the exact prototypes,
+applies rank and RNG cadence adjustments, reads scripted position, selects heading art and palette, and preserves
+three clock/phase discard gates. The handler restores movement, bounds, two-trip damage and score behavior,
+effects, aim cadence, fire reload, kind-`$0D` shot, and both sprite emitters. The repaired probe reaches 25,730
+in stage 3. The other five pairs remain for subsequent waves.
+
+Two disjoint windows `$26725A+$08` and `$267366+$46` move the registry from 783 to 785 windows and from
+448,021 to 448,099 bytes without changing 77 overlap pairs. W522's focused regression plus W428/W442/W443
+registry reconciliation passes 43/43. The coordinator independently reproduced the repaired progression edge.
+`export-tables.py --verify`, `git diff --check`, and the forbidden-character scan pass. No full suite, browser
+export, build, or publication ran. W522 is the first unpublished wave after W521.
 
 **W517-W521 PUBLICATION FOLLOW-UP:** Production build `20260823074549` publishes all five waves from
 source commits `e28336b`, `f2266f8`, `7918d8a`, `4ce2536`, and `4c6a8c2`; publication repairs `e55af96`

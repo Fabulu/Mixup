@@ -8178,6 +8178,108 @@ function handler19(ram, _rom, a5) {
   ram.setU8(a5 + 0x16, 0x10);                         // $267252
 }
 
+// `$2673FA`: Stage-3 type $3D, a two-trip aimed fighter. Its aim cadence and
+// sprite lookup are instruction-identical to type $11, but its bounds, phase
+// gates, score wrapper, effects and fire reload are its own cartridge paths.
+function offScreen2426C4(ram, a6) {
+  const pos = ram.u32(a6 + S.posX);
+  let d0 = u16((pos & 0xffff) + 0x0c00);
+  d0 = u16(d0 + ram.u16(G.scroll));
+  if (d0 + 0xb000 > 0xffff) return true;               // $2426D2/$2426D6
+  d0 = u16((pos >>> 16) + 0x0600);
+  return d0 + 0x8400 > 0xffff;                         // $2426DA/$2426DE
+}
+
+function draw3D(ram, rom, a5, a6) {
+  enqueueRegistersThroughStub(ram, rom, ram.u32(a5 + R.emitReg2E),
+    u32(ram.u32(a6 + S.posX) + 0xfc00fc00),
+    ram.u32(a5 + R.sprite22), 0x0620, ram.u16(a6 + S.f1c)); // $26756A..$267584
+}
+
+function death3D(ram, rom, a5, a6, ctx, hit) {
+  scoreKill(ram, rom, ctx, 0x10, hit);                 // $2673AC
+  const effect = spawnEffect(ram, ctx, 0x07, 0x2673b6);
+  ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));
+  ram.setU16(effect + B.bucket, 0x08);
+  ram.setU16(effect + B.hook, 0x02);
+  ram.setU16(effect + B.nudge, 0xfe00);
+  ram.setU16(effect + B.sub12, 0);
+  ram.setU16(effect + B.sub14, 0);                     // $2673BC..$2673DA
+  spawnPoolC289B50(ram, rom, ctx, 0x04, 0x04,
+    ram.u32(a6 + S.posX), 0x2673e6);                   // $2673E0..$2673E6
+  ctx.soundPost?.(0x28c25a);                          // $2673EC
+  freeEnemy(ram, a5);                                 // $2673F2
+}
+
+function handler3D(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + R.subRec);
+  if (stepMovement(ram, rom, a5, ctx.tables, ctx.unported)) return; // $2673FA
+  if (offScreen2426C4(ram, a6)) {
+    if (ram.u16(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }
+  } else ram.setU16(a5 + R.onScreen, 1);               // $267400..$267420
+
+  const hit = hitMask(ram, a6);
+  if (hit !== 0) {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    ram.setU8(a6 + S.palette,
+      ram.u8(a6 + S.palette) ^ ram.u8(a5 + R.palCycle));
+    scoreHit(ram, ctx, a6, hit);                       // $267428..$267434
+    if (i16(ram.u16(a6 + S.hp)) < 0) {
+      if ((ram.u8(a5 + R.deathFlag) & 0x80) !== 0) {
+        death3D(ram, rom, a5, a6, ctx, hit);
+        return;
+      }
+      ram.setU16(a6 + S.hp, ram.u16(a5 + R.hpReload));
+      scoreByMask(ram, 0x08, hit);                     // $26744A..$267452
+      ram.bset8(a5 + R.deathFlag, 7);
+      const effect = spawnEffect(ram, ctx, 0x03, 0x267460);
+      ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));
+      ram.setU16(effect + B.bucket, 0x08);
+      ram.setU16(effect + B.hook, 0x02);
+      ram.setU16(effect + B.nudge, 0xfe00);            // $267466..$267478
+    }
+  } else ram.setU8(a6 + S.palette, ram.u8(a5 + R.pal34)); // $267482
+
+  if (ram.u16(G.freeze) === 0) {
+    const d7 = ram.u16(a6 + S.speed);
+    let off = (d7 & 0x3e) << 2;
+    if ((d7 & 0x40) === 0 && (ram.u8(G.mirror) & 0x04) !== 0) off += 4;
+    ram.setU32(a6 + S.sprite0a, rom.u32(0x268b9e + off)); // $267488..$2674BA
+  }
+  enqueueThroughStub(ram, rom, ram.u32(a5 + R.emitRec2A), a6); // $2674C0
+
+  if ((ram.u8(a5 + R.deathFlag) & 0x80) !== 0) {
+    if (ram.u16(G.mirror2) === 0) return;
+    let frame = u16(ram.u16(a5 + R.rec1E) + 0x24);
+    if (frame === 0x90) frame = 0;
+    ram.setU16(a5 + R.rec1E, frame);
+    enqueueRegistersThroughStub(ram, rom, ram.u32(a5 + R.emitReg2E),
+      u32(ram.u32(a6 + S.posX) + 0x0100fe00), u32(0x22c59c + frame),
+      0x0410, 0x001e);                                 // $2674CE..$267508
+    return;
+  }
+
+  const turret = turretStep(() => aimTables(rom), ram, rom, a5, a6, TURRET_11);
+  if (turret.next === 'draw') { draw3D(ram, rom, a5, a6); return; }
+  const fire = (ram.u8(a5 + R.fireCtr) - 1) & 0xff;
+  ram.setU8(a5 + R.fireCtr, fire);                     // $267562
+  if (fire !== 0) { draw3D(ram, rom, a5, a6); return; }
+
+  const reload = u16(u16(0x00a0 - ram.u16(G.aa)) + 4);
+  ram.setU8(a5 + R.fireCtr, reload & 0xff);            // $267588..$267594
+  if (fireGate267FC6(ctx.unported, ram, rom, a5, a6).carry
+      || (ram.u8(a6) & 0x20) === 0) {
+    draw3D(ram, rom, a5, a6);
+    return;
+  }
+  const d1 = ((ram.u8(a5 + R.facing) + 2) & 0xff) & 0x3c;
+  const d2 = u32(rom.u32(0x268b1e + d1 * 2) + ram.u32(a6 + S.posX));
+  const result = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402,
+    { d0: 0x0000000d, d1, d2, d3: 0x02000000, d4: 0, d5: 0, a5 });
+  ctx.bulletSpawn?.(0x2675ca, result);                  // $2675A6..$2675CA
+  draw3D(ram, rom, a5, a6);
+}
+
 // `$278994`: Stage-4 type $A6. This invisible controller pulses `$8130DA`
 // on an old-zero word-timer borrow and alternates +1/-1 by toggling subrecord
 // status bit 6. Pause preserves the previous pulse exactly; ordinary active
@@ -8756,6 +8858,7 @@ const HANDLERS = new Map([
   [0x265e84, handler17],       // W200: type-$15 spawned two-sub child $17
   [0x2663e0, handler18],       // W200: clock-$0168 four-sub child $18
   [0x267226, handler19],       // W201: Stage-3 invisible pulse controller $19
+  [0x2673fa, handler3D],       // W522: Stage-3 aimed two-trip fighter $3D
   [0x274c90, handler83],       // W202: Stage-3 linked-hitbox aimed-ring type $83
   [0x266e34, handler16],       // W203: Stage-3 wobbling paired-shot type $16
   [0x29be28, handlerBoss29BE28], // W204: Stage-3 boss type $A0 entry/arrival

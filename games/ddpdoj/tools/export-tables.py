@@ -2645,6 +2645,8 @@ SHOT_WINDOWS.extend([
     (0x265798, 0x0244, "W199: Stage-3 type $3F local closure $265798..$2659DC"),
     (0x265BEC, 0x0D74, "W200: Stage-3 type $15 closure $265BEC..$266960"),
     (0x2671E0, 0x007A, "W201: Stage-3 type $19 local closure $2671E0..$26725A"),
+    (0x26725A, 0x0008, "W522: Stage-3 type $3D run-length stub $26725A..$267262"),
+    (0x267366, 0x0046, "W522: Stage-3 type $3D palette and prototypes $267366..$2673AC"),
     (0x274B6C, 0x05E0, "W202: Stage-3 type $83 closure $274B6C..$27514C"),
     (0x266D2E, 0x04B2, "W203: Stage-3 type $16 runtime closure $266D2E..$2671E0"),
     (0x29BBF4, 0x1040, "W204: Stage-3 type $A0 entry/arrival runtime closure $29BBF4..$29CC34"),
@@ -6047,6 +6049,14 @@ def check_stage2_spawn_data(d: bytes) -> None:
     if hashlib.sha256(d[0x2671E0:0x26725A]).hexdigest() != (
             "cce454ced9cbd0480cd1d86803d9b8fbaabb75e05c1565d15d6df6f00bb4d91d"):
         raise SystemExit("W201: type $19 local closure drifted")
+    if d[0x267A0C:0x267A14] != bytes.fromhex("0026725a002673fa"):
+        raise SystemExit("W522: type $3D registry row drifted")
+    if hashlib.sha256(d[0x26725A:0x267262]).hexdigest() != (
+            "ee4a0dc1480f4bc134b0d62e87bd8aac25a9b6b5a7e3b15b04291aa7b27af0b8"):
+        raise SystemExit("W522: type $3D run-length stub drifted")
+    if hashlib.sha256(d[0x267366:0x2673AC]).hexdigest() != (
+            "f27bc211834436e1bd6099883dfc90ffadf7458c3e2127937f76cbba5a7c3fc7"):
+        raise SystemExit("W522: type $3D palette and prototypes drifted")
     if d[0x234C1A:0x234C22] != bytes.fromhex("011d00148300006b"):
         raise SystemExit("W201: next Stage-3 frontier is not type $83 at $234C1A")
     type83_records = (0x234C1A, 0x234C52, 0x234C8A, 0x234CDA,

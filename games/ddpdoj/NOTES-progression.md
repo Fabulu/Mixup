@@ -1,139 +1,207 @@
-# Progression, bees, and the second loop - and why the corpus needs TWO strategies
+# Progression, round selection, and Hibachi
 
-status: RESEARCH ONLY - nothing here is measured on our board yet
-raised: 2026-08-01
+Updated: 2026-08-23
+Target measured: DoDonPachi DaiOuJou Black Label Version-B
 
-**Everything below is from public player documentation, NOT from our own
-measurement.** It is written down as HYPOTHESES to verify against the board,
-because this project's rule is that a number is not a fact until measured. Every
-item is a claim to confirm with a RAM watch, not a spec to implement.
+This file separates cartridge-proven Version-B behavior from external White Label
+claims. Black Label addresses and numeric conventions must not be reused for White
+Label until that cartridge is decoded independently.
 
-## 1. It is an arcade game, so the oracle can brute-force reach
+## 1. Startup selection path
 
-Owner's point, and it is a big one for coverage: on a coin-op, dying is not the
-end. Insert coin, start, continue. **The oracle does not need to play well; it
-needs to persist.** A scripted "die → coin → start" loop can walk the corpus
-through the whole first loop regardless of difficulty, which is the thing that
-makes stages 2-5 reachable at all.
+Slot `[8]` accepts START and creates slot `[9]` at `$25AC98`. Slot `[9]` then
+runs three selections:
 
-Combined with the seed-anywhere machinery Gradius wave 10 just proved, that is
-the answer to the coverage problem this project keeps hitting: drive deep once,
-seed from there forever.
+1. State 1 at `$25D1DA` presents two fighters.
+2. State 2 at `$25D164` maps the cursor through `$25CF60`, whose values are
+   `{0,2}`, into object bytes `+$08/+$09`.
+3. State 4 at `$25D402` presents three Element Doll/style choices.
+4. State 5 at `$25D39C` maps the cursor through `$25D294`, whose values are
+   `{2,4,6}`, into object bytes `+$04/+$05`.
+5. State 7 at `$25D560` calls the round selector at `$25FAA4`.
+6. `$25FB98` writes the confirmed round choice to `$80393A`.
 
-## 2. …but continuing DISQUALIFIES the second loop
+The permanent selection handoff at `$26070C` proves these fields:
 
-**This is the catch, and it means one corpus strategy cannot serve both goals.**
-Public documentation is consistent that a player who continues during loop 1
-cannot enter loop 2, regardless of whether the other conditions were met.
+| meaning | P1 | P2 | values |
+|---|---:|---:|---:|
+| fighter/ship | `$813084` | `$813086` | `0`, `2` |
+| Element Doll/style | `$813088` | `$81308A` | `2`, `4`, `6` |
 
-So:
+The fighter and Doll names are rendered as sprite artwork and have not yet been
+decoded into text. Do not guess the human name mapping from selector values.
 
-| goal | strategy | continues |
+The round labels are exact cartridge text streams:
+
+| address | cartridge text |
+|---|---|
+| `$25FC68` | `1 ROUND GAME` |
+| `$25FC78` | `2 ROUND GAME` |
+
+The live cursor is `$813074`. The confirmed value is `$80393A`:
+
+| value | meaning |
+|---:|---|
+| `0` | `2 ROUND GAME` |
+| `1` | `1 ROUND GAME` |
+
+The default is 0, so Version-B defaults to `2 ROUND GAME`. Phrases such as
+"one-loop mode" and "two-loop mode" are semantic descriptions, not the text
+printed by this cartridge.
+
+## 2. Round and stage state
+
+| address | meaning |
+|---|---|
+| `$813092` | stage number, zero-based |
+| `$813094` | stage number times 2 |
+| `$813096` | stage number times 4 |
+| `$813098` | round counter: 0 for round 1, 1 for round 2 |
+| `$813074` | live round-mode cursor |
+| `$80393A` | confirmed round mode |
+
+The real second-round transition is `$290762`, which writes `$813098 = 1`.
+Writes around `$259DB0/$259DC6` belong to debug or restart-stage selection and
+are not the ordinary round transition.
+
+## 3. Black Label Version-B round-2 qualification
+
+The exact gate is `$2901E0`, translated as `menuGate2901E0` in
+`src/objslot7pool.js`.
+
+It first requires all of these:
+
+1. `$813098 == 0`: only round 1 can offer round 2.
+2. `$80393A == 0`: only `2 ROUND GAME` can offer round 2.
+3. `$813090 != 3`: both players simultaneously live veto the offer.
+4. The selected player's `$81B49A/$81B49E == 0`: a continue veto.
+
+After those vetoes, any ONE of these qualifies:
+
+| condition | exact Version-B comparison | passing values |
 |---|---|---|
-| **reach stages 2-5, verify their content** | coin-feed through deaths | REQUIRED, and harmless |
-| **reach loop 2 at all** | a clean run meeting an entry condition | FORBIDDEN |
+| Bee Perfect progress | `$817F82 >= $000C` | three successful stages, four cursor bytes each |
+| miss/death counter | `$812938/$81293A < 2` | 0 or 1 |
+| bomb-use counter | `$812940/$812942 < 3` | 0, 1, or 2 |
 
-Do not let the convenient strategy silently become the only one. A corpus built
-entirely on continues would make loop 2 unreachable and - worse - would look
-like full coverage while the entire second half of the game sits untested. That
-is the same failure shape as the scroll-`$0380` blind spot in Gradius, one order
-of magnitude larger.
+The three qualification arms are OR conditions, not AND conditions. The sign of
+`$8130BE` selects the side: nonnegative uses P1 counters and negative uses P2.
+There is no score comparison in this Black Label Version-B gate.
 
-## 2b. A MISS IS NOT A CONTINUE, and the difference decides the strategy
+Public guides commonly say "at most two misses" and "at most three bombs". The
+measured gate literally uses `< 2` and `< 3`, and the known producers increment
+the counters directly. Keep that discrepancy explicit. Do not change the port to
+public `<= 2` or `<= 3` wording without cartridge evidence that counter
+initialization changes the apparent boundary.
 
-Easy to conflate, and the two have opposite consequences:
+When qualification succeeds, `$290B44` opens inner state 4 and `$2911B0` runs a
+two-choice, 600-frame menu. Selection 0 accepts round 2. Selection 1 declines,
+is the default, and is also selected by timeout. Accepting runs `$290762`, writes
+the round word, and creates type `$11`, slot `[17]`. The graphical option labels
+have not yet been decoded.
 
-- **A miss** - lose a life, respawn. Loop 2 TOLERATES misses: "no more than 2"
-  is itself one of the entry conditions. Dying is not disqualifying.
-- **A continue** - the stock is exhausted and a coin is inserted. This IS
-  disqualifying, and no other condition rescues it.
+A progression oracle may poke these counters at the decision sample point to
+exercise round-2 content. Such a run proves the decision and later content, not
+that ordinary play naturally earned the qualifying values. Any oracle
+invulnerability must remain explicit test setup and must not enter ordinary
+browser launches.
 
-So coin-feeding cannot reach loop 2 - not because it dies, but because a
-coin-fed run is by definition one that ran out of lives.
+## 4. Exact Kouryu-to-Hibachi route
 
-### The way out: we do not have to EARN loop 2, we have to REACH THE BRANCH
+Stage 5's static script `$237978` contains one type `$B0` record at `$239168`:
 
-An oracle that cannot play well will exhaust its stock, so a "clean run" by
-scripted input is not realistically obtainable. But this project has never
-needed to obtain a state naturally in order to test it. **Poke the counters to
-qualifying values and let the cartridge decide.**
+```text
+03 1A 00 00 B0 80 10 F6
+```
 
-That is exactly how rank's thresholds were tested in Gradius (an unforced run
-only ever reaches rank 0-1, so the values were poked), how the sprite cap was
-reached here, and how zoom coverage is produced. The precedent is established
-and the discipline that goes with it is too:
+The type-table entry at `$27E592` maps it to init `$2A42D4`, init body
+`$2A42DC`, and handler `$2A4606`. There is no separate conditional type `$B0`
+producer after the preceding form. The normal boss route and continuation are
+inside this object and its scripts.
 
-1. Find the loop-2 decision routine first. It reads all five pieces of state, so
-   hooking it identifies the addresses to poke - do NOT guess which byte is the
-   miss counter.
-2. Poke at the sample point on BOTH sides, so port and board stay frame-aligned.
-3. **A poked run proves the DECISION, not the journey.** It shows the cartridge
-   grants loop 2 for a given counter set. It does NOT show that ordinary play
-   produces that counter set - that is a separate claim needing separate
-   evidence, and conflating them is the seed-hiding-bugs trap from
-   `docs/worklog/gradius/09-DECIDED-seed-anywhere.md`.
-4. Once inside loop 2, its CONTENT can then be compared normally, and that is
-   where the real value is: loop 2 is a different game state with different
-   enemy behaviour and rank.
+A4 script 1 contains the decisive fork:
 
-So the corpus needs three strategies, not two: coin-fed for stage content, poked
-for the loop-2 branch and its content, and - if it is ever affordable - one
-genuinely clean run to confirm the journey matches the poke.
+```text
+$2A5C7A  tst.w $813098
+$2A5C80  bne   $2A5D14
+$2A5C84  tst.w $80393A
+$2A5C8A  bne   $2A5D14
+```
 
-## 3. The loop-2 entry conditions, as reported
+If either word is nonzero, `$2A5D14` takes the continuation route. `$2A5D28`
+releases the stage-5 scroll park, `$2A5D30` starts A4 script 2, `$2A5F40` arms
+the second-form route, and `$2A5F4C` installs the next HP pool.
 
-Any ONE of these in loop 1, per player documentation:
+If both words are zero, `$2A5C8E..$2A5CB6` starts A4 script `$14`, which waits
+and suspends the stage without the continuation. Type `$B0` later reaches its
+own completion path at `$2A4614`. Do not add a separate Hibachi branch to
+`stageend.js`.
 
-- no more than **2 misses**
-- no more than **3 bombs** used
-- **Bee Perfect in at least 3 stages**
-- at least **350,000,000 points** (reported as White Label only - so possibly
-  NOT applicable to our Black Label target; verify)
+The cartridge does not embed the names Kouryu and Hibachi at this fork. Those
+names identify the route externally. The branch behavior itself is
+cartridge-proven:
 
-Plus the absolute bar: **no continues**.
+| round word `$813098` | mode `$80393A` | route |
+|---:|---:|---|
+| 0 | 0, `2 ROUND GAME` | end after the preceding form; skip Hibachi in round 1 |
+| 0 | 1, `1 ROUND GAME` | continue into Hibachi |
+| 1 | 0, round 2 | continue into Hibachi |
+| 1 | 1, artificial combination | continue because the tests are OR conditions |
 
-**What this implies for the port, and it is the useful part:** the game must be
-tracking, across a whole loop, at minimum a miss counter, a bomb counter, a
-per-stage bee-perfect flag or count, the score, and a "has continued" flag. Those
-are five pieces of persistent RAM state with a decision routine reading them at
-the end of stage 5. **Find that routine and you find all five addresses at once**
-- hook the branch that decides loop 2 and read what it tests, exactly as the
-Gradius player mover was found by hooking writes rather than reading listings.
+Therefore:
 
-That routine is also a natural home for the rank interaction, since
-`docs/knowledge/08` predicts loop and rank stack as two global difficulty
-parameters.
+- `1 ROUND GAME` gives the Hibachi continuation unconditionally after the player
+  reaches and defeats the preceding route in round 1.
+- `2 ROUND GAME` skips Hibachi in round 1.
+- `2 ROUND GAME` gives the Hibachi continuation unconditionally when round 2
+  reaches the fork.
+- Bees, misses, bombs, continues, and score qualify access to round 2. They are
+  not rechecked as Hibachi appearance conditions at the final fork.
 
-## 4. Bees
+## 5. Current implementation status
 
-Reported: **10 hidden bees per stage**, revealed by the laser. Collect all of a
-stage's bees without dying and the last one carries a **×2 multiplier**, and the
-base value of bees rises in the following stage. That is the "Bee Perfect" bonus,
-and 3 of them is one of the loop-2 entry conditions.
+Production already translates and tests:
 
-Port consequences worth stating before anyone writes scoring code:
+- startup fighter, Doll/style, and round selection;
+- `$80393A` persistence;
+- `$2901E0` qualification, vetoes, side selection, and literal boundaries;
+- the round-2 offer and `$813098 = 1` transition;
+- Bee Perfect, miss, bomb, and continue counters;
+- the static type `$B0` spawn and init;
+- the `$2A5C7A/$2A5C84` final route fork;
+- Hibachi continuation scripts and stage completion.
 
-- Bees are **hidden objects with a reveal mechanic tied to a specific weapon**.
-  A corpus that never fires the laser never reveals a bee, so bee code is
-  unreachable by exactly the kind of scripted run we build by default. Another
-  instance of the standing pattern: a parameter (here, weapon mode) the corpus
-  never varies.
-- Bee state is **cross-stage** - the base value carries forward - so it cannot be
-  modelled per stage.
-- Scoring is not cosmetic here. It is a loop-2 entry condition, so a scoring bug
-  is a progression bug.
+One cartridge-proven production defect remains at this writing.
+`src/objslot17.js` `phase5_25D39C` returns immediately when `$813098` is
+nonzero. The cartridge's `$25D3A2 bne $25D3C4` skips only the style-value rewrite
+at `$25D3A6..$25D3C2`; it still executes the common display tail and advances
+record state 5 to 6 at `$25D3E2`. The current return can leave the second-round
+slot `[17]` handoff stuck forever. `tests/w373slot17.test.js` currently pins that
+incorrect behavior and must be corrected with the production fix.
 
-## 5. What to do with this
+Some comments in `objslot17.js` also reverse fighter and style terminology. The
+behavior stores them correctly: fighter is `$813084/$813086`, Doll/style is
+`$813088/$81308A`.
 
-1. **Verify every claim above on the board.** Do not port from this file.
-2. Find the loop-2 decision routine; it yields the counters for free.
-3. When the corpus reaches stage 5, build BOTH strategies: a coin-fed run for
-   content coverage, and at least one clean run that satisfies an entry
-   condition, or loop 2 stays permanently untested.
-4. Watch for the same trap the whole project keeps hitting: "no measured run has
-   collected a bee" is a fact about our sampling, never about the cartridge.
+## 6. White Label remains separate
 
-Sources consulted (player documentation, not measurement):
-<https://zps-stg.github.io/other/cave-loop2>,
-<https://shmups.wiki/library/DoDonPachi_DaiOuJou>,
-<https://shmups.system11.org/viewtopic.php?t=39713>
+The following are external reports, not cartridge-proven White Label behavior in
+this repository:
+
+- White Label automatically qualifies for its second loop rather than offering
+  Black Label's one-round shortcut.
+- It shares miss, bomb, and Bee Perfect routes.
+- It has a White Label-only 350,000,000-point alternative.
+- It resets or carries lives, bombs, capacity, and hypers differently from Black
+  Label at the transition.
+
+White Label uses different state conventions, including observed `$80393A` byte
+values 0, 1, and 2, and `$813098` is not known to be directly comparable across
+available sets. Decode its own selector, qualification routine, and transition
+before implementing it. Do not reuse these Black Label addresses by analogy.
+
+External references:
+
+- <https://shmups.wiki/library/DoDonPachi_DaiOuJou>
+- <https://zps-stg.github.io/other/cave-loop2>
+- <https://www.world-of-arcades.net/APPA/DDD/DoDonpachi_DAI-OU-JOU_BL/DdpDaiOuJouBl_Manual.pdf>

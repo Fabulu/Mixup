@@ -318,7 +318,15 @@
 // window. Measured: 780 -> 783 windows, 446,709 -> 448,021 bytes,
 // 76 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 783;
+// ---------------------------------------------------------------------------
+// W522 ADDED TWO DISJOINT WINDOWS AND THE OVERLAP COUNT DID NOT MOVE.
+// ---------------------------------------------------------------------------
+// `$26725A + $08` is type `$3D`'s exact zero-length init stub and abuts W201's
+// type `$19` closure. `$267366 + $46` contains only type `$3D`'s palette and
+// prototype data. Measured: 783 -> 785 windows, 448,021 -> 448,099 bytes,
+// 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 785;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

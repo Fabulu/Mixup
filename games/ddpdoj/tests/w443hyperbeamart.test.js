@@ -505,10 +505,10 @@ test('W443/W497 SECTION 5: W226\'s $24B900+$02AA serves all beam groups whole',
     + 'lesson, and W428\'s');
   assert.ok(holds(PTRTAB, PTRTAB + PAIRS * PAIRSTRIDE),
     'and so is the pair table it abuts');
-  // W497 and W518 add unrelated data windows; no beam window moves.
-  // W500-W518 add 150 windows outside the beam range.
-  assert.equal(ROM_WINDOW_COUNT, 783,
-    'W497 and W500-W518 reconcile the current exact RomWindows registry');
+  // W497, W518 and W522 add unrelated data windows; no beam window moves.
+  // W500-W522 add 152 windows outside the beam range.
+  assert.equal(ROM_WINDOW_COUNT, 785,
+    'W497 and W500-W522 reconcile the current exact RomWindows registry');
   assert.equal(ROM_OVERLAP_PAIRS, 77,
     'the beam window is unchanged; W518 adds the later forced slot-[15] data overlap');
 });

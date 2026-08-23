@@ -208,7 +208,10 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
   // W487: 93 -> 94, type $58's body $270BE4, emitted in pairs by type $4C state 4.
   assert.ok(INIT_BODY_ADDRESSES.includes(0x270be4),
     'W487: type $58 body $270BE4 -- type $4C\'s paired state-4 child');
-  assert.equal(INIT_BODY_ADDRESSES.length, 94,
+  // W522: 94 -> 95, type $3D's body $267262, reached by the authentic-pair progression probe.
+  assert.ok(INIT_BODY_ADDRESSES.includes(0x267262),
+    'W522: type $3D body $267262 -- the first six-pair progression blocker');
+  assert.equal(INIT_BODY_ADDRESSES.length, 95,
     `19 script-spawned body addresses ($07/$27 share $26A1EA, $20/$21 share `
     + `$272A4A) plus W57's deferred $26C1CA, W103's boss-spawned $296D8A, `
     + `W170's $277836, W171's $276946, W172's $27751C, W173's $275154, `
@@ -222,7 +225,7 @@ test('the Stage-1 through W223 Stage-4 bodies are dispatched', () => {
     + `W203's $266D36, W207's $29EAE2, W209's $29E580, W211's $27896A, `
     + `W212's $27AC4A, W213's $27CFAC, W214's $27AD96, W215's `
     + `$27B2FE/$27C28E, W216's $27D404, and W217's $27CEB4, W218's $27C5BE/$27DA78, W219's $29EC82, and W223's $2A37E4, and W254's $2A3952, `
-    + `W316's $270DD8, W317's $2659E4, W319's $27640C, W323's $26925E, W400's $26DF48, W481's $27063C, W482's $2701DE, W483's $2702A0, W484's $270402, W485's $2704D0, and W487's $270BE4`);
+    + `W316's $270DD8, W317's $2659E4, W319's $27640C, W323's $26925E, W400's $26DF48, W481's $27063C, W482's $2701DE, W483's $2702A0, W484's $270402, W485's $2704D0, W487's $270BE4, and W522's $267262`);
 });
 
 test('runInitBodyAddr throws on an unknown body address', () => {

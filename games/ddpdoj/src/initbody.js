@@ -547,6 +547,44 @@ BODY.set(0x2671E8, (ram, rom, a5, a6) => {
   ram.setU16(a5 + R.rec18, 0x0303);
 });
 
+// --- type $3D ($267262): Stage-3's aimed fighter. It shares type $11's
+// rank-adjusted cadence and 32-heading art tables, then applies three clock and
+// phase gates that discard stale members of the linked set piece.
+BODY.set(0x267262, (ram, rom, a5, a6, unported) => {
+  loadSubProto(ram, rom, a5, a6, 0x267390);            // $267262..$26726E
+  loadRecordProto(ram, rom, a5, 0x267370, 0x0f);       // $26726E..$26727C
+  let d0 = ram.u16(G.b2) & 0xff;
+  ram.setU8(a5 + R.rec28, (ram.u8(a5 + R.rec28) - d0) & 0xff); // $26727C
+  ram.setU8(a5 + R.rec1A, (ram.u8(a5 + R.rec1A) - d0) & 0xff); // $267282
+  d0 = drawByte242E24(ram, rom) >> 1;
+  ram.setU8(a5 + R.rec28, (ram.u8(a5 + R.rec28) + d0) & 0xff); // $26728A
+  d0 = (ram.u16(G.bc) & 0xff) >> 4;
+  ram.setU8(a5 + R.rec18, (ram.u8(a5 + R.rec18) - d0) & 0xff); // $267296
+  readInitPosition(ram, rom, a5, unported);             // $2672A2
+
+  a6 = ram.u32(a5 + R.subRec);                          // $2672A8
+  const heading = ram.u8(a6 + S.heading);
+  ram.setU8(a5 + R.rec33, heading);                     // $2672AC
+  const sprite = 0x268c9e + (((heading + 1) & 0x3e) << 1);
+  ram.setU32(a5 + R.rec22, rom.u32(sprite));            // $2672B4..$2672C2
+  const pal = 0x267366 + ram.u16(G.stageX2);
+  ram.setU8(a6 + S.palette, rom.u8(pal));               // $2672C8..$2672D6
+  ram.setU8(a5 + R.rec34, rom.u8(pal));
+  ram.setU8(a5 + R.rec35, rom.u8(pal + 1));             // $2672DA..$2672E2
+  ram.setU32(a5 + R.rec2A, 0x23d79e);                   // $2672E2
+  ram.setU32(a5 + R.rec2E, 0x23defc);                   // $2672EA
+
+  const clock = i16(ram.u16(G.scrollClock));
+  const x = i16(ram.u16(a6 + S.posX));
+  let discard = false;
+  if (clock >= 0x00ac) discard = x < 0x6400 && ram.u16(G.dc) === 0;
+  else if (clock >= 0x008d)
+    discard = x > i16(0xc400) && x < 0x6400 && ram.u16(G.da) === 0;
+  else if (clock >= 0x0048) discard = ram.u16(G.d8) === 0;
+  if (discard) { freeEnemy(ram, a5); return FREED; }    // $267314/$267342/$26735C
+  return undefined;
+});
+
 // --- type $36 ($263A58): Stage-3's seven-part carrier. All seven long-form
 // prototypes are contiguous, and A0 after the load is the long-threshold cue
 // cursor consumed by $28AC86 in the handler.

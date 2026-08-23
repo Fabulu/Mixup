@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W517 completes sequence list A, W518 through W521 follow the normal handoff through slots [15], [14], [12], and [8] to the first stable high-score presentation; production build `20260823074549` publishes W517 through W521, and gameplay work now returns to Hibachi, authentic loop selection, and all six ship/style pairs through loop 2 |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W522 starts all-six-pair loop-2 exercise, ports the first stage-3 blocker, type `$3D`, and records exact one-round/two-round and Hibachi rules; production build `20260823074549` publishes W517 through W521, while W522 is the first local wave toward W526 |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -343,19 +343,21 @@ first phase for 32 steps and returns directly to idle because banner 0 is alread
 advances the cursor from 28 to 32, clears the pool, and reaches entry 8 at `$29177C`. W517 finishes
 sequence list A. W518 follows the normal handoff through slot [15]'s complete credits-text lifecycle, W519
 through slot [14]'s normal Game Over lifecycle, W520 through slot [12]'s zero-score no-name exit, and W521
-into slot [8]'s first stable state-2 high-score presentation. The current registry has 783 windows and 448,021
-bytes with 77 overlap pairs. Production build `20260823074549` publishes W517 through W521 after
-4,404/4,404 DDPDOJ units, all bundle and web gates, the cross-game gates, the distribution build, the
-ROM-leak guard, deployment, and three consecutive live confirmations. The source commits are `e28336b`,
-`f2266f8`, `7918d8a`, `4ce2536`, and `4c6a8c2`; publication repairs are `e55af96` and `b2e671c`.
-Gameplay work now returns to authentic one-loop/two-loop selection, Hibachi qualification, and exercising all
-six ship/style pairs through Black Label loop 2. Remaining ending variants will be batched by complete family
-or variant rather than split into one commit per understood script.
+into slot [8]'s first stable state-2 high-score presentation. Production build `20260823074549` publishes
+W517 through W521 with 783 windows, 448,021 bytes, and 77 overlap pairs after 4,404/4,404 DDPDOJ units,
+all bundle and web gates, the cross-game gates, the distribution build, the ROM-leak guard, deployment, and
+three consecutive live confirmations. The source commits are `e28336b`, `f2266f8`, `7918d8a`, `4ce2536`,
+and `4c6a8c2`; publication repairs are `e55af96` and `b2e671c`. W522 starts the six authentic-pair loop-2
+matrix. The default pair reaches stage 3, exposes unported type `$3D`, and crosses that boundary after its exact
+init and handler are translated. The local registry is 785 windows, 448,099 bytes, and 77 overlap pairs.
+Cartridge evidence now records exact `1 ROUND GAME` and `2 ROUND GAME` semantics, the round-2 qualification
+gate, and the final Hibachi route truth table. Remaining ending variants will be batched by complete family or
+variant rather than split into one commit per understood script.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,
 and behavior through the complete second loop. All 23 type-5 frame calls now
-run, while enemy-handler coverage is 101 ported, 25 unknown, and 130 null. The
+run, while enemy-handler coverage is 102 ported, 24 unknown, and 130 null. The
 duplicate scanners still report 16 narrow heads, 71 widened heads, 28 body
 pairs, and 22 body-only findings, now deliberately deferred until functional
 completion.
