@@ -53,9 +53,9 @@
 // remaining dispatch entries are still present and range-checked; reaching one
 // is a LOUD NAMED THROW rather than an invented generic implementation.
 //
-//   Also REFUSED (loud named note, like W61's hyper-stock refusal):
-//   * the kind-16 FLYING arm `$27FCEA`.  Stage-1 use unknown; the thrown path
-//     is unreachable on the shipped seed by recon 73's measurement.
+// W528 closes the kind-16 flying arm `$27FCEA` after the exact W522 matrix
+// reaches it in raw stage 2. The arm follows the cartridge waypoint rows at
+// `$27FD72..$27FE0D` and emits through fixed stub `$23EBA0`.
 //
 // W166 closes the former rank-gauge refusal. W163 supplied the complete
 // `$287682/$287722` grant, item, collection and activation pipeline, so the
@@ -137,7 +137,7 @@ export const POOL_A = Object.freeze({
   collectP2: 0x27fae6,       // btst #$B -> P2 collect arm
   gaugeP1: 0x27fba2,         // P1 bee chain-to-hyper feed
   gaugeP2: 0x27fb1c,         // P2 mirror
-  kind16Arm: 0x27fcea,       // the flying bee (REFUSED)
+  kind16Arm: 0x27fcea,       // the flying bee waypoint arm
   kind16Waypoint: 0x27fd72,  // the waypoint script
   // data
   baseLadder: 0x27fd22,      // 10 BCD longs $100..$1000
@@ -2070,14 +2070,30 @@ function idleStep27FC8C(ram, rom, ctx, a6, d1) {
   // the kind-1 emit.  Kind 16 (bit 2 clear) -> eor makes D1 = $4 -> bne to
   // $27FCEA (the flying arm).
   if ((d1 & 0x04) === 0) {                                // $27FCCA/$27FCCC/$27FCCE
-    // Kind 16: the flying arm $27FCEA.  REFUSED.
-    unreached(POOL_A.kind16Arm, `$27FCEA -- the kind-16 FLYING bee arm. `
-      + `Stage-1 use unknown: no pool-A allocation site passes D0 = $40 `
-      + `(recon 73 sec 8 item 3). The fork at $27FCC8 (moveq #$4 / and / eor `
-      + `/ bne) routed a kind-16 record here. If this is reachable in stage 1 `
-      + `it means a non-bee allocator created a kind-16 record in the reserved `
-      + `ten, which the REFUSAL at allocBee27F92A should have prevented. `
-      + `Record at $${a6.toString(16).toUpperCase()}`);
+    // $27FCEA..$27FCF4: the flying variant rises by $60 before its
+    // waypoint velocity, then decrements the low byte of ($1E,A6).
+    ram.setU16(a6 + B.pos, u16(ram.u16(a6 + B.pos) - 0x0060));
+    const tick = u16(ram.u8(a6 + B.tick) - 1) & 0xff;
+    ram.setU8(a6 + B.tick, tick);
+
+    // $27FCF6..$27FD08: zero means this waypoint expired. The high byte of
+    // ($1E,A6) is a byte offset into 26 six-byte rows: the next cursor/timer
+    // word followed by signed long-axis and short-axis velocity words.
+    if (tick === 0) {
+      const cursor = ram.u8(a6 + B.hitCount);
+      const row = POOL_A.kind16Waypoint + cursor;
+      ram.setU16(a6 + B.hitCount, rom.u16(row));
+      ram.setU32(a6 + B.waypoint, rom.u32(row + 2));
+    }
+
+    // $27FD0C..$27FD1A: movem.w loads the cached pair, add.w wraps each
+    // position word independently, and the arm uses the fixed layer-0 stub.
+    ram.setU16(a6 + B.pos,
+      u16(ram.u16(a6 + B.pos) + ram.u16(a6 + B.waypoint)));
+    ram.setU16(a6 + B.posX,
+      u16(ram.u16(a6 + B.posX) + ram.u16(a6 + B.waypoint + 2)));
+    enqueueThroughStub(ram, rom, 0x23eba0, a6);
+    return { emitted: true };
   }
 
   // $27FCD0: freeze gate.  If frozen ($8130D2 != 0), skip the scroll and emit.

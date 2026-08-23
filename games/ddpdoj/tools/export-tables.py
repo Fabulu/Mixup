@@ -1400,6 +1400,12 @@ SHOT_WINDOWS.extend([
     # FIVE longwords.
     (0x27FD4A, 0x0028, "W234 the bee popup ladder: ten longwords, indexed by the "
                        "$817F82 cursor the base ladder shares"),
+    # W528: kind 16's `$27FCEA` arm indexes `$27FD72` with the high byte of
+    # `($1E,A6)`. Each six-byte row replaces that cursor/timer word and supplies
+    # two velocity words. The 26-row chain occupies exactly $9C bytes; its last
+    # row ends at $27FE0E, the independently dispatched kind-2 body.
+    (0x27FD72, 0x009C, "W528 flying-bee waypoint rows, ending exactly at "
+                       "$27FE0E kind-2 code"),
     (0x2812D4, 0x0014, "W234 the bee x2 indicator tiles: five longwords, cycled "
                        "by ($12,A6) from $10 down to 0"),
     # W231: the player object's INIT template, $24915E. `$2492E0 lea $24915E(pc)`
