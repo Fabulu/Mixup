@@ -90,8 +90,10 @@ test('W255 the distance ladder is a linear ramp, terminated in the ROM',
       Array.from({ length: 24 }, (_, i) => 0x40 * (i + 1)));
     assert.deepEqual(rungs.map(([, s]) => s),
       [1, ...Array.from({ length: 23 }, (_, i) => 2 * (i + 2) - 2)]);
-    // The window stops at the terminator's own word and no further.
-    assert.throws(() => ROM.u16(0x2a42d4), (e) => e.name === 'Unreached');
+    // The ladder window itself stops after the terminator. W546 later added the
+    // adjacent Hibachi init stub at $2A42D4, so readability no longer proves this.
+    const window = json.rom.windows.find((w) => w.base === '$2A4252');
+    assert.equal(window.len, 0x82, 'the type $42 window ends exactly at $2A42D4');
   });
 
 test('W255 $23F7C6 needed a window and NOT a line of code', { skip: SKIP }, () => {
