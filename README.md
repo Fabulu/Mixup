@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | W523 fixes the all-pairs round-2 selector stall after W522's first stage-3 progression blocker; production build `20260823074549` publishes W517 through W521, W522-W523 are local, and D109 now targets a parallel asset-free public release by 2026-08-28 |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | W523 fixes the all-pairs round-2 selector stall after W522's first stage-3 progression blocker; all six authentic ship/style pairs and the complete second loop remain the active gameplay phase |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -50,6 +50,19 @@ recorded in `build-dist.mjs` with its measured cost.
 
 The guard blocks everything not named in that list, and the load-bearing rule is
 unchanged - nothing ROM-derived is ever committed here.
+
+A parallel asset-free release is live at **https://mixup.pages.dev/**. It ships
+only the setup shell and translated source. Players select legally owned local
+ROM files or a folder, exact identities unlock the matching game cards, and all
+three games boot from those local inputs. Checksums and extraction run in the
+browser; ROM bytes are neither uploaded nor saved. The separate asset-backed
+site at `gbtman.pages.dev` remains available and unchanged.
+
+The asset-free package is built by `tools/build-rom-dist.mjs` into `dist-rom/`.
+Its closed module allowlist rejects generated assets, cartridge extensions,
+unexpected files, symlinks, and verbatim cartridge slices with no publication
+exceptions. `tools/publish-rom.mjs` deploys only that directory to the Cloudflare
+Pages project `mixup` and verifies the existing site remains on its prior build.
 
 Everything derived is regenerated from ROMs **you** legally own:
 

@@ -7342,9 +7342,10 @@ record's missing next target is superseded by D37's W503 through W506 progressio
 
 ### D109: ASSET-FREE PUBLIC RELEASE ON A SECOND SITE BY 2026-08-28
 
-**OPEN, HARD DEADLINE 2026-08-28.** Keep the current asset-backed site online and deploy a second public
-version in parallel that ships no ROM-derived game assets. The Cloudflare Pages project `mixup` was reserved on
-2026-08-23 for `mixup.pages.dev`. The mistakenly reserved empty `ddpdoj` project was deleted before any deployment.
+**COMPLETE 2026-08-23, AHEAD OF THE 2026-08-28 DEADLINE.** The current asset-backed site remains online and a
+second public version now ships no ROM-derived game assets. Cloudflare Pages project `mixup` serves
+`mixup.pages.dev`; asset-free build `20260823120247` was deployed from current source. The separate
+`gbtman.pages.dev` site remained unchanged at build `20260823074549` through every deployment poll.
 
 The second site needs a setup screen before game launch. A player supplies their legally owned ROM library locally;
 each file is hashed once and matched across every tracked game identity, and the exact complete sets unlock their
@@ -7372,15 +7373,16 @@ files, explain archive or folder-shape mistakes, and name likely encrypted-versu
 byte-order, revision, or wrong-MAME-set causes when evidence supports them. Never claim a likely diagnosis as
 certain. Give the player exact corrective instructions and preserve a copyable diagnostic report.
 
-The first foundation slice adds the isolated `rom-site/`, `dist-rom` builder and zero-exception audit, exact tracked
-identity catalogue, one-pass global local-file/folder inventory, saved-handle permission lifecycle, and a separate
-`mixup` publish script. Mixed folders can unlock all matching cards; unrelated extras remain visible diagnostics,
-and duplicates or conflicting required names lock only the affected game. DaiOuJou's accepted decrypted 6 MiB
-maincpu alternative replaces both raw `ddb10_10_8_434f.u45` and `ddp3_bios.u37`, alongside the other eight
-members. The site remains deliberately noncompliant until all three games boot from those validated local inputs. The
-DaiOuJou cold-start path is not blocked on a captured RAM seed: `tests/w383coldboot.test.js` already proves `Game`
-boots from a zeroed 128 KiB RAM image through warning, coin, START, and gameplay. Runtime ROM extraction and
-removing cartridge-asset fetches remain the pending work.
+The completed release includes the isolated `rom-site/`, `dist-rom` builder and zero-exception audit, exact tracked
+identity catalogue, one-pass global local-file/folder inventory, saved-handle permission lifecycle, and separate
+`mixup` publish script. Mixed folders unlock all matching cards; unrelated extras remain visible diagnostics, and
+duplicates or conflicting required names lock only the affected game. DaiOuJou's accepted decrypted 6 MiB maincpu
+alternative replaces both raw `ddb10_10_8_434f.u45` and `ddp3_bios.u37`, alongside the other eight members.
+Batman derives its complete runtime manifest, level data, graphics, and sound from the validated local Game Boy image.
+Gradius derives its CNROM graphics, terrain, metasprites, screens, packets, and CPU-addressed runtime tables from the
+validated local iNES image. DaiOuJou reconstructs and decrypts its full maincpu region, cold-boots from zeroed RAM,
+and assembles the IGS023 graphics regions from validated local members. Ordinary local launches retain their mortal
+gameplay defaults.
 
 Definition of done:
 
@@ -7396,6 +7398,15 @@ Definition of done:
 7. Build gates prove the asset-free package contains no generated cartridge data, deployment succeeds, and live
    checks cover the setup screen, one valid local boot per game, persistence fallback, and rejection diagnostics.
 8. The current asset-backed production URL remains live and unchanged unless separately authorized.
+
+Completion gate: focused local-ROM parity and fetch-disabled browser-host tests pass 2/2 for each game family,
+`npm run typecheck` passes, and the ROM-site suite passes 27/27. The closed build contains 202 files totalling
+6,515,582 bytes and passed 2,424 comparisons against local cartridge candidates with zero exceptions. Publication
+uploaded only `dist-rom` to project `mixup`; three consecutive polls returned build `20260823120247` while
+`gbtman.pages.dev` remained at `20260823074549`. A post-deploy Chrome gate selected one mixed twelve-file library,
+unlocked all three cards, and launched Batman, Gradius, and DaiOuJou from the live site. Their launch intervals made
+60, 25, and 106 source-module GET requests respectively, with no asset, ROM, table, capture, seed, shard, archive,
+cartridge-extension, upload, or other non-GET request.
 
 ### D110: FUTURE DAIOUJOU MOD - SHOW HITBOXES
 
