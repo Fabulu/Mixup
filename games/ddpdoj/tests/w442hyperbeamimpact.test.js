@@ -504,8 +504,8 @@ test('W443 (was W442 test 8b): the hyper beam still takes its art from $24BAE2 '
 test('W442 adds no ROM window and later waves reconcile the exact registry', () => {
   assert.equal(ROM_WINDOW_COUNT, 783,
     'W502-W518 reconcile the exact registry; W518 adds three slot-[15] data windows');
-  assert.equal(ROM_OVERLAP_PAIRS, 76,
-    'W502-W518 add only disjoint or abutting windows, so W497 remains the last new overlap');
+  assert.equal(ROM_OVERLAP_PAIRS, 77,
+    'W518 vertical glyph data overlaps W23 slot-[14] init data by ten exact bytes');
 });
 
 // ===========================================================================
