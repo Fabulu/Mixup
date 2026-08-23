@@ -9096,12 +9096,9 @@ function tail55(ram, rom, a5, a6) {
   // $272736 swap D1 / $272738 add.w ($32,A5),D1 -- the ramp lands on the SWAPPED half.
   const swapped = ((biased >>> 16) | (biased << 16)) >>> 0;
   const d1 = ((swapped & 0xffff0000) | u16((swapped & 0xffff) + ram.u16(a5 + T55.rampAt))) >>> 0;
-  enqueueRegistersThroughStub(ram, rom, T55.enqueue, {
-    d1,
-    d2,
-    d3: rom.u16(at + 8),                                     // $27273E move.w ($8,A0),D3
-    d4: ram.u8(a6 + 0x1d),                                   // $272744 -- zero-extended by the moveq
-  });
+  enqueueRegistersThroughStub(ram, rom, T55.enqueue, d1, d2,
+    rom.u16(at + 8),                                        // $27273E move.w ($8,A0),D3
+    ram.u8(a6 + 0x1d));                                     // $272744 -- zero-extended by the moveq
 }
 
 // $2725C0's volley. ONE aim per burst, the ordinary 15-shot pattern each step, the 20-shot FINALE when
@@ -11141,12 +11138,8 @@ function arm2_1A(ram, rom, a5, a6, ctx) {
 // halves are added while swapped APART, so there is NO borrow between them. Folding this into
 // `addi.l #$0500FC00` introduces a carry the cartridge never performs.
 function tail1A(ram, rom, a5, a6, ctx) {
-  enqueueRegistersThroughStub(ram, rom, T1A.drawStubs[0],                // $269058 jsr $23D762
-    swapBiasedPosition(ram.u32(a6 + 0x02)),
-    ram.u32(a5 + 0x24),                                                  // $26906E move.l ($24,A5),D2
-    0x620,                                                               // $269072 move.w #$620,D3
-    ram.u8(a6 + 0x1d));
-  enqueueRegistersThroughStub(ram, rom, T1A.drawStubs[1],                // $26907A jsr $23DECE
+  enqueueThroughStub(ram, rom, T1A.drawStubs[0], a5);              // $269058 jsr $23D762
+  enqueueRegistersThroughStub(ram, rom, T1A.drawStubs[1],          // $26907A jsr $23DECE
     swapBiasedPosition(ram.u32(a6 + 0x02)),
     ram.u32(a5 + 0x24), 0x620, ram.u8(a6 + 0x1d));
   // $269082 jsr $26331C -- a bare rts. Transcribed, not called. Hibachi calls the same stub eleven times.

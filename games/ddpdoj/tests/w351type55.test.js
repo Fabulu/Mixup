@@ -14,7 +14,8 @@ import { fileURLToPath } from 'node:url';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { MoveTables } from '../src/vectors.js';
-import { runHandler } from '../src/handlers.js';
+import { runHandler, TYPE_SPECS } from '../src/handlers.js';
+import { resolveEmitStub, BUCKETS } from '../src/spritequeue.js';
 import { UnportedLog } from '../src/unported.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -130,6 +131,16 @@ test('W548 type $55 aims its first live volley at the selected player record',
 
   assert.equal(ram.u8(a5 + 0x28), 0x25, 'aim256 result from P1 coordinates');
   assert.equal(bullets.length, 15, 'the ordinary first volley completes');
+
+  const t55 = TYPE_SPECS.get(0x55);
+  const emit = resolveEmitStub(ROM, t55.enqueue);
+  const queue = BUCKETS[emit.bucket];
+  assert.equal(emit.conv, 'register');
+  assert.equal(ram.u16(queue.counter), 12, 'the draw tail enqueues one register record');
+  assert.equal(ram.u32(queue.buffer + 4), ROM.u32(t55.driftTable),
+    'D2 is passed positionally instead of becoming undefined behind an object');
+  assert.equal(ram.u16(queue.buffer + 8), ROM.u16(t55.driftTable + 8),
+    'D3 is the drift-table size word');
 });
 
 test('W351 death TAIL-JUMPS -- $55 neither frees itself nor marks-and-continues', { skip: SKIP }, () => {

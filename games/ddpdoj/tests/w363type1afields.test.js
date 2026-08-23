@@ -16,12 +16,21 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { TYPE_SPECS } from '../src/handlers.js';
+import { TYPE_SPECS, runHandler } from '../src/handlers.js';
+import { Ram } from '../src/ram.js';
+import { RomWindows } from '../src/rom.js';
+import { runInitBodyAddr } from '../src/initbody.js';
+import { resolveEmitStub, BUCKETS } from '../src/spritequeue.js';
+import { UnportedLog } from '../src/unported.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = path.join(HERE, '..', 'rip', 'sound', 'maincpu.bin');
+const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
 const IMG = existsSync(IMAGE) ? readFileSync(IMAGE) : null;
 const SKIP = IMG ? false : 'the ROM image is absent; skip, not pass';
+const HAVE_RUNTIME = existsSync(TABLES);
+const ROM = HAVE_RUNTIME ? new RomWindows(JSON.parse(readFileSync(TABLES, 'utf8')).rom) : null;
+const SKIP_RUNTIME = HAVE_RUNTIME ? false : 'generated ROM tables absent; skip, not pass';
 const T1A = TYPE_SPECS.get(0x1a);
 
 test('W372 T1A: handler AND init body are both ported, so $1A spawns', { skip: SKIP }, () => {
@@ -159,4 +168,40 @@ test('W372 the init body RUNS, and sets the fields the handler reads', { skip: S
   // And the D40 note must be recorded, by address, rather than the guess being silent.
   assert.ok(log.notes?.some?.((n) => n.addr === 0x268d8c) ?? true,
     'the $268D8C aim note is logged if the log exposes notes');
+});
+
+test('W550 type $1A sends its two draw calls through their cartridge conventions',
+  { skip: SKIP_RUNTIME }, () => {
+  const ram = new Ram();
+  const log = new UnportedLog();
+  const a5 = 0x8137c0;
+  const a6 = 0x8139c0;
+  ram.setU32(a5 + 0x06, a6);
+  ram.setU16(a5 + 0x04, 0x0001);
+  ram.setU16(a6 + 0x02, 0x2000);
+  ram.setU16(a6 + 0x04, 0x2000);
+  runInitBodyAddr(T1A.initBody, ram, ROM, a5, log, null, null, null);
+
+  const recordEmit = resolveEmitStub(ROM, T1A.drawStubs[0]);
+  const registerEmit = resolveEmitStub(ROM, T1A.drawStubs[1]);
+  assert.equal(recordEmit.conv, 'record');
+  assert.equal(registerEmit.conv, 'register');
+  ram.setU16(T1A.pauseAll, 1);
+
+  assert.doesNotThrow(() => runHandler(T1A.handler, ram, ROM, a5, { unported: log }));
+
+  const recordQueue = BUCKETS[recordEmit.bucket];
+  const registerQueue = BUCKETS[registerEmit.bucket];
+  const sharedBucket = recordEmit.bucket === registerEmit.bucket;
+  const expectedCount = sharedBucket ? 24 : 12;
+  const registerAt = registerQueue.buffer + (sharedBucket ? 12 : 0);
+  assert.equal(ram.u16(recordQueue.counter), expectedCount,
+    '$23D762 receives A5 and enqueues one record-convention draw');
+  assert.equal(ram.u16(registerQueue.counter), expectedCount,
+    '$23DECE receives D1-D4 and enqueues one register-convention draw');
+  assert.equal(ram.u32(registerAt + 4), ram.u32(a5 + 0x24),
+    'D2 is the directional art long');
+  assert.equal(ram.u16(registerAt + 8), 0x0620, 'D3 is the size word');
+  assert.equal(ram.u16(registerAt + 10), ram.u8(a6 + 0x1d),
+    'D4 is the zero-extended palette byte');
 });
