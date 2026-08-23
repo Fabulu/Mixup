@@ -21,6 +21,7 @@ const SHELL_ALLOWLIST = Object.freeze([
 ]);
 const RUNTIME_ROOTS = Object.freeze([
   'rom-site/src/batman-local.js',
+  'rom-site/src/gradius-local.js',
   'rom-site/src/ddpdoj-local.js',
 ]);
 const FROM_MODULE_RE = /^\s*(?:import|export)\s+[^;]*?\bfrom\s*['"]([^'"]+)['"]/gm;
@@ -44,7 +45,8 @@ function browserModuleClosure(roots) {
     const source = pending.pop();
     if (seen.has(source)) continue;
     if (!(source.startsWith('rom-site/src/') || source.startsWith('games/batman/src/')
-        || source.startsWith('games/ddpdoj/src/') || source.startsWith('shared/'))) {
+        || source.startsWith('games/gradius/src/') || source.startsWith('games/ddpdoj/src/')
+        || source.startsWith('shared/'))) {
       throw new Error(`asset-free build: browser module escapes approved source roots: ${source}`);
     }
     const absolute = path.join(ROOT, source);

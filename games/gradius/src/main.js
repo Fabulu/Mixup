@@ -291,7 +291,10 @@ export function stepLogicFrames(k, state, res, audio) {
 }
 
 export async function boot(canvas, opts = {}) {
-  const [game, res] = await Promise.all([loadGameJson(), loadResources(0)]);
+  const [game, res] = await Promise.all([
+    opts.game ?? loadGameJson(),
+    opts.resources ?? loadResources(0),
+  ]);
   // W39: THE PORT NOW BOOTS WHERE THE CARTRIDGE BOOTS -- mode 0, $8067's state.
   // It used to start at `introEntryState()`, i.e. at the handover mode 4 makes
   // to mode 5, because modes 0-4 and 6 were not ported. The title menu, the

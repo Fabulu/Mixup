@@ -9,9 +9,10 @@
 import { bindSoundRom } from './sound.js';
 
 const BASE = new URL('../assets/', import.meta.url).href;
+const requestAsset = (url) => globalThis.fetch.call(globalThis, url);
 
 async function fetchOrExplain(rel, how) {
-  const r = await fetch(BASE + rel);
+  const r = await requestAsset(BASE + rel);
   // Checking r.ok is not optional here. A 404 on a .bin yields an EMPTY
   // ArrayBuffer, so the tile sheet comes out zero-filled and the game draws a
   // WRONG PICTURE instead of throwing -- which stays invisible to every
@@ -219,7 +220,7 @@ export async function loadResources(stageIndex = 0) {
 
 /** The frame rate, read from game.json. It is spelled ONCE, in that file. */
 export async function loadGameJson() {
-  const r = await fetch(new URL('../game.json', import.meta.url).href);
+  const r = await requestAsset(new URL('../game.json', import.meta.url).href);
   if (!r.ok) throw new Error(`game.json missing (${r.status})`);
   return r.json();
 }

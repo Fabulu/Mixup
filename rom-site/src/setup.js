@@ -117,7 +117,7 @@ function renderLauncher() {
   primaryWorld.textContent = launcherState.primary
     ? GAME_CATALOGUE[launcherState.primary].title
     : 'None selected';
-  const canLaunch = ['batman', 'ddpdoj'].includes(launcherState.primary)
+  const canLaunch = ['batman', 'gradius', 'ddpdoj'].includes(launcherState.primary)
     && launcherState.validated[launcherState.primary] === true;
   const selectedTitle = launcherState.primary
     ? GAME_CATALOGUE[launcherState.primary].title : null;
@@ -232,7 +232,7 @@ for (const card of gameCards) {
     }
     launcherState = selectPrimary(launcherState, card.dataset.gameId);
     const gameId = card.dataset.gameId;
-    const ready = ['batman', 'ddpdoj'].includes(gameId);
+    const ready = ['batman', 'gradius', 'ddpdoj'].includes(gameId);
     renderLauncher();
     setStatus(ready
       ? `${GAME_CATALOGUE[gameId].title} selected as the primary world. Its validated local input is ready to launch.`
@@ -241,7 +241,7 @@ for (const card of gameCards) {
 }
 launchGame.addEventListener('click', async () => {
   const gameId = launcherState.primary;
-  if (launching || !['batman', 'ddpdoj'].includes(gameId)
+  if (launching || !['batman', 'gradius', 'ddpdoj'].includes(gameId)
       || !lastInventory?.games[gameId].complete) return;
   const title = GAME_CATALOGUE[gameId].title;
   stopRuntime();
@@ -251,7 +251,9 @@ launchGame.addEventListener('click', async () => {
   try {
     const Runtime = gameId === 'batman'
       ? (await import('./batman-local.js')).LocalBatmanRuntime
-      : (await import('./ddpdoj-local.js')).LocalDdpdojRuntime;
+      : (gameId === 'gradius'
+        ? (await import('./gradius-local.js')).LocalGradiusRuntime
+        : (await import('./ddpdoj-local.js')).LocalDdpdojRuntime);
     activeRuntime = await Runtime.create(
       lastInventory.games[gameId],
       gameCanvas,
@@ -269,7 +271,9 @@ launchGame.addEventListener('click', async () => {
     gameCanvas.focus();
     setBootStatus(gameId === 'batman'
       ? 'Batman is running entirely from the validated local cartridge. Press Enter, then use arrows, X, and Y/Z.'
-      : 'DaiOuJou is running entirely from validated local ROMs. Insert a coin with 5, then press Enter.');
+      : (gameId === 'gradius'
+        ? 'Gradius is running entirely from the validated local cartridge. Press Enter, then use arrows, X, and Y/Z.'
+        : 'DaiOuJou is running entirely from validated local ROMs. Insert a coin with 5, then press Enter.'));
   } catch (error) {
     stopRuntime();
     setBootStatus(`${title} could not start: ${error.message}`);
