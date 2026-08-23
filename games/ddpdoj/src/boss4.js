@@ -365,6 +365,13 @@ function object10_29F3F0(ram, rom, ctx) {
     sprite, 0x28c0, 0x0015);
 }
 
+function object11_29F454(ram, rom, ctx) {
+  const a6 = ctx.bossSubRec;
+  enqueueRegistersThroughStub(ram, rom, 0x23df86,
+    (ram.u32(a6 + 0x122) + 0xdc00ee00) >>> 0,
+    rom.u32(0x29f478 + ram.u16(a6 + 0x128)), 0x2490, 0x0015);
+}
+
 function object0_29EF88(ram, rom, ctx) {
   const a6 = ctx.bossSubRec;
   enqueueRegistersThroughStub(ram, rom, 0x23e056,
@@ -1665,6 +1672,7 @@ registerScript(0x2a019a, f0Step2A019A);
 registerScript(0x29f5bc, main0Init29F5BC);
 registerScript(0x29f5fe, main0Step29F5FE);
 registerScript(0x29f3f0, object10_29F3F0);
+registerScript(0x29f454, object11_29F454);
 registerScript(0x29ef88, object0_29EF88);
 registerScript(0x29f0d6, object1_29F0D6);
 registerScript(0x29f120, object2_29F120);

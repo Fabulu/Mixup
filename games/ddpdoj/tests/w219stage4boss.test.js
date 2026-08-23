@@ -58,7 +58,8 @@ test('W219 pins the final Stage-4 record, arrival closure, and 16 live streams',
   { skip: SKIP }, () => {
     assert.ok(INIT_BODY_ADDRESSES.includes(0x29ec82));
     assert.ok(HANDLER_ADDRESSES.includes(0x29ef0a));
-    for (const addr of [0x2a017a, 0x2a019a, 0x29f5bc, 0x29f5fe, 0x29f3f0])
+    for (const addr of [0x2a017a, 0x2a019a, 0x29f5bc, 0x29f5fe,
+      0x29f3f0, 0x29f454])
       assert.ok(scriptAddresses().includes(addr), `$${addr.toString(16)} is registered`);
     assert.equal(sha(0x29ec7a, 0x0b16),
       'd095fb4bc73b048e594d7c0b51b99a33ef568f0b16fb76691dbae0c95468cb7f');
@@ -168,6 +169,32 @@ test('W536 Stage-4 MAIN0 exports and runs its whole word-speed arrival ramp',
   assert.equal(ram.u8(SCHED.seqDst + 0x06), 0, 'the arrival remains in its ramp phase');
   assert.equal(ram.u16(SCHED.seqDst + 0x08), initial - 3 * decrement,
     'the exact failure frame consumed level 157 and completed its decrement');
+});
+
+test('W537 Stage-4 A2 object 11 draws its cartridge-selected arrival frame',
+  { skip: SKIP }, () => {
+  const { ram, log, palette, a5, a6 } = stage4Boss();
+  const slot = SCHED.a2Base + 11 * SCHED.a2Stride;
+  assert.deepEqual([slot, ram.u16(slot), ram.u32(slot + 2)],
+    [0x812a28, 0x8000, 0x29f454]);
+
+  ram.setU32(SCHED.ptrA0, 0);
+  ram.setU32(SCHED.ptrA1, 0);
+  ram.setU32(SCHED.ptrA3, 0);
+  ram.setU32(SCHED.ptrA4, 0);
+  ram.setU16(slot, ram.u16(slot) | 1);
+  ram.setU32(a6 + 0x122, 0x12345678);
+  ram.setU16(a6 + 0x128, 0x000c);
+  ram.setU16(BUCKETS[7].counter, 0);
+
+  const ctx = { ram, rom: ROM, tables: MT, unported: log, unportedLog: log,
+    palette, soundPost() {}, effectSpawn() {}, bulletSpawn() {} };
+  assert.doesNotThrow(() => runHandler(0x29ef0a, ram, ROM, a5, ctx));
+  const b = BUCKETS[7];
+  assert.equal(ram.u16(b.counter), 12);
+  assert.deepEqual([ram.u32(b.buffer), ram.u32(b.buffer + 4),
+    ram.u16(b.buffer + 8), ram.u16(b.buffer + 10)],
+  [0x87b88111, ROM.u32(0x29f484), 0x2490, 0x0015]);
 });
 
 test('W219 linked damage keeps the largest delta and honors the part-flash gate',
