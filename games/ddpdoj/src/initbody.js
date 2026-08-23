@@ -31,7 +31,7 @@
 
 import { unreached } from './unported.js';
 import { initArms, stepArms } from './midboss.js';
-import { u16, i16 } from './ram.js';
+import { u16, i16, u32 } from './ram.js';
 import { installScripts, a2Run2598E6, a2RunAll2598FE,
   a4Start25980C } from './scheduler.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';

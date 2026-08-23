@@ -353,6 +353,20 @@ test('the midboss init body without a MoveTables is a LOUD NAMED THROW at $26B4B
     (e) => e.romAddress === 0x26b4b4);
 });
 
+test('W547 type $55 wraps its parent-derived packed position to 32 bits',
+  { skip: !HAVE && 'rip absent' }, () => {
+  const ram = new Ram();
+  const { rec, sub } = freshEnemy(ram, 0x55);
+  ram.setU32(rec + 0x16, 0xfffe8000);
+  ram.setU32(rec + 0x1a, 0x12345678);
+
+  const result = runInitBodyAddr(0x272398, ram, realRom(), rec, { note() {} });
+
+  assert.equal(ram.u32(sub + 0x02), 0x01fe8000);
+  assert.equal(result, INIT_BODY_FREED,
+    'the wrapped high word is below the cartridge self-free threshold');
+});
+
 test('freeEnemy marks sub-records dead and clears the type word ($263762)', () => {
   const ram = new Ram();
   const rec = ENEMY.bandCommon;
