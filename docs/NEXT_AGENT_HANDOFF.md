@@ -36,10 +36,20 @@ to 6, and the complete slot pass cascades state 3 through both common tails to s
 24/24. No ROM window, table, registry count, or generated asset changes. Do not add a new `stageend.js` Hibachi
 branch; the authentic final fork is already implemented in `hibachiend.js`.
 
-D109 has a hard deadline of 2026-08-28 and is now the exact next priority. Build the second asset-free public deployment, preferably `ddpdoj.pages.dev`, while preserving the current site. It must boot all
-three games from player-supplied ROM files or a reusable local folder, persist a directory handle where supported,
-ship no cartridge assets, document exact names/sizes/SHA-256/revisions, and diagnose DaiOuJou variants in detail.
-Do not let ordinary progression waves consume the five-day release window before this architecture is secured.
+D109 has a hard deadline of 2026-08-28 and is now the exact next priority. The Cloudflare Pages project `mixup`
+was reserved on 2026-08-23 for `mixup.pages.dev`; the mistakenly reserved empty `ddpdoj` project was deleted.
+Build the second asset-free public deployment while preserving the current site. It must boot all three games from
+player-supplied ROM files or a reusable local folder, persist a directory handle where supported, ship no cartridge
+assets, document exact names/sizes/SHA-256/revisions, and diagnose DaiOuJou variants in detail. The isolated setup
+supports files, folders, dropped files/folders, saved-handle reuse, and a one-pass global inventory. A mixed folder
+unlocks every complete game independently, unrelated extras stay diagnostic, and only a missing, duplicate, or
+conflicting required identity locks that game. Its locked game cards select the primary world; a separate secondary-
+character role is labelled future Mixup functionality. The decrypted DaiOuJou maincpu alternative replaces both
+raw u45 and `ddp3_bios.u37`. The validator, `dist-rom` builder/audit, and `mixup` publish-script foundation is
+present but is not release completion:
+game boot is still pending. `tests/w383coldboot.test.js` proves DaiOuJou `Game` can cold-start from zeroed RAM, so
+capture/seed removal is not a fundamental startup blocker. Do not let ordinary progression waves consume the
+five-day release window before the three local-ROM boot paths are connected.
 
 Slot [12] still takes its inherited zero-score no-name exit and commits type 8 with cartridge state 2. Slot [8]
 constructs at integration frame 11,529, copies that seed to shared state `$812E56`, and resets its init and blink

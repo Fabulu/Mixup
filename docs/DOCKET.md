@@ -56,11 +56,12 @@ Production build `20260823074549` publishes W517 through W521 from commits `e283
 448,021 bytes, and 77 overlap pairs. The full gate and three live confirmations passed. W526 is the next periodic
 publication point. W523 is the second unpublished wave after W521.
 
-**D109 HAS A HARD PUBLIC-RELEASE DEADLINE OF 2026-08-28.** It requires a second, parallel asset-free site,
-preferably `ddpdoj.pages.dev`, which boots each game from player-supplied ROM files or a reusable local folder,
-publishes exact size/checksum/revision instructions, and gives detailed DaiOuJou variant diagnostics. The current
-asset-backed site stays live. D109 now outranks ordinary progression waves until its deadline-critical architecture
-and release path are secured.
+**D109 HAS A HARD PUBLIC-RELEASE DEADLINE OF 2026-08-28.** It requires a second, parallel asset-free site at
+`mixup.pages.dev`, whose Cloudflare Pages project was reserved on 2026-08-23. It must boot each game from
+player-supplied ROM files or a reusable local folder, publish exact size/checksum/revision instructions, and give
+detailed DaiOuJou variant diagnostics. The current asset-backed site stays live. The separate setup/build/validator
+foundation is in progress, but it is not a compliant release until all three local-ROM boot paths are connected.
+D109 now outranks ordinary progression waves until its deadline-critical architecture and release path are secured.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -7342,15 +7343,20 @@ record's missing next target is superseded by D37's W503 through W506 progressio
 ### D109: ASSET-FREE PUBLIC RELEASE ON A SECOND SITE BY 2026-08-28
 
 **OPEN, HARD DEADLINE 2026-08-28.** Keep the current asset-backed site online and deploy a second public
-version in parallel that ships no ROM-derived game assets. Try to obtain `ddpdoj.pages.dev`; if that Cloudflare
-Pages project name is unavailable, record the chosen fallback hostname rather than delaying the release.
+version in parallel that ships no ROM-derived game assets. The Cloudflare Pages project `mixup` was reserved on
+2026-08-23 for `mixup.pages.dev`. The mistakenly reserved empty `ddpdoj` project was deleted before any deployment.
 
-The second site needs a setup screen before game launch. A player chooses the game and supplies their legally
-owned ROM material locally. Support both individual file upload and pointing at a folder. Where the browser's
-File System Access API permits it, save the directory handle in IndexedDB, request or verify permission on the
-next visit, and let the player reuse it without choosing the folder every time. Provide a clear fallback for
-browsers that cannot persist a directory handle. ROM bytes stay local and must not be uploaded to the site or
-committed to the repository.
+The second site needs a setup screen before game launch. A player supplies their legally owned ROM library locally;
+each file is hashed once and matched across every tracked game identity, and the exact complete sets unlock their
+game cards independently. Unknown extras remain diagnostic rather than relocking an otherwise complete game.
+Support individual file upload, folder selection, and drag-and-drop of files or folders.
+Where the browser's File System Access API permits it, save the directory handle in IndexedDB, request or verify
+permission on the next visit, and let the player reuse it without choosing the folder every time. Provide a clear
+fallback for browsers that cannot persist a directory handle or expose dropped folders. ROM bytes stay local and
+must not be uploaded to the site or committed to the repository. The same screen is the future Mixup launcher:
+all three game cards begin locked, exact validation unlocks only that game, primary selection names the world being
+played, and a separate secondary role is reserved for future cross-game characters without pretending that mixing
+is implemented in this release.
 
 For Batman, Gradius, and DaiOuJou, publish exact acquisition-neutral identity instructions: expected filename or
 MAME set member names, exact byte length, SHA-256, region, revision, and whether the input is a raw cartridge,
@@ -7366,6 +7372,16 @@ files, explain archive or folder-shape mistakes, and name likely encrypted-versu
 byte-order, revision, or wrong-MAME-set causes when evidence supports them. Never claim a likely diagnosis as
 certain. Give the player exact corrective instructions and preserve a copyable diagnostic report.
 
+The first foundation slice adds the isolated `rom-site/`, `dist-rom` builder and zero-exception audit, exact tracked
+identity catalogue, one-pass global local-file/folder inventory, saved-handle permission lifecycle, and a separate
+`mixup` publish script. Mixed folders can unlock all matching cards; unrelated extras remain visible diagnostics,
+and duplicates or conflicting required names lock only the affected game. DaiOuJou's accepted decrypted 6 MiB
+maincpu alternative replaces both raw `ddb10_10_8_434f.u45` and `ddp3_bios.u37`, alongside the other eight
+members. The site remains deliberately noncompliant until all three games boot from those validated local inputs. The
+DaiOuJou cold-start path is not blocked on a captured RAM seed: `tests/w383coldboot.test.js` already proves `Game`
+boots from a zeroed 128 KiB RAM image through warning, coin, START, and gameplay. Runtime ROM extraction and
+removing cartridge-asset fetches remain the pending work.
+
 Definition of done:
 
 1. A separate asset-free distribution and Cloudflare Pages deployment exists alongside the current site.
@@ -7380,3 +7396,11 @@ Definition of done:
 7. Build gates prove the asset-free package contains no generated cartridge data, deployment succeeds, and live
    checks cover the setup screen, one valid local boot per game, persistence fallback, and rejection diagnostics.
 8. The current asset-backed production URL remains live and unchanged unless separately authorized.
+
+### D110: FUTURE DAIOUJOU MOD - SHOW HITBOXES
+
+**OPEN, FUTURE MOD; DO NOT IMPLEMENT DURING D109.** Add a `Show Hitboxes` switch to the DaiOuJou mod menu,
+default off. When enabled during play, it visibly outlines every relevant collision region the runtime supports:
+players, enemies, player attacks, enemy bullets, items, and any other damaging or collectible regions that
+participate in collision checks. The overlay is diagnostic presentation only. It must read the live collision shapes
+without changing collision behavior, timing, damage, collection, replay state, or the default-off cartridge path.

@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Mixup asset-free local ROM setup">
+  <title>Mixup | Local ROM setup</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="src/setup.js"></script>
+</head>
+<body>
+  <header class="hero">
+    <p class="eyebrow">MIXUP / ASSET-FREE EDITION</p>
+    <h1>Your cartridges stay on your device.</h1>
+    <p class="lede">This site ships source code and a setup shell, not game data. Choose a legally owned cartridge image or extracted MAME folder. Checksums are calculated in this browser. Files are never uploaded.</p>
+  </header>
+
+  <main>
+    <section class="panel setup" aria-labelledby="setup-title">
+      <div class="section-heading">
+        <div>
+          <p class="step">01 / SELECT</p>
+          <h2 id="setup-title">Add your local ROMs</h2>
+        </div>
+        <span class="local-badge">LOCAL ONLY</span>
+      </div>
+
+      <label class="field" for="game">
+        <span>Identity details and diagnostic view</span>
+        <small>Every selected file is hashed once and matched against all three games. This selector changes only the table and report shown below.</small>
+        <select id="game">
+          <option value="batman">Batman: Return of the Joker</option>
+          <option value="gradius">Gradius</option>
+          <option value="ddpdoj">DoDonPachi DaiOuJou Black Label</option>
+        </select>
+      </label>
+
+      <div class="picker-grid">
+        <label class="picker" for="files">
+          <strong>Choose individual files</strong>
+          <span>One cartridge image or multiple extracted MAME members</span>
+          <input id="files" type="file" multiple>
+        </label>
+        <label class="picker" for="folder-files">
+          <strong>Choose a folder</strong>
+          <span>Compatible fallback for browsers without saved folder access</span>
+          <input id="folder-files" type="file" webkitdirectory multiple>
+        </label>
+      </div>
+
+      <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop ROM files or folders">
+        <strong>Drop files or folders here</strong>
+        <span>Folder dropping works in browsers that expose directory entries. Otherwise use Choose a folder above.</span>
+      </div>
+
+      <div class="actions">
+        <button id="choose-folder" type="button">Choose and remember folder</button>
+        <button id="reuse-folder" type="button" class="secondary" hidden>Reuse saved folder</button>
+        <button id="forget-folder" type="button" class="quiet" hidden>Forget saved folder</button>
+      </div>
+
+      <p class="privacy"><strong>Privacy:</strong> ROM bytes are read only for local validation and are not uploaded, logged, placed in URLs, cached by the service worker, or saved in IndexedDB. Where supported, only the folder handle is saved. The browser can revoke it at any time.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="identity-title">
+      <div class="section-heading">
+        <div>
+          <p class="step">02 / VERIFY</p>
+          <h2 id="identity-title">Exact accepted identities</h2>
+        </div>
+      </div>
+      <div id="identities"></div>
+    </section>
+
+    <section class="panel report-panel" aria-labelledby="report-title">
+      <div class="section-heading">
+        <div>
+          <p class="step">03 / DIAGNOSE</p>
+          <h2 id="report-title">Local checksum report</h2>
+        </div>
+        <button id="copy-report" type="button" class="secondary" disabled>Copy report</button>
+      </div>
+      <p id="status" role="status" aria-live="polite">Ready for local validation. No files have been read.</p>
+      <pre id="report">Choose files or a folder to calculate local checksums.</pre>
+    </section>
+
+    <section class="panel launcher" aria-labelledby="launcher-title">
+      <div class="section-heading">
+        <div>
+          <p class="step">04 / MIXUP LAUNCHER</p>
+          <h2 id="launcher-title">Choose the world to play</h2>
+        </div>
+      </div>
+      <p class="launcher-help">Game cards stay locked until that game's exact local identity set validates. The primary game supplies the world being played. Secondary games will later supply characters or a character roster, but cross-game combination is future functionality and is not faked here.</p>
+      <div id="game-cards" class="game-cards" aria-label="Primary game selection">
+        <button type="button" class="game-card" data-game-id="batman" disabled>
+          <span class="card-role">PRIMARY WORLD</span><strong>Batman</strong><span class="card-state">ROM required</span>
+        </button>
+        <button type="button" class="game-card" data-game-id="gradius" disabled>
+          <span class="card-role">PRIMARY WORLD</span><strong>Gradius</strong><span class="card-state">ROM required</span>
+        </button>
+        <button type="button" class="game-card" data-game-id="ddpdoj" disabled>
+          <span class="card-role">PRIMARY WORLD</span><strong>DaiOuJou</strong><span class="card-state">ROM set required</span>
+        </button>
+      </div>
+      <div class="role-preview">
+        <div><span>Primary world</span><strong id="primary-world">None selected</strong></div>
+        <div aria-disabled="true"><span>Secondary characters</span><strong>Future Mixup functionality</strong></div>
+      </div>
+    </section>
+
+    <section class="panel pending" aria-labelledby="boot-title">
+      <p class="step">05 / BOOT</p>
+      <h2 id="boot-title">Game launch is not enabled yet</h2>
+      <p>This foundation build validates local files and saved-folder behavior. It is not the compliant public release yet: Batman, Gradius, and DaiOuJou still need their local extraction and boot paths connected before the 2026-08-28 deadline.</p>
+      <button type="button" disabled>Launch game (pending)</button>
+    </section>
+  </main>
+
+  <footer>
+    <span>Mixup asset-free setup</span>
+    <span>Build <code id="build">development</code></span>
+  </footer>
+</body>
+</html>

@@ -14,7 +14,10 @@
     "regress": "node tools/oracle/regress.mjs",
     "test-all": "node tools/test-all.mjs",
     "frame": "node tools/render-frame.mjs",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "test-rom-site": "node --test rom-site/tests/",
+    "build-rom-site": "node tools/build-rom-dist.mjs",
+    "publish-rom-site": "node tools/publish-rom.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
