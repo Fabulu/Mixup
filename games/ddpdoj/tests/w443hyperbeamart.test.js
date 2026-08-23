@@ -506,9 +506,9 @@ test('W443/W497 SECTION 5: W226\'s $24B900+$02AA serves all beam groups whole',
   assert.ok(holds(PTRTAB, PTRTAB + PAIRS * PAIRSTRIDE),
     'and so is the pair table it abuts');
   // W497 adds one unrelated 24-byte hit-flag window and no beam window moves.
-  // W500-W511 add 116 windows outside the beam range; all are disjoint or abutting.
-  assert.equal(ROM_WINDOW_COUNT, 749,
-    'W497 and W500-W511 reconcile the current exact RomWindows registry');
+  // W500-W512 add 122 windows outside the beam range; all are disjoint or abutting.
+  assert.equal(ROM_WINDOW_COUNT, 755,
+    'W497 and W500-W512 reconcile the current exact RomWindows registry');
   assert.equal(ROM_OVERLAP_PAIRS, 76,
     'the beam window is unchanged; W497 remains the only later forced overlap');
 });

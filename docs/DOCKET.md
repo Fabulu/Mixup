@@ -28,18 +28,20 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF PUBLISHED W511 (2026-08-23).** Dispatch remains **18 of 20**: W503 ports and registers
+**STANDING AS OF LOCAL W512 (2026-08-23), ATOP PUBLISHED W511.** Dispatch remains **18 of 20**: W503 ports and registers
 `[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
 natural loop-2 edge through type 7's complete five-script variant-0 list at `$290F66`, `$290F8E`, `$290FE2`,
-`$2910F6`, and `$291172`; W509 through W511 follow its authentic transition into inner state 1 and sequence
-list A entries 0 through 2 at `$2914F0`, `$29154A`, and `$2915A0`. Together they preserve 213 ordered
-presentation records and eight complete `$8003` resource lifecycles. W509 additionally proves
-`$8005 $0001 $0003` and its two-node mode-0 auxiliary palette resource. W511 emits 34 records across 13, 13,
-and 8-record groups at exact five-frame `$0404` cadence, spends the exact `$60` wait, leaves the auxiliary
-loader idle, clears all 34 records, and advances sequence-list A's cursor from 8 to 12 while remaining in inner
-state 1. Production build `20260823005140` publishes W507 through W511 from commits `f942dbe`, `faab91f`,
-`1f1cb60`, `38bf2e6`, and `d7c2da0` after the full publication gate and three consecutive live confirmations.
-The exact next gameplay edge is sequence list A entry 3 at `$291604`; W516 is the next publication point.
+`$2910F6`, and `$291172`; W509 through W512 follow its authentic transition into inner state 1 and sequence
+list A entries 0 through 3 at `$2914F0`, `$29154A`, `$2915A0`, and `$291604`. Together they preserve 246
+ordered presentation records and nine complete `$8003` resource lifecycles. W509 proves `$8005 $0001
+$0003` and its complete two-node mode-0 auxiliary palette resource. W512 emits 33 records across 9, 11, and
+13-record groups on consecutive `$0000` cadence, spends the exact `$C0` wait, clears all 33 records, and
+advances sequence-list A's cursor from 12 to 16 while remaining in inner state 1. Its late `$8005 $0002 $0004`
+authentically leaves the two-node `$290D54` first phase active in state 2 at the boundary, with both timing-index-4
+nodes at progress 4, banner 1 still live, and banner 2 pending. Production build `20260823005140` publishes
+W507 through W511 from commits `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0` after the full
+publication gate and three consecutive live confirmations. W512 is the first unpublished wave after W511. The exact next
+gameplay edge is sequence list A entry 4 at `$29166C`; W516 remains the next publication point.
 The two without a handler are `[16] $256E7A` and `[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
@@ -2153,6 +2155,51 @@ sparse longwords add seven disjoint windows and 124 bytes, so table regeneration
 446,167 bytes, and 76 overlap pairs. W511 was committed as `d7c2da0` and closes the W507-W511 five-wave
 batch. Browser assets were regenerated before its quiet-tree publication.
 
+**W512 FOLLOWS SEQUENCE LIST A'S EXACT FOURTH SCRIPT.** Entry 3 at `$2914D4` points to `$291604`,
+and entry 4 at `$2914D8` points to the next boundary `$29166C`. The exact fourth script spans
+`$291604..$29166B`, is `$68` bytes, and stops at that next script without reading it:
+
+```text
+8000 0000
+8001 3000 0200
+0079 0077 0095 0080 0065 0106 00D7 0062 006C
+8001 2800 0200
+007F 0093 0007 0084 0077 0076 0064 0085 0007 0081 0074
+8001 2000 0200
+00C9 000A 005F 00D4 0054 00B6 005B 005D 004A 0050 0005 0005 0005
+8002 00C0
+8005 0002 0004
+8003 0000
+FFFF
+```
+
+The 33 ordered picture words select 29 distinct spawn-table indices. Twenty-four distinct selections reuse prior
+exact windows. W512 declares only five absent longwords: `$290402 -> $1EB338` for index `$50`, `$2904D6
+-> $1EBAAC` for `$85`, `$29059A -> $1EC190` for `$B6`, `$2905E6 -> $1EC43C` for `$C9`, and
+`$29061E -> $1EC634` for `$D7`. The three `$8001` groups create 9, 11, and 13 records rooted at
+`$30000200`, `$28000200`, and `$20000200`; every packed position advances by `$400`. `$8000 $0000`
+makes the first record eligible on the first driver call after cursor 12 and emits all remaining records on
+consecutive driver frames. `$8002 $00C0` spends the exact wait.
+
+The late `$8005 $0002 $0004` reuses both W372 descriptor sets and W509's `$225AB8/$225B38` palette
+targets. Because banner 1 is already live, state 1 does not take W509's no-prior-banner shortcut: it loads
+`$290D54` through `$246710`, producing a mode-0 two-node fade-to-black chain for the `$40` and `$80`
+palette offsets, with 32 words per node and timing index 4. `$8003 $0000` simultaneously completes operand
+0's existing one-node `$290E58` primary lifecycle. Eight driver frames after the auxiliary first phase loads, the
+primary resource is free and `$FFFF` advances sequence-list cursor 12 to 16. At that exact boundary auxiliary
+state 2 is still active, both first-phase nodes are at progress 4, banner 1 remains published, and pending banner
+2 plus resource index 4 remain stored. The later state-3 `$290E3A` phase has not started, and W512 does not
+run it beyond this script's boundary.
+
+The sequence driver clears all 33 presentation records at cursor 16 while inner state and active sub-state remain
+1 and the shared script cursor returns to zero. No unsupported opcode, production behavior, source-call inventory,
+or context-key inventory change was needed. The next natural call fails loudly at intentionally unexported entry-4
+script `$29166C`; no later sequence script, other sequence list, or variant was ported. The exact script plus five
+sparse longwords add six disjoint windows and 124 bytes, so local table regeneration measures 755 windows,
+446,291 bytes, and 76 overlap pairs. The direct natural integration passes 1/1, the compact natural-integration,
+slot-7, live-registry, and coverage set passes 32/32 with no failures or skips, and `export-tables.py --verify`
+passes. W512 is the first unpublished wave after W511; no full suite, browser export, build, publication, or push ran.
+
 **W507-W511 PUBLICATION FOLLOW-UP:** Production build `20260823005140` publishes all five waves from
 source commits `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. The quiet-tree gate passed
 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
@@ -2166,8 +2213,8 @@ bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate with zero 
 gate with zero skips, the distribution build, and the ROM-leak guard. Deployment and three consecutive
 live confirmations passed.
 
-This does not yet identify every ending-selection condition or close D37. After published W511, the exact next
-gameplay edge is sequence list A entry 3's type-7 script at `$291604`, again following only the first concrete
+This does not yet identify every ending-selection condition or close D37. After W512, the exact next
+gameplay edge is sequence list A entry 4's type-7 script at `$29166C`, again following only the first concrete
 runtime edge rather than broadening into speculative ending-selection or other-variant research.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own

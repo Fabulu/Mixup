@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; published W511 carries the natural stage-5 type `$13` handoff through variant 0's complete five-script list and sequence list A's first three scripts, with the third script's 34 ordered pool spawns, 13/13/8 cartridge position groups, five-frame `$0404` cadence, `$60` wait, operand-0 resource lifecycle, and cursor-12 pool clear; production build `20260823005140` publishes W507 through W511, the next bounded edge is sequence list A entry 3 at `$291604`, and the full second loop and docket remain in progress |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | active Black Label Version-B translation; W512 carries the natural stage-5 type `$13` handoff through variant 0's complete five-script list and sequence list A's first four scripts, with entry 3's 33 ordered pool spawns, 9/11/13 cartridge position groups, consecutive `$0000` cadence, `$C0` wait, operand-0 primary resource lifecycle, and `$8005 $0002 $0004` auxiliary phase-1 handoff; production build `20260823005140` remains published through W511, the next bounded edge is sequence list A entry 4 at `$29166C`, and the full second loop and docket remain in progress |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -181,8 +181,10 @@ Batman gate with zero skips**, the distribution build, and the repository ROM-le
 guard. Production build `20260823005140` supersedes `20260822223516`, carries
 W507 through W511, and passed deployment plus three consecutive live confirmations.
 W511's direct natural integration passes 1/1, and its compact natural-integration,
-slot-7, ROM-registry, and coverage set passes 30/30. The published export holds 749
-windows and 446,167 bytes with 76 overlap pairs. The source commits are `f942dbe`,
+slot-7, ROM-registry, and coverage set passes 30/30. W512's expanded direct integration
+passes 1/1, and its compact directly affected set passes 32/32. `export-tables.py --verify`
+passes at 755 windows and 446,291 bytes with 76 overlap pairs; the published W511 export
+remains 749 windows and 446,167 bytes with the same 76 pairs. The source commits are `f942dbe`,
 `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. The next publication point is W516.
 
 **A skip is not a pass.** Both gate runners tell apart a legitimate
