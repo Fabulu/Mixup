@@ -1,4 +1,4 @@
-// W504-W509: drive the loop-2 type-$13 handoff through variant 0 and sequence list A's first script.
+// W504-W510: drive the loop-2 type-$13 handoff through variant 0 and sequence list A's first two scripts.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -32,7 +32,8 @@ const THIRD_SCRIPT = 0x290fe2;
 const FOURTH_SCRIPT = 0x2910f6;
 const FIFTH_SCRIPT = 0x291172;
 const SEQUENCE_A_FIRST = 0x2914f0;
-const NEXT_SCRIPT = 0x29154a;
+const SEQUENCE_A_SECOND = 0x29154a;
+const NEXT_SCRIPT = 0x2915a0;
 const FIRST_INDICES = Object.freeze([0xe0, 0x4a, 0x65, 0xcc, 0x73, 0x5b, 0x59, 0x05]);
 const FIRST_ART = Object.freeze([
   0x1ec778, 0x1eb260, 0x1eb62c, 0x1ec4a8,
@@ -120,6 +121,22 @@ const SEQUENCE_A_POSITIONS = Object.freeze([
   ...Array.from({ length: 8 }, (_, i) => 0x28000200 + i * 0x400),
   ...Array.from({ length: 8 }, (_, i) => 0x20000200 + i * 0x400),
 ]);
+const SEQUENCE_A_SECOND_INDICES = Object.freeze([
+  0x7f, 0x93, 0x07, 0x84, 0x77, 0x76, 0x64, 0xe4, 0x62, 0xd8, 0xf4, 0x54,
+  0xb1, 0xa2, 0x74, 0xd4, 0x54, 0xc5, 0x6b, 0x59,
+  0x64, 0x5a, 0x5b, 0x59, 0x05, 0x05, 0x05,
+]);
+const SEQUENCE_A_SECOND_ART = Object.freeze([
+  0x1eb9d4, 0x1ebca4, 0x1ea8f4, 0x1eba88, 0x1eb8b4, 0x1eb890, 0x1eb608,
+  0x1ec808, 0x1eb5c0, 0x1ec658, 0x1eca48, 0x1eb3c8,
+  0x1ec0dc, 0x1ebec0, 0x1eb848, 0x1ec5c8, 0x1eb3c8, 0x1ec3ac, 0x1eb704, 0x1eb47c,
+  0x1eb608, 0x1eb4a0, 0x1eb4c4, 0x1eb47c, 0x1ea8ac, 0x1ea8ac, 0x1ea8ac,
+]);
+const SEQUENCE_A_SECOND_POSITIONS = Object.freeze([
+  ...Array.from({ length: 12 }, (_, i) => 0x30000200 + i * 0x400),
+  ...Array.from({ length: 8 }, (_, i) => 0x28000200 + i * 0x400),
+  ...Array.from({ length: 7 }, (_, i) => 0x20000200 + i * 0x400),
+]);
 
 function clearSpriteCounters(ram) {
   for (const bucket of BUCKETS) ram.setU16(bucket.counter, 0);
@@ -145,7 +162,7 @@ function chainNodes(ram, root) {
   return out;
 }
 
-test('W504-W509: natural type $13 handoff runs variant 0 and sequence-list-A entry 0',
+test('W504-W510: natural type $13 handoff runs variant 0 and sequence-list-A entries 0 and 1',
   { skip: SKIP }, () => {
     assert.equal(ROM.u32(0x290f12), 0x290f1e,
       '$290F12 variant 0 points at its five-step list');
@@ -164,8 +181,10 @@ test('W504-W509: natural type $13 handoff runs variant 0 and sequence-list-A ent
       'variant 0 terminates immediately after its fifth script');
     assert.equal(ROM.u32(SLOT7.seqLists[0]), SEQUENCE_A_FIRST,
       'inner state 1 begins sequence list A at $2914F0');
-    assert.equal(ROM.u32(SLOT7.seqLists[0] + 4), NEXT_SCRIPT,
-      'sequence list A entry 1 is the next concrete $29154A script');
+    assert.equal(ROM.u32(SLOT7.seqLists[0] + 4), SEQUENCE_A_SECOND,
+      'sequence list A entry 1 is $29154A');
+    assert.equal(ROM.u32(SLOT7.seqLists[0] + 8), NEXT_SCRIPT,
+      'sequence list A entry 2 is the next concrete $2915A0 script');
     assert.deepEqual(Array.from({ length: 20 }, (_, i) => ROM.u16(FIRST_SCRIPT + i * 2)), [
       0x8000, 0x3000, 0x8001, 0x3c00, 0x0800,
       0x00e0, 0x004a, 0x0065, 0x00cc, 0x0073,
@@ -245,6 +264,20 @@ test('W504-W509: natural type $13 handoff runs variant 0 and sequence-list-A ent
       0x0000, 0x0000, 0x0040, 0x0022, 0x5ab8, 0x001f, 0x0003,
       0x0000, 0x0000, 0x0080, 0x0022, 0x5b38, 0x001f, 0x0003,
     ], '$290E1C is the exact two-node mode-0 palette resource selected by $8005');
+    assert.deepEqual(Array.from({ length: 43 }, (_, i) => ROM.u16(SEQUENCE_A_SECOND + i * 2)), [
+      0x8000, 0x0000,
+      0x8001, 0x3000, 0x0200,
+      0x007f, 0x0093, 0x0007, 0x0084, 0x0077, 0x0076, 0x0064, 0x00e4,
+      0x0062, 0x00d8, 0x00f4, 0x0054,
+      0x8001, 0x2800, 0x0200,
+      0x00b1, 0x00a2, 0x0074, 0x00d4, 0x0054, 0x00c5, 0x006b, 0x0059,
+      0x8001, 0x2000, 0x0200,
+      0x0064, 0x005a, 0x005b, 0x0059, 0x0005, 0x0005, 0x0005,
+      0x8002, 0x00c0, 0x8003, 0x0000, 0xffff,
+    ], '$29154A..$29159F is sequence list A\'s exact second script');
+    assert.deepEqual(SEQUENCE_A_SECOND_INDICES.map((i) =>
+      ROM.u32(SCRIPT7.spawnTable + i * 4)), SEQUENCE_A_SECOND_ART,
+      'sequence list A entry 1 resolves all 27 ordered picture words');
 
     const ram = new Ram();
     const log = new UnportedLog();
@@ -313,9 +346,20 @@ test('W504-W509: natural type $13 handoff runs variant 0 and sequence-list-A ent
     let auxPaletteB = [];
     let sawSequenceCursor4 = false;
     let sawSequencePoolClear = false;
+    let sequenceSecondStartFrame = null;
+    let maxSequenceSecondLive = 0;
+    let maxSequenceSecondWait = 0;
+    let sequenceSecondPeak = [];
+    let lastSequenceSecondLive = 0;
+    const sequenceSecondSpawnFrames = [];
+    let sawSequenceSecondResource = false;
+    let sequenceSecondAuxActive = false;
+    let auxHandleAtSecondStart = null;
+    let sawSequenceCursor8 = false;
+    let sawSequenceSecondPoolClear = false;
     let nextError = null;
     const firstSeenArt = new Set();
-    for (let frame = 0; frame < 1900 && nextError == null; frame++) {
+    for (let frame = 0; frame < 2200 && nextError == null; frame++) {
       clearSpriteCounters(ram);
       ctx.budget.beginFrame();
       try {
@@ -350,7 +394,7 @@ test('W504-W509: natural type $13 handoff runs variant 0 and sequence-list-A ent
         maxFirstLive = Math.max(maxFirstLive, live.length);
         for (const { art } of live) firstSeenArt.add(art);
       }
-      if (sequenceCursor === 4 && live.length > maxSecondLive) {
+      if (innerState === 0 && sequenceCursor === 4 && live.length > maxSecondLive) {
         maxSecondLive = live.length;
         secondPeak = live;
       }
@@ -406,9 +450,28 @@ test('W504-W509: natural type $13 handoff runs variant 0 and sequence-list-A ent
           sequencePeak = live;
         }
       }
-      if (innerState === 1 && sequenceCursor === 4) {
+      if (innerState === 1 && ram.u16(SLOT7.work + 0x06) === 1 && sequenceCursor === 4) {
         sawSequenceCursor4 = true;
+        if (sequenceSecondStartFrame === null) {
+          sequenceSecondStartFrame = frame;
+          auxHandleAtSecondStart = ram.u32(0x81e10e);
+        }
         if (live.length === 0) sawSequencePoolClear = true;
+        if (ram.u16(0x81e108) !== 0) sequenceSecondAuxActive = true;
+        if (ram.u16(SCRIPT7.cursor) === 0x4c) {
+          maxSequenceSecondWait = Math.max(maxSequenceSecondWait, ram.u16(SCRIPT7.loopCount));
+        }
+        if (ram.u32(SCRIPT7.resource) !== 0) sawSequenceSecondResource = true;
+        if (live.length > lastSequenceSecondLive) sequenceSecondSpawnFrames.push(frame);
+        lastSequenceSecondLive = Math.max(lastSequenceSecondLive, live.length);
+        if (live.length > maxSequenceSecondLive) {
+          maxSequenceSecondLive = live.length;
+          sequenceSecondPeak = live;
+        }
+      }
+      if (innerState === 1 && sequenceCursor === 8) {
+        sawSequenceCursor8 = true;
+        if (live.length === 0) sawSequenceSecondPoolClear = true;
       }
     }
 
@@ -499,26 +562,51 @@ test('W504-W509: natural type $13 handoff runs variant 0 and sequence-list-A ent
     assert.equal(maxSequenceWait, 0xc0,
       'sequence list A entry 0 held at its exact $C0 wait count');
     assert.ok(sawSequenceResource,
-      'its $8003 operand 0 completed the existing one-node $290E58 lifecycle');
-    assert.equal(ram.u32(SCRIPT7.resource), 0,
-      'the sequence resource handle was freed and cleared before $FFFF');
+      'entry 0 $8003 operand 0 completed the existing one-node $290E58 lifecycle');
     assert.ok(sawSequenceCursor4,
       '$FFFF advanced sequence list A from cursor 0 to cursor 4');
     assert.ok(sawSequencePoolClear,
-      'the sequence driver cleared all 26 pool records at cursor 4');
+      'the sequence driver cleared all 26 entry-0 pool records at cursor 4');
+    assert.equal(maxSequenceSecondLive, 27,
+      'sequence list A entry 1 allocated all 27 pool records');
+    assert.deepEqual(sequenceSecondPeak.map(({ art }) => art), SEQUENCE_A_SECOND_ART,
+      'sequence list A entry 1 preserved every ordered art pointer and repetition');
+    assert.deepEqual(sequenceSecondPeak.map(({ position }) => position), SEQUENCE_A_SECOND_POSITIONS,
+      'sequence list A entry 1 preserved its 12, 8, and 7-record position groups and $400 bumps');
+    assert.equal(sequenceSecondSpawnFrames[0] - sequenceSecondStartFrame, 1,
+      '$8000 $0000 made the first record eligible on the next script-driver frame');
+    assert.deepEqual(sequenceSecondSpawnFrames.slice(1).map((at, i) =>
+      at - sequenceSecondSpawnFrames[i]), Array(26).fill(1),
+      'reload zero emitted all remaining entry-1 records on consecutive driver frames');
+    assert.equal(maxSequenceSecondWait, 0xc0,
+      'sequence list A entry 1 held at its exact $C0 wait count');
+    assert.ok(sawSequenceSecondResource,
+      'entry 1 $8003 operand 0 completed the existing one-node $290E58 lifecycle');
+    assert.equal(sequenceSecondAuxActive, false,
+      'entry 1 contains no $8005 and never rearmed the auxiliary loader');
+    assert.equal(auxHandleAtSecondStart, auxHandle,
+      'entry 1 began with W509\'s freed auxiliary handle still cached');
+    assert.equal(ram.u32(0x81e10e), auxHandleAtSecondStart,
+      'entry 1 left the stale auxiliary handle unchanged');
+    assert.equal(ram.u32(SCRIPT7.resource), 0,
+      'entry 1 freed and cleared its primary resource handle before $FFFF');
+    assert.ok(sawSequenceCursor8,
+      '$FFFF advanced sequence list A from cursor 4 to cursor 8');
+    assert.ok(sawSequenceSecondPoolClear,
+      'the sequence driver cleared all 27 entry-1 pool records at cursor 8');
     assert.equal(ram.u16(SLOT7.work + SLOT7.innerAt), 1,
-      'the first sequence script leaves the driver in inner state 1');
+      'the second sequence script leaves the driver in inner state 1');
     assert.equal(ram.u16(SLOT7.work + 0x06), 1,
       'inner state 1 remains in its active sequence sub-state');
-    assert.equal(ram.u16(SLOT7.work + 0x0c), 4,
-      'sequence list A now selects entry 1');
+    assert.equal(ram.u16(SLOT7.work + 0x0c), 8,
+      'sequence list A now selects entry 2');
     assert.equal(ram.u16(SCRIPT7.cursor), 0,
       'the inter-script pool clear reset the shared script cursor');
     assert.deepEqual(livePoolRecords(ram), [],
       'the presentation pool remains clear at the next concrete boundary');
     assert.ok(nextError instanceof Unreached,
-      `the bounded run should stop at sequence list A entry 1, got ${nextError}`);
+      `the bounded run should stop at sequence list A entry 2, got ${nextError}`);
     assert.equal(nextError.romAddress, NEXT_SCRIPT,
-      'the next executable edge is sequence list A entry 1 at $29154A');
+      'the next executable edge is sequence list A entry 2 at $2915A0');
     assert.equal(ram.u16(ALLOC.createSp), 0, 'the type-7 create queue drained');
   });

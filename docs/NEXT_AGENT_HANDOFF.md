@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (local W509; production build `20260822223516` remains W502 through W506)
+Updated: 2026-08-23 (local W510; production build `20260822223516` remains W502 through W506)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,41 +8,40 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **Local W509 follows W503's exact natural stage-5 type-`$13`
+`docs/DOCKET.md` is authoritative. **Local W510 follows W503's exact natural stage-5 type-`$13`
 to type-7 handoff through variant 0's complete five-script list, its authentic terminator, and sequence list A
-entry 0.** On loop 2 the menu gate short-circuits, posted value 2 selects variant 0, `$290F12` selects list
-`$290F1E`, and its five entries read `$290F66`, `$290F8E`, `$290FE2`, `$2910F6`, and `$291172`
-before `$FFFFFFFF` selects inner state 1. Sequence list A at `$2914C8` then selects `$2914F0`. The six
-scripts emit 152 ordered pool records and complete six `$8003` lifecycles. W509's 26 records use 25 distinct
-art pointers in position groups of 10, 8, and 8, delay the first allocation by 32 frames, spend the exact `$C0`
-wait, and complete operand 0's one-node `$290E58` resource lifecycle. Its `$FFFF` advances sequence-list
-cursor 0 to 4 and clears all 26 records while inner state remains 1. Top-level dispatch coverage remains 18/20;
-only types 16 and 18 remain unknown.
+entries 0 and 1.** On loop 2 the menu gate short-circuits, posted value 2 selects variant 0, `$290F12` selects
+list `$290F1E`, and its five entries read `$290F66`, `$290F8E`, `$290FE2`, `$2910F6`, and `$291172`
+before `$FFFFFFFF` selects inner state 1. Sequence list A at `$2914C8` then selects `$2914F0` and `$29154A`.
+The seven scripts emit 179 ordered pool records and complete seven `$8003` lifecycles. W510's 27 records use
+22 distinct art pointers in position groups of 12, 8, and 7, arrive on consecutive driver frames, spend the exact
+`$C0` wait, and complete operand 0's one-node `$290E58` resource lifecycle. Its `$FFFF` advances
+sequence-list cursor 4 to 8 and clears all 27 records while inner state remains 1. Top-level dispatch coverage
+remains 18/20; only types 16 and 18 remain unknown.
 
-W509 proves the previously unsupported `$8005 word word` interpreter arm and the reached `$2907E2`
-auxiliary loader path. `$8005 $0001 $0003` arms only while auxiliary state is idle but always advances the
-script cursor by six. With no prior banner, the loader publishes banner 1, skips its first resource phase, and
-uses index 3 to resolve `$290DBA -> $290E1C`. The direct production path loads two mode-0 palette nodes,
-each with a 32-word target and timing index 3, waits exactly 32 animation steps, frees the chain, and returns
-the auxiliary state to idle while preserving the cartridge's stale cached handle. The integration pins both
-palette targets and the cartridge's channel-16 skip, then stops at the deliberate next browser boundary
-`$29154A`.
+W509 remains the only new production behavior in this sequence-list slice. Its `$8005 $0001 $0003` arm and
+reached `$2907E2` loader publish banner 1, run the exact two-node mode-0 `$290E1C` palette resource for 32
+animation steps, free it, and return auxiliary state to idle while preserving the cartridge's cached handle.
+W510 contains only existing `$8000`, `$8001`, plain-data, `$8002`, `$8003`, and `$FFFF` arms. It does not
+rearm or mutate the auxiliary loader and requires no source-call or context-key inventory change. The natural
+integration stops at the deliberate next browser boundary `$2915A0`.
 
-The exact `$5A`-byte script, eleven absent sparse four-byte spawn longwords, and two exact 64-byte palette
-targets take the local export from 718 to 732 windows and 445,659 to 445,921 bytes. Fourteen distinct spawn
-selections and all descriptors reuse prior windows. All fourteen declarations are disjoint and overlap pairs
-remain 76. The focused natural integration, slot-7 interpreter, live registry, and coverage set passes 30/30;
-the direct W509 rerun passes 1/1. No full suite, browser export, build, publication, commit, or push was run.
+The exact `$56`-byte script and nine absent sparse four-byte spawn longwords take the local export from 732 to
+742 windows and 445,921 to 446,043 bytes. Thirteen distinct selections and operand 0's resource reuse prior
+windows. All ten declarations are disjoint and overlap pairs remain 76. The focused natural integration, slot-7
+interpreter, live registry, and coverage set passes 30/30; the direct W510 rerun passes 1/1. No full suite,
+browser export, build, publication, commit, or push was run.
 
 Production build `20260822223516` remains W502 through W506. Its quiet-tree publication passed
 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
 with zero skips, the 27/27 Batman gate with zero skips, the distribution build, and the ROM-leak guard,
 then passed three consecutive live confirmations. The published source commits remain `36b289b`,
 `bb9046b`, `5236b8a`, `96b0235`, and `66ebeaa`; bounded stale-test repair `bcf6281` completed that tree.
-W507 is committed as `f942dbe`, W508 as `faab91f`, both remain unpublished, and W509 is local.
+W507, W508, and W509 are committed as `f942dbe`, `faab91f`, and `1f1cb60`, remain unpublished, and W510
+is local.
 
-The exact next gameplay/progression target after local W509 is sequence list A entry 1's type-7 script at
-`$29154A`. Follow only its first concrete runtime edge from W509's integration, and do not broaden into
+The exact next gameplay/progression target after local W510 is sequence list A entry 2's type-7 script at
+`$2915A0`. Follow only its first concrete runtime edge from W510's integration, and do not broaden into
 later sequence scripts, other variants, ending-selection reconnaissance, duplicate-only cleanup, or a guessed
 visual path.
 
@@ -66,7 +65,56 @@ the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage rem
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
 
-## W509 VERIFIED LOCALLY: SEQUENCE LIST A ENTRY 0 AND `$8005`
+## W510 VERIFIED LOCALLY: SEQUENCE LIST A ENTRY 1
+
+Sequence list A entry 1 at `$2914CC` selects `$29154A`; entry 2 at `$2914D0` selects the next boundary
+`$2915A0`. W510 exports exactly `$29154A+$56`, covering `$29154A..$29159F`, plus only the nine absent
+spawn-table longwords proved necessary by this script. It does not inspect the script at `$2915A0`.
+
+The exact 43-word script is:
+
+```text
+8000 0000
+8001 3000 0200
+007F 0093 0007 0084 0077 0076 0064 00E4 0062 00D8 00F4 0054
+8001 2800 0200
+00B1 00A2 0074 00D4 0054 00C5 006B 0059
+8001 2000 0200
+0064 005A 005B 0059 0005 0005 0005
+8002 00C0
+8003 0000
+FFFF
+```
+
+The 27 ordered selection words are `$07F,$093,$007,$084,$077,$076,$064,$0E4,$062,$0D8,$0F4,$054`,
+then `$0B1,$0A2,$074,$0D4,$054,$0C5,$06B,$059`, then
+`$064,$05A,$05B,$059,$005,$005,$005`. They resolve in that same order to
+`$1EB9D4,$1EBCA4,$1EA8F4,$1EBA88,$1EB8B4,$1EB890,$1EB608,$1EC808,$1EB5C0,$1EC658,$1ECA48,$1EB3C8`,
+then `$1EC0DC,$1EBEC0,$1EB848,$1EC5C8,$1EB3C8,$1EC3AC,$1EB704,$1EB47C`, then
+`$1EB608,$1EB4A0,$1EB4C4,$1EB47C,$1EA8AC,$1EA8AC,$1EA8AC`.
+
+The three `$8001` records install packed starts `$30000200`, `$28000200`, and `$20000200`. The plain-word
+arm adds `$00000400` after each spawn, so the exact position groups contain 12, 8, and 7 consecutive packed
+positions. `$8000 $0000` makes the first record arrive on the first script-driver call after sequence cursor 4;
+the zero reload then emits the remaining 26 on consecutive driver frames. `$8002 $00C0` waits at script
+cursor `$004C` for the exact loop count.
+
+`$8003 $0000` reuses operand 0's one-node `$290E58` primary resource, waits for its authentic chain to drain,
+frees it, and clears the primary handle. This script has no `$8005`, does not rearm the auxiliary loader, and
+leaves W509's cartridge-authentic stale freed auxiliary handle unchanged. No unsupported opcode or new
+production behavior was needed.
+
+The final `$FFFF` advances sequence-list cursor 4 to 8. The sequence driver's actual pool clear removes all
+27 records, while inner state and active sub-state remain 1 and the shared script cursor resets to zero. The
+next natural call throws `Unreached` at the deliberately unexported `$2915A0`. W510 adds one 86-byte script
+window and nine four-byte spawn-table windows: `$29042A->$1EB4A0` for `$05A`, `$29046E->$1EB704` for
+`$06B`, `$29054A->$1EBEC0` for `$0A2`, `$290586->$1EC0DC` for `$0B1`, `$2905D6->$1EC3AC` for `$0C5`,
+`$290612->$1EC5C8` for `$0D4`, `$290622->$1EC658` for `$0D8`, `$290652->$1EC808` for `$0E4`, and
+`$290692->$1ECA48` for `$0F4`. The ten disjoint declarations add 122 bytes, producing 742 windows,
+446,043 bytes, and 76 overlap pairs. The direct integration passes 1/1 and the compact natural-integration,
+slot-7, registry, and coverage set passes 30/30 with no failures or skips.
+
+## W509 COMMITTED AS `1f1cb60`: SEQUENCE LIST A ENTRY 0 AND `$8005`
 
 Inner state 1 initializes sequence list A at `$2914C8`. Entry 0 is `$2914F0`; entry 1 is `$29154A`.
 W509 exports exactly `$2914F0+$5A`, covering `$2914F0..$291549` and ending at the next script without
@@ -126,10 +174,10 @@ the cartridge channel step that skips value 16: target `$4210`, RGB 16/16/16, re
 
 The final `$FFFF` advances sequence-list cursor 0 to 4. The sequence driver's actual clear removes all 26
 presentation records; inner state and its active sub-state remain 1, and the shared script cursor resets to zero.
-The next natural call throws `Unreached` at the intentionally unexported `$29154A`. The direct integration
-passes 1/1, and the compact natural-integration, slot-7, registry, and coverage set passes 30/30 with no failures
-or skips. Fourteen disjoint declarations add 262 bytes, producing 732 windows, 445,921 bytes, and 76 overlap
-pairs.
+W509's former natural `Unreached` at `$29154A` is superseded by local W510's exact `$2915A0` boundary.
+The direct W509 integration passed 1/1, and its compact natural-integration, slot-7, registry, and coverage set
+passed 30/30 with no failures or skips. Fourteen disjoint declarations added 262 bytes, producing its historical
+732 windows, 445,921 bytes, and 76 overlap pairs.
 
 ## W508 COMMITTED AS `faab91f`: VARIANT 0'S FINAL SCRIPT AND LIST TRANSITION
 
@@ -172,10 +220,11 @@ waits for its node to drain, frees it, and clears the handle. No production sour
 The fifth `$FFFF` advances list cursor 16 to 20 and the sequence driver's existing clear removes all 16
 pool records. The following `$FFFFFFFF` takes the existing final-list arm, changes variant 0 from inner
 state 0 to inner state 1, initializes sequence list A at `$2914C8`, and resets its cursor. Its first pointer
-is `$2914F0`; local W509 now executes it as documented above. The direct W508 test passes 1/1, while its
-compact integration, slot-7, registry, and coverage set passes 30/30 with no failures or skips. W508 added four
-disjoint windows and 74 bytes, producing its historical 718 windows, 445,659 bytes, and 76 overlap pairs.
-Its former `$2914F0` stop is superseded by W509's exact `$29154A` boundary.
+is `$2914F0`; committed W509 executes it as documented above, and local W510 executes entry 1. The direct
+W508 test passes 1/1, while its compact integration, slot-7, registry, and coverage set passes 30/30 with no
+failures or skips. W508 added four disjoint windows and 74 bytes, producing its historical 718 windows,
+445,659 bytes, and 76 overlap pairs. Its former `$2914F0` stop is superseded by committed W509 and local
+W510's exact `$2915A0` boundary.
 
 ## W507 COMMITTED AS `f942dbe`: VARIANT 0'S FOURTH SCRIPT
 
@@ -224,7 +273,7 @@ waits for the chain, frees it, clears the handle, and reaches `$FFFF`. The seque
 the list cursor from 12 to 16 and clears all 43 pool records.
 
 The natural next call follows entry 4 at `$291172`; committed W508 executes it as documented above.
-W507's former `$291172` stop is superseded by W508's final-list transition and W509's exact `$29154A`
+W507's former `$291172` stop is superseded by committed W508/W509 and local W510's exact `$2915A0`
 boundary.
 
 ## W506 VERIFIED LOCALLY: VARIANT 0'S THIRD SCRIPT
@@ -270,7 +319,7 @@ low-word bump, then observes the inter-script pool clear and list-cursor advance
 The natural next call follows variant 0's entry 3 pointer at `$2910F6`; committed W507 executes it as
 documented above. Do not mistake the physically adjacent `$291040` variant-1 script for this path's next
 executable edge. W506 remains published in build `20260822223516`; its former `$2910F6` stop is superseded
-by committed W507/W508 and local W509's exact `$29154A` boundary.
+by committed W507/W508/W509 and local W510's exact `$2915A0` boundary.
 
 ## W505 VERIFIED LOCALLY: TYPE 7'S SECOND COMMON SCRIPT
 
@@ -313,7 +362,7 @@ alias already made this faithful, and W505 only clarifies the field comment and 
 
 The W505 integration observed 26 simultaneous pool records, the exact repeated art selections,
 the `$C0` wait, operand 0's resource load and release, list-cursor advance from 4 to 8, and the inter-script
-pool clear. Its former `$290FE2` stop is superseded by W506 through W509 above.
+pool clear. Its former `$290FE2` stop is superseded by W506 through W510 above.
 
 ## W504 VERIFIED LOCALLY: TYPE 7'S FIRST COMMON SCRIPT
 
@@ -344,7 +393,7 @@ The cartridge's missing tail is `$290A88 jsr $24681A / bne $2909F0`, `$290A92 js
 arm directly. The compact test drives `stageCreate(type $13)` through `runObjectDriver`, shortens only
 the initial `$60` tally timer, runs animation objects in normal frame order, and proves the type-7
 create, eight distinct visible art pointers, nonzero resource handle, wait, free, clear, and list-cursor
-advance. Its former `$290F8E` stop is superseded by W505 through W509 above.
+advance. Its former `$290F8E` stop is superseded by W505 through W510 above.
 
 ## W503 VERIFIED LOCALLY: STAGE-5 ENDING TALLY AND TYPE-7 HANDOFF
 
@@ -1409,7 +1458,7 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. Follow sequence list A entry 1's exact type-7 script at `$29154A` only through its first concrete executable
+1. Follow sequence list A entry 2's exact type-7 script at `$2915A0` only through its first concrete executable
    boundary. Do not widen into later sequence scripts or another variant.
 2. Exercise both cartridge-supported ships and all three numeric style slots through the complete Black Label
    second loop, closing only selector-specific gaps those runs prove.

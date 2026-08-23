@@ -28,17 +28,19 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF LOCAL W509 (2026-08-23).** Dispatch remains **18 of 20**: W503 ports and registers
+**STANDING AS OF LOCAL W510 (2026-08-23).** Dispatch remains **18 of 20**: W503 ports and registers
 `[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
 natural loop-2 edge through type 7's complete five-script variant-0 list at `$290F66`, `$290F8E`, `$290FE2`,
-`$2910F6`, and `$291172`; W509 follows its authentic transition into inner state 1 and sequence list A entry 0
-at `$2914F0`. Together they preserve 152 ordered presentation records and six complete `$8003` resource
-lifecycles. W509 additionally proves `$8005 $0001 $0003`, runs its two-node mode-0 auxiliary palette resource,
-delays the first of 26 records by 32 frames, spends the exact `$C0` wait, clears all 26 pool records, and advances
-sequence-list A's cursor from 0 to 4 while remaining in inner state 1. Production build `20260822223516` still
-publishes W502 through W506 after the full publication gate and three consecutive live confirmations; W507 is
-committed as `f942dbe`, W508 as `faab91f`, both remain unpublished, and W509 is local. The exact next gameplay
-edge is sequence list A entry 1 at `$29154A`. The two without a handler are `[16] $256E7A` and `[18] $24902A`.
+`$2910F6`, and `$291172`; W509 and W510 follow its authentic transition into inner state 1 and sequence list A
+entries 0 and 1 at `$2914F0` and `$29154A`. Together they preserve 179 ordered presentation records and seven
+complete `$8003` resource lifecycles. W509 additionally proves `$8005 $0001 $0003` and its two-node mode-0
+auxiliary palette resource. W510 emits 27 records across 12, 8, and 7-record groups with consecutive cadence,
+spends the exact `$C0` wait, leaves the auxiliary loader idle, clears all 27 records, and advances sequence-list A's
+cursor from 4 to 8 while remaining in inner state 1. Production build `20260822223516` still publishes W502
+through W506 after the full publication gate and three consecutive live confirmations; W507, W508, and W509
+are committed as `f942dbe`, `faab91f`, and `1f1cb60`, remain unpublished, and W510 is local. The exact next
+gameplay edge is sequence list A entry 2 at `$2915A0`. The two without a handler are `[16] $256E7A` and
+`[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -2065,12 +2067,52 @@ resource and performs its established load, wait, free, and handle-clear lifecyc
 
 The final `$FFFF` advances sequence-list A's cursor from 0 to 4, and the sequence driver actually clears all
 26 presentation records. Inner state remains 1, its active sub-state remains 1, and the shared script cursor
-returns to zero. The next natural call fails loudly at the intentionally unexported entry-1 script `$29154A`;
-no other variant or sequence list was inspected. The direct expanded integration passes 1/1, and the compact
-natural-integration, slot-7, registry, and coverage set passes 30/30 with no failures or skips. The script,
-eleven sparse spawn longwords, and two exact palette targets add fourteen disjoint windows and 262 bytes, so
-table regeneration measures 732 windows, 445,921 bytes, and 76 overlap pairs. No full suite, browser export,
-build, publication, commit, or push ran for local W509.
+returns to zero. Entry 1 is `$29154A`; that formerly unexported edge is covered by W510. The direct expanded
+integration passes 1/1, and the compact natural-integration, slot-7, registry, and coverage set passes 30/30
+with no failures or skips. The script, eleven sparse spawn longwords, and two exact palette targets add fourteen
+disjoint windows and 262 bytes, so table regeneration measures 732 windows, 445,921 bytes, and 76 overlap
+pairs. No full suite, browser export, build, or publication ran. W509 was subsequently committed as `1f1cb60`.
+
+**W510 FOLLOWS SEQUENCE LIST A'S EXACT SECOND SCRIPT.** Entry 1 at `$2914CC` points to `$29154A`,
+and entry 2 at `$2914D0` points to `$2915A0`. The exact second script spans `$29154A..$29159F`, is
+`$56` bytes, and stops at that next script without reading it:
+
+```text
+8000 0000
+8001 3000 0200
+007F 0093 0007 0084 0077 0076 0064 00E4 0062 00D8 00F4 0054
+8001 2800 0200
+00B1 00A2 0074 00D4 0054 00C5 006B 0059
+8001 2000 0200
+0064 005A 005B 0059 0005 0005 0005
+8002 00C0
+8003 0000
+FFFF
+```
+
+The 27 ordered picture words select 22 distinct spawn-table indices. Thirteen distinct selections reuse prior
+exact windows. W510 declares only the nine absent longwords: `$29042A -> $1EB4A0` for index `$5A`,
+`$29046E -> $1EB704` for `$6B`, `$29054A -> $1EBEC0` for `$A2`, `$290586 -> $1EC0DC` for
+`$B1`, `$2905D6 -> $1EC3AC` for `$C5`, `$290612 -> $1EC5C8` for `$D4`, `$290622 ->
+$1EC658` for `$D8`, `$290652 -> $1EC808` for `$E4`, and `$290692 -> $1ECA48` for `$F4`.
+The three `$8001` groups create 12, 8, and 7 records rooted at `$30000200`, `$28000200`, and
+`$20000200`; every packed position advances by `$400`.
+
+`$8000 $0000` makes the first record eligible on the first script-driver call after the cursor-4 boundary and
+emits all remaining records on consecutive driver frames. `$8002 $00C0` spends the exact wait.
+`$8003 $0000` reuses W372's one-node `$290E58` resource and completes the established load, wait, free,
+and handle-clear lifecycle. The script contains no `$8005`: auxiliary state stays idle, banner and operands remain
+unchanged, and W509's freed handle value remains cached. No production behavior or exact source-call/context-key
+inventory changes.
+
+The final `$FFFF` advances sequence-list A's cursor from 4 to 8, and the sequence driver actually clears all
+27 presentation records. Inner state and active sub-state remain 1, and the shared script cursor returns to zero.
+The next natural call fails loudly at the intentionally unexported entry-2 script `$2915A0`; no later script,
+other sequence list, or variant was inspected. The direct expanded integration passes 1/1, and the compact
+natural-integration, slot-7, registry, and coverage set passes 30/30 with no failures or skips. The script and
+nine sparse longwords add ten disjoint windows and 122 bytes, so table regeneration measures 742 windows,
+446,043 bytes, and 76 overlap pairs. No full suite, browser export, build, publication, commit, or push ran for
+local W510.
 
 **W502-W506 PUBLICATION FOLLOW-UP:** Production build `20260822223516` publishes all five waves from
 source commits `36b289b`, `bb9046b`, `5236b8a`, `96b0235`, and `66ebeaa`; bounded stale-test repair
@@ -2079,8 +2121,8 @@ bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate with zero 
 gate with zero skips, the distribution build, and the ROM-leak guard. Deployment and three consecutive
 live confirmations passed.
 
-This does not yet identify every ending-selection condition or close D37. After local W509, the exact next
-gameplay edge is sequence list A entry 1's type-7 script at `$29154A`, again following only the first concrete
+This does not yet identify every ending-selection condition or close D37. After local W510, the exact next
+gameplay edge is sequence list A entry 2's type-7 script at `$2915A0`, again following only the first concrete
 runtime edge rather than broadening into speculative ending-selection or other-variant research.
 
 **W373: THE SLOT [18] ANCHOR IS WITHDRAWN.** `$24902A` was recorded as D37 on "three signals agree". Its own
