@@ -102,7 +102,7 @@ import { dist242494 } from './bossscripts.js';
 import { slew64FromRecord } from './aim.js';
 import { bigBurst28B4BE } from './boss.js';
 import { AimTables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
-  aim64TurnStore, aim256FromCaller, slew64, targetSelect } from './aim.js';
+  aim256AtTarget, aim64TurnStore, aim256FromCaller, slew64, targetSelect } from './aim.js';
 import { TURRET_HANDLERS, turretStep } from './turret.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
@@ -8280,6 +8280,112 @@ function handler3D(ram, rom, a5, ctx) {
   draw3D(ram, rom, a5, a6);
 }
 
+const TA5 = Object.freeze({
+  init: 0x2783ee, initBody: 0x2783f6, handler: 0x2784c8,
+  spriteTable: 0x2786e2, artTable: 0x278762, muzzleTable: 0x2787e2,
+});
+
+// $2784C8: Stage 4 type $A5, spawned through the deferred queue. It tracks the
+// selected live player, fires only while $8130DA is armed, and uses the same
+// cartridge tables for its sprite, draw art, and muzzle vector.
+function handlerA5(ram, rom, a5, ctx) {
+  const a6 = ram.u32(a5 + R.subRec);
+  if (stepMovement(ram, rom, a5, ctx.tables, ctx.unported)) return; // $2784C8
+
+  let low = u16((ram.u32(a6 + S.posX) & 0xffff) + ram.u16(G.scroll));
+  low = u16(low + 0x0e00);                               // $2784D2..$2784D8
+  let outside = low + 0xac00 > 0xffff;                   // $2784DC bcs
+  if (!outside) {
+    const high = u16((ram.u32(a6 + S.posX) >>> 16) + 0x0600);
+    outside = high + 0x8400 > 0xffff;                    // $2784E2..$2784EC
+  }
+  if (outside) {
+    if (ram.u8(a5 + R.onScreen) !== 0) {
+      freeEnemy(ram, a5);                                // $2784F4
+      return;
+    }
+  } else {
+    ram.setU8(a5 + R.onScreen, 1);                       // $2784FC
+  }
+
+  const hit = hitMask(ram, a6);
+  let palette;
+  if (hit === 0) {
+    palette = ram.u8(a5 + R.rec18);                      // $278508
+    if (ram.u16(a6 + S.hp) < 0x001c && ram.u16(G.ca) === 0)
+      palette = 0x19;                                    // $27850C..$27851C
+  } else {
+    ram.setU8(a6, ram.u8(a6) & 0xa3);                    // $278520
+    scoreHit(ram, ctx, a6, hit);                         // $278524
+    palette = ram.u8(a6 + S.palette);
+    if (palette === 0x19) palette = ram.u8(a5 + R.rec18);
+    palette ^= ram.u8(a5 + R.rec19);                     // $27852A..$27853C
+    if (i16(ram.u16(a6 + S.hp)) < 0) {
+      scoreKill(ram, rom, ctx, 0x11, hit);               // $27866E..$278670
+      if (ram.u16(G.rank98) !== 0) {
+        const aimed = aim256AtTarget(aimTables(rom), ram, a5, a6);
+        if (!aimed.carry) {
+          const result = fireBullet({ ram, rom, log: new WriteLog(ram) },
+            0x281744, { d0: 0x0001000c, d1: aimed.dir,
+              d2: ram.u32(a6 + S.posX), d3: 0, d4: 0, d5: 0, a5 });
+          ctx.bulletSpawn?.(0x278698, result);
+        }
+      }
+      const effect = spawnEffect(ram, ctx, 0x02, 0x2786a0);
+      ram.setU32(effect + B.pos, ram.u32(a6 + S.posX));
+      ram.setU8(effect + B.speed, ram.u8(a6 + S.speed) + 8);
+      ram.setU8(effect + B.angle, ram.u8(a6 + S.heading) * 4);
+      ram.setU16(effect + B.bucket, 0x10);
+      ram.setU16(effect + B.sub12, 0);
+      ram.setU16(effect + B.sub14, 0);                    // $2786A6..$2786CE
+      ctx.soundPost?.(0x28c2a8);                         // $2786D4
+      freeEnemy(ram, a5);                                // $2786DA
+      return;
+    }
+  }
+  ram.setU8(a6 + S.palette, palette);                     // $278546
+
+  if (ram.u32(G.freeze) === 0) {
+    const aimed = aim64AtTarget(aimTables(rom), ram, a5, a6);
+    if (!aimed.carry) {
+      const direction = slew64(ram.u16(a5 + R.rec26), aimed.dir);
+      ram.setU16(a5 + R.rec26, direction);                // $278584..$27858E
+      const index = (direction & 0x3e) << 1;
+      ram.setU32(a6 + S.sprite0a, rom.u32(TA5.spriteTable + index));
+      ram.setU32(a5 + R.rec22, rom.u32(TA5.artTable + index)); // $278592..$2785AA
+    }
+
+    if (i16(ram.u16(a6 + S.posX)) >= 0x1000
+        && ram.u16(G.pulseDA) !== 0) {
+      const direction = ram.u16(a5 + R.rec26);
+      const index = (direction & 0x3e) << 1;
+      const d3 = rom.u32(TA5.muzzleTable + index);         // $2785C4..$2785DA
+      let d0 = 0x00010007;
+      if (ram.u16(G.stage) === 3 && ram.u16(G.clock) >= 0x0240)
+        d0 = 0xfffe0007;
+      if (ram.u16(G.rank98) !== 0) d0 = u32(d0 + 0x00020000);
+      const result = fireBullet({ ram, rom, log: new WriteLog(ram) },
+        0x281402, { d0, d1: direction, d2: ram.u32(a6 + S.posX),
+          d3, d4: 0, d5: index, a5 });
+      ctx.bulletSpawn?.(0x278612, result);
+
+      if (due8(ram, a5 + R.rec1C)) {
+        ram.setU8(a5 + R.rec1C, ram.u8(a5 + R.rec1D));
+        ram.setU8(a5 + R.rec1A, u16(0x28 - ram.u16(G.b6)) & 0xff);
+      }
+    }
+  }
+
+  enqueueThroughStub(ram, rom, 0x23d852, a6);             // $278634
+  if (ram.u16(G.mirror2) !== 0) {
+    const d1 = u32((u16(ram.u16(a6 + S.posX) + 0xee00) << 16)
+      | u16(ram.u16(a6 + S.posY) + 0x0200));
+    const d4 = (ram.u16(a6 + S.f1c) & 0xff00) | 0x18;
+    enqueueRegistersThroughStub(ram, rom, 0x23df58, d1,
+      ram.u32(a5 + R.rec22), 0x0410, d4);                  // $27863A..$278664
+  }
+}
+
 // `$278994`: Stage-4 type $A6. This invisible controller pulses `$8130DA`
 // on an old-zero word-timer borrow and alternates +1/-1 by toggling subrecord
 // status bit 6. Pause preserves the previous pulse exactly; ordinary active
@@ -8863,6 +8969,7 @@ const HANDLERS = new Map([
   [0x266e34, handler16],       // W203: Stage-3 wobbling paired-shot type $16
   [0x29be28, handlerBoss29BE28], // W204: Stage-3 boss type $A0 entry/arrival
   [0x29e6b0, handler99_29E6B0],  // W209: Stage-3 boss low-HP child type $99
+  [0x2784c8, handlerA5],          // W529: Stage-4 deferred aimed fighter type $A5
   [0x278994, handlerA6],          // W211: Stage-4 alternating pulse type $A6
   [0x27ace4, handler9B],          // W212: Stage-4 linked structure type $9B
   [0x27d072, handlerA2],          // W213: Stage-4 opening/rotating gun pod $A2
@@ -11096,5 +11203,5 @@ export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
 export const TYPE_SPECS = Object.freeze(new Map([
   [0x01, T01], [0x1b, T1B], [0x43, T43], [0x45, T45], [0x47, T47], [0x48, T48],
   [0x1a, T1A], [0x46, T46], [0x49, T49], [0x4c, T4C], [0x4a, T4A], [0x4b, T4B], [0x55, T55], [0x59, T59],
-  [0x81, T81], [0x8e, T8E], [0xb0, TB0],
+  [0x81, T81], [0x8e, T8E], [0xa5, TA5], [0xb0, TB0],
 ]));

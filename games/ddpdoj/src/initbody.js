@@ -53,7 +53,7 @@ const R = {
   rec1B: 0x1b, rec1C: 0x1c,
   rec1D: 0x1d, rec1E: 0x1e,
   rec20: 0x20, rec21: 0x21, rec22: 0x22, rec23: 0x23, rec24: 0x24, rec25: 0x25,
-  rec26: 0x26, rec28: 0x28, rec29: 0x29, rec2A: 0x2a, rec2B: 0x2b,
+  rec26: 0x26, rec27: 0x27, rec28: 0x28, rec29: 0x29, rec2A: 0x2a, rec2B: 0x2b,
   rec2C: 0x2c, rec2D: 0x2d,
   rec2E: 0x2e, rec2F: 0x2f, rec30: 0x30, rec31: 0x31, rec32: 0x32,
   rec33: 0x33, rec34: 0x34,
@@ -2660,6 +2660,35 @@ BODY.set(0x26df48, (ram, rom, a5, a6) => {
   loadRecordProto(ram, rom, a5, 0x26df7c, 0x02);           // $26DF5A..$26DF64 D0+1 = THREE words
   ram.setU16(0x8130da, 1);                                 // $26DF6A -- the background-element gate
   ram.setU16(0x81b414, 1);                                 // $26DF72 -- the budget arm
+});
+
+// Type $A5 ($2783F6): Stage 4's deferred aimed fighter. The type table points
+// at the eight-byte stub $2783EE, so this is the cartridge's init+8 body.
+BODY.set(0x2783f6, (ram, rom, a5, a6, unported) => {
+  if (ram.u16(G.stage) === 3 && ram.u16(G.dc) !== 0) {     // $2783F6..$27840C
+    freeEnemy(ram, a5);
+    return FREED;
+  }
+
+  const afterSub = loadSubProto(ram, rom, a5, a6, 0x2784ac); // $278410..$278416
+  ram.setU32(a5 + R.rec44, afterSub);                       // $27841C
+  loadRecordProto(ram, rom, a5, 0x27849a, 0x08);            // $278420..$278428
+  readInitPosition(ram, rom, a5, unported);                 // $27842E
+
+  const aimed = aim64AtTarget(aimTables(rom), ram, a5, a6); // $278434 jsr $24202C
+  const direction = aimed.carry ? ram.u8(a6 + S.heading) : aimed.dir;
+  ram.setU8(a5 + R.rec27, direction);                       // $27843C..$278440
+  const index = (direction & 0x3e) << 1;
+  ram.setU32(a6 + S.sprite0a, rom.u32(0x2786e2 + index));    // $278444..$278450
+  ram.setU32(a5 + R.rec22, rom.u32(0x278762 + index));      // $278456..$27845C
+
+  const rank = ram.u16(G.bc) & 0xff;
+  ram.setU8(a5 + R.rec1A, ram.u8(a5 + R.rec1A) - (rank >>> 1)); // $278462..$27846A
+  ram.setU8(a5 + R.rec1B, ram.u8(a5 + R.rec1B) - rank);     // $27846E..$278474
+
+  const stageRow = 0x278490 + ram.u16(G.stageX2);
+  ram.setU8(a5 + R.rec18, rom.u8(stageRow));                // $278478..$278486
+  ram.setU8(a5 + R.rec19, rom.u8(stageRow + 1));            // $27848A
 });
 
 export const INIT_BODY_ADDRESSES = [...BODY.keys()];

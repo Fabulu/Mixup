@@ -1406,6 +1406,18 @@ SHOT_WINDOWS.extend([
     # row ends at $27FE0E, the independently dispatched kind-2 body.
     (0x27FD72, 0x009C, "W528 flying-bee waypoint rows, ending exactly at "
                        "$27FE0E kind-2 code"),
+    # W529: deferred type $A5 resolves through high-table entry $27E53A to
+    # init stub $2783EE and handler $2784C8. The stub is exactly eight bytes.
+    # Its init body reads five stage pairs at $278490, a nine-word record
+    # prototype at $27849A, and one 28-byte sub-record prototype at $2784AC;
+    # the latter ends exactly where the handler begins. The handler and init
+    # both index three adjacent 32-longword direction tables through $278862.
+    (0x2783EE, 0x0008, "W529 type-$A5 init stub, ending exactly at its "
+                       "$2783F6 init+8 body"),
+    (0x278490, 0x0038, "W529 type-$A5 stage pairs and prototypes, ending "
+                       "exactly at its $2784C8 handler"),
+    (0x2786E2, 0x0180, "W529 type-$A5 sprite, art, and muzzle tables: three "
+                       "adjacent 32-longword circles"),
     (0x2812D4, 0x0014, "W234 the bee x2 indicator tiles: five longwords, cycled "
                        "by ($12,A6) from $10 down to 0"),
     # W231: the player object's INIT template, $24915E. `$2492E0 lea $24915E(pc)`
