@@ -1535,6 +1535,20 @@ export function main4Init29F8CC(ram, rom, ctx, slot) {
   main4Step29F8F0(ram, rom, ctx, slot);                   // falls through
 }
 
+/** `$29F994`, MAIN5 STEP: the shared placer decelerates the death glide toward speed 1. */
+export function main5Step29F994(ram, _rom, ctx, slot) {
+  placeBoss4Parts29F50E(ram, ctx, slot);
+}
+
+/** `$29F982`, MAIN5 INIT: heading $20 and a per-frame speed-1 glide target. */
+export function main5Init29F982(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  ram.setU8(a6 + 0x1b, 0x20);
+  ram.setU8(slot + 0x02, 1);
+  ram.setU16(slot + 0x04, 0);
+  main5Step29F994(ram, rom, ctx, slot);
+}
+
 /**
  * `$29F9B4` / `$29F9CC` -- MAIN7, which F5's arm 5 calls in, and it is MAIN4's twin: the
  * same waypoint walker with a tighter arrival threshold (`$200`) and its own four
@@ -1893,6 +1907,8 @@ registerScript(0x2a13cc, d0Init2A13CC);
 registerScript(0x2a13e8, d0Step2A13E8);
 registerScript(0x29f8cc, main4Init29F8CC);
 registerScript(0x29f8f0, main4Step29F8F0);
+registerScript(0x29f982, main5Init29F982);
+registerScript(0x29f994, main5Step29F994);
 /**
  * `$2A3048` -- A1 8's FAN, four shots off one base angle, and the ORDER is the slot
  * order, which is observable in draw order and in the bomb's cancel loop:

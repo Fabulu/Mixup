@@ -11,7 +11,9 @@ import { MoveTables } from '../src/vectors.js';
 import { PaletteState } from '../src/palette.js';
 import { UnportedLog } from '../src/unported.js';
 import { runHandler, HANDLER_ADDRESSES } from '../src/handlers.js';
-import { boss4Damage29FB5C, a4id2Init2A051A } from '../src/boss4.js';
+import {
+  boss4Damage29FB5C, a4id2Init2A051A, main5Init29F982, main5Step29F994,
+} from '../src/boss4.js';
 import { INIT_BODY_ADDRESSES } from '../src/initbody.js';
 import { resetAndInstallStage26331E, runSpawnWalker, SPAWN } from '../src/spawn.js';
 import { ENEMY } from '../src/enemies.js';
@@ -279,4 +281,26 @@ test('W540 Stage-4 death handoff initializes the cartridge A4 id 2 script',
     ram.u16(SCHED.a4Base + 0x12)],
   [0, 0x000f, 0xff02, 0xff04, 0, 0x0c0c, 3, 0x0404, 4]);
   assert.ok(sounds.includes(0x28c25a), '$2A0846 posts the first cartridge cue');
+});
+
+test('W541 Stage-4 MAIN5 decelerates the boss death glide toward speed 1',
+  { skip: SKIP }, () => {
+  const { ram, log, a5, a6 } = stage4Boss();
+  const ctx = { ram, rom: ROM, tables: MT, bossRec: a5, bossSubRec: a6,
+    unported: log, unportedLog: log };
+
+  assert.deepEqual([ROM.u32(0x29f4c0), ROM.u32(0x29f4c4)],
+    [0x29f982, 0x29f994]);
+  for (const addr of [0x29f982, 0x29f994])
+    assert.ok(scriptAddresses().includes(addr), `$${addr.toString(16)} is registered`);
+
+  ram.setU8(a6 + 0x1a, 0x37);
+  assert.doesNotThrow(() => main5Init29F982(ram, ROM, ctx, SCHED.seqDst));
+  assert.deepEqual([ram.u8(SCHED.seqDst + 0x02), ram.u16(SCHED.seqDst + 0x04),
+    ram.u8(a6 + 0x1a), ram.u8(a6 + 0x1b)], [1, 0, 0x36, 0x20],
+  'MAIN5 init immediately runs its shared-placement deceleration');
+
+  assert.doesNotThrow(() => main5Step29F994(ram, ROM, ctx, SCHED.seqDst));
+  assert.deepEqual([ram.u8(SCHED.seqDst + 0x02), ram.u16(SCHED.seqDst + 0x04),
+    ram.u8(a6 + 0x1a), ram.u8(a6 + 0x1b)], [1, 0, 0x35, 0x20]);
 });
