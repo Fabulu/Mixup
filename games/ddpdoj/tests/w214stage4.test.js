@@ -164,3 +164,35 @@ test('W530 type-$9C offscreen satellite wraps its RAM-backed animation read',
     assert.equal(ram.u8(child + 0x14), 0x40);
     assert.equal(ram.u16(child + 0x16), 0x043c);
   });
+
+test('W534 type-$9C offscreen satellite reads its five wrapped BIOS longwords',
+  { skip: SKIP }, () => {
+    const ram = new Ram();
+    const log = new UnportedLog();
+    const palette = new PaletteState();
+    ram.setU16(0x813092, 3);
+    ram.setU16(0x813094, 6);
+    ram.setU16(0x813096, 12);
+    resetAndInstallStage26331E(ram, ROM, log);
+    ram.setU16(SPAWN.DISTANCE_CLOCK, 0x00e5);
+    ram.setU32(SPAWN.LIVE_CURSOR, 0x235b48);
+    runSpawnWalker(ram, ROM, log, MT, undefined, palette);
+
+    const a5 = findType(ram, 0x9c);
+    const root = ram.u32(a5 + 6);
+    const child = root + 0x20;
+    ram.setU32(root + 2, 0x40002000);
+    ram.setU16(0x8130d2, 1);
+    ram.setU16(child, 0x8080);
+    ram.setU32(child + 0x10, 0x060006c0);
+    ram.setU8(child + 0x15, 0x40);
+    ram.setU16(child + 0x16, 0x0540);
+
+    for (const at of [0x0c00, 0x0bfc, 0x0bf8, 0x0bf4, 0x0bf0]) {
+      ram.setU8(child + 0x14, 0);
+      assert.doesNotThrow(() => runHandler(0x27aee0, ram, ROM, a5,
+        { tables: MT, unported: log, soundPost() {} }));
+      assert.equal(ram.u32(child + 0x0a), ROM.u32(at));
+    }
+    assert.equal(ram.u16(child + 0x16), 0x052c);
+  });

@@ -85,6 +85,13 @@ SCAN_CAP = 512                # see speed_levels(): a scan cap, not the table en
 # know are used, because "wider than measured" fails loudly at the export and
 # "narrower than used" fails at runtime on the player's machine.
 SHOT_WINDOWS = [
+    # W534: Type $9C's family-$11 satellites mark themselves dead when their
+    # signed X crosses $7000, then the cartridge's next pass enters $27DD00
+    # without installing the ordinary death-animation list. Their retained
+    # fields are A0=$060006C0 and D0.w=$0540..$0530. The 68000's 24-bit bus
+    # therefore reads exactly five BIOS longwords at $000BF0..$000C03.
+    (0x000BF0, 0x0014, "W534 type-$9C offscreen satellite's five 24-bit-wrapped "
+                       "BIOS animation longwords"),
     (0x25321E, 0x0040, "W164 player-death partial palette row tables, P1/P2"),
     (0x2551FA, 0x0006, "W164 death-reset formation cap bytes for formations 2/4/6"),
     (0x255B7C, 0x009C, "W164 death animation pointer list through its FFFFFFFF terminator"),

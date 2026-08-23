@@ -341,7 +341,15 @@
 // init stub, 56-byte prototype block, and 384-byte direction tables.
 // Measured: 786 -> 791 windows, 448,415 -> 449,329 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 791;
+// ---------------------------------------------------------------------------
+// W534 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$000BF0 + $14` is the exact five-longword BIOS span reached when Type $9C's
+// offscreen family-$11 satellites retain A0=$060006C0 and index $0540..$0530
+// through the 68000's 24-bit external bus. Measured: 791 -> 792 windows,
+// 449,329 -> 449,349 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 792;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
