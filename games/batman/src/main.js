@@ -19,7 +19,7 @@ import { createState, GAMEPLAY_PALETTES } from './state.js';
 import { makeTunables } from './tunables.js';
 import { attachInput, sampleInput } from './input.js';
 import { initLevel, clearLevel } from './level.js';
-import { loadManifest, loadPlayerTiles } from './assets.js';
+import { loadManifest, loadPlayerTiles, installAssetProvider } from './assets.js';
 import { renderFrame } from './render/renderer.js';
 import { tick } from './game/frame.js';
 import { createPresenter, armAudio, onRefocus, createWatchdog,
@@ -48,7 +48,9 @@ const FRAME_MS = 1000 / 59.73;      // DMG frame rate
 export async function boot(canvas, { level = 1, tunables = {}, mods = [],
                                      title = true, onOptions = null,
                                      onError = null, ending = false,
-                                     difficulty = 1 } = {}) {
+                                     difficulty = 1, assetProvider = undefined,
+                                     soundData = null } = {}) {
+  if (assetProvider !== undefined) installAssetProvider(assetProvider);
   // Mod params override the ROM defaults before anything reads them; explicit
   // `tunables` still wins last so a caller can force a single value.
   const loadout = resolveLoadout(mods);
@@ -93,7 +95,7 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
 
   attachInput();
 
-  const sound = new Sound();
+  const sound = new Sound(soundData);
   armAudio(sound);
 
   let acc = 0;

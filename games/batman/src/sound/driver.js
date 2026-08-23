@@ -121,8 +121,9 @@ const PAN_TABLE = {
   0xE7: [0x11, 0x22, 0x44, 0x88],
 };
 
-export async function loadSoundData() {
-  const j = await fetch(BASE + 'sound.json').then((r) => r.json());
+export async function loadSoundData(source = null) {
+  const j = source ?? await globalThis.fetch.call(globalThis, BASE + 'sound.json')
+    .then((r) => r.json());
   return {
     tickHz: j.tickHz,
     pitch: Uint16Array.from(j.pitch),

@@ -15,7 +15,8 @@ export { REQ_PLAY, REQ_STOP };
 const BUFFER = 2048;
 
 export class Sound {
-  constructor() {
+  constructor(data = null) {
+    this.data = data;
     this.ctx = null;
     this.apu = null;
     this.drv = null;
@@ -40,7 +41,7 @@ export class Sound {
     if (!AC) return false;
 
     let data;
-    try { data = await loadSoundData(); } catch { return false; }
+    try { data = await loadSoundData(this.data); } catch { return false; }
 
     this.ctx = new AC();
     this.apu = new APU(this.ctx.sampleRate);

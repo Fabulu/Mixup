@@ -117,15 +117,17 @@ function renderLauncher() {
   primaryWorld.textContent = launcherState.primary
     ? GAME_CATALOGUE[launcherState.primary].title
     : 'None selected';
-  const canLaunchDdpdoj = launcherState.primary === 'ddpdoj'
-    && launcherState.validated.ddpdoj === true;
-  launchGame.disabled = launching || !canLaunchDdpdoj;
+  const canLaunch = ['batman', 'ddpdoj'].includes(launcherState.primary)
+    && launcherState.validated[launcherState.primary] === true;
+  const selectedTitle = launcherState.primary
+    ? GAME_CATALOGUE[launcherState.primary].title : null;
+  launchGame.disabled = launching || !canLaunch;
   launchGame.textContent = launching
-    ? 'Preparing local DaiOuJou...'
-    : (canLaunchDdpdoj
-      ? 'Launch DaiOuJou from local ROMs'
+    ? `Preparing local ${selectedTitle}...`
+    : (canLaunch
+      ? `Launch ${selectedTitle} from local ROM${launcherState.primary === 'ddpdoj' ? 's' : ''}`
       : (launcherState.primary
-        ? `${GAME_CATALOGUE[launcherState.primary].title} launch path pending`
+        ? `${selectedTitle} launch path pending`
         : 'Choose an unlocked primary world'));
 }
 
@@ -229,40 +231,48 @@ for (const card of gameCards) {
       setBootStatus('Local game stopped because the primary world changed.');
     }
     launcherState = selectPrimary(launcherState, card.dataset.gameId);
+    const gameId = card.dataset.gameId;
+    const ready = ['batman', 'ddpdoj'].includes(gameId);
     renderLauncher();
-    setStatus(card.dataset.gameId === 'ddpdoj'
-      ? 'DaiOuJou selected as the primary world. Its validated local set is ready to launch.'
-      : `${GAME_CATALOGUE[card.dataset.gameId].title} selected as the primary world. Its local launch path is still being connected.`, 'good');
+    setStatus(ready
+      ? `${GAME_CATALOGUE[gameId].title} selected as the primary world. Its validated local input is ready to launch.`
+      : `${GAME_CATALOGUE[gameId].title} selected as the primary world. Its local launch path is still being connected.`, 'good');
   });
 }
 launchGame.addEventListener('click', async () => {
-  if (launching || launcherState.primary !== 'ddpdoj'
-      || !lastInventory?.games.ddpdoj.complete) return;
+  const gameId = launcherState.primary;
+  if (launching || !['batman', 'ddpdoj'].includes(gameId)
+      || !lastInventory?.games[gameId].complete) return;
+  const title = GAME_CATALOGUE[gameId].title;
   stopRuntime();
   launching = true;
   renderLauncher();
-  setBootStatus('Preparing validated local DaiOuJou files...');
+  setBootStatus(`Preparing validated local ${title} input...`);
   try {
-    const { LocalDdpdojRuntime } = await import('./ddpdoj-local.js');
-    activeRuntime = await LocalDdpdojRuntime.create(
-      lastInventory.games.ddpdoj,
+    const Runtime = gameId === 'batman'
+      ? (await import('./batman-local.js')).LocalBatmanRuntime
+      : (await import('./ddpdoj-local.js')).LocalDdpdojRuntime;
+    activeRuntime = await Runtime.create(
+      lastInventory.games[gameId],
       gameCanvas,
       {
         onStatus: setBootStatus,
         onError: (error) => {
           activeRuntime = null;
           gameScreen.hidden = true;
-          setBootStatus(`DaiOuJou stopped: ${error.message}`);
+          setBootStatus(`${title} stopped: ${error.message}`);
         },
       },
     );
     gameScreen.hidden = false;
     activeRuntime.start();
     gameCanvas.focus();
-    setBootStatus('DaiOuJou is running entirely from validated local ROMs. Insert a coin with 5, then press Enter.');
+    setBootStatus(gameId === 'batman'
+      ? 'Batman is running entirely from the validated local cartridge. Press Enter, then use arrows, X, and Y/Z.'
+      : 'DaiOuJou is running entirely from validated local ROMs. Insert a coin with 5, then press Enter.');
   } catch (error) {
     stopRuntime();
-    setBootStatus(`DaiOuJou could not start: ${error.message}`);
+    setBootStatus(`${title} could not start: ${error.message}`);
   } finally {
     launching = false;
     renderLauncher();
