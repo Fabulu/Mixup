@@ -19,6 +19,7 @@ import {
 import { drawShip, SHIP_TABLES } from '../src/shipsprite.js';
 import { snapshotBucket } from '../src/spritequeue.js';
 import { LASER, seedSegmentFamily1 } from '../src/laser.js';
+import { SoundState, postWrapper, drainFrame } from '../src/sound.js';
 
 const TABLES = new URL('../rip/port/player.tables.json', import.meta.url);
 const MANIFEST = new URL('../assets/manifest.json', import.meta.url);
@@ -138,9 +139,13 @@ test('W497 Type-B player shots spawn for styles 2, 4, and 6 in normal and hyper 
       for (const hyper of [false, true]) {
         const { ram, rom } = bench();
         const sounds = [], spawns = [];
+        const sound = new SoundState();
         seedPlayerShot(ram, style, hyper);
         spawnShotTypeB(ram, rom, PL1, {
-          soundPost: (addr) => sounds.push(addr),
+          soundPost: (addr) => {
+            sounds.push(addr);
+            postWrapper(ram, sound, addr);
+          },
           shotSpawn: (...args) => spawns.push(args),
         });
 
@@ -150,6 +155,9 @@ test('W497 Type-B player shots spawn for styles 2, 4, and 6 in normal and hyper 
         assert.equal(ram.u16(SHOT.p1Table + slots[0] * SHOT.stride + S.type) & 0x0f,
           hyper ? 5 : 1, 'the record must dispatch to the Type-B player handler');
         assert.deepEqual(sounds, [hyper ? 0x28c3ee : 0x28c3d4]);
+        assert.equal(drainFrame(ram, sound, 0)?.word,
+          hyper ? 0x00491528 : 0x00491128,
+          'the cartridge wrapper posts its exact type, pan, id, and channel door');
         assert.match(spawns[0][0], /^type-b-(single|pair)$/);
 
         const tableOffset = ((style - 2) << 2) + (hyper ? 4 : 0);
