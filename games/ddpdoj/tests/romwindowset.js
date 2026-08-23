@@ -357,7 +357,14 @@
 // saved-register body at $23F782. Measured: 792 -> 793 windows,
 // 449,349 -> 449,409 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 793;
+// ---------------------------------------------------------------------------
+// W540 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$2A051A + $412` is the complete Stage-4 boss A4-id-2 death script and its
+// exact sound, effect, and animation tables. Measured: 793 -> 794 windows,
+// 449,409 -> 450,451 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 794;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

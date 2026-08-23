@@ -647,6 +647,9 @@ SHOT_WINDOWS.extend([
     (0x29FB5A, 0x052E, "W219: Stage-4 boss linked damage controller and shared "
                        "phase/death helper envelope through the A4 table"),
     (0x2A0088, 0x0116, "W219: Stage-4 boss A4 table through F0 init and step"),
+    (0x2A051A, 0x0412, "W540: complete Stage-4 boss A4 id 2 death script, "
+                       "sound dispatch, effect and animation tables, ending exactly "
+                       "at A4 id 3's existing body"),
     (0x2A1370, 0x0058, "W220: complete Stage-4 boss A3 table through D10 row"),
     (0x2A15BE, 0x004A, "W220: Stage-4 boss D9 aim and D10 art cursors"),
     (0x2A092C, 0x02A0, "W221: complete Stage-4 boss A4/F3 first attack "

@@ -11,7 +11,7 @@ import { MoveTables } from '../src/vectors.js';
 import { PaletteState } from '../src/palette.js';
 import { UnportedLog } from '../src/unported.js';
 import { runHandler, HANDLER_ADDRESSES } from '../src/handlers.js';
-import { boss4Damage29FB5C } from '../src/boss4.js';
+import { boss4Damage29FB5C, a4id2Init2A051A } from '../src/boss4.js';
 import { INIT_BODY_ADDRESSES } from '../src/initbody.js';
 import { resetAndInstallStage26331E, runSpawnWalker, SPAWN } from '../src/spawn.js';
 import { ENEMY } from '../src/enemies.js';
@@ -249,4 +249,34 @@ test('W539 Stage-4 fatal damage runs the complete cartridge death conductor',
     .map((off) => ram.u8(a6 + off)), [0x13, 0x14, 0x15, 0x15, 0x15, 0x14]);
   assert.ok(sounds.includes(0x28c170), '$242922 posts the boss-clear cue');
   assert.deepEqual(events, ['death']);
+});
+
+test('W540 Stage-4 death handoff initializes the cartridge A4 id 2 script',
+  { skip: SKIP }, () => {
+  const { ram, log, a5, a6 } = stage4Boss();
+  const sounds = [];
+  ram.setU16(0x8103e6, 0x8000);
+  ram.setU32(a5 + 0x16, 0xffffffff);
+  ram.setU8(a6 + 0x9f, 1);
+  ram.setU8(a6 + 0xbf, 1);
+  const ctx = { ram, rom: ROM, tables: MT, bossRec: a5, bossSubRec: a6,
+    unported: log, unportedLog: log, soundPost(site) { sounds.push(site); },
+    effectSpawn() {}, bulletSpawn() {} };
+
+  boss4Damage29FB5C(ram, ROM, a5, a6, ctx);
+  assert.equal(ram.u16(SCHED.a4Base), 0x8002);
+  assert.deepEqual([ROM.u32(0x2a0098), ROM.u32(0x2a009c)],
+    [0x2a051a, 0x2a0564]);
+  for (const addr of [0x2a051a, 0x2a0564])
+    assert.ok(scriptAddresses().includes(addr), `$${addr.toString(16)} is registered`);
+
+  assert.doesNotThrow(() => a4id2Init2A051A(ram, ROM, ctx, SCHED.a4Base));
+  assert.deepEqual([ram.u16(SCHED.seqRestart), ram.u16(SCHED.seqPending)], [1, 5]);
+  assert.deepEqual([ram.u8(SCHED.a4Base + 0x02), ram.u16(SCHED.a4Base + 0x04),
+    ram.u16(SCHED.a4Base + 0x06), ram.u16(SCHED.a4Base + 0x08),
+    ram.u16(SCHED.a4Base + 0x0a), ram.u16(SCHED.a4Base + 0x0c),
+    ram.u16(SCHED.a4Base + 0x0e), ram.u16(SCHED.a4Base + 0x10),
+    ram.u16(SCHED.a4Base + 0x12)],
+  [0, 0x000f, 0xff02, 0xff04, 0, 0x0c0c, 3, 0x0404, 4]);
+  assert.ok(sounds.includes(0x28c25a), '$2A0846 posts the first cartridge cue');
 });

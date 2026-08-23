@@ -19,7 +19,8 @@ import {
 import { spawnEffect, B } from './effects.js';
 import { applyVelocity } from './movement.js';
 import { install24150A } from './palette.js';
-import { loadAnimObjects246410 } from './animobjects.js';
+import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
+import { finalBlast2440E0 } from './boss2.js';
 import { AimTables, aim64, aim64FromCaller, aim256FromCaller, slew64 } from './aim.js';
 import { drawByte242B3C, drawWord242EC2, drawWord24328E } from './rng.js';
 import { dist242494 } from './bossscripts.js';
@@ -32,7 +33,8 @@ import {
   runScheduler25962E, registerScript, seqStart2598D0, a2Run2598E6,
   a2Stop25994A, a4Start25980C, a4Clear2598A2, a1Clear259B34,
   a3Start259962, a3Running2599B4, a3Stop2599EC, a1Start259A18, a1Running259A4A,
-  a1Stop259B08, seqStop2598BE,
+  a1Stop259B08, seqStop2598BE, fadeArm259B7E, fadeDone259B9E,
+  suspend2595E8,
 } from './scheduler.js';
 
 const due8 = (ram, addr) => {
@@ -80,6 +82,157 @@ function effectRow2A00C0(ram, rom, ctx, a6, table, d2) {
     ram.setU8(slot + 0x1a, ram.u8(a6 + 0x1a));           // $2A00F6
     ram.setU8(slot + 0x1b, (ram.u8(a6 + 0x1b) * 4) & 0xff);  // $2A00FC..$2A0104
   }
+}
+
+function deathSound2A0846(ram, rom, ctx, slot) {
+  if (!due8(ram, slot + 0x10)) return;
+  ram.setU8(slot + 0x10, ram.u8(slot + 0x11));
+  ctx.soundPost?.(rom.u32(0x2a044a + ram.u16(slot + 0x12)));
+  ram.setU16(slot + 0x12, (ram.u16(slot + 0x12) + 4) & 0x001f);
+}
+
+function deathEffectRow2A06C2(ram, rom, ctx, a6, slot, randomMotion) {
+  const row = 0x2a08e2 + ram.u16(slot + 0x0a);
+  const d1 = rom.u16(row);
+  const e = spawnEffect(ram, ctx, rom.u16(row + 2), randomMotion ? 0x2a06d0 : 0x2a0790);
+  ram.setU8(e + B.f1c, rom.u16(row + 4));
+  ram.setU16(e + B.delay, d1);
+  ram.setU32(e + B.nudge, rom.u32(row + 6));
+  ram.setU32(e + B.pos, ram.u32(a6 + 0x22));
+  ram.setU16(e + B.bucket, 0x0010);
+  ram.setU16(e + B.sub12, 0);
+  ram.setU16(e + B.sub14, 0);
+  if (randomMotion) {
+    ram.setU8(e + B.speed, drawByte242B3C(ram, rom) + 0x10);
+    ram.setU8(e + B.angle, drawWord242EC2(ram, rom));
+  } else {
+    ram.setU8(e + B.speed, ram.u8(a6 + 0x1a));
+    ram.setU8(e + B.angle, ram.u8(a6 + 0x1b) * 4);
+  }
+
+  const cursor = u16(ram.u16(slot + 0x0a) + 12);
+  ram.setU16(slot + 0x0a, cursor === 0x48 ? 0 : cursor);
+  return cursor === 0x48;
+}
+
+function deathAmbient2A0564(ram, rom, ctx, a6, slot) {
+  if (ram.u8(slot + 0x06) !== 0xff && due8(ram, slot + 0x06)) {
+    ram.setU8(slot + 0x06, ram.u8(slot + 0x07));
+    const e = spawnEffect(ram, ctx, 1, 0x2a057e);
+    ram.setU16(e + B.bucket, 0x0010);
+    ram.setU8(e + B.speed, 0x10);
+    ram.setU8(e + B.angle, drawByte242B3C(ram, rom) * 2);
+    ram.setU32(e + B.pos, ram.u32(a6 + 0x22));
+    ram.setU16(e + B.nudge,
+      u16((i16(drawWord24328E(ram, rom)) >> 3) - 0x0a00));
+    ram.setU16(e + B.nudge + 2,
+      u16((i16(drawWord24328E(ram, rom)) >> 3) + 0x0400));
+  }
+  if (ram.u8(slot + 0x08) !== 0xff && due8(ram, slot + 0x08)) {
+    ram.setU8(slot + 0x08, ram.u8(slot + 0x09));
+    const e = spawnEffect(ram, ctx, 0x10, 0x2a05e6);
+    ram.setU16(e + B.bucket, 0x000c);
+    ram.setU8(e + B.speed, 0x10);
+    ram.setU8(e + B.angle, drawByte242B3C(ram, rom) * 2);
+    ram.setU32(e + B.pos, ram.u32(a6 + 0x22));
+    ram.setU16(e + B.nudge,
+      u16((i16(drawWord24328E(ram, rom)) >> 3) - 0x0c00));
+    ram.setU16(e + B.nudge + 2,
+      u16((i16(drawWord24328E(ram, rom)) >> 3) - 0x0600));
+  }
+}
+
+/** `$2A0564`, A4 id 2 STEP: the complete Stage-4 boss death presentation. */
+export function a4id2Step2A0564(ram, rom, ctx, slot) {
+  const a6 = ctx.bossSubRec;
+  deathAmbient2A0564(ram, rom, ctx, a6, slot);
+  const state = ram.u8(slot + 0x02);
+
+  if (state === 5) {
+    const timer = u16(ram.u16(slot + 0x04) - 1);
+    ram.setU16(slot + 0x04, timer);
+    if (timer === 0) {
+      suspend2595E8(ram);
+      ram.setU16(slot, 0);
+    }
+    return;
+  }
+  if (state === 4) {
+    const timer = u16(ram.u16(slot + 0x04) - 1);
+    ram.setU16(slot + 0x04, timer);
+    if (timer === 0) {
+      ctx.soundPost?.(0x28c392);
+      finalBlast2440E0(ram, rom, ctx, a6);
+      ram.setU8(slot + 0x02, 5);
+      ram.setU16(slot + 0x04, 0x0080);
+    }
+    return;
+  }
+  if (state === 3) {
+    if (fadeDone259B9E(ram)) return;
+    loadAnimObjects246410(ram, rom, 0x2a086c);
+    ram.setU8(slot + 0x02, 4);
+    ram.setU16(slot + 0x04, 8);
+    return;
+  }
+
+  if (state === 2) {
+    deathSound2A0846(ram, rom, ctx, slot);
+    if (!due8(ram, slot + 0x0c)) return;
+    ram.setU8(slot + 0x0c, ram.u8(slot + 0x0d));
+    if (!deathEffectRow2A06C2(ram, rom, ctx, a6, slot, true)) return;
+    const passes = u16(ram.u16(slot + 0x0e) - 1);
+    ram.setU16(slot + 0x0e, passes);
+    if (passes !== 0) return;
+    ram.setU8(slot + 0x02, 3);
+    a2Stop25994A(ram, 9);
+    fadeArm259B7E(ram, 0x12);
+    ram.setU8(slot + 0x06, 0xff);
+    ram.setU8(slot + 0x08, 0xff);
+    return;
+  }
+  if (state === 1) {
+    if (ram.u16(slot + 0x04) !== 0) {
+      const timer = u16(ram.u16(slot + 0x04) - 1);
+      ram.setU16(slot + 0x04, timer);
+      if (timer !== 0) return;
+    }
+    deathSound2A0846(ram, rom, ctx, slot);
+    if (!due8(ram, slot + 0x0c)) return;
+    ram.setU8(slot + 0x0c, ram.u8(slot + 0x0d));
+    if (!deathEffectRow2A06C2(ram, rom, ctx, a6, slot, false)) return;
+    ram.setU16(slot + 0x0c, 0x0606);
+    ram.setU8(slot + 0x02, 2);
+    ram.setU16(slot + 0x10, 0x0008);
+    ram.setU16(slot + 0x12, 0);
+    return;
+  }
+  if (state !== 0) return;
+  deathSound2A0846(ram, rom, ctx, slot);
+  if (!due16(ram, slot + 0x04)) return;
+  effectRow2A00C0(ram, rom, ctx, a6, 0x2a0898, ram.u32(a6 + 0x22));
+  ram.setU8(slot + 0x06, 0);
+  ram.setU8(slot + 0x08, 0);
+  ram.setU16(slot + 0x04, 0x0050);
+  ram.setU8(slot + 0x02, 1);
+  ram.setU16(slot + 0x10, 0x0010);
+  ram.setU16(slot + 0x12, 0);
+}
+
+/** `$2A051A`, A4 id 2 INIT. The cartridge falls straight into its step. */
+export function a4id2Init2A051A(ram, rom, ctx, slot) {
+  seqStart2598D0(ram, 5);
+  loadAnimObjects246520(ram, rom, 0x2a088a);
+  ram.setU8(slot + 0x02, 0);
+  ram.setU16(slot + 0x04, 0x0010);
+  ram.setU16(slot + 0x06, 0xff02);
+  ram.setU16(slot + 0x08, 0xff04);
+  ram.setU16(slot + 0x0a, 0);
+  ram.setU16(slot + 0x0c, 0x0c0c);
+  ram.setU16(slot + 0x0e, 3);
+  ram.setU16(slot + 0x10, 4);
+  ram.setU16(slot + 0x12, 0);
+  a4id2Step2A0564(ram, rom, ctx, slot);
 }
 
 /**
@@ -1694,6 +1847,8 @@ export function f5Init2A0CF6(ram, rom, ctx, slot) {
 
 registerScript(0x2a017a, f0_2A017A);
 registerScript(0x2a019a, f0Step2A019A);
+registerScript(0x2a051a, a4id2Init2A051A);
+registerScript(0x2a0564, a4id2Step2A0564);
 registerScript(0x29f5bc, main0Init29F5BC);
 registerScript(0x29f5fe, main0Step29F5FE);
 registerScript(0x29f3f0, object10_29F3F0);
