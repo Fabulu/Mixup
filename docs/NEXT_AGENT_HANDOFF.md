@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (local W511; production build `20260822223516` remains W502 through W506)
+Updated: 2026-08-23 (W511 published in production build `20260823005140`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,7 +8,7 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **Local W511 follows W503's exact natural stage-5 type-`$13`
+`docs/DOCKET.md` is authoritative. **Published W511 follows W503's exact natural stage-5 type-`$13`
 to type-7 handoff through variant 0's complete five-script list, its authentic terminator, and sequence list A
 entries 0 through 2.** On loop 2 the menu gate short-circuits, posted value 2 selects variant 0, `$290F12`
 selects list `$290F1E`, and its five entries read `$290F66`, `$290F8E`, `$290FE2`, `$2910F6`, and
@@ -26,22 +26,19 @@ W510 and W511 contain only existing `$8000`, `$8001`, plain-data, `$8002`, `$800
 Neither rearms nor mutates the auxiliary loader, and neither requires a source-call or context-key inventory
 change. The natural integration stops at the deliberate next browser boundary `$291604`.
 
-The exact `$64`-byte script and six absent sparse four-byte spawn longwords take the local export from 742 to
+The exact `$64`-byte script and six absent sparse four-byte spawn longwords take the export from 742 to
 749 windows and 446,043 to 446,167 bytes. Eleven distinct selections and operand 0's resource reuse prior
 windows. All seven declarations are disjoint and overlap pairs remain 76. The focused natural integration,
-slot-7 interpreter, live registry, and coverage set passes 30/30; the direct W511 rerun passes 1/1. No full suite,
-browser export, build, publication, commit, or push was run. W511 closes the W507-W511 five-wave batch;
-after W511 is committed and the tree is quiet, run `export-web.mjs` before the full `publish.mjs` gate.
+slot-7 interpreter, live registry, and coverage set passes 30/30; the direct W511 rerun passes 1/1. W511 is
+committed as `d7c2da0`.
 
-Production build `20260822223516` remains W502 through W506. Its quiet-tree publication passed
+Production build `20260823005140` publishes W507 through W511. Its quiet-tree publication passed
 4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
 with zero skips, the 27/27 Batman gate with zero skips, the distribution build, and the ROM-leak guard,
-then passed three consecutive live confirmations. The published source commits remain `36b289b`,
-`bb9046b`, `5236b8a`, `96b0235`, and `66ebeaa`; bounded stale-test repair `bcf6281` completed that tree.
-W507, W508, W509, and W510 are committed as `f942dbe`, `faab91f`, `1f1cb60`, and `38bf2e6`, remain
-unpublished, and W511 is local.
+then passed deployment and three consecutive live confirmations. The published source commits are
+`f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. W516 is the next publication point.
 
-The exact next gameplay/progression target after local W511 is sequence list A entry 3's type-7 script at
+The exact next gameplay/progression target after published W511 is sequence list A entry 3's type-7 script at
 `$291604`. Follow only its first concrete runtime edge from W511's integration, and do not broaden into
 later sequence scripts, other variants, ending-selection reconnaissance, duplicate-only cleanup, or a guessed
 visual path.
@@ -66,7 +63,7 @@ the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage rem
 unknown, and 130 null, with 94 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
 
-## W511 VERIFIED LOCALLY: SEQUENCE LIST A ENTRY 2
+## W511 COMMITTED AS `d7c2da0`: SEQUENCE LIST A ENTRY 2
 
 Sequence list A entry 2 at `$2914D0` selects `$2915A0`; entry 3 at `$2914D4` selects the next boundary
 `$291604`. W511 exports exactly `$2915A0+$64`, covering `$2915A0..$291603`, plus only the six absent
@@ -157,7 +154,7 @@ production behavior was needed.
 
 The final `$FFFF` advances sequence-list cursor 4 to 8. The sequence driver's actual pool clear removes all
 27 records, while inner state and active sub-state remain 1 and the shared script cursor resets to zero. W510's
-former natural `Unreached` at `$2915A0` is superseded by local W511's exact `$291604` boundary. W510 added
+former natural `Unreached` at `$2915A0` is superseded by committed W511's exact `$291604` boundary. W510 added
 one 86-byte script window and nine four-byte spawn-table windows: `$29042A->$1EB4A0` for `$05A`,
 `$29046E->$1EB704` for `$06B`, `$29054A->$1EBEC0` for `$0A2`, `$290586->$1EC0DC` for `$0B1`,
 `$2905D6->$1EC3AC` for `$0C5`, `$290612->$1EC5C8` for `$0D4`, `$290622->$1EC658` for `$0D8`,
@@ -226,7 +223,7 @@ the cartridge channel step that skips value 16: target `$4210`, RGB 16/16/16, re
 
 The final `$FFFF` advances sequence-list cursor 0 to 4. The sequence driver's actual clear removes all 26
 presentation records; inner state and its active sub-state remain 1, and the shared script cursor resets to zero.
-W509's former natural `Unreached` at `$29154A` is superseded by committed W510 and local W511's exact
+W509's former natural `Unreached` at `$29154A` is superseded by committed W510 and committed W511's exact
 `$291604` boundary.
 The direct W509 integration passed 1/1, and its compact natural-integration, slot-7, registry, and coverage set
 passed 30/30 with no failures or skips. Fourteen disjoint declarations added 262 bytes, producing its historical
@@ -273,11 +270,11 @@ waits for its node to drain, frees it, and clears the handle. No production sour
 The fifth `$FFFF` advances list cursor 16 to 20 and the sequence driver's existing clear removes all 16
 pool records. The following `$FFFFFFFF` takes the existing final-list arm, changes variant 0 from inner
 state 0 to inner state 1, initializes sequence list A at `$2914C8`, and resets its cursor. Its first pointer
-is `$2914F0`; committed W509 and W510 execute entries 0 and 1 as documented above, and local W511 executes
+is `$2914F0`; committed W509 and W510 execute entries 0 and 1 as documented above, and committed W511 executes
 entry 2. The direct W508 test passes 1/1, while its compact integration, slot-7, registry, and coverage set passes
 30/30 with no failures or skips. W508 added four disjoint windows and 74 bytes, producing its historical 718
 windows, 445,659 bytes, and 76 overlap pairs. Its former `$2914F0` stop is superseded by committed W509/W510
-and local W511's exact `$291604` boundary.
+and committed W511's exact `$291604` boundary.
 
 ## W507 COMMITTED AS `f942dbe`: VARIANT 0'S FOURTH SCRIPT
 
@@ -326,7 +323,7 @@ waits for the chain, frees it, clears the handle, and reaches `$FFFF`. The seque
 the list cursor from 12 to 16 and clears all 43 pool records.
 
 The natural next call follows entry 4 at `$291172`; committed W508 executes it as documented above.
-W507's former `$291172` stop is superseded by committed W508/W509/W510 and local W511's exact `$291604`
+W507's former `$291172` stop is superseded by committed W508/W509/W510 and committed W511's exact `$291604`
 boundary.
 
 ## W506 VERIFIED LOCALLY: VARIANT 0'S THIRD SCRIPT
@@ -372,7 +369,7 @@ low-word bump, then observes the inter-script pool clear and list-cursor advance
 The natural next call follows variant 0's entry 3 pointer at `$2910F6`; committed W507 executes it as
 documented above. Do not mistake the physically adjacent `$291040` variant-1 script for this path's next
 executable edge. W506 remains published in build `20260822223516`; its former `$2910F6` stop is superseded
-by committed W507/W508/W509/W510 and local W511's exact `$291604` boundary.
+by committed W507/W508/W509/W510 and committed W511's exact `$291604` boundary.
 
 ## W505 VERIFIED LOCALLY: TYPE 7'S SECOND COMMON SCRIPT
 
@@ -1511,15 +1508,13 @@ there are no exact longword references to `$25DA60`. Body, picker and parent SHA
 
 ## IMMEDIATE ORDER
 
-1. After W511 is committed and the tree is quiet, run `export-web.mjs` and then the full `publish.mjs` gate for
-   W507 through W511. Confirm the resulting production build before resuming gameplay waves.
-2. Follow sequence list A entry 3's exact type-7 script at `$291604` only through its first concrete executable
+1. Follow sequence list A entry 3's exact type-7 script at `$291604` only through its first concrete executable
    boundary. Do not widen into later sequence scripts or another variant.
-3. Exercise both cartridge-supported ships and all three numeric style slots through the complete Black Label
+2. Exercise both cartridge-supported ships and all three numeric style slots through the complete Black Label
    second loop, closing only selector-specific gaps those runs prove.
-4. Complete Black Label through the full second loop.
-5. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
-6. After D26 and functional completion, D28a and D28b use one synchronized control stream, option-like
+3. Complete Black Label through the full second loop.
+4. Finish functional White Label after Black Label. Leave duplicate-only cleanup until both are complete.
+5. After D26 and functional completion, D28a and D28b use one synchronized control stream, option-like
    formation offsets, coordinated movement, and combined firepower for both authentic ships and then all
    three authentic pilots. Do not use independent controls or cloned stand-ins.
 
@@ -1531,8 +1526,8 @@ cadence above. Do not spend a wave redoing either clause.
 
 ## PUBLISHED HISTORY
 
-Last confirmed live: build `20260822223516`, confirmed 2026-08-23 after three consecutive live checks.
-Earlier confirmed builds include `20260822192350`, `20260822120853`, `20260822080859`, `20260822042005`,
+Last confirmed live: build `20260823005140`, confirmed 2026-08-23 after three consecutive live checks.
+Earlier confirmed builds include `20260822223516`, `20260822192350`, `20260822120853`, `20260822080859`, `20260822042005`,
 `20260822010546`, `20260821175936`, `20260821162642`, `20260821132334`, and `20260821060153`.
 
 ## W422 LANDED -- POOL-A KIND 5, VERIFIED BY THE COORDINATOR

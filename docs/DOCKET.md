@@ -28,7 +28,7 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF LOCAL W511 (2026-08-23).** Dispatch remains **18 of 20**: W503 ports and registers
+**STANDING AS OF PUBLISHED W511 (2026-08-23).** Dispatch remains **18 of 20**: W503 ports and registers
 `[19] $28EE88`, the bounded stage-5 ending tally and type-7 handoff. W504 through W508 drive that exact
 natural loop-2 edge through type 7's complete five-script variant-0 list at `$290F66`, `$290F8E`, `$290FE2`,
 `$2910F6`, and `$291172`; W509 through W511 follow its authentic transition into inner state 1 and sequence
@@ -37,10 +37,10 @@ presentation records and eight complete `$8003` resource lifecycles. W509 additi
 `$8005 $0001 $0003` and its two-node mode-0 auxiliary palette resource. W511 emits 34 records across 13, 13,
 and 8-record groups at exact five-frame `$0404` cadence, spends the exact `$60` wait, leaves the auxiliary
 loader idle, clears all 34 records, and advances sequence-list A's cursor from 8 to 12 while remaining in inner
-state 1. Production build `20260822223516` still publishes W502 through W506 after the full publication gate
-and three consecutive live confirmations; W507, W508, W509, and W510 are committed as `f942dbe`,
-`faab91f`, `1f1cb60`, and `38bf2e6`, remain unpublished, and W511 is local. The exact next gameplay edge is
-sequence list A entry 3 at `$291604`. The two without a handler are `[16] $256E7A` and `[18] $24902A`.
+state 1. Production build `20260823005140` publishes W507 through W511 from commits `f942dbe`, `faab91f`,
+`1f1cb60`, `38bf2e6`, and `d7c2da0` after the full publication gate and three consecutive live confirmations.
+The exact next gameplay edge is sequence list A entry 3 at `$291604`; W516 is the next publication point.
+The two without a handler are `[16] $256E7A` and `[18] $24902A`.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -2150,9 +2150,14 @@ The next natural call fails loudly at the intentionally unexported entry-3 scrip
 sequence list, or variant was inspected. The direct expanded integration passes 1/1, and the compact
 natural-integration, slot-7, registry, and coverage set passes 30/30 with no failures or skips. The script and six
 sparse longwords add seven disjoint windows and 124 bytes, so table regeneration measures 749 windows,
-446,167 bytes, and 76 overlap pairs. No full suite, browser export, build, publication, commit, or push ran for
-local W511. W511 closes the W507-W511 five-wave batch; after W511 is committed and the tree is quiet, the
-publication coordinator must run `export-web.mjs` before the full `publish.mjs` gate.
+446,167 bytes, and 76 overlap pairs. W511 was committed as `d7c2da0` and closes the W507-W511 five-wave
+batch. Browser assets were regenerated before its quiet-tree publication.
+
+**W507-W511 PUBLICATION FOLLOW-UP:** Production build `20260823005140` publishes all five waves from
+source commits `f942dbe`, `faab91f`, `1f1cb60`, `38bf2e6`, and `d7c2da0`. The quiet-tree gate passed
+4,404/4,404 DDPDOJ units plus its bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate
+with zero skips, the 27/27 Batman gate with zero skips, the distribution build, and the ROM-leak guard.
+Deployment and three consecutive live confirmations passed. W516 is the next periodic publication point.
 
 **W502-W506 PUBLICATION FOLLOW-UP:** Production build `20260822223516` publishes all five waves from
 source commits `36b289b`, `bb9046b`, `5236b8a`, `96b0235`, and `66ebeaa`; bounded stale-test repair
@@ -2161,7 +2166,7 @@ bundle and web-fetch gates, 746/746 Gradius units plus the 13/13 gate with zero 
 gate with zero skips, the distribution build, and the ROM-leak guard. Deployment and three consecutive
 live confirmations passed.
 
-This does not yet identify every ending-selection condition or close D37. After local W511, the exact next
+This does not yet identify every ending-selection condition or close D37. After published W511, the exact next
 gameplay edge is sequence list A entry 3's type-7 script at `$291604`, again following only the first concrete
 runtime edge rather than broadening into speculative ending-selection or other-variant research.
 
