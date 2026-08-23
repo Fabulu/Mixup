@@ -12,10 +12,11 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
+import { ENEMY } from '../src/enemies.js';
+import { initDispatch, SPAWN } from '../src/spawn.js';
 import { UnportedLog } from '../src/unported.js';
 import { handlerMap, HANDLER_ADDRESSES } from '../src/handlers.js';
 import { INIT_BODY_ADDRESSES } from '../src/initbody.js';
-import { SPAWN } from '../src/spawn.js';
 import { enemyHandlerMap } from '../src/enemyframe.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -73,6 +74,18 @@ test('W317 the type table names these addresses', { skip: SKIP_IMG }, () => {
   assert.equal(IMG.readUInt32BE(0x267824 + off + 4), HANDLER);
   assert.equal(0x2659dc + 8, INITBODY);
   assert.equal(IMG.readUInt16BE(0x2659dc + 2), 0, 'run length zero');
+});
+
+test('W544 spawn dispatch reads type $59\'s exact zero run length', { skip: SKIP }, () => {
+  const ram = new Ram();
+  const rec = ENEMY.bandCommon;
+  ram.setU8(rec + 0x0c, 0x59);
+  ram.setU8(rec + 0x0d, 0x00);
+
+  const result = initDispatch(ram, ROM, rec, { note() {} }, () => {});
+  assert.deepEqual([result.init, result.initBody, result.runLen],
+    [0x2659dc, INITBODY, 0]);
+  assert.equal(ram.u32(rec + 0x4c), HANDLER, 'the adjacent low-table handler');
 });
 
 // ==================== 2. THE WORD LITERAL IS TWO BYTE FIELDS

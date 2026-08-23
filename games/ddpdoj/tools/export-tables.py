@@ -2901,6 +2901,10 @@ SHOT_WINDOWS.extend([
     # W317: type $59's single sub-record prototype, $2659F8..$265A13, ending exactly at its
     # handler $265A14. The type draws nothing of its own -- it is a timed spawner -- so this one
     # window is the whole of its data.
+    # W544: live spawn dispatch now reaches the eight-byte run-length stub immediately after
+    # W199's type-$3F closure. Keep the exact stub separate rather than widening that old window.
+    (0x2659DC, 0x0008, "W544: type $59 init stub read by initDispatch, including its exact "
+                       "run-length word $0000 at $2659DE"),
     (0x2659F8, 0x001C, "W317: type $59's sub-record prototype, ending at its handler $265A14"),
     # W319: type $8E. Three windows, and the middle one is the interesting extent.
     #   $2764A0 + $32   the FIVE two-byte stage rows, the 6-word record prototype and the sub

@@ -378,7 +378,14 @@
 // window ending at `$269256`. Measured: 795 -> 796 windows,
 // 450,459 -> 450,467 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 796;
+// ---------------------------------------------------------------------------
+// W544 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$2659DC + $8` is type $59's complete init stub. It abuts W199's type-$3F
+// closure ending at `$2659DC`. Measured: 796 -> 797 windows,
+// 450,467 -> 450,475 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 797;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
