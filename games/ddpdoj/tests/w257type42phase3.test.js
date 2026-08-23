@@ -123,6 +123,22 @@ test('W257 the oscillator negates its step at BOTH ends of the $20..$60 band',
     assert.equal(up.ram.u8(SUB0 + 0x8c), 0xf0, '$2A3F16 neg.b at the ceiling');
   });
 
+test('W538 exports type $42\'s complete cartridge speed oscillator',
+  { skip: SKIP }, () => {
+  const levels = Array.from({ length: 0x41 }, (_, i) => 0x20 + i);
+  assert.equal(ROM.u8(0x2a3ae2), 1,
+    'the fifth long-form prototype maps table +$08 to $8C(A6)');
+  for (const level of levels) {
+    assert.ok(json.speed.quads[String(level)], `type $42 speed ${level} is exported`);
+    assert.doesNotThrow(() => MT.shotVector(level, 0));
+  }
+
+  const f = child(0);
+  f.ram.setU8(REC0 + 0x1a, 0x45);            // exact pair-{0,4} failure level
+  f.ram.setU8(SUB0 + 0x8a, 0x7f);           // keep the oscillator off this frame
+  assert.doesNotThrow(() => run(f));
+});
+
 test('W257 the sweep walks 0 -> 1 -> 2 -> 0 and widens by 2 each lap',
   { skip: SKIP }, () => {
     const f = child(0);

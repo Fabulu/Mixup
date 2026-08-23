@@ -7733,6 +7733,10 @@ def speed_index_set(d: bytes) -> list[int]:
     # W536: and the Stage-4 boss arrival's word ramp. MAIN0 initializes $0280,
     # reads `speed >> 2`, then subtracts 5 while the signed result stays positive.
     s.update(boss4_arrival_speed_indices(d))
+    # W538: and type $42's unit-step oscillator during A4 id6. Its cartridge
+    # prototype supplies +1 and the handler reverses it at the inclusive $20/$60
+    # bounds, so all 65 levels in that exact closed walk are reachable.
+    s.update(boss4_child_speed_indices(d))
     return sorted(s)
 
 
@@ -7904,6 +7908,58 @@ def boss4_arrival_speed_indices(d: bytes) -> set[int]:
     while 0 < value < 0x8000:
         out.add(value >> 2)
         value = (value - decrement) & 0xFFFF
+    return out
+
+
+# W538: Stage-4 type $42's A4-id6 phase changes the enemy record's speed byte
+# outside every spawn-template and movement-stream inventory. A1 11 seeds $48.
+# The fifth long-form sub-record prototype maps its table byte at $2A3AE2 to
+# +$8C(A6), the signed step, and the handler adds it before reversing at $20/$60.
+# Simulate that finite cartridge state machine so a changed step or bound changes
+# the exported domain rather than leaving a hand-written range behind.
+BOSS4_CHILD_SPEED_INIT = 0x2A318E
+BOSS4_CHILD_PROTO_5 = 0x2A3ADA
+BOSS4_CHILD_SPEED_ADD = 0x2A3EDC
+BOSS4_CHILD_SPEED_FLOOR = 0x2A3EF2
+BOSS4_CHILD_SPEED_CEILING = 0x2A3F0E
+
+
+def boss4_child_speed_indices(d: bytes) -> set[int]:
+    """Every speed in type $42's exact unit-step $20..$60 oscillator."""
+    if d[BOSS4_CHILD_SPEED_INIT:BOSS4_CHILD_SPEED_INIT + 6] != bytes.fromhex(
+            "197c00480008"):
+        raise SystemExit("W538: $2A318E no longer seeds A1 11 child speed $48")
+    if u16(d, BOSS4_CHILD_PROTO_5) & 0x8000 == 0:
+        raise SystemExit("W538: type $42's fifth sub-record prototype is no longer long-form")
+    if d[BOSS4_CHILD_SPEED_ADD:BOSS4_CHILD_SPEED_ADD + 8] != bytes.fromhex(
+            "102e008cd12d001a"):
+        raise SystemExit("W538: $2A3EDC no longer adds $8C(A6) to $1A(A5)")
+    if d[BOSS4_CHILD_SPEED_FLOOR:BOSS4_CHILD_SPEED_FLOOR + 12] != bytes.fromhex(
+            "0c4000206e000028442e008c"):
+        raise SystemExit("W538: type $42's descending $20 bound changed")
+    if d[BOSS4_CHILD_SPEED_CEILING:BOSS4_CHILD_SPEED_CEILING + 12] != bytes.fromhex(
+            "0c4000606d00000c442e008c"):
+        raise SystemExit("W538: type $42's ascending $60 bound changed")
+
+    value = u16(d, BOSS4_CHILD_SPEED_INIT + 2) & 0xFF
+    # In `$2637A2`'s long form, stored +$0C maps to table +$08: two flag
+    # bytes, then the loader's four-byte destination skip.
+    step = d[BOSS4_CHILD_PROTO_5 + 8]
+    if step == 0:
+        raise SystemExit("W538: type $42's oscillator step is zero")
+    floor = u16(d, BOSS4_CHILD_SPEED_FLOOR + 2)
+    ceiling = u16(d, BOSS4_CHILD_SPEED_CEILING + 2)
+    out = {value}
+    seen = set()
+    while (value, step) not in seen:
+        seen.add((value, step))
+        value = (value + step) & 0xFF
+        out.add(value)
+        if step & 0x80:
+            if value <= floor:
+                step = (-step) & 0xFF
+        elif value >= ceiling:
+            step = (-step) & 0xFF
     return out
 
 
