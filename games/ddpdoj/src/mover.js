@@ -850,11 +850,27 @@ CONTINUATIONS.set(0x282b64, (ctx, base) => {
   const { ram } = ctx;
   // $282B64 moveq #$3,D0 ; btst D0,$34(A6) ; beq $282B92
   if (ram.btst8(base + 0x34, 3) === 0) {
-    // bit3 of +$34 clear: the track branch. $2C==0 in stage 1 -> $282BC6.
-    if (ram.u32(base + 0x2c) !== 0) {
-      unreached(0x282b64, 'kind 19 target-track branch ($2C != 0) -- not in the '
-        + 'stage-1 corpus (D4=0 for every spawn). Port faithfully when a stage '
-        + 'that uses it is reached');
+    // bit3 of +$34 clear: track the object at +$2C until the sprite reaches
+    // $1C1C1C, then arm the ordinary animation path and restore velocity.
+    const target = ram.u32(base + 0x2c);              // $282B92 move.l $2C,D1
+    if (target !== 0) {
+      if ((ram.u16(target) & 0x8000) === 0 || (ram.u8(target + 1) & 0x80) !== 0) {
+        freeSlotNoEffect(ctx, base);                   // $282BDC clr.w / move.w #$FFFF,$2
+        advance40(ctx, base);
+        return;
+      }
+      ram.setU32(base + REC.posA,
+        (ram.u32(target + REC.posA) + ram.u32(base + 0x28)) >>> 0); // $282BA4..$282BAC
+      if (ram.bchg8(base, 3) !== 0) {                 // $282BB0 bchg D0,(A6)
+        advance40(ctx, base);
+        return;
+      }
+      const render = (ram.u32(base + 0x0a) + 0x24) >>> 0; // $282BB4 addi.l #$24,$A
+      ram.setU32(base + 0x0a, render);
+      if (render !== 0x1c1c1c) {                     // $282BBC cmpi.l #$1C1C1C,$A
+        advance40(ctx, base);
+        return;
+      }
     }
     ram.bset8(base + 0x34, 3);                       // $282BC6 bset #$3,$34
     ram.setU32(base + REC.velA, ram.u32(base + 0x30));  // $282BCC move.l $30,$1e -- RESTORE vel
