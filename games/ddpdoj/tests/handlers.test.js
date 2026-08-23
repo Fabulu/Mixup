@@ -110,7 +110,7 @@ const STUB_ROM = {
   u32: (a) => STUB_LONGS.get(a) ?? 0,
 };
 
-test('the ported handler addresses are registered through W223 type $41', () => {
+test('the ported handler addresses are registered through W522 type $3D', () => {
   // W31 adds `$26B6FA` (type $0D, the MIDBOSS), which lives in src/midboss.js
   // and is NOT in SIX -- the `runs on a live record` test below drives SIX
   // against a STUB rom, and the midboss reads four real ROM tables.
@@ -187,6 +187,7 @@ test('the ported handler addresses are registered through W223 type $41', () => 
       // $26E04C and $26E152, the last two unclaimed callers of `$261100`, and both of them also
       // clear $8130DA, the element gate its own init body sets.
       0x26e02a,
+      0x2673fa,   // W522: stage-3 type $3D, sharing the canonical turret step
     ].sort((a, b) => a - b));
 });
 

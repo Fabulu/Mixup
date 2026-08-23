@@ -326,7 +326,14 @@
 // prototype data. Measured: 783 -> 785 windows, 448,021 -> 448,099 bytes,
 // 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 785;
+// ---------------------------------------------------------------------------
+// W525 ADDED ONE DISJOINT WINDOW; W526 WIDENED ONE EXISTING WINDOW.
+// ---------------------------------------------------------------------------
+// `$24E512 + $DC` closes the Type-B normal-shot pointer table and descriptors.
+// W526 then extends `$24DDD0` to abut `$24DFE0`, without changing its identity.
+// Measured: 785 -> 786 windows, 448,099 -> 448,415 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 786;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

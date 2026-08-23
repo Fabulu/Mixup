@@ -318,13 +318,13 @@ test('SECTION 5: the shared helper consumes the caller-held A6, never a recycled
     assert.equal(ram.u16(DECOY_A6 + 4), decoy4, 'the stale pointer X remains dirty');
   });
 
-test('SECTION 6: one production body serves both handlers and preserves both continuations', () => {
+test('SECTION 6: one production body serves all three handlers and preserves their continuations', () => {
   const turretSource = readFileSync(join(SRC, 'turret.js'), 'utf8');
   const handlerSource = readFileSync(join(SRC, 'handlers.js'), 'utf8');
   assert.match(handlerSource,
     /import \{ TURRET_HANDLERS, turretStep \} from '\.\/turret\.js';/);
-  assert.equal([...handlerSource.matchAll(/\bturretStep\s*\(/g)].length, 2,
-    'the type $11 and type $10 production handlers are the only handlers.js callers');
+  assert.equal([...handlerSource.matchAll(/\bturretStep\s*\(/g)].length, 3,
+    'the type $11, type $10 and type $3D production handlers share the helper');
   assert.match(handlerSource,
     /turretStep\(\(\) => aimTables\(rom\), ram, rom, a5, a6, TURRET_11\)/);
   assert.match(handlerSource,
@@ -343,7 +343,7 @@ test('SECTION 6: one production body serves both handlers and preserves both con
     const count = [...source.matchAll(/\bturretStep\s*\(/g)].length;
     if (count) productionUses[entry.name] = count;
   }
-  assert.deepEqual(productionUses, { 'handlers.js': 2, 'turret.js': 1 },
+  assert.deepEqual(productionUses, { 'handlers.js': 3, 'turret.js': 1 },
     'all production imports, calls and the sole declaration are enumerated');
 });
 

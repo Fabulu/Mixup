@@ -67,10 +67,10 @@ test('W373 slot [9] LETS state 4 stand where slot [17] overwrites it', { skip: S
   b.ram.setU8(b5 + s17.SCREEN17.state, 1);                   // state 1, or state 0 would CLEAR the
   b.ram.setU8(a6, 1);                                        //   records and wipe the setup
   b.ram.setU8(a6 + SCREEN17.phaseAt, 3);
-  b.ram.setU16(0x813098, 1);                                 // shut 5/6 so 3 is observable alone
-  s17.objSlot17(b.ram, b.rom, b5, b.ctx);
-  assert.equal(b.ram.u8(a6 + SCREEN17.phaseAt), s17.SCREEN17.firstSetsPhase,
-    'slot [17] overwrote the same 4 with 5');
+  b.ram.setU16(0x813098, 1);                                 // skip only the style rewrite;
+  s17.objSlot17(b.ram, b.rom, b5, b.ctx);                    // common tails still reach 7
+  assert.equal(b.ram.u8(a6 + SCREEN17.phaseAt), s17.HANDLER6.nextPhase,
+    'slot [17] overwrote 4, then cascaded 5 through 6 to 7');
 });
 
 test('W373 the shared handlers really are shared', { skip: SKIP }, async () => {
