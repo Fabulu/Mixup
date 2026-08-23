@@ -76,7 +76,7 @@ import { loadSubProto } from '../src/enemyproto.js';
 import { runInitBodyAddr } from '../src/initbody.js';
 import {
   OVERLAP_PAIRS_BEFORE_W428, ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT,
-  W428_OVERLAP_PAIRS, W497_OVERLAP_PAIR, overlappingPairs,
+  W428_OVERLAP_PAIRS, W497_OVERLAP_PAIR, W518_OVERLAP_PAIR, overlappingPairs,
 } from './romwindowset.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -339,7 +339,7 @@ test('tests/romwindowset.js states the window count and the overlap count the '
     'ROM_OVERLAP_PAIRS must be what tools/export-tables.py emits');
 });
 
-test('W428 still contributes exactly its four overlaps after W497 added one more',
+test('W428 still contributes exactly four overlaps after W497 and W518',
   { skip: SKIP }, () => {
   const ws = tables.rom.windows.map(
     (w) => [parseInt(String(w.base).replace('$', ''), 16), w.len]);
@@ -350,14 +350,26 @@ test('W428 still contributes exactly its four overlaps after W497 added one more
       `${hx(base)} is declared exactly once`);
   }
 
-  // W428 contributed four pairs to the historical 71. W497 later contributed
-  // one separately named pair, so removing only W428's four now leaves 72.
+  // W428 contributed four pairs to the historical 71. W497 and W518 later
+  // contributed one each, so removing only W428's four now leaves 73.
   const without = ws.filter(([a]) => !mine.has(a));
   assert.equal(without.length, ROM_WINDOW_COUNT - 4, 'four windows removed');
-  assert.equal(overlappingPairs(without), OVERLAP_PAIRS_BEFORE_W428 + 1,
-    'drop W428\'s four and only W497\'s later forced pair remains above 71');
-  assert.equal(ROM_OVERLAP_PAIRS - (OVERLAP_PAIRS_BEFORE_W428 + 1), 4,
+  assert.equal(overlappingPairs(without), OVERLAP_PAIRS_BEFORE_W428 + 2,
+    'drop W428\'s four and the W497/W518 forced pairs remain above 71');
+  assert.equal(ROM_OVERLAP_PAIRS - (OVERLAP_PAIRS_BEFORE_W428 + 2), 4,
     'W428 still contributes one overlapping pair per cue-script window');
+
+  const [glyphs, priorInit] = W518_OVERLAP_PAIR;
+  const glyphWindow = ws.find(([base]) => base === glyphs);
+  const priorWindow = ws.find(([base]) => base === priorInit);
+  assert.ok(glyphWindow && priorWindow, 'both W518 overlap windows are declared');
+  assert.equal(glyphWindow[0] + glyphWindow[1], 0x2926da,
+    'the exact 96-longword vertical glyph table ends at slot [14] code');
+  assert.equal(priorWindow[0], 0x2926d0,
+    'W23 keeps the prior slot-[14] init-stub window base');
+  assert.equal(Math.min(glyphWindow[0] + glyphWindow[1], priorWindow[0] + priorWindow[1])
+    - Math.max(glyphWindow[0], priorWindow[0]), 10,
+  'W518 adds exactly one forced ten-byte overlap');
 
   // ...and each new pair is the cue script against the PROTOTYPE window that
   // used to clip it, not against something unrelated.

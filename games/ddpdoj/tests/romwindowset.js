@@ -308,19 +308,25 @@
 // windows, 446,635 -> 446,709 bytes, 76 -> 76 pairs.
 
 // ---------------------------------------------------------------------------
-// W518 ADDED THREE WINDOWS AND THE OVERLAP COUNT STILL DID NOT MOVE.
+// W518 ADDED THREE WINDOWS AND ONE FORCED OVERLAP.
 // ---------------------------------------------------------------------------
 // Slot [15]'s `$2921BA + $220` text pool ends exactly at its horizontal
 // 96-longword glyph table `$2923DA + $180`, which ends exactly at its vertical
-// 96-longword glyph table `$29255A + $180`. All three declarations are disjoint
-// and mutually abutting. Measured: 780 -> 783 windows, 446,709 -> 448,021 bytes,
-// 76 -> 76 pairs.
+// 96-longword glyph table `$29255A + $180`. The three new declarations are
+// mutually abutting. The vertical table ends at `$2926DA`, so its final ten
+// bytes necessarily overlap W23's existing `$2926D0 + $20` slot-[14] init-stub
+// window. Measured: 780 -> 783 windows, 446,709 -> 448,021 bytes,
+// 76 -> 77 pairs.
 
 export const ROM_WINDOW_COUNT = 783;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
 export const W497_OVERLAP_PAIR = Object.freeze([0x24d8a0, 0x24ddd0]);
+
+/** W518's forced `[vertical glyph table, prior slot-[14] init-stub window]`
+ * overlap. The exact 96-longword table ends ten bytes inside the prior window. */
+export const W518_OVERLAP_PAIR = Object.freeze([0x29255a, 0x2926d0]);
 
 /** The one window W429 declared, and the window it abuts WITHOUT overlapping.
  *  `tests/w429cuekinds.test.js` asserts the abutment is exact. */
@@ -331,7 +337,7 @@ export const W429_ABUTTING_PAIR = Object.freeze([0x28b08e, 0x28ac72]);
 export const W435_ABUTTING_PAIR = Object.freeze([0x28d864, 0x28d862]);
 
 /** The number of overlapping PAIRS over the whole window set. MEASURED. */
-export const ROM_OVERLAP_PAIRS = 76;
+export const ROM_OVERLAP_PAIRS = 77;
 
 /** The four pairs W428 added, `[cue script, the prototype window it straddles]`. */
 export const W428_OVERLAP_PAIRS = Object.freeze([
@@ -386,6 +392,7 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "abutting $291692+$48 script plus ten sparse longwords, W515 added the "
   + "abutting $2916DA+$26 script plus six sparse longwords, W516 added the "
   + "abutting $291700+$7C script plus one sparse longword, W517 added the "
-  + "abutting $29177C+$42 final script plus two sparse longwords, and W518 "
-  + "added three mutually abutting slot-[15] text and glyph-table windows; none "
-  + "moved the overlap count. See tests/romwindowset.js.";
+  + "abutting $29177C+$42 final script plus two sparse longwords. W518 added "
+  + "three mutually abutting slot-[15] text and glyph-table windows; the vertical "
+  + "table's final ten bytes overlap W23's existing $2926D0+$20 slot-[14] "
+  + "init-stub window, adding the 77th pair. See tests/romwindowset.js.";

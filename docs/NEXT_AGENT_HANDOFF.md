@@ -22,7 +22,7 @@ normal animation steps leave all seven timing-index-2 nodes at progress 4. No cu
 or later object handoff is reached.
 
 W521 adds no ROM window, production source, or `Game#ctx` key. The local registry remains 783 windows,
-448,021 bytes, and 76 overlap pairs. The direct W521 natural integration passes 1/1. Because the registry did
+448,021 bytes, and 77 overlap pairs. The direct W521 natural integration passes 1/1. Because the registry did
 not change, W521 does not need registry sentinels. `export-tables.py --verify` passes. W521 reaches the standing
 five-wave publication cadence but remains unpublished because its bounded brief explicitly forbids web export,
 build, publication, commit, and push.
@@ -82,7 +82,7 @@ state 12, or any later attract object.
 Extending the test made arm 2 authentically reuse animation addresses that W518 and W519 had checked at the
 final snapshot. Those older resource-retirement assertions now capture the same zero words at their respective
 handoff frames, before reuse. No production module, ROM window, context key, or registry sentinel changes.
-The registry remains 783 windows, 448,021 bytes, and 76 overlap pairs. The direct integration passes 1/1 and
+The registry remains 783 windows, 448,021 bytes, and 77 overlap pairs. The direct integration passes 1/1 and
 `export-tables.py --verify` passes. The full suite, web export, build, publication, commit, and push do not run.
 
 ## W520 VERIFIED: SLOT [12] NO-NAME PASS-THROUGH
@@ -117,7 +117,7 @@ on the next call, and enters state 2 at +301. Each state-1 call, including that 
 frame drains both queues and stops deliberately before slot [12] entry `$28F3AC`.
 
 No new window is required: `$288C2E`, both descriptor tables, `$2252F8+$40`, `$242E42+$80`, and the dispatch
-table were already declared. The registry stays at 783 windows, 448,021 bytes, and 76 overlap pairs. The direct
+table were already declared. The registry stays at 783 windows, 448,021 bytes, and 77 overlap pairs. The direct
 integration passes 1/1. No registry verification, full suite, web export, build, publish, commit, or push ran.
 
 ## W518 VERIFIED: SLOT [15] NORMAL PATH
@@ -145,8 +145,9 @@ executing already ported slot [14] at `$288C6C`.
 
 The exact new windows are `$2921BA+$220`, `$2923DA+$180`, and `$29255A+$180`. The text pool begins at
 sequence entry 0's own pointer and ends exactly at the horizontal table. Each glyph table has 96 longwords;
-horizontal ends exactly where vertical begins. All three declarations are disjoint and mutually abutting. They add
-1,312 bytes, producing 783 windows, 448,021 bytes, and 76 overlap pairs. The expanded direct integration passes
+horizontal ends exactly where vertical begins. The three new declarations are mutually abutting. The vertical table
+ends at `$2926DA`, so its final ten bytes overlap W23's prior `$2926D0+$20` slot-[14] init-stub window. They add
+1,312 bytes, producing 783 windows, 448,021 bytes, and 77 overlap pairs. The expanded direct integration passes
 1/1, both exact registry sentinels pass 2/2, and `export-tables.py --verify` passes. No production source, full
 suite, browser export, build, publish, commit, or push was involved. The next exact address is slot [14] entry
 `$288C6C`; do not execute it as part of W518.

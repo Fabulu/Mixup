@@ -37,7 +37,7 @@ arm 2 initializes the high-score presentation at `$25B412`. Two presentation cal
 while the seven-node `$25BA46` chain remains live; screen state stays 0, timer stays `$F0`, and both allocation
 queues remain empty. The bounded run stops with all seven nodes at progress 4, before chain completion or any
 later slot-8 state. No ROM window, production source, or context key changed; the local registry remains 783
-windows, 448,021 bytes, and 76 overlap pairs. Production build `20260823031213` still publishes W512 through
+windows, 448,021 bytes, and 77 overlap pairs. Production build `20260823031213` still publishes W512 through
 W516 from commits `434ac34`, `181172d`, `ff007e5`, `f99a3a3`, and `7f29cbb`; its registry has 777 windows,
 446,635 bytes, and 76 overlap pairs. W521 reaches the five-wave publication cadence but remains unpublished by
 its explicit bounded brief. The two without a handler are `[16] $256E7A` and `[18] $24902A`.
@@ -2360,11 +2360,14 @@ driver copy, duplicate target, or unrelated issue was followed. No production so
 
 Three exact cartridge windows are newly required. `$2921BA+$220` contains the string pool and ends at the
 horizontal glyph table. `$2923DA+$180` contains its 96 longwords and ends at the vertical table.
-`$29255A+$180` contains the vertical table's 96 longwords. The three disjoint, mutually abutting declarations add
-1,312 bytes, taking the local registry from 780 to 783 windows and 446,709 to 448,021 bytes while overlap pairs
-remain 76. The expanded direct natural integration passes 1/1, both exact registry sentinels pass 2/2, and
-`export-tables.py --verify` passes. No full suite, web-asset export, build, publish, commit, or push ran. W518 is
-the second unpublished wave after W516; W521 remains the publication point.
+`$29255A+$180` contains the vertical table's 96 longwords and ends at `$2926DA`. The three new windows are
+mutually abutting. The vertical table's final ten bytes overlap W23's existing `$2926D0+$20` slot-[14] init-stub
+window, so the declarations add one forced overlap pair. They add 1,312 bytes, taking the local registry from 780
+to 783 windows and 446,709 to 448,021 bytes while overlap pairs move from 76 to 77. The expanded direct natural
+integration passes 1/1, and `export-tables.py --verify` passes. The W521 publication gate later exposed the stale
+global overlap sentinel; its bounded repair records the exact pair and reconciles the count. No full suite,
+web-asset export, build, publish, commit, or push ran at W518's bounded point. W518 is the second unpublished
+wave after W516; W521 remains the publication point.
 
 **W519 FOLLOWS SLOT [14]'S AUTHENTIC NORMAL PATH.** W518's type `$0E` handoff reaches the existing
 `objSlot14` entry at `$288C6C`; W519 invokes that function directly rather than retranscribing it. State 0 resets
