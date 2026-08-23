@@ -385,7 +385,14 @@
 // closure ending at `$2659DC`. Measured: 796 -> 797 windows,
 // 450,467 -> 450,475 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 797;
+// ---------------------------------------------------------------------------
+// W545 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$26DDA4 + $8` is type $43's complete init stub. It is disjoint from W339's
+// death-spawn list and W341's prototype window. Measured: 797 -> 798 windows,
+// 450,475 -> 450,483 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 798;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

@@ -19,10 +19,11 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
+import { ENEMY } from '../src/enemies.js';
 import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
 import { PaletteState } from '../src/palette.js';
-import { SPAWN, resetAndInstallStage26331E } from '../src/spawn.js';
+import { initDispatch, SPAWN, resetAndInstallStage26331E } from '../src/spawn.js';
 import { enemyHandlerMap, runEnemyFrame } from '../src/enemyframe.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -191,6 +192,18 @@ test('W314 each missing type\'s init and handler come from the cartridge\'s own 
     }
     assert.equal(want.size, 12);
   });
+
+test('W545 spawn dispatch reads type $43\'s exact zero run length', { skip: SKIP }, () => {
+  const ram = new Ram();
+  const rec = ENEMY.bandCommon;
+  ram.setU8(rec + 0x0c, 0x43);
+  ram.setU8(rec + 0x0d, 0x00);
+
+  const result = initDispatch(ram, ROM, rec, { note() {} }, () => {});
+  assert.deepEqual([result.init, result.initBody, result.runLen],
+    [0x26dda4, 0x26ddac, 0]);
+  assert.equal(ram.u32(rec + 0x4c), 0x26de32, 'the adjacent low-table handler');
+});
 
 test('W487 ONE static cartridge spawn scan still points at an unported child',
   { skip: SKIP_IMG }, () => {

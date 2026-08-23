@@ -3095,6 +3095,8 @@ SHOT_WINDOWS.extend([
 ])
 
 # W341: type $43 ($26DDA4 init / $26DDAC initBody / $26DE32 handler).
+# W545: live Stage-5 spawn dispatch reaches the complete eight-byte init stub. Keep it separate from
+# W341's data windows and export the instruction immediate that dispatch reads.
 #   $26DE0C + $2A  the FIVE-word record prototype (`move.w #$4,D0`) and the ONE $20-byte sub prototype,
 #                  $26DE0C..$26DE35. ($4,A5) = 0, so $26DE16 + $20 = $26DE36 against a handler at
 #                  $26DE32: FOUR bytes of overlap, as the depth rule predicts. Do not trim.
@@ -3102,6 +3104,8 @@ SHOT_WINDOWS.extend([
 # No palette window: all three of $43's banks ($223578, $2235B8, $2236B8) are already inside W91's
 # $222A78..$2252F8 family window, checked arithmetically. Their spacing is $40 then $100, NOT uniform.
 SHOT_WINDOWS.extend([
+    (0x26DDA4, 0x0008, "W545: type $43 init stub read by initDispatch, including its exact "
+                       "run-length word $0000 at $26DDA6"),
     (0x26DE0C, 0x002A, "W341: type $43's 5-word record prototype and its sub prototype, "
                        "$26DE0C..$26DE35 -- overlapping its handler at $26DE32 by FOUR bytes"),
     (0x26DF00, 0x0040, "W341: type $43's SIXTEEN draw longwords, $26DF00..$26DF3F"),
