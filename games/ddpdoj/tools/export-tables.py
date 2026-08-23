@@ -3274,6 +3274,12 @@ SHOT_WINDOWS.extend([
                        "$8000 $0202, $8002 $00C0, $8005 $0000/$0003, $8003 $0003, and $FFFF. "
                        "It stops exactly at list A's next script, $29177C"),
     (0x29063A, 0x0004, "W516: slot [7] list-A eighth-script spawn-table longword for concrete index $DE"),
+    (0x29177C, 0x0042, "W517: slot [7] inner-state-1 sequence-list-A ninth and final script, "
+                       "$29177C..$2917BD -- $8000 $0404, two $8001 groups with 15 picture words "
+                       "total, $8000 $1010 with three final picture words, $8002 $0060, $8003 "
+                       "$0004, and $FFFF. It stops exactly at the adjacent sequence-driver copy, $2917BE"),
+    (0x29053A, 0x0004, "W517: slot [7] list-A ninth-script spawn-table longword for concrete index $9E"),
+    (0x290546, 0x0004, "W517: slot [7] list-A ninth-script spawn-table longword for concrete index $A1"),
     (0x2902EA, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $0A"),
     (0x2903F6, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $4D"),
     (0x2903FA, 0x0004, "W507: slot [7] fourth-script spawn-table longword for concrete index $4E"),
