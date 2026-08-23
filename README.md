@@ -15,7 +15,7 @@ headless beside the port and the two are diffed field by field, frame by frame.
 |---|---|---|
 | **Batman: Return of the Joker** - Sunsoft, 1992 | Game Boy | **complete** - title screen to end credits, bit-exact |
 | **Gradius** - Konami, 1986 | NES | **all seven stages play, the game ends and loops**; no known divergences |
-| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | W523 fixes the all-pairs round-2 selector stall after W522's first stage-3 progression blocker; all six authentic ship/style pairs and the complete second loop remain the active gameplay phase |
+| **DoDonPachi DaiOuJou (Black Label)** - Cave / AMI, 2002 | IGS PGM arcade | W526 carries the six-pair round-2 matrix through its first pair-specific shot-table boundaries; all six authentic ship/style pairs and the complete second loop remain the active gameplay phase |
 
 Each game lives in its own directory behind `games/index.json`, and the launcher
 picks a game before it loads any game code. That structure exists for a reason
@@ -361,14 +361,15 @@ W517 through W521 with 783 windows, 448,021 bytes, and 77 overlap pairs after 4,
 all bundle and web gates, the cross-game gates, the distribution build, the ROM-leak guard, deployment, and
 three consecutive live confirmations. The source commits are `e28336b`, `f2266f8`, `7918d8a`, `4ce2536`,
 and `4c6a8c2`; publication repairs are `e55af96` and `b2e671c`. W522 starts the six authentic-pair loop-2
-matrix. The default pair reaches stage 3, exposes unported type `$3D`, and crosses that boundary after its exact
-init and handler are translated. The local registry is 785 windows, 448,099 bytes, and 77 overlap pairs.
-Cartridge evidence now records exact `1 ROUND GAME` and `2 ROUND GAME` semantics, the round-2 qualification
-gate, and the final Hibachi route truth table. W523 then fixes the shared round-2 slot-[17] stall: the nonzero
-round branch skips only a style rewrite and still advances through both common tails to state 7. D109 now has
-a hard 2026-08-28 deadline for a second public site that ships no cartridge assets and boots all three games
-from locally supplied, exactly identified ROMs. Remaining ending variants will be batched by complete family or
-variant rather than split into one commit per understood script.
+matrix by porting stage-3 type `$3D`; W523 fixes the shared round-2 slot-[17] stall. W524 registers Type-B's
+exact `$28C3D4` ordinary-shot sound wrapper. W525 exports its `$24E512..$24E5ED` normal-shot table and
+pointed descriptors. W526 closes Type-A style 6's `$24DFA2` hit descriptor by extending the existing window to
+its exact adjacent boundary. All Type-A pairs now reach logic frame 2,050; Type-B's next concrete boundaries
+remain at frames 2,031 and 2,035. Production build `20260823140446` publishes W522 through W526 with 786
+windows, 448,415 bytes, and 77 overlap pairs after 4,409/4,409 DDPDOJ units and every cross-game gate. D109
+is complete ahead of deadline: the separate asset-free site boots all three games from exact local inputs without
+shipping cartridge assets. Remaining ending variants will be batched by complete family or variant rather than
+split into one commit per understood script.
 
 That breadth does not mean the game is finished. The authoritative docket still
 tracks explicit defects and gaps, front-end screens, remaining enemy coverage,

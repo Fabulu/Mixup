@@ -28,20 +28,21 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W523 (2026-08-23), UNPUBLISHED AFTER BUILD `20260823074549`.** W523 fixes the
-cartridge-proven round-2 slot-[17] stall. `$25D3A2 bne $25D3C4` skips only the style rewrite when `$813098`
-is nonzero; both paths still run the common display tail and advance phase 5 to 6. The complete slot pass now
-cascades phase 3 through phases 5 and 6 to 7 instead of leaving every ship/style pair stuck in round 2. The
-focused file passes 24/24. No ROM window or registry count changes.
+**STANDING AS OF W526 (2026-08-23), PUBLISHED IN BUILD `20260823140446`.** W523 fixes the
+cartridge-proven round-2 slot-[17] stall for all six pairs. W524 registers the Type-B ordinary-shot sound wrapper;
+W525 exports its normal-shot pointer and descriptor family; W526 closes Type-A style 6's hit-descriptor window.
+All Type-A pairs now reach logic frame 2,050. The next bounded work is the earlier Type-B failures at frames 2,031
+and 2,035. The local and published registry is 786 windows, 448,415 bytes, and 77 overlap pairs.
 
 W522 begins the six-pair
 Black Label loop-2 matrix with `{ship:0, style:2}`. The labelled invulnerable probe reaches stages 1, 2, and 3,
 then exposes `UNPORTED $26725C` at logic frame 25,710. W522 ports type `$3D` init body `$267262` and handler
 `$2673FA`, including its three phase gates, movement, bounds, two-trip damage lifecycle, effects, aim, firing,
-and drawing. The repaired probe reaches logic frame 25,730 in stage 3. The other five pairs remain unrun because
-this wave stops after the first concrete blocker. Two exact disjoint windows raise the local registry to 785
-windows and 448,099 bytes; overlap pairs remain 77. Dispatch remains **18 of 20**; types `[16] $256E7A` and
-`[18] $24902A` remain without handlers.
+and drawing. The repaired default-pair probe reaches logic frame 25,730 in stage 3. W524-W526 then exercise
+all three Type-B pairs and all three Type-A pairs across their earliest firing boundaries. W522's two windows plus
+W525's disjoint `$24E512+$DC` family and W526's bounded extension produce 786 windows and 448,415 bytes;
+overlap pairs remain 77. Dispatch remains **18 of 20**; types `[16] $256E7A` and `[18] $24902A` remain without
+handlers.
 
 `NOTES-progression.md` now records exact cartridge evidence. Version-B prints `1 ROUND GAME` and
 `2 ROUND GAME`; `$80393A` values 1 and 0 select them respectively. `$2901E0` gates access to round 2 with
@@ -51,17 +52,15 @@ or one-round mode is selected. Therefore one-round mode reaches Hibachi in round
 round 1, and round 2 reaches it unconditionally after the preceding form. Qualification controls access to
 round 2, not Hibachi appearance at the final fork.
 
-Production build `20260823074549` publishes W517 through W521 from commits `e28336b`, `f2266f8`, `7918d8a`,
-`4ce2536`, and `4c6a8c2`; publication repairs are `e55af96` and `b2e671c`. Its registry has 783 windows,
-448,021 bytes, and 77 overlap pairs. The full gate and three live confirmations passed. W526 is the next periodic
-publication point. W523 is the second unpublished wave after W521.
+Production build `20260823140446` publishes W522 through W526 from commits `cd7c0c6`, `162613d`, `00dd578`,
+`e984b50`, and `b13091b`; repair `f07d201` reconciles the landed gate baselines. Assets were regenerated first.
+The gate passed 4,409/4,409 DDPDOJ units, all game-specific and cross-game gates, the distribution and ROM-leak
+guards, deployment, and three consecutive live confirmations. W531 is the next periodic publication point.
 
-**D109 HAS A HARD PUBLIC-RELEASE DEADLINE OF 2026-08-28.** It requires a second, parallel asset-free site at
-`mixup.pages.dev`, whose Cloudflare Pages project was reserved on 2026-08-23. It must boot each game from
-player-supplied ROM files or a reusable local folder, publish exact size/checksum/revision instructions, and give
-detailed DaiOuJou variant diagnostics. The current asset-backed site stays live. The separate setup/build/validator
-foundation is in progress, but it is not a compliant release until all three local-ROM boot paths are connected.
-D109 now outranks ordinary progression waves until its deadline-critical architecture and release path are secured.
+**D109 COMPLETED ON 2026-08-23, AHEAD OF ITS 2026-08-28 DEADLINE.** The parallel asset-free site at
+`mixup.pages.dev` boots all three games from exact player-supplied local inputs and ships no cartridge assets. Its
+separate deployment left the then-current asset-backed build unchanged; later gameplay publication advanced
+`gbtman.pages.dev` independently. D109 no longer blocks the six-pair progression matrix.
 The newest items are **D42..D47**, opened from a play session on build `20260816181806` and appended at
 the end of this file; they outrank further boss internals.
 **D47 is a documentation pass and the owner confirmed its shape on 2026-08-18**: keep the current
@@ -2417,7 +2416,20 @@ record at phase 5 whenever `$813098` was nonzero.
 W523 guards only the rewrite. Its direct test keeps the style byte unchanged and advances phase 5 to 6. The full
 slot-[17] pass proves round 2 cascades phase 3 through both common tails to phase 7. The focused file passes 24/24
 with no failures or skips. No ROM window, export table, context key, registry count, generated asset, build, or
-publication changes. W523 is the second unpublished wave after W521.
+publication changes.
+
+**W524-W526 CLOSE THE FIRST SHIP-SPECIFIC FIRING BOUNDARIES.** W524 registers `$28C3D4`, the exact
+Type-B ordinary-shot sound wrapper with id `$11`, pan `$5D`, channel `$0A`, and common entry `$28C02A`; all
+three Type-B pairs cross logic frame 2,000. W525 exports `$24E512..$24E5ED`, covering 25 normal-shot pointers
+and fifteen adjacent eight-byte descriptors; all three Type-B pairs reach frame 2,004. W526 extends the existing
+`$24DDD0` window to its exact adjacent `$24DFE0` boundary so Type-A style 6 can read descriptor `$24DFA2`.
+All three Type-A pairs reach frame 2,050. The next first failures are Type-B boundaries at frames 2,031 and 2,035.
+Probe invulnerability remains an explicit pre-step write only; production construction and browser play stay mortal.
+
+The two window changes move the registry from 785 to 786 windows and from 448,099 to 448,415 bytes while 77
+overlap pairs remain unchanged. Focused W524, W525, and W526 tests pass. Production build `20260823140446`
+publishes W522-W526 after 4,409/4,409 DDPDOJ units, bundle and web-fetch gates, all cross-game gates, the
+ROM-leak guard, deployment, and three consecutive live confirmations. W531 is the next periodic publication point.
 
 **W522 FIXES THE FIRST SIX-PAIR PROGRESSION BLOCKER.** The authentic matrix is `{0,2}`, `{0,4}`, `{0,6}`,
 `{2,2}`, `{2,4}`, and `{2,6}`. W522 begins with the default pair and stops at the first loud failure. The
@@ -2445,8 +2457,8 @@ The quiet-tree gate passed 4,404/4,404 DDPDOJ units plus its bundle and web-fetc
 plus the 13/13 gate with zero skips, the 27/27 Batman gate with zero skips, the distribution build, and the
 ROM-leak guard. The leak guard checked 333 files, including 58 decompressed payloads and 12 ROMs with six
 deliberate exceptions. Deployment contains 339 files totalling 20,446 KB. Three consecutive live confirmations
-passed. The published registry has 783 windows, 448,021 bytes, and 77 overlap pairs. W526 is the next periodic
-publication point.
+passed. The published registry has 783 windows, 448,021 bytes, and 77 overlap pairs. The W522-W526
+publication record above supersedes this historical checkpoint.
 
 **W520-W521 COMPLETE THE NORMAL HANDOFF TO THE FIRST HIGH-SCORE PRESENTATION.** W520 follows slot
 [12]'s zero-score no-name path: it installs the four exact name-entry palettes, owes no name, restores the TX

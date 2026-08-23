@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (W523 source pushed; asset-free release live; asset-backed build remains `20260823074549`)
+Updated: 2026-08-23 (W526 published in asset-backed build `20260823140446`; asset-free build `20260823120247` remains live)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -19,8 +19,8 @@ Type `$3D` now runs its exact stage and phase discards, movement, bounds, two-tr
 effects, 32-heading art, aim cadence, fire gate, kind-`$0D` shot, and both sprite emitters. Two exact disjoint ROM
 windows raise the local registry from 783 to 785 windows and from 448,021 to 448,099 bytes; overlap pairs stay
 77. The focused W522 plus centralized exact registry set passes 43/43. The coordinator independently reproduced
-the default-pair progression boundary. `export-tables.py --verify` and `git diff --check` pass. W522 is the first
-unpublished wave after W521; W526 remains the periodic publication point.
+the default-pair progression boundary. `export-tables.py --verify` and `git diff --check` pass. W522 begins the
+five-wave gameplay batch now published through W526.
 
 `games/ddpdoj/NOTES-progression.md` now records the cartridge evidence requested before loop-2 work. Exact
 labels are `1 ROUND GAME` and `2 ROUND GAME`; `$80393A` value 0 means two-round and value 1 means one-round.
@@ -36,9 +36,24 @@ to 6, and the complete slot pass cascades state 3 through both common tails to s
 24/24. No ROM window, table, registry count, or generated asset changes. Do not add a new `stageend.js` Hibachi
 branch; the authentic final fork is already implemented in `hibachiend.js`.
 
+W524 through W526 expose and close the first ship-specific firing boundaries. W524 registers Type-B's exact
+ordinary-shot wrapper `$28C3D4` with id `$11`, pan `$5D`, channel `$0A`, and entry `$28C02A`; all three Type-B
+pairs cross frame 2,000. W525 exports `$24E512..$24E5ED`, covering its 25-pointer normal-shot table and fifteen
+adjacent descriptors; all Type-B pairs reach frame 2,004. W526 extends `$24DDD0` to the adjacent `$24DFE0`
+boundary so Type-A style 6 can read descriptor `$24DFA2`; all Type-A pairs reach frame 2,050. The next bounded
+probe should take the earlier Type-B failures at frames 2,031 and 2,035. The registry is 786 windows, 448,415
+bytes, and 77 overlap pairs.
+
+Production build `20260823140446` publishes W522 through W526 from `cd7c0c6`, `162613d`, `00dd578`,
+`e984b50`, and `b13091b`; repair `f07d201` reconciles the exact landed handler, phase, helper-call, and window
+baselines. Assets were regenerated before the quiet-tree gate. It passed 4,409/4,409 DDPDOJ units, bundle and
+web-fetch gates, Gradius units and 13/13 gate, Batman 27/27, the distribution and ROM-leak guards, deployment,
+and three consecutive live confirmations. W531 is the next periodic publication point.
+
 D109 is complete ahead of its 2026-08-28 deadline. Asset-free build `20260823120247` is live at
-`mixup.pages.dev` from Cloudflare Pages project `mixup`; `gbtman.pages.dev` remained unchanged at
-`20260823074549`. The setup supports files, folders, dropped files/folders, saved-handle reuse, and a one-pass global
+`mixup.pages.dev` from Cloudflare Pages project `mixup`; during that separate deployment `gbtman.pages.dev`
+remained unchanged at `20260823074549`. Gameplay publication later advanced the asset-backed site independently.
+The setup supports files, folders, dropped files/folders, saved-handle reuse, and a one-pass global
 inventory. A mixed folder unlocks every complete game independently, unrelated extras stay diagnostic, and only a
 missing, duplicate, or conflicting required identity locks that game. Its cards select the primary world; a separate
 secondary-character role is labelled future Mixup functionality. Exact identity and alternate-revision diagnostics
@@ -70,14 +85,14 @@ and the ROM-leak guard, then passed deployment and three consecutive live confir
 are `e28336b`, `f2266f8`, `7918d8a`, `4ce2536`, and `4c6a8c2`; publication repairs `e55af96` and `b2e671c`
 record W518's exact ten-byte overlap and the measured 77-pair registry. The leak guard checked 333 files,
 including 58 decompressed payloads, and the deployed distribution contains 339 files totalling 20,446 KB.
-W526 is the next periodic publication point.
+The W522-W526 publication record above supersedes this historical checkpoint.
 
-The next development phase is gameplay, not another tiny ending segment. First record cartridge evidence for the
-startup one-loop/two-loop choice and exact Hibachi qualification and branch rules. Then run all six authentic
-ship/style pairs `{0,2} x {2,4,6}` through Black Label loop 2 and fix the first concrete selector-specific,
-second-loop, or Hibachi blocker each run exposes. Ordinary launches must remain mortal; invulnerable labelled
-progression oracles remain explicit test tools only. When ending work resumes, seed directly at known presentation
-entries and batch complete script-list families or whole variants. Do not return to one commit per understood
+The next development phase remains gameplay, not another tiny ending segment. Continue the bounded six-pair matrix
+from the Type-B frame-2,031 and frame-2,035 boundaries, then carry every authentic pair through Black Label loop 2
+and fix the first concrete selector-specific, second-loop, or Hibachi blocker each run exposes. Ordinary launches
+must remain mortal; invulnerable labelled progression oracles remain explicit test tools only. When ending work
+resumes, seed directly at known presentation entries and batch complete script-list families or whole variants. Do
+not return to one commit per understood
 ending script or replay the full 11,000-frame chain for every segment.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
