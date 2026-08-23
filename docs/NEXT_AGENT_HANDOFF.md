@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (W526 published in asset-backed build `20260823140446`; asset-free build `20260823120247` remains live)
+Updated: 2026-08-23 (W531 published in asset-backed build `20260823165848`; asset-free build `20260823120247` remains live)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -8,47 +8,52 @@ Finish the complete Black Label Version-B game, including the full second loop, 
 DaiOuJou White Label. Prioritize gameplay defects and missing visible content with small cartridge-faithful
 fixes. Pure duplicate-register cleanup is deferred until both versions are functionally complete.
 
-`docs/DOCKET.md` is authoritative. **W522 starts the six authentic-pair Black Label progression matrix and fixes
-the first loud gameplay blocker.** The default `{ship:0, style:2}` labelled probe reaches stages 1, 2, and 3,
-then throws `UNPORTED $26725C` at logic frame 25,710. W522 ports type `$3D` init body `$267262` and handler
-`$2673FA`; the repaired probe reaches logic frame 25,730 in stage 3. Ordinary launches remain mortal. Only the
-labelled probe writes P1 invulnerability each frame. Top-level dispatch coverage remains 18/20; only types 16
-and 18 remain unknown.
+`docs/DOCKET.md` is authoritative. **W532 is the required preflight before another long six-pair run.** Run:
 
-Type `$3D` now runs its exact stage and phase discards, movement, bounds, two-trip damage and score lifecycle,
-effects, 32-heading art, aim cadence, fire gate, kind-`$0D` shot, and both sprite emitters. Two exact disjoint ROM
-windows raise the local registry from 783 to 785 windows and from 448,021 to 448,099 bytes; overlap pairs stay
-77. The focused W522 plus centralized exact registry set passes 43/43. The coordinator independently reproduced
-the default-pair progression boundary. `export-tables.py --verify` and `git diff --check` pass. W522 begins the
-five-wave gameplay batch now published through W526.
+```sh
+python games/ddpdoj/tools/round2closure.py
+node games/ddpdoj/tools/progression-probe.mjs --help
+```
 
-`games/ddpdoj/NOTES-progression.md` now records the cartridge evidence requested before loop-2 work. Exact
-labels are `1 ROUND GAME` and `2 ROUND GAME`; `$80393A` value 0 means two-round and value 1 means one-round.
-The Black Label Version-B round-2 gate is `$2901E0`: first-round, two-round mode, no simultaneous two-player
-veto, and no continue, followed by an OR of Bee Perfect cursor `>= $0C`, miss counter `< 2`, or bomb counter
-`< 3`. There is no score arm. Type `$B0` is statically scripted. Its `$2A5C7A/$2A5C84` fork continues when
-`$813098 || $80393A`: one-round mode reaches Hibachi in round 1, two-round mode skips it in round 1, and round 2
-reaches it unconditionally. Qualification controls access to round 2 and is not rechecked at Hibachi.
+The static closure inventories all five stage scripts, all five BGELEM lists, top objects, type-5 calls,
+source-visible deferred children, type `$15`'s local children, and scripted-carrier movement children. Stage
+records are exactly 339, 332, 414, 382, and 770. All direct stage enemy types, all BGELEM entries, and all 23
+type-5 calls are ported. The 103-type recursive enemy closure currently reports three unresolved dependencies:
 
-W523 fixes the separate cartridge-proven round-2 selector stall. In `objslot17.js`, `$25D3A2 bne $25D3C4`
-now skips only the style rewrite when the round word is nonzero. The common display tail still advances state 5
-to 6, and the complete slot pass cascades state 3 through both common tails to state 7. The focused file passes
-24/24. No ROM window, table, registry count, or generated asset changes. Do not add a new `stageend.js` Hibachi
-branch; the authentic final fork is already implemented in `hibachiend.js`.
+- top object `$10`, handler `$256E7A`
+- top object `$12`, handler `$24902A`
+- enemy `$9A`, init `$29EAE2`, handler `$29EB7A`
 
-W524 through W526 expose and close the first ship-specific firing boundaries. W524 registers Type-B's exact
-ordinary-shot wrapper `$28C3D4` with id `$11`, pan `$5D`, channel `$0A`, and entry `$28C02A`; all three Type-B
-pairs cross frame 2,000. W525 exports `$24E512..$24E5ED`, covering its 25-pointer normal-shot table and fifteen
-adjacent descriptors; all Type-B pairs reach frame 2,004. W526 extends `$24DDD0` to the adjacent `$24DFE0`
-boundary so Type-A style 6 can read descriptor `$24DFA2`; all Type-A pairs reach frame 2,050. The next bounded
-probe should take the earlier Type-B failures at frames 2,031 and 2,035. The registry is 786 windows, 448,415
-bytes, and 77 overlap pairs.
+Close those statically before bypassing the preflight. The default progression probe exits before runtime while
+any remain; `--skip-closure` is an explicit diagnostic escape, not the normal path.
 
-Production build `20260823140446` publishes W522 through W526 from `cd7c0c6`, `162613d`, `00dd578`,
-`e984b50`, and `b13091b`; repair `f07d201` reconciles the exact landed handler, phase, helper-call, and window
-baselines. Assets were regenerated before the quiet-tree gate. It passed 4,409/4,409 DDPDOJ units, bundle and
-web-fetch gates, Gradius units and 13/13 gate, Batman 27/27, the distribution and ROM-leak guards, deployment,
-and three consecutive live confirmations. W531 is the next periodic publication point.
+W532 also adds periodic local exact-harness checkpoints under the gitignored
+`games/ddpdoj/probes/checkpoints/`. Each checkpoint contains evolved RAM, deterministic non-RAM `Game` state,
+logic/video frames, pair, exact seed and table identities, last input, raw stage/loop, payload hashes, and explicit
+probe-only invulnerability. The CLI automatically restores the highest logic-frame checkpoint for each pair,
+accepts `--resume`, writes every 500 stepped frames by default, and uses real input edges at the round-2 menu.
+A focused exact-bundle test proves restored and uninterrupted stepping produce identical RAM and non-RAM state.
+Checkpoints restore into current code so bounded handler fixes can resume at their frontier; a serialized state-shape
+change requires `--fresh`. Ordinary `Game` and browser construction remain unchanged and mortal.
+
+W527 through W531 advance pair `{ship:0, style:4}` to logic frame 41,031 in raw stage 3. W527 exports
+Type-B's exact `$24E5EE..$24E723` hit table and descriptor family. W528 ports kind-16 flying-bee waypoint
+movement. W529 ports deferred type `$A5` init body `$2783F6` and handler `$2784C8`. W530 wraps type `$9C`'s
+`$04800A40` animation read through the 68000's 24-bit bus to main RAM `$800A40`. W531 ports kind-19's
+`$282B64` target-tracking arm. The published registry is 791 windows, 449,329 bytes, and 77 overlap pairs;
+enemy coverage is 103/256 ported, 23 unknown, and 130 null, with 96 init bodies.
+
+`games/ddpdoj/NOTES-progression.md` records the cartridge round-selection evidence. `$80393A` value 0 means
+two-round and value 1 means one-round. `$2901E0` gates round 2 with first-round, mode, two-player, and continue
+checks, followed by an OR of Bee Perfect `>= $0C`, miss counter `< 2`, or bomb counter `< 3`. Type `$B0` is
+statically scripted. `$2A5C7A/$2A5C84` reaches Hibachi when `$813098 || $80393A`: one-round mode reaches it
+in round 1, two-round mode skips it in round 1, and round 2 reaches it unconditionally.
+
+Production build `20260823165848` publishes W527 through W531 from `33240de`, `a9ff556`, `20cfc12`,
+`292af08`, and `2873487`; repairs `4110255` and `f3b8b85` reconcile the exact registries and publication
+assertions. Assets were regenerated before the quiet-tree gate. It passed 4,414/4,414 DDPDOJ units, bundle and
+web-fetch gates, 748/748 Gradius units and its 13/13 gate, Batman 27/27, distribution and ROM-leak guards,
+deployment, and three consecutive live confirmations. W532 is source-only infrastructure at `644c170`.
 
 D109 is complete ahead of its 2026-08-28 deadline. Asset-free build `20260823120247` is live at
 `mixup.pages.dev` from Cloudflare Pages project `mixup`; during that separate deployment `gbtman.pages.dev`
@@ -87,12 +92,12 @@ record W518's exact ten-byte overlap and the measured 77-pair registry. The leak
 including 58 decompressed payloads, and the deployed distribution contains 339 files totalling 20,446 KB.
 The W522-W526 publication record above supersedes this historical checkpoint.
 
-The next development phase remains gameplay, not another tiny ending segment. Continue the bounded six-pair matrix
-from the Type-B frame-2,031 and frame-2,035 boundaries, then carry every authentic pair through Black Label loop 2
-and fix the first concrete selector-specific, second-loop, or Hibachi blocker each run exposes. Ordinary launches
-must remain mortal; invulnerable labelled progression oracles remain explicit test tools only. When ending work
-resumes, seed directly at known presentation entries and batch complete script-list families or whole variants. Do
-not return to one commit per understood
+The next development phase remains gameplay, not another ending segment. Close W532's three static dependencies,
+rerun the preflight to `CLOSED`, then use the checkpoint-aware six-pair probe rather than replaying from logic frame
+2,000. Carry every authentic pair through Black Label loop 2 and fix the first concrete selector-specific,
+second-loop, or Hibachi blocker each resumed run exposes. Ordinary launches must remain mortal; invulnerable
+progression probes remain explicit local tools only. When ending work resumes, seed directly at known presentation
+entries and batch complete script-list families or whole variants. Do not return to one commit per understood
 ending script or replay the full 11,000-frame chain for every segment.
 
 **W497 remains the first substantial D26 implementation slice.** The cartridge-proven ship domain is `{0,2}`
@@ -111,8 +116,8 @@ cartridge-select flow.
 
 W492 through W496's fifteen transformative additions remain unchanged and all block replay v1. Empty,
 unknown-only, direct, Original, and later vanilla-Game paths install no mod callback or policy. W488 ports
-the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage is 102/256 ported, 24
-unknown, and 130 null, with 95 init bodies. Type `$58` emits no enemy child. Do not follow the static
+the shared two-line per-side label printer `$25F2D0`. Enemy-handler coverage is 103/256 ported, 23
+unknown, and 130 null, with 96 init bodies. Type `$58` emits no enemy child. Do not follow the static
 `$48 -> $54` edge because Version B's live callers target the bare `rts` at `$2714AE`.
 
 ## W523 VERIFIED: ROUND-2 SLOT [17] NO LONGER STALLS

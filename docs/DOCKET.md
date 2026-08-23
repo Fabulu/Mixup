@@ -28,23 +28,29 @@ that drift.
 **STILL TRUE AS OF W408.** The per-item markers are the authority; the section
 headings are not. D47 covers fixing this properly.
 
-**STANDING AS OF W526 (2026-08-23), PUBLISHED IN BUILD `20260823140446`.** W523 fixes the
-cartridge-proven round-2 slot-[17] stall for all six pairs. W524 registers the Type-B ordinary-shot sound wrapper;
-W525 exports its normal-shot pointer and descriptor family; W526 closes Type-A style 6's hit-descriptor window.
-All Type-A pairs now reach logic frame 2,050. The next bounded work is the earlier Type-B failures at frames 2,031
-and 2,035. The local and published registry is 786 windows, 448,415 bytes, and 77 overlap pairs.
+**STANDING AS OF W532 (2026-08-23), WITH W531 PUBLISHED IN BUILD `20260823165848`.** W527 exports
+Type-B's exact first-hit table and descriptors. W528 ports the kind-16 flying-bee waypoint arm. W529 ports
+deferred type `$A5`; W530 applies 68000 24-bit bus wrapping to type `$9C`'s RAM-backed animation read; W531
+ports the kind-19 target-tracking arm. Pair `{ship:0, style:4}` now reaches logic frame 41,031 in raw stage 3.
+The published registry is 791 windows, 449,329 bytes, and 77 overlap pairs.
 
-W522 begins the six-pair
-Black Label loop-2 matrix with `{ship:0, style:2}`. The labelled invulnerable probe reaches stages 1, 2, and 3,
-then exposes `UNPORTED $26725C` at logic frame 25,710. W522 ports type `$3D` init body `$267262` and handler
-`$2673FA`, including its three phase gates, movement, bounds, two-trip damage lifecycle, effects, aim, firing,
-and drawing. The repaired default-pair probe reaches logic frame 25,730 in stage 3. W524-W526 then exercise
-all three Type-B pairs and all three Type-A pairs across their earliest firing boundaries. W522's two windows plus
-W525's disjoint `$24E512+$DC` family and W526's bounded extension produce 786 windows and 448,415 bytes;
-overlap pairs remain 77. Dispatch remains **18 of 20**; types `[16] $256E7A` and `[18] $24902A` remain without
-handlers.
+W532 replaces repeated seed-to-frontier runs with a static preflight and exact local checkpoints. The preflight
+walks all five spawn scripts, all five BGELEM lists, all top objects and type-5 calls, source-visible deferred
+children, type `$15`'s local children, and scripted-carrier movement children. The stage scripts contain 339,
+332, 414, 382, and 770 records. All direct stage enemy types, all BGELEM entries, and all 23 type-5 calls are
+ported. The recursive enemy closure contains 103 types and reports three unresolved dependencies:
 
-`NOTES-progression.md` now records exact cartridge evidence. Version-B prints `1 ROUND GAME` and
+- top object `$10`, handler `$256E7A`
+- top object `$12`, handler `$24902A`
+- enemy `$9A`, init `$29EAE2`, handler `$29EB7A`
+
+The default progression probe stops before runtime while those remain. `--skip-closure` is explicit. Periodic
+checkpoints contain evolved RAM, all deterministic non-RAM `Game` state, frame counters, pair, seed and table
+identities, input, raw stage/loop, payload hashes, and explicit probe-only invulnerability. A focused exact-bundle
+test proves restored and uninterrupted stepping remain identical. Ordinary `Game` and browser construction are
+unchanged and mortal.
+
+`NOTES-progression.md` records the cartridge evidence. Version-B prints `1 ROUND GAME` and
 `2 ROUND GAME`; `$80393A` values 1 and 0 select them respectively. `$2901E0` gates access to round 2 with
 first-round/two-round/no-continue vetoes and an OR of Bee Perfect `>= $0C`, miss `< 2`, or bombs `< 3`; no
 score arm exists. Type `$B0` is statically scripted. Its `$2A5C7A/$2A5C84` fork continues when round 2 is live
@@ -52,10 +58,11 @@ or one-round mode is selected. Therefore one-round mode reaches Hibachi in round
 round 1, and round 2 reaches it unconditionally after the preceding form. Qualification controls access to
 round 2, not Hibachi appearance at the final fork.
 
-Production build `20260823140446` publishes W522 through W526 from commits `cd7c0c6`, `162613d`, `00dd578`,
-`e984b50`, and `b13091b`; repair `f07d201` reconciles the landed gate baselines. Assets were regenerated first.
-The gate passed 4,409/4,409 DDPDOJ units, all game-specific and cross-game gates, the distribution and ROM-leak
-guards, deployment, and three consecutive live confirmations. W531 is the next periodic publication point.
+Production build `20260823165848` publishes W527 through W531 from commits `33240de`, `a9ff556`, `20cfc12`,
+`292af08`, and `2873487`; repairs `4110255` and `f3b8b85` reconcile exact registries and gate assertions. Assets
+were regenerated first. The gate passed 4,414/4,414 DDPDOJ units, 748/748 Gradius units and its 13/13 gate,
+Batman 27/27, all bundle and web gates, distribution and ROM-leak guards, deployment, and three consecutive
+live confirmations. W532 is source-only infrastructure at commit `644c170` and adds no cartridge window.
 
 **D109 COMPLETED ON 2026-08-23, AHEAD OF ITS 2026-08-28 DEADLINE.** The parallel asset-free site at
 `mixup.pages.dev` boots all three games from exact player-supplied local inputs and ships no cartridge assets. Its
