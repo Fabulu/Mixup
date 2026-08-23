@@ -115,7 +115,7 @@ function deathEffectRow2A06C2(ram, rom, ctx, a6, slot, randomMotion) {
   return cursor === 0x48;
 }
 
-function deathAmbient2A0564(ram, rom, ctx, a6, slot) {
+function runDeathAmbient(ram, rom, ctx, a6, slot) {
   if (ram.u8(slot + 0x06) !== 0xff && due8(ram, slot + 0x06)) {
     ram.setU8(slot + 0x06, ram.u8(slot + 0x07));
     const e = spawnEffect(ram, ctx, 1, 0x2a057e);
@@ -145,7 +145,7 @@ function deathAmbient2A0564(ram, rom, ctx, a6, slot) {
 /** `$2A0564`, A4 id 2 STEP: the complete Stage-4 boss death presentation. */
 export function a4id2Step2A0564(ram, rom, ctx, slot) {
   const a6 = ctx.bossSubRec;
-  deathAmbient2A0564(ram, rom, ctx, a6, slot);
+  runDeathAmbient(ram, rom, ctx, a6, slot);
   const state = ram.u8(slot + 0x02);
 
   if (state === 5) {
