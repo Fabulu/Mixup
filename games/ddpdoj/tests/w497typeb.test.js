@@ -12,7 +12,9 @@ import { MoveTables } from '../src/vectors.js';
 import { ProtLatch } from '../src/protsim.js';
 import { UnportedLog } from '../src/unported.js';
 import { SHOT, runShotDriver } from '../src/weapons.js';
-import { spawnShotTypeB, shotHandlers, SPAWN, PS, S } from '../src/shots.js';
+import {
+  spawnShotTypeB, shotHandlers, handler253BDA, SPAWN, PS, S,
+} from '../src/shots.js';
 import {
   OPTION_BLOCKS, POD_SPAWNS, fireHandshake, OPT_ROT_ANGLE,
 } from '../src/options.js';
@@ -166,6 +168,29 @@ test('W497 Type-B player shots spawn for styles 2, 4, and 6 in normal and hyper 
           'the spawned type word comes from the selected $25551A template arm');
       }
     }
+  });
+
+test('W526 Type-A style 6 first hit reads its exported $24DFA2 descriptor',
+  { skip: SKIP }, () => {
+    const { ram, rom, ctx } = bench();
+    const rec = SHOT.p1Table;
+    const win = tables.rom.windows.find(
+      (w) => String(w.base).toUpperCase() === '$24DDD0');
+    assert.equal(win?.len, 0x0210, 'the hit family ends at the adjacent $24DFE0 window');
+
+    ram.setU16(rec, 0x80c8);
+    ram.setU16(rec + S.posY, 0x2000);
+    ram.setU16(rec + S.posX, 0x1800);
+    ram.setU16(rec + S.tableIdx, 0x003c);
+    const descriptor = rom.u32(0x24deb2 + ram.u16(rec + S.tableIdx));
+    assert.equal(descriptor, 0x24dfa2, 'style 6 selects the cartridge descriptor');
+
+    handler253BDA(ram, rom, rec, ctx, PL1, 0xc8);
+    assert.equal(ram.u32(rec + S.drawOff), rom.u32(descriptor));
+    assert.equal(ram.u16(rec + S.dlWord4), rom.u16(descriptor + 4));
+    assert.equal(ram.u32(rec + S.animPtr), rom.u32(descriptor + 6));
+    assert.equal(ram.u16(rec + S.animIdx), 0x000c,
+      'the descriptor installs $10 and the shared hit tail advances it once');
   });
 
 test('W525 Type-B normal shots cross entry 1 for every authentic style',

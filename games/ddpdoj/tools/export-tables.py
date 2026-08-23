@@ -183,8 +183,11 @@ SHOT_WINDOWS = [
     (0x2525D6, 0x00AA, "W188 option hyper-shot 1 hit table and structs"),
     (0x251B36, 0x03CA, "W188 TYPE-B option hyper spawn/animation tables and templates"),
     # $253B72 lea $24DDD6 / $253C7A lea $24DEB2 -- the per-($26,A6) tables the
-    # handlers re-point the record's sprite fields from, and their structs.
-    (0x24DDD0, 0x01B0, "$24DDD6 and $24DEB2 + the structs they point at"),
+    # handlers re-point the record's sprite fields from, and their structs. The
+    # second table has 25 pointers through $24DF15 and fifteen 14-byte structs
+    # through $24DFE7. The adjacent $24DFE0 window supplies the final eight bytes.
+    (0x24DDD0, 0x0210, "W526 $24DDD6 and $24DEB2 tables and pointed structs, "
+                       "abutting the $24DFE0 normal-template window"),
     # `$253C98` reads the normal Type-B player-shot pointer table at $24E512.
     # Its 25 longwords end at $24E576 and select the fifteen adjacent eight-byte
     # descriptors through $24E5ED. $24E5EE is the separately named hit table.
