@@ -1,5 +1,5 @@
-// HIBACHI'S A2 OBJECTS 0..15, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579, W580, W581, W582.
+// HIBACHI'S A2 OBJECTS 0..16, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579, W580, W581, W582, W583, W584.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -163,6 +163,9 @@ export const HIBACHI_A2 = Object.freeze({
   object14ArtFrames: 3,
   object15: 0x2a4af6,
   object16: 0x2a4cfc,
+  object16CodeEnd: 0x2a4d3c,
+  object16Art: 0x2a4d3e,
+  object16ArtFrames: 8,
   object17: 0x2a4d5e,
   object18: 0x2a4de0,
 });
@@ -620,6 +623,22 @@ export function a2Object10_2A4C42(ram, rom, ctx) {
   d1 = (d1 + 0xf200e000) >>> 0;
   enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1,
     art, 0x0f00, palette);
+}
+
+// ========================================================== A2 OBJECT 16 -- THE PHASE BODY
+// `$2A4CFC..$2A4D3B` selects one of eight frames and chooses its depth bucket
+// from the second-form phase. `$2A4D3C` is alignment; the art table starts at
+// `$2A4D3E` and ends exactly at object 17 `$2A4D5E`.
+
+/** `$2A4CFC`. Enqueue the selected body frame in bucket 1 or phase bucket 24. */
+export function a2Object16_2A4CFC(ram, rom, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A2.object16);
+  const art = rom.u32(HIBACHI_A2.object16Art + i16(ram.u16(a6 + 0x132)));
+  const d1 = (ram.u32(a6 + 0x02) + 0xf400f900) >>> 0;
+  const stub = ram.u8(a6 + 0x15f) !== 0 || ram.u16(0x80390e) === 0
+    ? 0x23dfea : 0x23fe5c;
+  enqueueRegistersThroughStub(ram, rom, stub, d1,
+    art, 0x0c38, ram.u8(a6 + 0x0ed));
 }
 
 // ========================================================== A0 MAIN SCRIPT 0 -- THE ARRIVAL POSITION
@@ -1787,6 +1806,7 @@ registerScript(HIBACHI_A2.object11, a2Object11_2A4B58);
 registerScript(HIBACHI_A2.object12, a2Object12_2A4BC8);
 registerScript(HIBACHI_A2.object13, a2Object13_2A4BA0);
 registerScript(HIBACHI_A2.object14, a2Object14_2A4C08);
+registerScript(HIBACHI_A2.object16, a2Object16_2A4CFC);
 
 registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Init2A4F56(ram, rom, ctx),

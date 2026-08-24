@@ -39,6 +39,7 @@ const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
+const LIVE_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
 const REC = 0x810c00;
 const SUB = 0x814800;
@@ -117,10 +118,10 @@ test('W579 pins the raw id-6 pair, all span hashes, id-7 boundary, and branch ta
 
 test('W579 adds no ROM window and preserves the exact table identity',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 849);
+    assert.equal(ROM_WINDOW_COUNT, 851);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 849);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452603);
+    assert.equal(TABLE_JSON.rom.windows.length, 851);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452689);
     let overlaps = 0;
     for (let i = 0; i < TABLE_JSON.rom.windows.length; i++) {
       const a = TABLE_JSON.rom.windows[i];
@@ -132,7 +133,7 @@ test('W579 adds no ROM window and preserves the exact table identity',
       }
     }
     assert.equal(overlaps, 77);
-    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
+    assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W579:')), []);
   });
 
@@ -256,10 +257,10 @@ test('W579 persists without retirement, sound, bullets, or scheduler transition'
     assert.notEqual(b.ram.u16(a4), 0);
   });
 
-test('W579 restores exact lf149131 and reaches the exact W583 A2 id-16 frontier',
+test('W579 restores exact lf149131 and reaches the exact W584 A0 id-9 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
-    assert.equal(canonicalHash(assets.tables), TABLE_HASH);
+    assert.equal(canonicalHash(assets.tables), LIVE_TABLE_HASH);
     assert.deepEqual(assets.tables, TABLE_JSON);
 
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
@@ -275,7 +276,10 @@ test('W579 restores exact lf149131 and reaches the exact W583 A2 id-16 frontier'
       '8f62e99da81abae4193aaeddddd4487124ba7d893836b106c1323a2f5b30e4d1',
       0, 4, 65499, true,
     ]);
-    const resumed = restoreCheckpoint(checkpoint, assets, { ship: 0, style: 4 });
+    const currentCheckpoint = { ...checkpoint, tablesSha256: LIVE_TABLE_HASH };
+    assert.deepEqual({ ...currentCheckpoint, tablesSha256: checkpoint.tablesSha256 }, checkpoint,
+      'W584 compatibility changes only the proven additive table identity');
+    const resumed = restoreCheckpoint(currentCheckpoint, assets, { ship: 0, style: 4 });
     const restored = checkpointDocument(resumed.game, assets, {
       ...checkpoint.selection, inputWord: resumed.probe.inputWord, invulnerable: true,
     });
@@ -286,7 +290,7 @@ test('W579 restores exact lf149131 and reaches the exact W583 A2 id-16 frontier'
 
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 1600; attempted++) {
+    for (attempted = 1; attempted <= 2100; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -308,22 +312,22 @@ test('W579 restores exact lf149131 and reaches the exact W583 A2 id-16 frontier'
       a5, a6, resumed.game.ram.u8(a6 + 0x1a), resumed.game.ram.u8(a6 + 0x1b),
       resumed.game.ram.u16(RNG_STATE),
     ], [
-      1457, 150587, 161201, 0x2a4cfc, 4, 8, 16, 1,
-      0x81378c, 0x81533c, 6, 0x20, 0x00b9,
+      1975, 151105, 161743, 0x2a5338, 4, 8, 16, 1,
+      0x81378c, 0x81533c, 6, 0x09, 0x00bf,
     ]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4CFC/);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5338/);
     assert.deepEqual([
       resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
       resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
-    ], [4, 4, 4, 0]);
+    ], [9, 0, 9, 0]);
     assert.deepEqual(Array.from({ length: SCHED.a4Slots }, (_, index) =>
       resumed.game.ram.u16(SCHED.a4Base + index * SCHED.a4Stride)),
-    [0, 0x8104, 0, 0, 0]);
+    [0, 0x8111, 0, 0, 0]);
     assert.deepEqual(Array.from({ length: SCHED.a1Slots }, (_, index) =>
       resumed.game.ram.u16(SCHED.a1Base + index * SCHED.a1Stride)),
     Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'ecbc4c4e964ae7ad26734cfdf358f487aa07f9908621eaa527ea77092c634af3',
-      '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
+      '69e51e37e3e90c00f30d8e15990f318b366b802a9b9e0aa229e34663d7053b53',
+      '5c4bf88fe422542636a99de6b4801bc63c196020ba7a14dba63a0f2fe74089d6',
     ]);
   });

@@ -12,6 +12,7 @@ import { ENEMY } from '../src/enemies.js';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { MoveTables } from '../src/vectors.js';
+import { BUCKETS, RECORD_BYTES } from '../src/spritequeue.js';
 import {
   SCHED, a2Run2598E6, a3Start259962, clearDispatched, dumpDispatched,
   installScripts, runScheduler25962E, scriptAddresses,
@@ -41,7 +42,7 @@ const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
+const TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const RNG_STATE = 0x803916;
@@ -71,11 +72,8 @@ async function bundle() {
     new Uint8Array(readFileSync(path.join(ASSETS, name))));
 }
 
-function caught(fn) {
-  try { fn(); return null; } catch (error) { return error; }
-}
-
-function armFamilyAndBlocker(b) {
+function armFamilyAndRenderer(b) {
+  b.ram.setU8(SUB + 0x15f, 1);
   assert.equal(a3Start259962(b.ram, 6), true);
   assert.equal(a3Start259962(b.ram, 7), true);
   a2Run2598E6(b.ram, 16);
@@ -140,10 +138,10 @@ test('W583 pins the exact raw family, table identity, registrations, and no ROM 
       HIBACHI_A3.s7Init, HIBACHI_A3.s7Step,
     ]) assert.equal(registered.filter((entry) => entry === address).length, 1);
 
-    assert.equal(ROM_WINDOW_COUNT, 849);
+    assert.equal(ROM_WINDOW_COUNT, 851);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 849);
-    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 452603);
+    assert.equal(TABLE_JSON.rom.windows.length, 851);
+    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 452689);
     assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W583:')), []);
   });
@@ -280,8 +278,9 @@ test('W583 both scripts persist with only timer and selector writes',
 
 test('W583 scheduler gates and ordering run id 6, then id 7, then A2',
   { skip: SKIP }, () => {
+    const primary = BUCKETS[1];
     const b = bench({ a2: HIBACHI_A2.table, a3: HIBACHI_A3.table });
-    armFamilyAndBlocker(b);
+    armFamilyAndRenderer(b);
     const selectorWrites = [];
     const setU16 = b.ram.setU16.bind(b.ram);
     b.ram.setU16 = (address, value) => {
@@ -290,9 +289,7 @@ test('W583 scheduler gates and ordering run id 6, then id 7, then A2',
       setU16(address, value);
     };
     clearDispatched();
-    const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, HIBACHI_A2.object16);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4CFC[\s\S]*slot at \$812A50/);
+    assert.equal(runScheduler25962E(b.ram, ROM, b.ctx), false);
     assert.deepEqual(selectorWrites, [
       SUB + HIBACHI_A3.s6Selector, SUB + HIBACHI_A3.s6Selector,
       SUB + HIBACHI_A3.s7Selector, SUB + HIBACHI_A3.s7Selector,
@@ -306,10 +303,12 @@ test('W583 scheduler gates and ordering run id 6, then id 7, then A2',
       b.ram.u16(SCHED.a3Base + SCHED.a3Stride + 0x02),
       b.ram.u16(SUB + HIBACHI_A3.s6Selector),
       b.ram.u16(SUB + HIBACHI_A3.s7Selector),
-    ], [0x8106, 0x8107, 0x0101, 0x0101, 4, 4]);
+      b.ram.u16(primary.counter), b.ram.u32(primary.buffer + 4),
+    ], [0x8106, 0x8107, 0x0101, 0x0101, 4, 4,
+      RECORD_BYTES, ROM.u32(HIBACHI_A2.object16Art + 4)]);
 
     const suspended = bench({ a2: HIBACHI_A2.table, a3: HIBACHI_A3.table });
-    armFamilyAndBlocker(suspended);
+    armFamilyAndRenderer(suspended);
     suspended.ram.setU16(SCHED.suspend, 1);
     assert.equal(runScheduler25962E(suspended.ram, ROM, suspended.ctx), true);
     assert.deepEqual([
@@ -317,22 +316,24 @@ test('W583 scheduler gates and ordering run id 6, then id 7, then A2',
       suspended.ram.u16(SCHED.a3Base + SCHED.a3Stride),
       suspended.ram.u16(SUB + HIBACHI_A3.s6Selector),
       suspended.ram.u16(SUB + HIBACHI_A3.s7Selector),
-    ], [0x8006, 0x8007, 0, 0]);
+      suspended.ram.u16(primary.counter),
+    ], [0x8006, 0x8007, 0, 0, 0]);
 
     const paused = bench({ a2: HIBACHI_A2.table, a3: HIBACHI_A3.table });
-    armFamilyAndBlocker(paused);
+    armFamilyAndRenderer(paused);
     paused.ram.setU16(SCHED.deathPause, 1);
-    const pausedError = caught(() => runScheduler25962E(paused.ram, ROM, paused.ctx));
-    assert.equal(pausedError?.romAddress, HIBACHI_A2.object16,
+    assert.equal(runScheduler25962E(paused.ram, ROM, paused.ctx), false,
       'death pause gates the A3 walk but the separate A2 walk still runs');
     assert.deepEqual([
       paused.ram.u16(SCHED.a3Base), paused.ram.u16(SCHED.a3Base + SCHED.a3Stride),
       paused.ram.u16(SUB + HIBACHI_A3.s6Selector),
       paused.ram.u16(SUB + HIBACHI_A3.s7Selector),
-    ], [0x8006, 0x8007, 0, 0]);
+      paused.ram.u16(primary.counter), paused.ram.u32(primary.buffer + 4),
+    ], [0x8006, 0x8007, 0, 0, RECORD_BYTES,
+      ROM.u32(HIBACHI_A2.object16Art)]);
   });
 
-test('W583 exact LF150131 progression reaches the exact A2 id-16 frontier',
+test('W583 exact LF150131 progression reaches the W584 A0 id-9 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -362,7 +363,7 @@ test('W583 exact LF150131 progression reaches the exact A2 id-16 frontier',
 
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 600; attempted++) {
+    for (attempted = 1; attempted <= 1100; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -387,18 +388,18 @@ test('W583 exact LF150131 progression reaches the exact A2 id-16 frontier',
       resumed.game.ram.u8(a6 + 0x1a), resumed.game.ram.u8(a6 + 0x1b),
       resumed.game.ram.u16(RNG_STATE),
     ], [
-      457, 150587, 161201, HIBACHI_A2.object16, 4, 8, 16, 1,
-      0x81378c, 0x81533c, 0x4a1d, 0x20d8, 6, 0x20, 0x00b9,
+      975, 151105, 161743, 0x2a5338, 4, 8, 16, 1,
+      0x81378c, 0x81533c, 0x5c6c, 0x29f4, 6, 0x09, 0x00bf,
     ]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4CFC[\s\S]*slot at \$812A50/);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5338[\s\S]*slot at \$81298C/);
     assert.deepEqual([
       resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
       resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
-    ], [4, 4, 4, 0]);
+    ], [9, 0, 9, 0]);
     assert.deepEqual(ramBytes(resumed.game.ram, SCHED.seqDst, SCHED.seqDst + 0x20),
-      [0x07, 0x01, ...Array(0x1e).fill(0)]);
+      Array(0x20).fill(0));
     assert.deepEqual(slotWords(resumed.game.ram,
-      SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride), [0, 0x8104, 0, 0, 0]);
+      SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride), [0, 0x8111, 0, 0, 0]);
     assert.deepEqual(slotWords(resumed.game.ram,
       SCHED.a3Base, SCHED.a3Slots, SCHED.a3Stride),
     [0x8100, 0x8101, 0x8103, 0x8104, 0x8106, 0x8107, 0, 0, 0, 0]);
@@ -407,13 +408,15 @@ test('W583 exact LF150131 progression reaches the exact A2 id-16 frontier',
       resumed.game.ram.u16(a6 + HIBACHI_A3.s6Selector),
       resumed.game.ram.u16(a6 + HIBACHI_A3.s7Selector),
       SCHED.a2Base + 16 * SCHED.a2Stride,
-    ], [0x0101, 0x0101, 0x0004, 0x0004, 0x812a50]);
+    ], [0x0001, 0x0001, 0x000c, 0x000c, 0x812a50]);
     assert.deepEqual(slotWords(resumed.game.ram,
       SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride), Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'ecbc4c4e964ae7ad26734cfdf358f487aa07f9908621eaa527ea77092c634af3',
-      '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
+      '69e51e37e3e90c00f30d8e15990f318b366b802a9b9e0aa229e34663d7053b53',
+      '5c4bf88fe422542636a99de6b4801bc63c196020ba7a14dba63a0f2fe74089d6',
     ]);
-    assert.equal(resumed.game.logicFrame < checkpoint.frame.logic + 500, true,
-      'the new frontier is reached before a 500-frame checkpoint boundary');
+    assert.equal(resumed.game.logicFrame > checkpoint.frame.logic + 500, true,
+      'W584 crosses LF150631 before reaching A0 id 9');
+    assert.equal(resumed.game.logicFrame < checkpoint.frame.logic + 1000, true,
+      'the next frontier remains before the following 500-frame boundary');
   });

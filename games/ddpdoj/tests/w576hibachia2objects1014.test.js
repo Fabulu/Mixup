@@ -22,7 +22,7 @@ import {
 } from '../src/hibachiend.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_WINDOW_COUNT, tableBeforeW576 } from './romwindowset.js';
+import { ROM_WINDOW_COUNT, tableBeforeW576, tableBeforeW584 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
@@ -42,7 +42,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
+const LIVE_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const W575_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const REC = 0x810c00;
 const SUB = 0x814800;
@@ -113,19 +113,19 @@ test('W576 pins both raw code, NOP, and data boundaries with exactly two windows
 
 test('W576 table migration is strict, additive, identity-pinned, and composed for history',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 849);
+    assert.equal(ROM_WINDOW_COUNT, 851);
     assert.deepEqual([
       TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(TABLE_JSON),
-    ], [849, 452603, LIVE_TABLE_HASH]);
+    ], [851, 452689, LIVE_TABLE_HASH]);
     assert.deepEqual([
       W575_TABLE.rom.windows.length,
       W575_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(W575_TABLE),
     ], [847, 452447, W575_TABLE_HASH]);
 
-    const withoutAdded = TABLE_JSON.rom.windows.filter((window) =>
+    const withoutAdded = tableBeforeW584(TABLE_JSON).rom.windows.filter((window) =>
       !window.why.startsWith('W576:'));
     assert.deepEqual(W575_TABLE.rom.windows, withoutAdded,
       'removing W576 preserves every older window byte and its order');
@@ -291,7 +291,7 @@ test('W576 renderers mutate only the sprite bucket, not boss, RNG, players, obje
     assert.deepEqual(bytes(b.ram, bulletBase, 0x81b40c - bulletBase), bullets);
   });
 
-test('W576 migrates table identity only and reaches the exact W583 A2 id-16 frontier',
+test('W576 migrates table identity only and reaches the exact W584 A0 id-9 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const live = await bundle();
     assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
@@ -321,7 +321,7 @@ test('W576 migrates table identity only and reaches the exact W583 A2 id-16 fron
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 4500; attempted++) {
+    for (attempted = 1; attempted <= 5000; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -342,13 +342,13 @@ test('W576 migrates table identity only and reaches the exact W583 A2 id-16 fron
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
       liveSub, resumed.game.ram.u16(liveSub + 0x12a), resumed.game.ram.u16(liveSub + 0x12c),
-    ], [4457, 150587, 161201, 0x2a4cfc, 4, 8, 16, 1, 0x81533c, 4, 0x84]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4CFC/);
+    ], [4975, 151105, 161743, 0x2a5338, 4, 8, 16, 1, 0x81533c, 8, 0x72]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5338/);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'ecbc4c4e964ae7ad26734cfdf358f487aa07f9908621eaa527ea77092c634af3',
-      '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
+      '69e51e37e3e90c00f30d8e15990f318b366b802a9b9e0aa229e34663d7053b53',
+      '5c4bf88fe422542636a99de6b4801bc63c196020ba7a14dba63a0f2fe74089d6',
     ]);
     assert.equal(frontier.frame.logic + 1500, 149131);
     assert.ok(resumed.game.logicFrame > frontier.frame.logic + 2500,
-      'W583 crosses the fifth periodic checkpoint boundary before reaching A2 id 16');
+      'W584 crosses another periodic checkpoint before reaching A0 id 9');
   });

@@ -41,7 +41,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
+const LIVE_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const REC = 0x810c00;
 const SUB = 0x814800;
@@ -70,9 +70,9 @@ async function bundle() {
 const attached = (ram, part) => ram.u32(SUB + part + 0x02);
 
 test('W574 pins the exact A0 id-1 pair and adds no ROM window', { skip: SKIP }, () => {
-  assert.equal(ROM_WINDOW_COUNT, 849);
-  assert.equal(TABLE_JSON.rom.windows.length, 849);
-  assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452603);
+  assert.equal(ROM_WINDOW_COUNT, 851);
+  assert.equal(TABLE_JSON.rom.windows.length, 851);
+  assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452689);
   assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
   assert.equal(canonicalHash(W575_TABLE), TABLE_HASH);
   assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W574:')), []);
@@ -220,7 +220,7 @@ test('W574 byte borrow, reload, state reversal, and id-2 handoff are exact',
     ], [130, 2, 4, 0, [0x28cb88]], 'canonical script lifetime is exactly 130 dispatches');
   });
 
-test('W574 resumes the migrated W573 state and reaches the W583 A2 id-16 frontier',
+test('W574 resumes the migrated W573 state and reaches the W584 A0 id-9 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const live = await bundle();
     assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
@@ -249,7 +249,7 @@ test('W574 resumes the migrated W573 state and reaches the W583 A2 id-16 frontie
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 4500; attempted++) {
+    for (attempted = 1; attempted <= 5000; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -264,15 +264,15 @@ test('W574 resumes the migrated W573 state and reaches the W583 A2 id-16 frontie
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-    ], [4457, 150587, 161201, 0x2a4cfc, 4, 8, 16, 1]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4CFC/);
+    ], [4975, 151105, 161743, 0x2a5338, 4, 8, 16, 1]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5338/);
     assert.deepEqual([
       ROM.u32(HIBACHI_A3.table + 3 * 8), ROM.u32(HIBACHI_A3.table + 4 * 8),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s3Selector),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s4Selector),
-    ], [0x2a56a2, 0x2a56ce, 4, 0x84]);
+    ], [0x2a56a2, 0x2a56ce, 8, 0x72]);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'ecbc4c4e964ae7ad26734cfdf358f487aa07f9908621eaa527ea77092c634af3',
-      '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
+      '69e51e37e3e90c00f30d8e15990f318b366b802a9b9e0aa229e34663d7053b53',
+      '5c4bf88fe422542636a99de6b4801bc63c196020ba7a14dba63a0f2fe74089d6',
     ]);
   });

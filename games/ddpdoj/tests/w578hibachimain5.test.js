@@ -39,6 +39,7 @@ const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
+const LIVE_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
 const REC = 0x810c00;
 const SUB = 0x814800;
@@ -112,10 +113,10 @@ test('W578 pins the exact id-5 pair, raw span, registrations, and unchanged tabl
     assert.ok(registered.has(HIBACHI_A0.s5Init));
     assert.ok(registered.has(HIBACHI_A0.s5Step));
 
-    assert.equal(ROM_WINDOW_COUNT, 849);
-    assert.equal(TABLE_JSON.rom.windows.length, 849);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452603);
-    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
+    assert.equal(ROM_WINDOW_COUNT, 851);
+    assert.equal(TABLE_JSON.rom.windows.length, 851);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452689);
+    assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W578:')), []);
   });
 
@@ -198,10 +199,10 @@ test('W578 freeze preserves the root while refreshing all ten attachments',
     assert.deepEqual(b.sounds, []);
   });
 
-test('W578 restores lf148631 and reaches the exact W583 A2 id-16 frontier',
+test('W578 restores lf148631 and reaches the exact W584 A0 id-9 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
-    assert.equal(canonicalHash(assets.tables), TABLE_HASH);
+    assert.equal(canonicalHash(assets.tables), LIVE_TABLE_HASH);
     assert.deepEqual(assets.tables, TABLE_JSON);
 
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
@@ -214,10 +215,13 @@ test('W578 restores lf148631 and reaches the exact W583 A2 id-16 frontier',
       '3f03210ccc722ab539cb22d26af1b86443e4d6250cb572f2efecce654449b449',
       '52192c7dcc2b3883442d07776887016cb75a84bcbfa9d98a9d47f23e6d63eeba',
     ]);
-    const resumed = restoreCheckpoint(checkpoint, assets, { ship: 0, style: 4 });
+    const currentCheckpoint = { ...checkpoint, tablesSha256: LIVE_TABLE_HASH };
+    assert.deepEqual({ ...currentCheckpoint, tablesSha256: checkpoint.tablesSha256 }, checkpoint,
+      'W584 compatibility changes only the proven additive table identity');
+    const resumed = restoreCheckpoint(currentCheckpoint, assets, { ship: 0, style: 4 });
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 2100; attempted++) {
+    for (attempted = 1; attempted <= 2600; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -236,21 +240,21 @@ test('W578 restores lf148631 and reaches the exact W583 A2 id-16 frontier',
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame, error?.romAddress,
       state.raw.stage, state.raw.loop, a6, resumed.game.ram.u8(a6 + 0x1a),
-    ], [1957, 150587, 161201, 0x2a4cfc, 4, 1, 0x81533c, 6]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4CFC/);
+    ], [2475, 151105, 161743, 0x2a5338, 4, 1, 0x81533c, 6]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5338/);
     assert.deepEqual([
       resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
       resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
       resumed.game.ram.u16(SCHED.a2Base + 0x0e * SCHED.a2Stride),
-    ], [4, 4, 4, 0, 0x8000]);
+    ], [9, 0, 9, 0, 0x8000]);
     assert.deepEqual(Array.from({ length: SCHED.a4Slots }, (_, index) =>
       resumed.game.ram.u16(SCHED.a4Base + index * SCHED.a4Stride)),
-    [0, 0x8104, 0, 0, 0]);
+    [0, 0x8111, 0, 0, 0]);
     assert.deepEqual(Array.from({ length: SCHED.a1Slots }, (_, index) =>
       resumed.game.ram.u16(SCHED.a1Base + index * SCHED.a1Stride)),
     Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'ecbc4c4e964ae7ad26734cfdf358f487aa07f9908621eaa527ea77092c634af3',
-      '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
+      '69e51e37e3e90c00f30d8e15990f318b366b802a9b9e0aa229e34663d7053b53',
+      '5c4bf88fe422542636a99de6b4801bc63c196020ba7a14dba63a0f2fe74089d6',
     ]);
   });

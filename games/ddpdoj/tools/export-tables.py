@@ -3711,6 +3711,10 @@ SHOT_WINDOWS.extend([
     (0x23FDE8, 0x0074, "W374: zooming-REGISTER emitter, bucket 12. 116 bytes to its own rts. This is "
                        "the stub spritequeue.js already called 'the ZOOMING register convention' "
                        "without knowing the routine behind it"),
+    (0x23FE5C, 0x0036, "W584: HIBACHI A2 object 16 alternate register-convention sprite emitter. It feeds "
+                       "bucket 24 at $80AF9C counted by $80AFFA; the exact 54-byte span fills the gap "
+                       "between W374 abutting $23FDE8 and $23FE92 zoom-register stubs and ends at the "
+                       "latter first opcode"),
     (0x23FE92, 0x0074, "W374: zooming-REGISTER emitter, bucket 24. 116 bytes to its own rts"),
     (0x24022E, 0x0074, "W374: zooming-REGISTER emitter, bucket 26. 116 bytes to its own rts"),
     (0x24072A, 0x0074, "W374: zooming-REGISTER emitter, bucket 11. 116 bytes to its own rts"),
@@ -3913,6 +3917,9 @@ SHOT_WINDOWS.extend([
     (0x2A4C6C, 0x0090, "W576: HIBACHI A2 object 10's twenty-four six-byte rows, each holding an art "
                        "longword and palette word selected by signed A6+$12C. The exact span starts "
                        "after the unreachable $2A4C6A alignment nop and ends at object 16 code at $2A4CFC"),
+    (0x2A4D3E, 0x0020, "W584: HIBACHI A2 object 16 eight art longwords, selected by the signed word byte "
+                       "offset at A6+$132. The exact span starts after the routine $2A4D3C alignment nop "
+                       "and ends at object 17 code at $2A4D5E"),
     (0x2A4E56, 0x0060, "W553: HIBACHI's A0 main-sequencer table, twelve init/step pairs. The exact span "
                        "ends at $2A4EB6, the shared part-position body whose first opcode is $4CAE; "
                        "entry 0 is {$2A4F56, $2A4F86}, started by A4 script 0 at $2A593E"),
