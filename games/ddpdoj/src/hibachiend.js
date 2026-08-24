@@ -431,7 +431,7 @@ export function a2Object3_2A4816(ram, rom, ctx) {
 // Each routine is exactly $50 bytes including its trailing alignment nop. They differ only in
 // which attached record they read and write, and all five index the same 64-longword art table.
 
-function a2SharedPart2A4866(ram, rom, ctx, entryAddress, part) {
+function a2SharedPart(ram, rom, ctx, entryAddress, part) {
   const a6 = bossA6(ctx, entryAddress);
   const vector = ram.u16(a6 + 0x1fa);
   ram.setU16(a6 + part + 0x10, u16(0x0a00 + vector));
@@ -452,27 +452,27 @@ function a2SharedPart2A4866(ram, rom, ctx, entryAddress, part) {
 
 /** `$2A4866`. Update and enqueue attached record `$40`. */
 export function a2Object4_2A4866(ram, rom, ctx) {
-  a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object4, 0x040);
+  a2SharedPart(ram, rom, ctx, HIBACHI_A2.object4, 0x040);
 }
 
 /** `$2A48B6`. Update and enqueue attached record `$20`. */
 export function a2Object5_2A48B6(ram, rom, ctx) {
-  a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object5, 0x020);
+  a2SharedPart(ram, rom, ctx, HIBACHI_A2.object5, 0x020);
 }
 
 /** `$2A4906`. Update and enqueue attached record `$C0`. */
 export function a2Object6_2A4906(ram, rom, ctx) {
-  a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object6, 0x0c0);
+  a2SharedPart(ram, rom, ctx, HIBACHI_A2.object6, 0x0c0);
 }
 
 /** `$2A4956`. Update and enqueue attached record `$A0`. */
 export function a2Object7_2A4956(ram, rom, ctx) {
-  a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object7, 0x0a0);
+  a2SharedPart(ram, rom, ctx, HIBACHI_A2.object7, 0x0a0);
 }
 
 /** `$2A49A6`. Update and enqueue attached record `$80`. */
 export function a2Object8_2A49A6(ram, rom, ctx) {
-  a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object8, 0x080);
+  a2SharedPart(ram, rom, ctx, HIBACHI_A2.object8, 0x080);
 }
 
 // =========================================== A2 OBJECTS 9, 11, 12, 13 AND 15
