@@ -49,8 +49,14 @@ const WINDOW = SKIP ? null : Object.freeze({
   why: "W564: loop-zero HIBACHI A1 gun 2's twelve-word slot template, copied by $2A9AA0 moveq #$B plus dbra and ending before unused self-pointer padding",
   hex: IMG.subarray(0x2a9a68, 0x2a9a80).toString('hex'),
 });
-const PRIOR_TABLE = SKIP ? null : (() => {
+const POST_W564_BASES = new Set(['$2A9E50', '$2AA004']);
+const W564_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  copy.rom.windows = copy.rom.windows.filter((w) => !POST_W564_BASES.has(w.base));
+  return copy;
+})();
+const PRIOR_TABLE = SKIP ? null : (() => {
+  const copy = JSON.parse(JSON.stringify(W564_TABLE));
   copy.rom.windows = copy.rom.windows.filter((w) => w.base !== '$2A9A68');
   return copy;
 })();
@@ -111,13 +117,15 @@ async function bundle() {
 }
 
 test('W564 is one strict additive $2A9A68+$18 window with no padding', { skip: SKIP }, () => {
-  assert.deepEqual(TABLE_JSON, FUTURE_TABLE);
+  assert.deepEqual(W564_TABLE, FUTURE_TABLE,
+    'removing the later W565 windows reconstructs the strict W564 additive result');
+  assert.equal(TABLE_JSON.rom.windows.length, 824);
   assert.equal(PRIOR_TABLE.rom.windows.length, 821);
   assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
-  assert.equal(TABLE_JSON.rom.windows.length, 822);
-  assert.equal(canonicalHash(TABLE_JSON), FUTURE_HASH);
-  assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451589);
-  assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.base === '$2A9A68'), [WINDOW]);
+  assert.equal(W564_TABLE.rom.windows.length, 822);
+  assert.equal(canonicalHash(W564_TABLE), FUTURE_HASH);
+  assert.equal(W564_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451589);
+  assert.deepEqual(W564_TABLE.rom.windows.filter((w) => w.base === '$2A9A68'), [WINDOW]);
   assert.equal(WINDOW.hex, '208009090f0f040800030013fff70005ff00000000000000');
   assert.equal(overlappingPairs(FUTURE_TABLE.rom.windows.map((w) => [
     Number.parseInt(w.base.slice(1), 16), w.len,
@@ -154,8 +162,8 @@ test('W564 pins both script pairs, boundaries, scheduler registrations, and coun
       HIBACHI_A1.altGun2Init, HIBACHI_A1.altGun2Step,
       HIBACHI_A4.s9Init, HIBACHI_A4.s9Step,
     ]) assert.ok(registered.has(address), `$${address.toString(16)} is registered`);
-    assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2]);
-    assert.deepEqual(Object.keys(HIBACHI_A1_ALT_COUNTED).map(Number), [3, 4]);
+    assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2, 3]);
+    assert.deepEqual(Object.keys(HIBACHI_A1_ALT_COUNTED).map(Number), [4]);
     assert.ok(HIBACHI_END_SCRIPTS.includes(9));
   });
 
@@ -340,7 +348,8 @@ test('W564 exact frontier reaches alternate gun 3 at logic frame 73726',
     const exact = await bundle();
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
     assert.equal(checkpoint.tablesSha256, FUTURE_HASH);
-    const { game } = restoreCheckpoint(checkpoint, exact, checkpoint.selection);
+    const checkpointExact = { ...exact, tables: W564_TABLE };
+    const { game } = restoreCheckpoint(checkpoint, checkpointExact, checkpoint.selection);
     let error = null;
     let attempted = 0;
     for (attempted = 1; attempted <= 1500; attempted++) {
@@ -354,7 +363,10 @@ test('W564 exact frontier reaches alternate gun 3 at logic frame 73726',
     }
     assert.equal(attempted, 1016);
     assert.equal(game.logicFrame, 73726);
-    assert.equal(error?.romAddress, 0x2a9e84);
-    assert.equal(error?.romAddress, ROM.u32(HIBACHI_A1.alt + 3 * 8));
-    assert.equal(scriptAddresses().includes(0x2a9e84), false);
+    assert.equal(error?.romAddress, 0x2a9e50);
+    assert.equal(ROM.u32(HIBACHI_A1.alt + 3 * 8), HIBACHI_A1.altGun3Init);
+    assert.equal(scriptAddresses().includes(HIBACHI_A1.altGun3Init), true);
+    assert.equal(caught(() => ROM.u8(HIBACHI_A1.altGun3Template))?.romAddress,
+      HIBACHI_A1.altGun3Template,
+      'the strict W564 table stops exactly at the W565 gun-3 template seam');
   });

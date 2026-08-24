@@ -194,6 +194,7 @@ export const HIBACHI_A4 = Object.freeze({
   s7Init: 0x2a67e8, s7Step: 0x2a67ee,       // W562 -- gun 1 handoff
   s8Init: 0x2a6820, s8Step: 0x2a6826,       // W563 -- gun 2 handoff
   s9Init: 0x2a6858, s9Step: 0x2a6864,       // W564 -- gun 3 handoff
+  sEInit: 0x2a69d0, sEStep: 0x2a6a00,       // W565 -- live HP interrupt and gun 4
   s14Init: 0x2a6b7a, s14Step: 0x2a6b80,     // W420 -- $18 of code, NOT the $1A counted
   // A4 5's own data, all four bases named by a `lea` that is decoded rather than assumed
   s5Emit: 0x2a6688, s5EmitRows: 16, s5EmitStride: 8,   // $2A657E and $2A6628, the SAME base
@@ -1259,6 +1260,29 @@ export function s9Step2A6864(ram, a4) {
   ram.setU16(a4, 0);
 }
 
+/** `$2A69D0`. Seed the live HP-interrupt timers and unlock all six attached parts. */
+export function sEInit2A69D0(ram, a4, a6) {
+  ram.setU16(a4 + 0x02, 0x0040);
+  ram.setU16(a4 + 0x04, 0x0001);
+  for (const part of A3_S2_PARTS) ram.setU8(a6 + part + 0x1e, 0);
+}
+
+/** `$2A6A00`. Start gun 4 after the guarded delay, then make the boss vulnerable. */
+export function sEStep2A6A00(ram, a4, a6) {
+  if (ram.u16(a4 + 0x02) !== 0) {
+    if (ram.u16(HIBACHI_A4.freeze) !== 0) return;
+    const left = u16(ram.u16(a4 + 0x02) - 1);
+    ram.setU16(a4 + 0x02, left);
+    if (left !== 0) return;
+    a1Start259A18(ram, 4);
+  }
+  if (ram.u16(a4 + 0x04) === 0) return;
+  const secondary = u16(ram.u16(a4 + 0x04) - 1);
+  ram.setU16(a4 + 0x04, secondary);
+  if (secondary !== 0) return;
+  ram.setU16(a6 + 0x108, 0);
+}
+
 // ------------------------------------------------------------------------- the registrations
 //
 // **THE INIT IS NOT A ROUTINE OF ITS OWN.**  W403, and it was wrong in every one of W399's
@@ -1397,6 +1421,11 @@ registerScript(HIBACHI_A4.s9Init, initThenStep(
   (ram, rom, ctx, a4) => s9Init2A6858(ram, a4),
   (ram, rom, ctx, a4) => s9Step2A6864(ram, a4)));
 registerScript(HIBACHI_A4.s9Step, (ram, rom, ctx, a4) => s9Step2A6864(ram, a4));
+registerScript(HIBACHI_A4.sEInit, initThenStep(
+  (ram, rom, ctx, a4) => sEInit2A69D0(ram, a4, bossA6(ctx, HIBACHI_A4.sEInit)),
+  (ram, rom, ctx, a4) => sEStep2A6A00(ram, a4, bossA6(ctx, HIBACHI_A4.sEStep))));
+registerScript(HIBACHI_A4.sEStep, (ram, rom, ctx, a4) =>
+  sEStep2A6A00(ram, a4, bossA6(ctx, HIBACHI_A4.sEStep)));
 registerScript(HIBACHI_A4.s14Init, initThenStep(
   (ram, rom, ctx, a4) => s14Init2A6B7A(ram, a4),
   (ram, rom, ctx, a4) => s14Step2A6B80(ram, a4)));
@@ -1404,11 +1433,14 @@ registerScript(HIBACHI_A4.s14Step, (ram, rom, ctx, a4) => s14Step2A6B80(ram, a4)
 
 /** The A4 ids whose init AND step this file registers. A test asserts this against the
  *  cartridge's own table rather than against the list above. */
-export const HIBACHI_END_SCRIPTS = Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x14]);
+export const HIBACHI_END_SCRIPTS = Object.freeze([
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0e, 0x14,
+]);
 
 /** Every A4 id the chain hands to that is NOT ported, with the byte extent each occupies
  *  between its table entry and the next one. Counted, with the numbers measured. */
 export const HIBACHI_END_COUNTED = Object.freeze({
+  // W565: $E is no longer omitted. This file runs its live HP-interrupt wrapper and gun-4 start.
   // W552: 0 is no longer here. `$2A4384` starts it and this file runs both entries.
   // W404/W405: $0A..$0D are no longer here -- `src/hibachiguns.js` ports all four, together
   // with A1 guns 5, 6, 7 and 8, and the real path now RUNS the {$A,$B,$C,$D} attack loop

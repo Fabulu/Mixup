@@ -54,7 +54,7 @@ const WINDOW = SKIP ? null : Object.freeze({
   why: "W563: loop-zero HIBACHI A1 gun 1's fifteen-word slot template, copied by $2A97F4 moveq #$E plus dbra and ending before its unused self-pointer block",
   hex: IMG.subarray(0x2a97b6, 0x2a97d4).toString('hex'),
 });
-const POST_W563_BASES = new Set(['$2A9A68']);
+const POST_W563_BASES = new Set(['$2A9A68', '$2A9E50', '$2AA004']);
 const W563_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W563_BASES.has(w.base));
@@ -122,8 +122,8 @@ async function bundle() {
 
 test('W563 adds only the strict $2A97B6+$1E template window', { skip: SKIP }, () => {
   assert.deepEqual(W563_TABLE, FUTURE_TABLE,
-    'removing the later W564 window reconstructs the strict W563 additive result');
-  assert.equal(TABLE_JSON.rom.windows.length, 822);
+    'removing the later W564-W565 windows reconstructs the strict W563 additive result');
+  assert.equal(TABLE_JSON.rom.windows.length, 824);
   assert.equal(PRIOR_TABLE.rom.windows.length, 820);
   assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
   assert.equal(W563_TABLE.rom.windows.length, 821);
@@ -167,10 +167,11 @@ test('W563 pins both pairs, boundaries, and scheduler registrations', { skip: SK
     HIBACHI_A1.altGun1Init, HIBACHI_A1.altGun1Step,
     HIBACHI_A4.s8Init, HIBACHI_A4.s8Step,
   ]) assert.ok(registered.has(address), `$${address.toString(16)} is registered`);
-  assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2]);
+  assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2, 3]);
   assert.equal(HIBACHI_A1_ALT_COUNTED[1], undefined);
   assert.equal(HIBACHI_A1_ALT_COUNTED[2], undefined);
-  assert.deepEqual(Object.keys(HIBACHI_A1_ALT_COUNTED).map(Number), [3, 4]);
+  assert.equal(HIBACHI_A1_ALT_COUNTED[3], undefined);
+  assert.deepEqual(Object.keys(HIBACHI_A1_ALT_COUNTED).map(Number), [4]);
   assert.ok(HIBACHI_END_SCRIPTS.includes(8));
 });
 

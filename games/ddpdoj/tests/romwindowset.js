@@ -474,7 +474,15 @@
 // template. Padding at `$2A9A80..$2A9A9F` remains outside every new window.
 // Measured: 821 -> 822 windows, 451,565 -> 451,589 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 822;
+// ---------------------------------------------------------------------------
+// W565 ADDED TWO DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// `$2A9E50 + $14` is loop-zero Hibachi A1 gun 3's ten-word slot template and
+// `$2AA004 + $3C` is its five-row paired-shot pattern. The intervening
+// `$2A9E64..$2A9E83` self-pointers remain unexported. Measured: 822 -> 824
+// windows, 451,589 -> 451,669 bytes, 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 824;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -554,5 +562,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "init-stub window, adding the 77th pair. W562 added four disjoint Hibachi "
   + "gun-0 data windows totalling $16A and moved no pair. W563 added the "
   + "disjoint $2A97B6+$1E Hibachi gun-1 template and moved no pair. W564 added "
-  + "the disjoint $2A9A68+$18 Hibachi gun-2 template and moved no pair. See "
-  + "tests/romwindowset.js.";
+  + "the disjoint $2A9A68+$18 Hibachi gun-2 template and moved no pair. W565 "
+  + "added disjoint $2A9E50+$14 template and $2AA004+$3C pattern windows and "
+  + "moved no pair. See tests/romwindowset.js.";
