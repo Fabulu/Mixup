@@ -245,17 +245,21 @@ test('W560 all five implemented ids emit exact requests and remain running',
     }
   });
 
-test('W560 cumulative A2 progression reaches object 10 as the first exact unported address',
+test('W560 cumulative A2 progression reaches the W576 object 10 table as the first exact unported address',
   { skip: SKIP }, () => {
     const b = bench();
     for (let id = 0; id <= 10; id++) a2Run2598E6(b.ram, id);
 
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, HIBACHI_A2.object10);
-    assert.equal(HIBACHI_A2.object10, 0x2a4c42);
-    assert.equal(scriptAddresses().includes(HIBACHI_A2.object10), false);
+    assert.equal(error?.romAddress, HIBACHI_A2.object10Table);
+    assert.equal(HIBACHI_A2.object10, 0x2a4c42,
+      'the later W576 renderer retains the exact cartridge entry');
+    assert.equal(HIBACHI_A2.object10Table, 0x2a4c6c,
+      'the historical W560 ROM face now stops at the renderer first exact table read');
+    assert.equal(scriptAddresses().includes(HIBACHI_A2.object10), true,
+      'W576 registers the renderer even though this reconstructed W560 table lacks its data');
     assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 10,
-      'objects 0 through 9 emit before slot 10 blocks');
+      'objects 0 through 9 emit before object 10 reaches the absent $2A4C6C table');
     for (let id = 0; id <= 10; id++) {
       assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * id), 0x8001);
     }

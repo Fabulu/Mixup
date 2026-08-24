@@ -15,6 +15,7 @@ import {
   runScheduler25962E, scriptAddresses,
 } from '../src/scheduler.js';
 import { HIBACHI_A0, HIBACHI_A2, HIBACHI_A4 } from '../src/hibachiend.js';
+import { BUCKETS, RECORD_BYTES } from '../src/spritequeue.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -45,6 +46,9 @@ function bench() {
 const caught = (fn) => {
   try { fn(); return null; } catch (error) { return error; }
 };
+const requestHex = (ram, index) => Buffer.from(Array.from(
+  { length: RECORD_BYTES }, (_, i) => ram.u8(BUCKETS[1].buffer + index * RECORD_BYTES + i),
+)).toString('hex');
 
 test('W553 the cartridge and generated window map main id 0 to its exact pair',
   { skip: SKIP }, () => {
@@ -99,7 +103,7 @@ test('W553 main id 0 runs init fallthrough and keeps Hibachi parts attached',
     assert.equal(b.ram.u8(RNG.counter), 1, 'the step does not draw again');
   });
 
-test('W553 the live five-table install runs main id 0 before the later blocker',
+test('W553 the live five-table install runs main id 0 through the later W576 object 10',
   { skip: SKIP }, () => {
     const b = bench();
     installScripts(b.ram, ROM, {
@@ -115,8 +119,11 @@ test('W553 the live five-table install runs main id 0 before the later blocker',
     assert.equal(a4Start25980C(b.ram, 0), true);
 
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, HIBACHI_A2.object10,
-      'main id 0, the live A3 pair, and A2 objects 0 through 9 complete before object 10');
+    assert.equal(error, null, 'W576 ports object 10, so the complete armed set now returns');
+    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 11,
+      'main id 0, the live A3 pair, and A2 objects 0 through 10 all complete');
+    assert.equal(requestHex(b.ram, 10), '86b883ec001032080f000014',
+      'object 10 is reached last with its exact first selector row after main id 0 moves the boss');
     assert.equal(b.ram.u16(SCHED.seqSub), 4);
     assert.equal(b.ram.u16(SCHED.a4Base + 0x02), HIBACHI_A4.s0Frames - 1,
       'A4 script 0 made its first timer step before the later stop');

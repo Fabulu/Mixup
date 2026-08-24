@@ -462,11 +462,13 @@ test('W571 retirement negates drift, applies thresholds, clears locks, and stops
 
 test('W571 historical identity composes through W576 and its checkpoint migrates exactly',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
+    const live = await bundle();
+    assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
+    assert.deepEqual(live.tables, TABLE_JSON);
+    const assets = { ...live, tables: tableBeforeW576(TABLE_JSON) };
     assert.equal(canonicalHash(assets.tables), ASSET_TABLE_HASH);
     assert.deepEqual(assets.tables, tableBeforeW576(TABLE_JSON));
-    const exact = { ...assets, tables: TABLE_JSON };
-    assert.equal(canonicalHash(exact.tables), LIVE_TABLE_HASH);
+    const exact = live;
     assert.deepEqual(tableBeforeW572(exact.tables), W571_TABLE,
       'removing W572 reconstructs strict historical W571');
     assert.deepEqual(tableBeforeW571(exact.tables), PRIOR_TABLE,

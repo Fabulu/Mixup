@@ -286,8 +286,8 @@ test('SECTION 3: one `$242684` claimant survives, and all six old private heads 
   const pairs = bodyPairs().map(([p]) => p);
   assert.equal(pairs.includes('handlers.js onScreen242684 <> items.js offScreen242684'), false,
     'the deleted body pair left the body register too');
-  assert.equal(headRegister().length, 72,
-    'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; W554 adds $2A54E2');
+  assert.equal(headRegister().length, 71,
+    'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate');
   assert.equal(pairs.length, 28,
     'W461 left 27; W497 adds the authentic-selection/player-object body pair');
 });

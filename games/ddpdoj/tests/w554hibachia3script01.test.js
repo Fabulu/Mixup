@@ -14,6 +14,7 @@ import {
   a4Start25980C, runScheduler25962E, scriptAddresses,
 } from '../src/scheduler.js';
 import { HIBACHI_A0, HIBACHI_A2, HIBACHI_A3, HIBACHI_A4 } from '../src/hibachiend.js';
+import { BUCKETS, RECORD_BYTES } from '../src/spritequeue.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -54,6 +55,9 @@ const frame = (b) => runScheduler25962E(b.ram, ROM, b.ctx);
 const caught = (fn) => {
   try { fn(); return null; } catch (error) { return error; }
 };
+const requestHex = (ram, index) => Buffer.from(Array.from(
+  { length: RECORD_BYTES }, (_, i) => ram.u8(BUCKETS[1].buffer + index * RECORD_BYTES + i),
+)).toString('hex');
 
 test('W554 the loader names the exact eight-pair Hibachi A3 table', { skip: SKIP }, () => {
   assert.equal(beU16(0x2a4312), 0x47f9, '$2A4312 loads A3 with lea abs.l');
@@ -137,7 +141,7 @@ test('W554 ids 0 and 1 keep their exact byte-underflow cadence and selector cycl
       'the script remains live after wrapping its selector');
   });
 
-test('W554 the live five-table dispatch reaches the next measured blocker',
+test('W554 the live five-table dispatch reaches the later W576 object 10 renderer',
   { skip: SKIP }, () => {
     const b = bench({
       a0: HIBACHI_A0.table,
@@ -150,7 +154,10 @@ test('W554 the live five-table dispatch reaches the next measured blocker',
     assert.equal(a4Start25980C(b.ram, 0), true);
 
     const error = caught(() => frame(b));
-    assert.equal(error?.romAddress, HIBACHI_A2.object10);
+    assert.equal(error, null, 'W576 ports object 10, so the complete armed set now returns');
+    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 11);
+    assert.equal(requestHex(b.ram, 10), '86b883f0001032080f000014',
+      'object 10 runs after objects 0 through 9 and emits its exact first selector row');
     assert.deepEqual([
       b.ram.u16(SCHED.a3Base),
       b.ram.u16(SCHED.a3Base + SCHED.a3Stride),

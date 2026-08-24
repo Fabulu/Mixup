@@ -267,11 +267,13 @@ test('W570 fires twelve attachments plus the 54-shot curtain and retires faithfu
 
 test('W570 preserves the migrated frontier, checkpoints at 500, and reaches main gun 1',
   { skip: SKIP }, async () => {
-    const assets = await bundle();
+    const live = await bundle();
+    assert.equal(canonicalHash(live.tables), CURRENT_HASH);
+    assert.deepEqual(live.tables, TABLE_JSON);
+    const assets = { ...live, tables: tableBeforeW576(TABLE_JSON) };
     assert.equal(canonicalHash(assets.tables), ASSET_TABLE_HASH);
     assert.deepEqual(assets.tables, tableBeforeW576(TABLE_JSON));
-    const exact = { ...assets, tables: TABLE_JSON };
-    assert.equal(canonicalHash(exact.tables), CURRENT_HASH);
+    const exact = live;
     const w570Bundle = { ...assets, tables: W570_TABLE };
     const frontier = JSON.parse(readFileSync(FRONTIER, 'utf8'));
     assert.deepEqual([

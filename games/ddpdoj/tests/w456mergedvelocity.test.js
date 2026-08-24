@@ -492,9 +492,10 @@ test('SECTION 5: normal and at-max collected arms expose ADD.L carry and no-carr
 test('SECTION 6: source census has one implementation and preserves every A5/A6 convention', () => {
   assert.deepEqual(nameCensus('applyVelocityA6'), {
     'handlers.js': 3,
+    'hibachiend.js': 3,
     'items.js': 2,
     'movement.js': 3,
-  }, 'raw calls are three handlers after W481 type $52, two reusable item paths, wrapper, stick and declaration');
+  }, 'raw calls are three handlers after W481 type $52, three Hibachi A0 scripts, two reusable item paths, wrapper, stick and declaration');
   assert.deepEqual(nameCensus('applyVelocity'), {
     'boss2.js': 3,
     'boss3.js': 4,
@@ -528,7 +529,7 @@ test('SECTION 6: source census has one implementation and preserves every A5/A6 
     'player update retains its caller-specific D2/D3 continuation');
 });
 
-test('SECTION 6b: registers reconcile through W554 to 16 narrow, 72 widened, 28 pairs and 22 body-only', () => {
+test('SECTION 6b: registers reconcile to 16 narrow, 71 widened, 28 pairs and 22 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -545,8 +546,8 @@ test('SECTION 6b: registers reconcile through W554 to 16 narrow, 72 widened, 28 
     'items.js applyItemVelocity <> player.js updatePlayer',
   ];
   assert.equal(narrow.length, 16, 'W497 registers the authentic-selection adapter at $2491C0');
-  assert.equal(heads.length, 72,
-    'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; W554 adds $2A54E2');
+  assert.equal(heads.length, 71,
+    'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate');
   assert.equal(pairs.length, 28,
     'W461 left 27; W497 adds the authentic-selection/player-object body pair');
   const visibleHeads = new Set();

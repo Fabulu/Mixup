@@ -480,11 +480,13 @@ test('W572 magazine and outer borrow transitions consume one draw and retire exa
 
 test('W572 checkpoint remains strict through the W576 additive migration',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
+    const live = await bundle();
+    assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
+    assert.deepEqual(live.tables, TABLE_JSON);
+    const assets = { ...live, tables: tableBeforeW576(TABLE_JSON) };
     assert.equal(canonicalHash(assets.tables), ASSET_TABLE_HASH);
     assert.deepEqual(assets.tables, tableBeforeW576(TABLE_JSON));
-    const exact = { ...assets, tables: TABLE_JSON };
-    assert.equal(canonicalHash(exact.tables), LIVE_TABLE_HASH);
+    const exact = live;
     assert.deepEqual(tableBeforeW573(exact.tables), W572_TABLE,
       'removing W573 reconstructs strict historical W572');
     assert.deepEqual(tableBeforeW572(exact.tables), W571_TABLE,

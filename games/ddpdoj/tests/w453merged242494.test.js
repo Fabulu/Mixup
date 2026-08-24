@@ -304,8 +304,8 @@ test('SECTION 6: live registers include W453 and every later proved merge',
     const heads = headRegister();
     const pairs = bodyPairs();
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
-    assert.equal(heads.length, 72,
-      'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; W554 adds $2A54E2');
+    assert.equal(heads.length, 71,
+      'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate');
     assert.ok(!heads.includes(0x242494), '$242494 has one function head after the merge');
     assert.equal(pairs.length, 28,
       'W461 left 27; W497 adds the authentic-selection/player-object body pair');

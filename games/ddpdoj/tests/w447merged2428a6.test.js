@@ -492,20 +492,20 @@ test('SECTION 6: the doubly-claimed register is 16, and all later proved merges 
 // private $28C0FC counted-note adapter row at W463). See
 // tests/w450widenedregister.test.js; the number is cross-checked in all four
 // register holders so none of them can be read as the whole count.
-test('SECTION 6b [W450/W554]: the widened register is 72, and this wave\'s two merges hold under it too',
+test('SECTION 6b [W450/current]: the widened register is 71, and this wave\'s two merges hold under it too',
   async () => {
     const { headRegister } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 72,
-      'the widened duplicate register is not 72. ' + W453_NOTE
+    assert.equal(wide.length, 71,
+      'the widened duplicate register is not 71. ' + W453_NOTE
       + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
       + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
       + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '
       + '$2414BE installTxBank heads; W463 removed both private $28C0FC counted-note heads; '
       + 'W474 removed the retired ledger note claims at $240F62 and $28D520; W475 removed '
       + 'the palette-reporting method claim at $24133C; W497 registers $2491C0 and '
-      + 'the $253D82/$253D90 Type-B hit-flag wrapper rows; W554 adds the shared '
-      + '$2A54E2 A3 selector row; '
+      + 'the $253D82/$253D90 Type-B hit-flag wrapper rows; later Hibachi source '
+      + 'consolidation removes the temporary W554 $2A54E2 duplicate; '
       + 'w450widenedregister.test.js SECTION 3 owns the set');
     // The two W447 merged must stay merged under a scan that can ALSO see a
     // private re-transcription, which is the only way to know they really went.

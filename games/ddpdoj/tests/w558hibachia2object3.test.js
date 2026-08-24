@@ -105,6 +105,10 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
       object9Art: 0x2a4b40,
       object9ArtFrames: 6,
       object10: 0x2a4c42,
+      object10CodeEnd: 0x2a4c6a,
+      object10Table: 0x2a4c6c,
+      object10Rows: 24,
+      object10Stride: 6,
       object11: 0x2a4b58,
       object11CodeEnd: 0x2a4b9e,
       object12: 0x2a4bc8,
@@ -112,6 +116,9 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
       object13: 0x2a4ba0,
       object13CodeEnd: 0x2a4bc6,
       object14: 0x2a4c08,
+      object14CodeEnd: 0x2a4c34,
+      object14Art: 0x2a4c36,
+      object14ArtFrames: 3,
       object15: 0x2a4af6,
       object16: 0x2a4cfc,
       object17: 0x2a4d5e,
@@ -173,15 +180,18 @@ test('W558 object 3 updates offsets, emits exact registers, and persists',
     assert.equal(b.ram.u16(slot), 0x8001, 'object 3 persists across later dispatches');
   });
 
-test('W558 object 10 is now the live blocker after objects 3 through 9 emit', { skip: SKIP }, () => {
+test('W558 objects 3 through 9 emit before the later W576 object 10 completes', { skip: SKIP }, () => {
   const b = bench();
   for (let id = 3; id <= 10; id++) a2Run2598E6(b.ram, id);
   const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-  assert.equal(error?.romAddress, HIBACHI_A2.object10);
+  assert.equal(error, null, 'W576 ports object 10 and its exact selector table');
   for (let id = 3; id <= 10; id++) {
     assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * id), 0x8001);
   }
-  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 7);
+  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 8,
+    'objects 3 through 10 all emit in ascending scheduler order');
+  assert.equal(requestHex(b.ram, 7), '87f88380001032080f000014',
+    'object 10 emits the exact first W576 selector row after object 9');
   assert.equal(requestHex(b.ram), '80058001001165341670ab12');
 });
 

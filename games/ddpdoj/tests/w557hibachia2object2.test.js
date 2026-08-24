@@ -102,15 +102,18 @@ test('W557 object 2 emits exactly without advancing its angle and persists',
     assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object2);
   });
 
-test('W557 object 10 is now the live blocker after objects 2 through 9 emit', { skip: SKIP }, () => {
+test('W557 objects 2 through 9 emit before the later W576 object 10 completes', { skip: SKIP }, () => {
   const b = bench();
   for (let id = 2; id <= 10; id++) a2Run2598E6(b.ram, id);
   const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-  assert.equal(error?.romAddress, HIBACHI_A2.object10);
+  assert.equal(error, null, 'W576 ports object 10 and its exact selector table');
   for (let id = 2; id <= 10; id++) {
     assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * id), 0x8001);
   }
-  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 8);
+  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 9,
+    'objects 2 through 10 all emit in ascending scheduler order');
+  assert.equal(requestHex(b.ram, 8), '86b783f0001032080f000014',
+    'object 10 emits the exact first W576 selector row after object 9');
   assert.equal(requestHex(b.ram), '81cf8054001017280c380012');
 });
 

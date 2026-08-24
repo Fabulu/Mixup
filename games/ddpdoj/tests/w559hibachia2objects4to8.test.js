@@ -105,16 +105,17 @@ test('W559 pins all five exact routine boundaries and their one shared art table
     assert.equal(beU16(HIBACHI_A2.object9), 0x303c, '$2A4AF6 starts object 9');
   });
 
-test('W559 scheduler runs objects 4 through 9 faithfully before object 10 blocks',
+test('W559 scheduler runs objects 4 through 9 faithfully before W576 object 10 completes',
   { skip: SKIP }, () => {
     const b = bench();
     for (let id = 4; id <= 10; id++) a2Run2598E6(b.ram, id);
 
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, HIBACHI_A2.object10,
-      'object 10 is the exact next live blocker');
-    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * (PARTS.length + 1),
-      'all five shared parts and object 9 emitted before slot 10 was reached');
+    assert.equal(error, null, 'W576 ports object 10 and its exact selector table');
+    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * (PARTS.length + 2),
+      'all five shared parts, object 9, and object 10 emit in ascending scheduler order');
+    assert.equal(requestHex(b.ram, PARTS.length + 1), '87f88380001032080f000014',
+      'object 10 emits the exact first W576 selector row after object 9');
 
     PARTS.forEach(({ id, part }, i) => {
       const slot = SCHED.a2Base + SCHED.a2Stride * id;
@@ -129,6 +130,10 @@ test('W559 scheduler runs objects 4 through 9 faithfully before object 10 blocks
         beU32(HIBACHI_A2.object3Art + SELECTORS[i] * 4));
     });
     assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 9), 0x8001);
+    assert.deepEqual([
+      b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 10),
+      b.ram.u32(SCHED.a2Base + SCHED.a2Stride * 10 + 2),
+    ], [0x8001, HIBACHI_A2.object10], 'object 10 remains present and running after its emit');
     assert.equal(b.ram.u16(A6 + 0x1fa), 0x01f0,
       'the five handlers share but do not change the root vector');
   });
