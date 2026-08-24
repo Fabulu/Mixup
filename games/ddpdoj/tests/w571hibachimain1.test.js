@@ -23,7 +23,7 @@ import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
   ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs,
-  tableBeforeW571, tableBeforeW572,
+  tableBeforeW571, tableBeforeW572, tableBeforeW573,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -42,11 +42,13 @@ const SKIP_CHECKPOINT = [FRONTIER, PERIODIC,
   : 'exact W571 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W572_TABLE = SKIP ? null : tableBeforeW573(TABLE_JSON);
 const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
-const LIVE_TABLE_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
+const LIVE_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
+const W572_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
 const TABLE_HASH = '376e17ddc03d3e56d728cb804ba091ab098b4039b2d51ba7b2d6689ccd07f7c8';
 const PRIOR_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
 const TEMPLATE = Object.freeze([
@@ -117,14 +119,14 @@ async function bundle() {
 
 test('W571 adds exactly one disjoint template window and reconstructs strict W570',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 845);
-    assert.equal(TABLE_JSON.rom.windows.length, 845);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452367);
+    assert.equal(ROM_WINDOW_COUNT, 847);
+    assert.equal(TABLE_JSON.rom.windows.length, 847);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452447);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(W571_TABLE.rom.windows.length, 844);
     assert.equal(W571_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452343);
     assert.equal(canonicalHash(W571_TABLE), TABLE_HASH,
-      'removing only W572 preserves strict historical W571');
+      'removing W573 and W572 preserves strict historical W571');
     assert.equal(PRIOR_TABLE.rom.windows.length, 843);
     assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452313);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH,
@@ -170,7 +172,9 @@ test('W571 pins pair boundaries, separate registration, lists, and first dispatc
     assert.equal(HIBACHI_A1_COUNTED[1], undefined);
     assert.equal(HIBACHI_A1_COUNTED[2], undefined,
       'W572 registers the next gun without changing gun 1');
-    assert.equal(HIBACHI_A1_COUNTED[3].init, 0x2a7e64);
+    assert.equal(HIBACHI_A1_COUNTED[3], undefined,
+      'W573 registers the next gun without changing gun 1');
+    assert.equal(HIBACHI_A1_COUNTED[4].init, 0x2a805a);
 
     const b = gunBench();
     const positive = rngIndex(false);
@@ -489,8 +493,8 @@ test('W571 historical identity composes through W572 and its checkpoint migrates
       'd25395bda9a3c25f53a2a9c06ce747f9924a4bc418268cd7d937414765c8cb1c',
     ]);
     restoreCheckpoint(periodic, { ...exact, tables: W571_TABLE }, periodic.selection);
-    const migratedW572 = { ...periodic, tablesSha256: LIVE_TABLE_HASH };
-    restoreCheckpoint(migratedW572, exact, periodic.selection);
+    const migratedW572 = { ...periodic, tablesSha256: W572_HASH };
+    restoreCheckpoint(migratedW572, { ...exact, tables: W572_TABLE }, periodic.selection);
     assert.deepEqual([migratedW572.ramSha256, migratedW572.gameSha256],
       [periodic.ramSha256, periodic.gameSha256],
       'W572 migration changes only the table identity');
