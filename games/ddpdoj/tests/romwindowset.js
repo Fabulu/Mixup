@@ -482,7 +482,14 @@
 // `$2A9E64..$2A9E83` self-pointers remain unexported. Measured: 822 -> 824
 // windows, 451,589 -> 451,669 bytes, 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 824;
+// ---------------------------------------------------------------------------
+// W566 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$2AA040 + $12` is loop-zero Hibachi A1 gun 4's exact nine-word slot
+// template. Its `$2AA052..$2AA071` self-pointers and padding remain unexported.
+// Measured: 824 -> 825 windows, 451,669 -> 451,687 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 825;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

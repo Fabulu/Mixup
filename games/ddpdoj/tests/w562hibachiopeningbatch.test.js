@@ -64,8 +64,10 @@ const W562_WINDOWS = SKIP ? null : WINDOW_SPECS.map(([base, len, why]) => Object
   base: `$${base.toString(16).toUpperCase()}`,
   len, why, hex: IMG.subarray(base, base + len).toString('hex'),
 }));
-const POST_W562_BASES = new Set(['$2A97B6', '$2A9A68', '$2A9E50', '$2AA004']);
-const POST_W563_BASES = new Set(['$2A9A68', '$2A9E50', '$2AA004']);
+const POST_W562_BASES = new Set([
+  '$2A97B6', '$2A9A68', '$2A9E50', '$2AA004', '$2AA040',
+]);
+const POST_W563_BASES = new Set(['$2A9A68', '$2A9E50', '$2AA004', '$2AA040']);
 const CHECKPOINT_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W563_BASES.has(w.base));
@@ -138,9 +140,9 @@ async function bundle() {
 
 test('W562 is exactly four disjoint additive windows and $16A bytes', { skip: SKIP }, () => {
   assert.deepEqual(W562_TABLE, FUTURE_TABLE,
-    'removing the later W563-W565 windows reconstructs the exact W562 additive result');
+    'removing the later W563-W566 windows reconstructs the exact W562 additive result');
   assert.equal(TABLE_JSON.rom.windows.length, ROM_WINDOW_COUNT);
-  assert.equal(ROM_WINDOW_COUNT, 824);
+  assert.equal(ROM_WINDOW_COUNT, 825);
   assert.equal(W562_TABLE.rom.windows.length, 820);
   assert.equal(canonicalHash(W562_TABLE), FUTURE_HASH,
     'the reconstructed table has the exact W562 identity');
@@ -209,11 +211,12 @@ test('W562 pins all three exact pairs, boundaries, and registrations', { skip: S
     HIBACHI_A3.s2Init, HIBACHI_A3.s2Step,
     HIBACHI_A4.s7Init, HIBACHI_A4.s7Step,
   ]) assert.ok(registered.has(address), `$${address.toString(16)} is registered`);
-  assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2, 3]);
+  assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2, 3, 4]);
   assert.equal(HIBACHI_A1_ALT_COUNTED[0], undefined);
   assert.equal(HIBACHI_A1_ALT_COUNTED[1], undefined);
   assert.equal(HIBACHI_A1_ALT_COUNTED[2], undefined);
   assert.equal(HIBACHI_A1_ALT_COUNTED[3], undefined);
+  assert.equal(HIBACHI_A1_ALT_COUNTED[4], undefined);
   assert.equal(HIBACHI_A1_ALT_SCRIPTS.length + Object.keys(HIBACHI_A1_ALT_COUNTED).length, 5,
     'implemented plus counted reconstructs all five alt-only ids');
   assert.ok(HIBACHI_END_SCRIPTS.includes(7));

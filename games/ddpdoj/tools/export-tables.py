@@ -3913,6 +3913,8 @@ SHOT_WINDOWS.extend([
                        "$2A9E84 moveq #$9 plus dbra and ending before its unused self-pointer block"),
     (0x2AA004, 0x003C, "W565: loop-zero HIBACHI A1 gun 3's five twelve-byte paired-shot rows, walked "
                        "from offset $30 down through $00 and ending exactly at gun 4's template"),
+    (0x2AA040, 0x0012, "W566: loop-zero HIBACHI A1 gun 4's nine-word slot template, copied by "
+                       "$2AA072 moveq #$8 plus dbra and ending before its unused self-pointer block"),
     (0x268DD2, 0x0068, "W353: type $1A's FIVE palette rows, 15-word record prototype and $20-byte sub "
                        "prototype, $268DD2..$268E3A -- three contiguous structures the init walks in "
                        "order. The rows are byte PAIRS indexed by $813094: 15 0a / 15 0a / 15 0a / "

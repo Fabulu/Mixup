@@ -53,8 +53,13 @@ const WINDOWS = SKIP ? null : WINDOW_SPECS.map(([base, len, why]) => Object.free
   base: `$${base.toString(16).toUpperCase()}`,
   len, why, hex: IMG.subarray(base, base + len).toString('hex'),
 }));
-const PRIOR_TABLE = SKIP ? null : (() => {
+const W565_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  copy.rom.windows = copy.rom.windows.filter((w) => w.base !== '$2AA040');
+  return copy;
+})();
+const PRIOR_TABLE = SKIP ? null : (() => {
+  const copy = JSON.parse(JSON.stringify(W565_TABLE));
   copy.rom.windows = copy.rom.windows.filter((w) => !WINDOW_BASES.has(w.base));
   return copy;
 })();
@@ -69,6 +74,7 @@ const ROM = SKIP ? null : new RomWindows(FUTURE_TABLE.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
 const PRIOR_HASH = 'ec7c6bc2c888fb375d32c1377ca8afd80b04ab9813163599e8784ccc6b35f028';
 const FUTURE_HASH = '9df27f6f7be58294229144676055c51dfae1ecb2f686134c12d0504b43497a2e';
+const CURRENT_HASH = '145945830be69de56a76312f0d44aaedd47519083d0da70fce2361ea06dba289';
 const canonicalHash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const A5 = 0x810c00;
 const A6 = 0x814800;
@@ -119,13 +125,15 @@ async function bundle() {
 
 test('W565 is a strict two-window additive superset with no self-pointers or padding',
   { skip: SKIP }, () => {
-    assert.deepEqual(TABLE_JSON, FUTURE_TABLE);
+    assert.deepEqual(W565_TABLE, FUTURE_TABLE,
+      'removing the later W566 window reconstructs the strict W565 additive result');
+    assert.equal(TABLE_JSON.rom.windows.length, 825);
     assert.equal(PRIOR_TABLE.rom.windows.length, 822);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
-    assert.equal(TABLE_JSON.rom.windows.length, 824);
-    assert.equal(canonicalHash(TABLE_JSON), FUTURE_HASH);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451669);
-    assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => WINDOW_BASES.has(w.base)), WINDOWS);
+    assert.equal(W565_TABLE.rom.windows.length, 824);
+    assert.equal(canonicalHash(W565_TABLE), FUTURE_HASH);
+    assert.equal(W565_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451669);
+    assert.deepEqual(W565_TABLE.rom.windows.filter((w) => WINDOW_BASES.has(w.base)), WINDOWS);
     assert.deepEqual(WINDOWS.map(({ base, len, hex }) => [base, len, hex]), [
       ['$2A9E50', 0x14, '20801d1d03030020ffff000b00301d00ffff0303'],
       ['$2AA004', 0x3c,
@@ -159,8 +167,8 @@ test('W565 pins gun 3, A4 $E, registrations, and complete scheduler accounting',
     for (const address of [
       HIBACHI_A1.altGun3Init, HIBACHI_A1.altGun3Step, HIBACHI_A4.sEInit, HIBACHI_A4.sEStep,
     ]) assert.ok(registered.has(address), `$${address.toString(16)} is registered`);
-    assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2, 3]);
-    assert.deepEqual(Object.keys(HIBACHI_A1_ALT_COUNTED).map(Number), [4]);
+    assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2, 3, 4]);
+    assert.deepEqual(Object.keys(HIBACHI_A1_ALT_COUNTED).map(Number), []);
     const allA4 = [
       ...HIBACHI_END_SCRIPTS, ...HIBACHI_GUN_A4_SCRIPTS,
       ...Object.keys(HIBACHI_END_COUNTED).map(Number),
@@ -324,8 +332,11 @@ test('W565 exact lf73711 replay reaches alternate gun 4 init at lf74078',
   { skip: SKIP_CHECKPOINT }, async () => {
     const exact = await bundle();
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
-    assert.equal(checkpoint.tablesSha256, FUTURE_HASH);
-    const { game, probe } = restoreCheckpoint(checkpoint, exact, checkpoint.selection);
+    assert.equal(checkpoint.tablesSha256, CURRENT_HASH);
+    const historicalCheckpoint = { ...checkpoint, tablesSha256: FUTURE_HASH };
+    const historicalExact = { ...exact, tables: W565_TABLE };
+    const { game, probe } = restoreCheckpoint(
+      historicalCheckpoint, historicalExact, checkpoint.selection);
     let error = null;
     let attempted = 0;
     for (attempted = 1; attempted <= 500; attempted++) {
@@ -339,8 +350,10 @@ test('W565 exact lf73711 replay reaches alternate gun 4 init at lf74078',
     }
     assert.equal(attempted, 368);
     assert.equal(game.logicFrame, 74078);
-    assert.equal(error?.romAddress, 0x2aa072);
-    assert.equal(ROM.u32(HIBACHI_A1.alt + 4 * 8), 0x2aa072);
-    assert.equal(scriptAddresses().includes(0x2aa072), false,
-      'alternate gun 4 init is the actual next gameplay seam');
+    assert.equal(error?.romAddress, HIBACHI_A1.altGun4Template);
+    assert.equal(ROM.u32(HIBACHI_A1.alt + 4 * 8), HIBACHI_A1.altGun4Init);
+    assert.equal(scriptAddresses().includes(HIBACHI_A1.altGun4Init), true);
+    assert.equal(caught(() => ROM.u8(HIBACHI_A1.altGun4Template))?.romAddress,
+      HIBACHI_A1.altGun4Template,
+      'the strict W565 table stops exactly at the W566 gun-4 template seam');
   });

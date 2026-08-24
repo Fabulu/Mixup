@@ -49,7 +49,7 @@ const WINDOW = SKIP ? null : Object.freeze({
   why: "W564: loop-zero HIBACHI A1 gun 2's twelve-word slot template, copied by $2A9AA0 moveq #$B plus dbra and ending before unused self-pointer padding",
   hex: IMG.subarray(0x2a9a68, 0x2a9a80).toString('hex'),
 });
-const POST_W564_BASES = new Set(['$2A9E50', '$2AA004']);
+const POST_W564_BASES = new Set(['$2A9E50', '$2AA004', '$2AA040']);
 const W564_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W564_BASES.has(w.base));
@@ -118,8 +118,8 @@ async function bundle() {
 
 test('W564 is one strict additive $2A9A68+$18 window with no padding', { skip: SKIP }, () => {
   assert.deepEqual(W564_TABLE, FUTURE_TABLE,
-    'removing the later W565 windows reconstructs the strict W564 additive result');
-  assert.equal(TABLE_JSON.rom.windows.length, 824);
+    'removing the later W565-W566 windows reconstructs the strict W564 additive result');
+  assert.equal(TABLE_JSON.rom.windows.length, 825);
   assert.equal(PRIOR_TABLE.rom.windows.length, 821);
   assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
   assert.equal(W564_TABLE.rom.windows.length, 822);
@@ -162,8 +162,8 @@ test('W564 pins both script pairs, boundaries, scheduler registrations, and coun
       HIBACHI_A1.altGun2Init, HIBACHI_A1.altGun2Step,
       HIBACHI_A4.s9Init, HIBACHI_A4.s9Step,
     ]) assert.ok(registered.has(address), `$${address.toString(16)} is registered`);
-    assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2, 3]);
-    assert.deepEqual(Object.keys(HIBACHI_A1_ALT_COUNTED).map(Number), [4]);
+    assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2, 3, 4]);
+    assert.deepEqual(Object.keys(HIBACHI_A1_ALT_COUNTED).map(Number), []);
     assert.ok(HIBACHI_END_SCRIPTS.includes(9));
   });
 
