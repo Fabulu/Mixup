@@ -83,6 +83,7 @@ test('W574 pins the exact A0 id-1 pair and adds no ROM window', { skip: SKIP }, 
   assert.deepEqual([
     HIBACHI_A0.s1Init, HIBACHI_A0.s1Step, HIBACHI_A0.s1End,
   ], [0x2a4f90, 0x2a4fae, 0x2a5054]);
+  assert.equal(HIBACHI_A0.s1End, HIBACHI_A0.s2Init);
   assert.equal(HIBACHI_A0.s1End, ROM.u32(HIBACHI_A0.table + 16),
     'the exact extent ends at A0 id 2 init');
   assert.equal(HIBACHI_A0.s1Step - HIBACHI_A0.s1Init, 0x1e);
@@ -219,7 +220,7 @@ test('W574 byte borrow, reload, state reversal, and id-2 handoff are exact',
     ], [130, 2, 4, 0, [0x28cb88]], 'canonical script lifetime is exactly 130 dispatches');
   });
 
-test('W574 resumes the migrated W573 state and reaches the W576 A0 id-2 frontier',
+test('W574 resumes the migrated W573 state and reaches the W577 A0 id-5 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -261,15 +262,15 @@ test('W574 resumes the migrated W573 state and reaches the W576 A0 id-2 frontier
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-    ], [1980, 148110, 158724, 0x2a5054, 4, 8, 16, 1]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5054/);
+    ], [2349, 148479, 159093, 0x2a5156, 4, 8, 16, 1]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5156/);
     assert.deepEqual([
       ROM.u32(HIBACHI_A3.table + 3 * 8), ROM.u32(HIBACHI_A3.table + 4 * 8),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s3Selector),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s4Selector),
-    ], [0x2a56a2, 0x2a56ce, 4, 0x60]);
+    ], [0x2a56a2, 0x2a56ce, 4, 0x78]);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'c935b62437760a4b9233add6d6a3ba49f98b40f457f2d2b0b8248c9082b4851d',
-      '0464af79bbc1b60bfaf01b8ae288820191db2974f5b0a2184692e7ca87014636',
+      'e369fb912f3708cf4bd9dba91f14009c997e5df90b1b8c65f5821dbf60a1a7d5',
+      '2b4316a41e9b32695691d3c2febf6edf2c286f4f4ebcc369c4a2263e6303a608',
     ]);
   });

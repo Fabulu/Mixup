@@ -291,7 +291,7 @@ test('W576 renderers mutate only the sprite bucket, not boss, RNG, players, obje
     assert.deepEqual(bytes(b.ram, bulletBase, 0x81b40c - bulletBase), bullets);
   });
 
-test('W576 migrates table identity only and reaches the exact A0 id 2 frontier',
+test('W576 migrates table identity only and reaches the exact W577 A0 id 5 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), W575_TABLE_HASH);
@@ -340,13 +340,13 @@ test('W576 migrates table identity only and reaches the exact A0 id 2 frontier',
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
       liveSub, resumed.game.ram.u16(liveSub + 0x12a), resumed.game.ram.u16(liveSub + 0x12c),
-    ], [1980, 148110, 158724, 0x2a5054, 4, 8, 16, 1, 0x81533c, 4, 0x60]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5054/);
+    ], [2349, 148479, 159093, 0x2a5156, 4, 8, 16, 1, 0x81533c, 4, 0x78]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5156/);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'c935b62437760a4b9233add6d6a3ba49f98b40f457f2d2b0b8248c9082b4851d',
-      '0464af79bbc1b60bfaf01b8ae288820191db2974f5b0a2184692e7ca87014636',
+      'e369fb912f3708cf4bd9dba91f14009c997e5df90b1b8c65f5821dbf60a1a7d5',
+      '2b4316a41e9b32695691d3c2febf6edf2c286f4f4ebcc369c4a2263e6303a608',
     ]);
     assert.equal(frontier.frame.logic + 500, 148131);
-    assert.ok(resumed.game.logicFrame < frontier.frame.logic + 500,
-      'the next blocker occurs before another periodic checkpoint boundary');
+    assert.ok(resumed.game.logicFrame > frontier.frame.logic + 500,
+      'W577 crosses the periodic checkpoint boundary before reaching A0 id 5');
   });

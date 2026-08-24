@@ -253,7 +253,7 @@ test('W575 A3 ids 3 and 4 still run earlier in the same scheduler pass than A2 i
     'both A3 init fallthroughs complete before the A2 walk dispatches id 10');
   });
 
-test('W575 exact progression reaches W576 A0 id 2 with no new 500-frame crossing',
+test('W575 exact progression crosses lf148131 and reaches W577 A0 id 5',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -295,18 +295,18 @@ test('W575 exact progression reaches W576 A0 id 2 with no new 500-frame crossing
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-    ], [1980, 148110, 158724, 0x2a5054, 4, 8, 16, 1]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5054/);
+    ], [2349, 148479, 159093, 0x2a5156, 4, 8, 16, 1]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5156/);
     assert.deepEqual([
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s3Selector),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s4Selector),
       state.ramSha256, state.gameSha256,
     ], [
-      4, 0x60,
-      'c935b62437760a4b9233add6d6a3ba49f98b40f457f2d2b0b8248c9082b4851d',
-      '0464af79bbc1b60bfaf01b8ae288820191db2974f5b0a2184692e7ca87014636',
+      4, 0x78,
+      'e369fb912f3708cf4bd9dba91f14009c997e5df90b1b8c65f5821dbf60a1a7d5',
+      '2b4316a41e9b32695691d3c2febf6edf2c286f4f4ebcc369c4a2263e6303a608',
     ]);
     assert.equal(frontier.frame.logic + 500, 148131);
-    assert.ok(resumed.game.logicFrame < frontier.frame.logic + 500,
-      'the next blocker occurs before another periodic checkpoint boundary');
+    assert.ok(resumed.game.logicFrame > frontier.frame.logic + 500,
+      'W577 crosses the periodic checkpoint boundary before reaching A0 id 5');
   });

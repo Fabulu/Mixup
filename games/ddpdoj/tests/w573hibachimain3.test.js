@@ -684,14 +684,14 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
     const attemptState = checkpointDocument(resumed.game, exact, {
       ...migrated.selection, inputWord: resumed.probe.inputWord, invulnerable: true,
     });
-    // W576 ports A2 ids 10 and 14, so progression reaches A0 id 2 before lf148131.
+    // W577 runs A0 id 2, crosses the exact lf148131 checkpoint, and reaches A0 id 5.
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, attemptState.ramSha256, attemptState.gameSha256,
     ], [
-      1980, 148110, 158724, 0x2a5054,
-      'c935b62437760a4b9233add6d6a3ba49f98b40f457f2d2b0b8248c9082b4851d',
-      '0464af79bbc1b60bfaf01b8ae288820191db2974f5b0a2184692e7ca87014636',
+      2349, 148479, 159093, 0x2a5156,
+      'e369fb912f3708cf4bd9dba91f14009c997e5df90b1b8c65f5821dbf60a1a7d5',
+      '2b4316a41e9b32695691d3c2febf6edf2c286f4f4ebcc369c4a2263e6303a608',
     ]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5054/);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5156/);
   });

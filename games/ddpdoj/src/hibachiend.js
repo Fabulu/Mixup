@@ -105,12 +105,13 @@ import { install24150A } from './palette.js';
 import { spawnEffect, clearEffectPool, B } from './effects.js';
 import {
   drawNegative242EC2, drawWord242EC2, drawByte2431F4, drawWord24328E, drawByte242B3C,
+  drawByte242E24,
 } from './rng.js';
 import { finalBlast2440E0 } from './boss2.js';
 import { finalBurst27CBB6 } from './stage4type9f.js';
 import { bossA5, bossA6, bigBurst28B34A } from './boss.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
-import { AimTables, aim64, slew64, targetSelect } from './aim.js';
+import { AimTables, aim64, slew64, slew64FromRecord, targetSelect } from './aim.js';
 
 /** `$2A432E` installs this nineteen-object A2 list. Object 0 is armed immediately by
  *  `$2A4336 jsr $2598E6`; its six-frame art selector is advanced by A3 script 1. */
@@ -179,6 +180,9 @@ export const HIBACHI_A0 = Object.freeze({
   s1Next: 2,
   s1A3: Object.freeze([3, 4]),
   s1A2: Object.freeze([0x0a, 0x0e]),
+  s2Init: 0x2a5054,
+  s2Step: 0x2a506c,
+  s2End: 0x2a50d0,
 });
 
 /** `$2A4312` installs this A3 scheduler table. It contains eight init/step pairs. */
@@ -707,6 +711,53 @@ export function main1Step2A4FAE(ram, ctx, a4) {
     }
   }
   placeMain0Parts2A4EB6(ram, a6);                          // $2A5050 bra.w $2A4EB6
+}
+
+// =============================================================== A0 MAIN SCRIPT 2
+// `$2A4E56` entry 2 is {$2A5054, $2A506C}. The init falls through into a
+// persistent roaming step. Movement uses the prior heading, then the script
+// slews toward its prior target and draws a replacement target for the next frame.
+
+/** `$2A5054`. Clear target state, set speed four, and seed the first heading. */
+export function main2Init2A5054(ram, rom, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s2Init);
+  ram.setU8(a4, 0);                                          // $2A5054/$2A5056
+  ram.setU8(a4 + 0x01, 0);                                   // $2A5058
+  ram.setU8(a6 + 0x1a, 4);                                   // $2A505C
+  ram.setU8(a6 + 0x1b, drawByte242E24(ram, rom));             // $2A5062/$2A5068
+}
+
+/** `$2A506C`. Move, turn toward the prior target, choose the next target, and
+ * keep every attached part positioned. The centre-bottom strip consumes its
+ * draw but deliberately preserves both target bytes. */
+export function main2Step2A506C(ram, rom, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s2Step);
+  applyVelocityA6(ram, ctx.tables, a6);                       // $2A506C
+
+  if (ram.u8(a4 + 0x01) !== 0) {                              // $2A5072
+    const target = ram.u8(a4);
+    const heading = slew64FromRecord(ram, a6, target);         // $2A5078/$2A507A
+    ram.setU8(a6 + 0x1b, heading);                            // $24217E's store
+    if (heading === target) ram.setU8(a4 + 0x01, 0);           // $2A5080..$2A5084
+  }
+
+  let target = drawByte242B3C(ram, rom);                      // $2A5088
+  const x = u16(ram.u16(a6 + 0x04) + 0x2800);                 // $2A508E/$2A5092
+  if (x < 0x3c00) {                                           // unsigned BCC boundary
+    target = (target + 0x10) & 0xff;                          // $2A509C
+  } else if (x >= 0x4c00) {                                   // unsigned BCS boundary
+    target = (target + 0x30) & 0xff;                          // $2A50A8
+  } else {
+    const y = ram.u16(a6 + 0x02);                             // `$2A50AE swap D1`
+    if (y >= 0x6000 && y < 0x6800) {                          // $2A50B0..$2A50BA
+      placeMain0Parts2A4EB6(ram, a6);                        // $2A50CC bra.w
+      return;
+    }
+    if (y >= 0x6800) target = (target + 0x20) & 0xff;         // $2A50BC
+  }
+  ram.setU8(a4, target & 0x3f);                               // $2A50C0/$2A50C4
+  ram.setU8(a4 + 0x01, 1);                                   // $2A50C6
+  placeMain0Parts2A4EB6(ram, a6);                            // $2A50CC bra.w
 }
 
 const HIBACHI_AIM_TABLES = new WeakMap();
@@ -1505,6 +1556,11 @@ registerScript(HIBACHI_A0.s1Init, initThenStep(
   (ram, _rom, ctx, a4) => main1Step2A4FAE(ram, ctx, a4)));
 registerScript(HIBACHI_A0.s1Step,
   (ram, _rom, ctx, a4) => main1Step2A4FAE(ram, ctx, a4));
+registerScript(HIBACHI_A0.s2Init, initThenStep(
+  (ram, rom, ctx, a4) => main2Init2A5054(ram, rom, ctx, a4),
+  (ram, rom, ctx, a4) => main2Step2A506C(ram, rom, ctx, a4)));
+registerScript(HIBACHI_A0.s2Step,
+  (ram, rom, ctx, a4) => main2Step2A506C(ram, rom, ctx, a4));
 
 registerScript(HIBACHI_A3.s0Init, initThenStep(
   (ram, _rom, ctx, a4) => a3s0Init2A54D6(ram, ctx, a4),
