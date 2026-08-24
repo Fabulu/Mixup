@@ -317,7 +317,7 @@ test('W582 freeze blocks only movement and persistence has no unrelated side eff
       Array(SCHED.a1Slots).fill(0));
   });
 
-test('W582 restores exact lf150131 and reaches the exact A3 id-6 frontier',
+test('W582 restores exact lf150131 and reaches the exact W583 A2 id-16 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -370,11 +370,11 @@ test('W582 restores exact lf150131 and reaches the exact A3 id-6 frontier',
       resumed.game.ram.u8(a6 + 0x1a), resumed.game.ram.u8(a6 + 0x1b),
       resumed.game.ram.u16(RNG_STATE),
     ], [
-      457, 150587, 161201, 0x2a5758, 4, 8, 16, 1,
+      457, 150587, 161201, 0x2a4cfc, 4, 8, 16, 1,
       0x81378c, 0x81533c, 0x4a1d, 0x20d8, 6, 0x20, 0x00b9,
     ]);
     assert.match(error?.message ?? '',
-      /boss SCRIPT at \$2A5758[\s\S]*slot at \$812AF4/);
+      /boss SCRIPT at \$2A4CFC[\s\S]*slot at \$812A50/);
     assert.deepEqual([
       resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
       resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
@@ -386,12 +386,12 @@ test('W582 restores exact lf150131 and reaches the exact A3 id-6 frontier',
     assert.equal(resumed.game.ram.u16(SCHED.a4Base + SCHED.a4Stride + 0x04), 0x0080);
     assert.deepEqual(slotWords(resumed.game.ram,
       SCHED.a3Base, SCHED.a3Slots, SCHED.a3Stride),
-    [0x8100, 0x8101, 0x8103, 0x8104, 0x8106, 0x8007, 0, 0, 0, 0]);
+    [0x8100, 0x8101, 0x8103, 0x8104, 0x8106, 0x8107, 0, 0, 0, 0]);
     assert.equal(SCHED.a3Base + 4 * SCHED.a3Stride, 0x812af4);
     assert.deepEqual(slotWords(resumed.game.ram,
       SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride), Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'f5c0bdc79406f625aa957982b10198b197d442feaab47f82859e55821d72bb4b',
+      'ecbc4c4e964ae7ad26734cfdf358f487aa07f9908621eaa527ea77092c634af3',
       '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
     ]);
   });

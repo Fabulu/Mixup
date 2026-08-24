@@ -220,7 +220,7 @@ test('W574 byte borrow, reload, state reversal, and id-2 handoff are exact',
     ], [130, 2, 4, 0, [0x28cb88]], 'canonical script lifetime is exactly 130 dispatches');
   });
 
-test('W574 resumes the migrated W573 state and reaches the W582 A3 id-6 frontier',
+test('W574 resumes the migrated W573 state and reaches the W583 A2 id-16 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const live = await bundle();
     assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
@@ -264,15 +264,15 @@ test('W574 resumes the migrated W573 state and reaches the W582 A3 id-6 frontier
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-    ], [4457, 150587, 161201, 0x2a5758, 4, 8, 16, 1]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5758/);
+    ], [4457, 150587, 161201, 0x2a4cfc, 4, 8, 16, 1]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4CFC/);
     assert.deepEqual([
       ROM.u32(HIBACHI_A3.table + 3 * 8), ROM.u32(HIBACHI_A3.table + 4 * 8),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s3Selector),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s4Selector),
     ], [0x2a56a2, 0x2a56ce, 4, 0x84]);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'f5c0bdc79406f625aa957982b10198b197d442feaab47f82859e55821d72bb4b',
+      'ecbc4c4e964ae7ad26734cfdf358f487aa07f9908621eaa527ea77092c634af3',
       '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
     ]);
   });

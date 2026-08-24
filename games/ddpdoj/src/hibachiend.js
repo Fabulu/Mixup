@@ -212,6 +212,10 @@ export const HIBACHI_A3 = Object.freeze({
   s2Init: 0x2a552e, s2Step: 0x2a5534,
   s3Init: 0x2a56a2, s3Step: 0x2a56ae, s3End: 0x2a56ce, s3Selector: 0x012a,
   s4Init: 0x2a56ce, s4Step: 0x2a56da, s4End: 0x2a56fa, s4Selector: 0x012c,
+  s6Row: 0x2a54c2,
+  s6Init: 0x2a5758, s6Step: 0x2a5764, s6End: 0x2a5784, s6Selector: 0x0132,
+  s7Row: 0x2a54ca,
+  s7Init: 0x2a5784, s7Step: 0x2a5790, s7End: 0x2a57b0, s7Selector: 0x0138,
 });
 
 /** Every address in this file's flow that is real ROM data or a real ROM entry point, so a
@@ -1079,6 +1083,32 @@ export function a3s4Step2A56DA(ram, ctx, a4) {
     6, 0x0090, 0x005a);
 }
 
+/** `$2A5758`. Seed a two-dispatch cadence, clear A6+$132, then fall through. */
+export function a3s6Init2A5758(ram, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A3.s6Init);
+  ram.setU16(a4 + 0x02, 0x0001);
+  ram.setU16(a6 + HIBACHI_A3.s6Selector, 0);
+}
+
+/** `$2A5764`. Advance A6+$132 by four every two dispatches and cycle at $20. */
+export function a3s6Step2A5764(ram, ctx, a4) {
+  a3SelectorStep(ram, ctx, a4, HIBACHI_A3.s6Selector, HIBACHI_A3.s6Step,
+    4, 0x0020, 0);
+}
+
+/** `$2A5784`. Seed a two-dispatch cadence, clear A6+$138, then fall through. */
+export function a3s7Init2A5784(ram, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A3.s7Init);
+  ram.setU16(a4 + 0x02, 0x0001);
+  ram.setU16(a6 + HIBACHI_A3.s7Selector, 0);
+}
+
+/** `$2A5790`. Advance A6+$138 by four every two dispatches and cycle at $40. */
+export function a3s7Step2A5790(ram, ctx, a4) {
+  a3SelectorStep(ram, ctx, a4, HIBACHI_A3.s7Selector, HIBACHI_A3.s7Step,
+    4, 0x0040, 0);
+}
+
 // =============================================================== A4 SCRIPT 0 -- THE ARRIVAL
 // W552. `$2A4384` starts this script after the Hibachi init body installs the scheduler tables.
 // The A4 convention has no `rts` between `$2A592E` and `$2A597C`, so the init dispatch also runs
@@ -1824,6 +1854,16 @@ registerScript(HIBACHI_A3.s4Init, initThenStep(
   (ram, _rom, ctx, a4) => a3s4Step2A56DA(ram, ctx, a4)));
 registerScript(HIBACHI_A3.s4Step,
   (ram, _rom, ctx, a4) => a3s4Step2A56DA(ram, ctx, a4));
+registerScript(HIBACHI_A3.s6Init, initThenStep(
+  (ram, _rom, ctx, a4) => a3s6Init2A5758(ram, ctx, a4),
+  (ram, _rom, ctx, a4) => a3s6Step2A5764(ram, ctx, a4)));
+registerScript(HIBACHI_A3.s6Step,
+  (ram, _rom, ctx, a4) => a3s6Step2A5764(ram, ctx, a4));
+registerScript(HIBACHI_A3.s7Init, initThenStep(
+  (ram, _rom, ctx, a4) => a3s7Init2A5784(ram, ctx, a4),
+  (ram, _rom, ctx, a4) => a3s7Step2A5790(ram, ctx, a4)));
+registerScript(HIBACHI_A3.s7Step,
+  (ram, _rom, ctx, a4) => a3s7Step2A5790(ram, ctx, a4));
 
 registerScript(HIBACHI_A4.s0Init, initThenStep(
   (ram, rom, ctx, a4) => s0Init2A592E(ram, ctx, a4),

@@ -325,7 +325,7 @@ test('W580 persists without retirement, sound, bullets, or scheduler transition'
     assert.equal(b.ram.u8(a4 + 1) <= 1, true);
   });
 
-test('W580 restores exact lf149131 and reaches the exact W582 A3 id-6 frontier',
+test('W580 restores exact lf149131 and reaches the exact W583 A2 id-16 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -377,10 +377,10 @@ test('W580 restores exact lf149131 and reaches the exact W582 A3 id-6 frontier',
       a5, a6, resumed.game.ram.u8(a6 + 0x1a), resumed.game.ram.u8(a6 + 0x1b),
       resumed.game.ram.u16(RNG_STATE),
     ], [
-      1457, 150587, 161201, 0x2a5758, 4, 8, 16, 1,
+      1457, 150587, 161201, 0x2a4cfc, 4, 8, 16, 1,
       0x81378c, 0x81533c, 6, 0x20, 0x00b9,
     ]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5758/);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4CFC/);
     assert.deepEqual([
       resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
       resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
@@ -392,7 +392,7 @@ test('W580 restores exact lf149131 and reaches the exact W582 A3 id-6 frontier',
       resumed.game.ram.u16(SCHED.a1Base + index * SCHED.a1Stride)),
     Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'f5c0bdc79406f625aa957982b10198b197d442feaab47f82859e55821d72bb4b',
+      'ecbc4c4e964ae7ad26734cfdf358f487aa07f9908621eaa527ea77092c634af3',
       '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
     ]);
   });

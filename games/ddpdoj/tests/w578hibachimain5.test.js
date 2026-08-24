@@ -198,7 +198,7 @@ test('W578 freeze preserves the root while refreshing all ten attachments',
     assert.deepEqual(b.sounds, []);
   });
 
-test('W578 restores lf148631 and reaches the exact W582 A3 id-6 frontier',
+test('W578 restores lf148631 and reaches the exact W583 A2 id-16 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -236,8 +236,8 @@ test('W578 restores lf148631 and reaches the exact W582 A3 id-6 frontier',
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame, error?.romAddress,
       state.raw.stage, state.raw.loop, a6, resumed.game.ram.u8(a6 + 0x1a),
-    ], [1957, 150587, 161201, 0x2a5758, 4, 1, 0x81533c, 6]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5758/);
+    ], [1957, 150587, 161201, 0x2a4cfc, 4, 1, 0x81533c, 6]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4CFC/);
     assert.deepEqual([
       resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
       resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
@@ -250,7 +250,7 @@ test('W578 restores lf148631 and reaches the exact W582 A3 id-6 frontier',
       resumed.game.ram.u16(SCHED.a1Base + index * SCHED.a1Stride)),
     Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'f5c0bdc79406f625aa957982b10198b197d442feaab47f82859e55821d72bb4b',
+      'ecbc4c4e964ae7ad26734cfdf358f487aa07f9908621eaa527ea77092c634af3',
       '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
     ]);
   });
