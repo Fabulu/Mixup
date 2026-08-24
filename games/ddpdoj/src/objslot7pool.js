@@ -396,8 +396,8 @@ export function menu2911B0(ram, rom, a5, a6, ctx) {
   if (ram.u16(a6 + 0x06) === 0) {                            // $2911B0 cmpi.w #$0,($6,A6)
     ram.setU16(a6 + 0x06, 1);                                // $2911BA
     poolClear2908E4(ram, rom, ctx);                          // $2911C0 jsr $2908E4 (PC-relative)
-    // $2911C4 -- move.w, not move.l. ($C,A6) is read back as a LONG by the adda.l below, so state 0
-    // clears only its HIGH half and trusts the low half to be zero already. Transcribed as written.
+    // $2911C4 clears the list cursor WORD at ($C,A6). The independent sequence selector at
+    // ($E,A6) is adjacent, but neither this store nor the word-sized indexing below reads it.
     ram.setU16(a6 + 0x0c, 0);
     ram.setU16(MENU2911B0.flag, 1);                          // $2911CA
     ram.setU16(MENU2911B0.sel, 1);                           // $2911D2 -- the DEFAULT choice
@@ -414,7 +414,7 @@ export function menu2911B0(ram, rom, a5, a6, ctx) {
   }
 
   if (ram.u16(a6 + 0x06) === 1) {                            // $2911F2
-    const entry = rom.u32(MENU2911B0.list + ram.u32(a6 + 0x0c));   // $291202 adda.l / $291206
+    const entry = rom.u32(MENU2911B0.list + ram.u16(a6 + 0x0c));   // $291202 adda.w / $291206
     if (entry === 0xffffffff) {                              // $291208 cmpi.l #$FFFFFFFF
       ram.setU16(a6 + 0x06, 2);                              // $291212 -- the list is spent
       // $291218/$291220 -- and NOW the reader is chosen, once, from P1's record. Same sign test on
@@ -424,7 +424,7 @@ export function menu2911B0(ram, rom, a5, a6, ctx) {
       // $291238 bsr $2909AA / $29123C bcs -- carry SET means "stay on this entry", so the cursor
       // advances only when the step reports itself finished.
       if (!scriptStep2909AA(ram, rom, ctx, entry)) {
-        ram.setU32(a6 + 0x0c, u32(ram.u32(a6 + 0x0c) + 4));  // $291240 addq.l #4,($C,A6)
+        ram.setU16(a6 + 0x0c, u16(ram.u16(a6 + 0x0c) + 4));  // $291240 addq.w #4,($C,A6)
       }
     }
   }

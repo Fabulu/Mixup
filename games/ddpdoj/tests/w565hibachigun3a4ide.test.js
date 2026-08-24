@@ -53,9 +53,14 @@ const WINDOWS = SKIP ? null : WINDOW_SPECS.map(([base, len, why]) => Object.free
   base: `$${base.toString(16).toUpperCase()}`,
   len, why, hex: IMG.subarray(base, base + len).toString('hex'),
 }));
+const POST_W565_BASES = new Set([
+  '$2AA040',
+  '$29139E', '$2902CA', '$2902E2', '$2903E6', '$2903F2', '$29040A', '$29041A',
+  '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
+]);
 const W565_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
-  copy.rom.windows = copy.rom.windows.filter((w) => w.base !== '$2AA040');
+  copy.rom.windows = copy.rom.windows.filter((w) => !POST_W565_BASES.has(w.base));
   return copy;
 })();
 const PRIOR_TABLE = SKIP ? null : (() => {
@@ -126,8 +131,8 @@ async function bundle() {
 test('W565 is a strict two-window additive superset with no self-pointers or padding',
   { skip: SKIP }, () => {
     assert.deepEqual(W565_TABLE, FUTURE_TABLE,
-      'removing the later W566 window reconstructs the strict W565 additive result');
-    assert.equal(TABLE_JSON.rom.windows.length, 825);
+      'removing the later W566 and W568 windows reconstructs the strict W565 additive result');
+    assert.equal(TABLE_JSON.rom.windows.length, 839);
     assert.equal(PRIOR_TABLE.rom.windows.length, 822);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
     assert.equal(W565_TABLE.rom.windows.length, 824);

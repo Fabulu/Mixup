@@ -35,6 +35,15 @@ const SKIP_CHECKPOINT = existsSync(CHECKPOINT)
   && existsSync(path.join(ASSETS, 'player.tables.json.gz')) && !SKIP ? false
   : 'exact checkpoint bundle absent. This is a skip, not a pass.';
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W568_BASES = new Set([
+  '$29139E', '$2902CA', '$2902E2', '$2903E6', '$2903F2', '$29040A', '$29041A',
+  '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
+]);
+const W567_TABLE = SKIP ? null : (() => {
+  const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  copy.rom.windows = copy.rom.windows.filter((w) => !W568_BASES.has(w.base));
+  return copy;
+})();
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const ROM = SKIP ? null : {
   u32: (address) => IMG.readUInt32BE(address),
@@ -58,9 +67,9 @@ function soundBench(head, tail) {
 
 test('W567 preserves the generated table identity and keeps both entries out of WRAPPERS',
   { skip: SKIP }, () => {
-    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
-    assert.equal(TABLE_JSON.rom.windows.length, 825);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451687);
+    assert.equal(canonicalHash(W567_TABLE), TABLE_HASH);
+    assert.equal(W567_TABLE.rom.windows.length, 825);
+    assert.equal(W567_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451687);
     assert.deepEqual(SOUND_ENTRY[0x28c0fc], { type: 0x10, gate: 'none', tail: false });
     assert.deepEqual(SOUND_ENTRY[0x28c10c], { type: 0x20, gate: 'none', tail: false });
     assert.equal(SOUND_WRAPPERS[0x28c0fc], undefined);
@@ -151,9 +160,10 @@ test('W567 slot 7 posts the immediate chain, enters menu state 4, then LEFT and 
     assert.equal(ram.u16(ALLOC.createStage) & 0x7fff, 0x0011, 'the staged slot type is $11');
   });
 
-test('W567 exact lf76711 replay reaches the overlapping menu cursor blocker after both entries',
+test('W567 exact lf76711 replay reaches the historical menu intro frontier after both entries',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const exact = await bundle();
+    const current = await bundle();
+    const exact = { ...current, tables: W567_TABLE };
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
     assert.equal(checkpoint.tablesSha256, TABLE_HASH);
     const { game, probe } = restoreCheckpoint(checkpoint, exact, checkpoint.selection);
@@ -170,12 +180,12 @@ test('W567 exact lf76711 replay reaches the overlapping menu cursor blocker afte
     }
     assert.equal(attempted, 9);
     assert.equal(game.logicFrame, 76719);
-    assert.equal(error?.romAddress, 0x29139eff);
-    assert.match(error?.message ?? '', /word at \$29139EFF/);
+    assert.equal(error?.romAddress, 0x29139e);
+    assert.match(error?.message ?? '', /word at \$29139E/);
     assert.doesNotMatch(error?.message ?? '', /no wrapper at \$28C0FC|no wrapper at \$28C10C/);
     assert.equal(game.ram.u16(SLOT7.gate), 0, 'the exact run is still in loop zero');
     assert.equal(game.ram.u16(SLOT7.work + SLOT7.innerAt), 4, 'slot 7 entered menu state 4');
     assert.equal(game.ram.u16(SLOT7.work + 0x06), 1, 'the menu is running its intro list');
     assert.equal(game.ram.u16(SLOT7.work + SLOT7.seqSel), 1,
-      'the overlapping sequence word leaves the menu list cursor low half at 1');
+      'the independent sequence selector remains one at the historical intro frontier');
   });

@@ -54,7 +54,11 @@ const WINDOW = SKIP ? null : Object.freeze({
   why: "W563: loop-zero HIBACHI A1 gun 1's fifteen-word slot template, copied by $2A97F4 moveq #$E plus dbra and ending before its unused self-pointer block",
   hex: IMG.subarray(0x2a97b6, 0x2a97d4).toString('hex'),
 });
-const POST_W563_BASES = new Set(['$2A9A68', '$2A9E50', '$2AA004', '$2AA040']);
+const POST_W563_BASES = new Set([
+  '$2A9A68', '$2A9E50', '$2AA004', '$2AA040',
+  '$29139E', '$2902CA', '$2902E2', '$2903E6', '$2903F2', '$29040A', '$29041A',
+  '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
+]);
 const W563_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W563_BASES.has(w.base));
@@ -122,8 +126,8 @@ async function bundle() {
 
 test('W563 adds only the strict $2A97B6+$1E template window', { skip: SKIP }, () => {
   assert.deepEqual(W563_TABLE, FUTURE_TABLE,
-    'removing the later W564-W566 windows reconstructs the strict W563 additive result');
-  assert.equal(TABLE_JSON.rom.windows.length, 825);
+    'removing the later W564-W568 windows reconstructs the strict W563 additive result');
+  assert.equal(TABLE_JSON.rom.windows.length, 839);
   assert.equal(PRIOR_TABLE.rom.windows.length, 820);
   assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
   assert.equal(W563_TABLE.rom.windows.length, 821);

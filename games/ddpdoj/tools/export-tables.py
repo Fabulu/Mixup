@@ -3822,6 +3822,22 @@ SHOT_WINDOWS.extend([
     (0x291396, 0x0008, "W373: the $2911B0 menu's state-1 SCRIPT LIST -- one pointer to $29139E and "
                        "the $FFFFFFFF terminator. Self-bounding in the usual way: entry [0] is "
                        "$29139E, which is where the list stops"),
+    (0x29139E, 0x00D2, "W568: the $2911B0 menu's complete state-1 INTRO SCRIPT, from its list entry "
+                       "through the $FFFF terminator at $29146E. The adjacent inner-state-1 handler "
+                       "at $291470 supplies the upper bound"),
+    (0x2902CA, 0x0004, "W568: menu intro spawn-table longword for concrete index $02"),
+    (0x2902E2, 0x0004, "W568: menu intro spawn-table longword for concrete index $08"),
+    (0x2903E6, 0x0004, "W568: menu intro spawn-table longword for concrete index $49"),
+    (0x2903F2, 0x0004, "W568: menu intro spawn-table longword for concrete index $4C"),
+    (0x29040A, 0x0004, "W568: menu intro spawn-table longword for concrete index $52"),
+    (0x29041A, 0x0004, "W568: menu intro spawn-table longword for concrete index $56"),
+    (0x290442, 0x0004, "W568: menu intro spawn-table longword for concrete index $60"),
+    (0x290462, 0x0004, "W568: menu intro spawn-table longword for concrete index $68"),
+    (0x29051A, 0x0004, "W568: menu intro spawn-table longword for concrete index $96"),
+    (0x29058E, 0x0004, "W568: menu intro spawn-table longword for concrete index $B3"),
+    (0x2905A2, 0x0004, "W568: menu intro spawn-table longword for concrete index $B8"),
+    (0x2905CA, 0x0004, "W568: menu intro spawn-table longword for concrete index $C2"),
+    (0x2906C6, 0x0004, "W568: menu intro spawn-table longword for concrete index $101"),
     (0x290706, 0x0040, "W372: object-dispatch slot [7]'s pool palette block, handed to $24150A by "
                        "$2908E4 with bank 0. Sixty-four bytes because that is what install24150A "
                        "reads for every bank, so the size is the CALLEE's constant and not a guess "

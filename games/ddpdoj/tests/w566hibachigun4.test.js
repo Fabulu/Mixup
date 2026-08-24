@@ -37,6 +37,15 @@ const SKIP_CHECKPOINT = existsSync(CHECKPOINT)
   : 'exact checkpoint bundle absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W568_BASES = new Set([
+  '$29139E', '$2902CA', '$2902E2', '$2903E6', '$2903F2', '$29040A', '$29041A',
+  '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
+]);
+const W566_TABLE = SKIP ? null : (() => {
+  const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  copy.rom.windows = copy.rom.windows.filter((w) => !W568_BASES.has(w.base));
+  return copy;
+})();
 
 const WINDOW = SKIP ? null : Object.freeze({
   base: '$2AA040',
@@ -45,7 +54,7 @@ const WINDOW = SKIP ? null : Object.freeze({
   hex: IMG.subarray(0x2aa040, 0x2aa052).toString('hex'),
 });
 const PRIOR_TABLE = SKIP ? null : (() => {
-  const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  const copy = JSON.parse(JSON.stringify(W566_TABLE));
   copy.rom.windows = copy.rom.windows.filter((w) => w.base !== WINDOW.base);
   return copy;
 })();
@@ -105,13 +114,14 @@ async function bundle() {
 
 test('W566 is the strict one-window additive template with no self-pointers or padding',
   { skip: SKIP }, () => {
-    assert.deepEqual(TABLE_JSON, FUTURE_TABLE);
+    assert.deepEqual(W566_TABLE, FUTURE_TABLE,
+      'removing W568 reconstructs the exact historical W566 table');
     assert.equal(PRIOR_TABLE.rom.windows.length, 824);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
-    assert.equal(TABLE_JSON.rom.windows.length, 825);
-    assert.equal(canonicalHash(TABLE_JSON), FUTURE_HASH);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451687);
-    assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.base === WINDOW.base), [WINDOW]);
+    assert.equal(W566_TABLE.rom.windows.length, 825);
+    assert.equal(canonicalHash(W566_TABLE), FUTURE_HASH);
+    assert.equal(W566_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451687);
+    assert.deepEqual(W566_TABLE.rom.windows.filter((w) => w.base === WINDOW.base), [WINDOW]);
     assert.equal(WINDOW.hex, '2080454500000b40fffa0019000100070140');
     assert.equal(overlappingPairs(TABLE_JSON.rom.windows.map((w) => [
       Number.parseInt(w.base.slice(1), 16), w.len,
@@ -285,9 +295,10 @@ test('W566 has no gun-level freeze gate while the bullet core may decline every 
     assert.equal(b.ram.u8(SCHED.a1Base + 0x13), 0x41);
   });
 
-test('W566 exact lf73711 replay reaches external cleanup then the menu cursor frontier',
+test('W566 exact lf73711 replay reaches external cleanup then the historical menu intro frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const exact = await bundle();
+    const current = await bundle();
+    const exact = { ...current, tables: W566_TABLE };
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
     assert.equal(checkpoint.tablesSha256, FUTURE_HASH);
     const { game, probe } = restoreCheckpoint(checkpoint, exact, checkpoint.selection);
@@ -304,8 +315,8 @@ test('W566 exact lf73711 replay reaches external cleanup then the menu cursor fr
     }
     assert.equal(attempted, 3009);
     assert.equal(game.logicFrame, 76719);
-    assert.equal(error?.romAddress, 0x29139eff);
-    assert.match(error?.message ?? '', /word at \$29139EFF/);
+    assert.equal(error?.romAddress, 0x29139e);
+    assert.match(error?.message ?? '', /word at \$29139E/);
     assert.deepEqual(Array.from({ length: SCHED.a1Slots }, (_, i) =>
       game.ram.u16(SCHED.a1Base + i * SCHED.a1Stride)), Array(SCHED.a1Slots).fill(0),
     'external boss cleanup retires the otherwise permanent gun before the new seam');

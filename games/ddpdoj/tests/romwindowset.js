@@ -489,7 +489,15 @@
 // template. Its `$2AA052..$2AA071` self-pointers and padding remain unexported.
 // Measured: 824 -> 825 windows, 451,669 -> 451,687 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 825;
+// ---------------------------------------------------------------------------
+// W568 ADDED FOURTEEN DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// `$29139E + $D2` is the complete slot-7 menu intro through its `$FFFF`
+// terminator. Thirteen sparse four-byte windows expose only the spawn-table
+// longwords the intro indexes. Measured: 825 -> 839 windows,
+// 451,687 -> 451,949 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 839;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -571,4 +579,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "disjoint $2A97B6+$1E Hibachi gun-1 template and moved no pair. W564 added "
   + "the disjoint $2A9A68+$18 Hibachi gun-2 template and moved no pair. W565 "
   + "added disjoint $2A9E50+$14 template and $2AA004+$3C pattern windows and "
-  + "moved no pair. See tests/romwindowset.js.";
+  + "moved no pair. W568 added the disjoint $29139E+$D2 menu intro and thirteen "
+  + "sparse spawn-table longwords, totalling $106 bytes, and moved no pair. "
+  + "See tests/romwindowset.js.";

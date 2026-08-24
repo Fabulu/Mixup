@@ -27,8 +27,8 @@ const MENU = Object.freeze({ work: 0x81e0dc, innerAt: 0x08, substateAt: 0x06,
 const RAW = Object.freeze({ stage: 0x813092, loop: 0x813098 });
 
 const word = (...names) => portWordFromBits(names.map((name) => CONTROLS[name]));
+const RELEASE = word();
 const DOWN_SHOT = word('DOWN', 'SHOT');
-const DOWN = word('DOWN');
 const LEFT = word('LEFT');
 const SHOT = word('SHOT');
 
@@ -63,10 +63,10 @@ Resume behavior:
   A failed step is never checkpointed.
 
 Round-2 input:
-  The probe releases shot during the real menu intro, toggles the default decline
-  choice with a fresh left edge, then confirms with a fresh shot edge. It does not
-  poke the choice word. P1 invulnerability is written only by this probe before
-  each step; ordinary browser games remain mortal.`;
+  The probe sends release through the real menu intro, toggles the default decline
+  choice with a fresh LEFT edge, sends release again, then confirms with a fresh
+  SHOT edge. It does not poke the choice word. P1 invulnerability is written only
+  by this probe before each step; ordinary browser games remain mortal.`;
 }
 
 function parseArgs(argv) {
@@ -133,13 +133,15 @@ function latestCheckpoint(dir, ship, style) {
   return matches.length ? path.join(dir, matches[matches.length - 1]) : null;
 }
 
-function round2Input(game) {
+function round2Input(game, previous) {
   const ram = game.ram;
   if (ram.u16(MENU.work + MENU.innerAt) !== 4) return DOWN_SHOT;
   const state = ram.u16(MENU.work + MENU.substateAt);
-  if (state < 2) return DOWN;
+  if (state < 2) return RELEASE;
   if (state === 2 && ram.u16(MENU.selection) === 1) return LEFT;
-  if (state === 2) return SHOT;
+  if (state === 2 && previous === LEFT) return RELEASE;
+  if (state === 2 && previous === RELEASE) return SHOT;
+  if (state === 2) return RELEASE;
   return DOWN_SHOT;
 }
 
@@ -178,7 +180,7 @@ async function runPair(bundle, options, pair) {
 
   for (let stepped = 1; stepped <= options.frames; stepped++) {
     game.ram.setU8(RAM.player1 + P.invuln, 0xff);
-    inputWord = round2Input(game);
+    inputWord = round2Input(game, inputWord);
     game.step(inputWord);
     const now = rawPosition(game);
     if (now.stage !== last.stage || now.loop !== last.loop) {

@@ -49,7 +49,11 @@ const WINDOW = SKIP ? null : Object.freeze({
   why: "W564: loop-zero HIBACHI A1 gun 2's twelve-word slot template, copied by $2A9AA0 moveq #$B plus dbra and ending before unused self-pointer padding",
   hex: IMG.subarray(0x2a9a68, 0x2a9a80).toString('hex'),
 });
-const POST_W564_BASES = new Set(['$2A9E50', '$2AA004', '$2AA040']);
+const POST_W564_BASES = new Set([
+  '$2A9E50', '$2AA004', '$2AA040',
+  '$29139E', '$2902CA', '$2902E2', '$2903E6', '$2903F2', '$29040A', '$29041A',
+  '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
+]);
 const W564_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W564_BASES.has(w.base));
@@ -118,8 +122,8 @@ async function bundle() {
 
 test('W564 is one strict additive $2A9A68+$18 window with no padding', { skip: SKIP }, () => {
   assert.deepEqual(W564_TABLE, FUTURE_TABLE,
-    'removing the later W565-W566 windows reconstructs the strict W564 additive result');
-  assert.equal(TABLE_JSON.rom.windows.length, 825);
+    'removing the later W565-W568 windows reconstructs the strict W564 additive result');
+  assert.equal(TABLE_JSON.rom.windows.length, 839);
   assert.equal(PRIOR_TABLE.rom.windows.length, 821);
   assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
   assert.equal(W564_TABLE.rom.windows.length, 822);

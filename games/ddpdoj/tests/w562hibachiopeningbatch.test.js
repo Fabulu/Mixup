@@ -64,10 +64,16 @@ const W562_WINDOWS = SKIP ? null : WINDOW_SPECS.map(([base, len, why]) => Object
   base: `$${base.toString(16).toUpperCase()}`,
   len, why, hex: IMG.subarray(base, base + len).toString('hex'),
 }));
+const W568_BASES = [
+  '$29139E', '$2902CA', '$2902E2', '$2903E6', '$2903F2', '$29040A', '$29041A',
+  '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
+];
 const POST_W562_BASES = new Set([
-  '$2A97B6', '$2A9A68', '$2A9E50', '$2AA004', '$2AA040',
+  '$2A97B6', '$2A9A68', '$2A9E50', '$2AA004', '$2AA040', ...W568_BASES,
 ]);
-const POST_W563_BASES = new Set(['$2A9A68', '$2A9E50', '$2AA004', '$2AA040']);
+const POST_W563_BASES = new Set([
+  '$2A9A68', '$2A9E50', '$2AA004', '$2AA040', ...W568_BASES,
+]);
 const CHECKPOINT_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W563_BASES.has(w.base));
@@ -140,9 +146,9 @@ async function bundle() {
 
 test('W562 is exactly four disjoint additive windows and $16A bytes', { skip: SKIP }, () => {
   assert.deepEqual(W562_TABLE, FUTURE_TABLE,
-    'removing the later W563-W566 windows reconstructs the exact W562 additive result');
+    'removing the later W563-W568 windows reconstructs the exact W562 additive result');
   assert.equal(TABLE_JSON.rom.windows.length, ROM_WINDOW_COUNT);
-  assert.equal(ROM_WINDOW_COUNT, 825);
+  assert.equal(ROM_WINDOW_COUNT, 839);
   assert.equal(W562_TABLE.rom.windows.length, 820);
   assert.equal(canonicalHash(W562_TABLE), FUTURE_HASH,
     'the reconstructed table has the exact W562 identity');
