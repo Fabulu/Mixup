@@ -146,11 +146,11 @@ test('W554 the live five-table dispatch reaches the next measured blocker',
       a3: HIBACHI_A3.table,
       a4: HIBACHI_A4.table,
     });
-    for (const id of [0, 1, 2, 5, 4, 3, 8, 7, 6, 9]) a2Run2598E6(b.ram, id);
+    for (const id of [0, 1, 2, 5, 4, 3, 8, 7, 6, 9, 10]) a2Run2598E6(b.ram, id);
     assert.equal(a4Start25980C(b.ram, 0), true);
 
     const error = caught(() => frame(b));
-    assert.equal(error?.romAddress, HIBACHI_A2.object9);
+    assert.equal(error?.romAddress, HIBACHI_A2.object10);
     assert.deepEqual([
       b.ram.u16(SCHED.a3Base),
       b.ram.u16(SCHED.a3Base + SCHED.a3Stride),

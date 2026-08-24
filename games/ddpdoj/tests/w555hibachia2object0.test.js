@@ -84,6 +84,21 @@ test('W555 cartridge pins the object-0 code, art table, and direct registration'
       object8: 0x2a49a6,
       object8CodeEnd: 0x2a49f4,
       object9: 0x2a4af6,
+      object9CodeEnd: 0x2a4b3e,
+      object9Art: 0x2a4b40,
+      object9ArtFrames: 6,
+      object10: 0x2a4c42,
+      object11: 0x2a4b58,
+      object11CodeEnd: 0x2a4b9e,
+      object12: 0x2a4bc8,
+      object12CodeEnd: 0x2a4c06,
+      object13: 0x2a4ba0,
+      object13CodeEnd: 0x2a4bc6,
+      object14: 0x2a4c08,
+      object15: 0x2a4af6,
+      object16: 0x2a4cfc,
+      object17: 0x2a4d5e,
+      object18: 0x2a4de0,
     });
     assert.equal(beU16(HIBACHI_A2.object0), 0x303c, '$2A4702 is move.w #$1A,D0');
     assert.equal(beU16(0x2a476c), 0x4ef9, '$2A476C is the tail jmp');
@@ -132,17 +147,17 @@ test('W555 object 0 emits the exact checkpoint request and remains running',
     assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object0);
   });
 
-test('W555 object 9 is now the next blocker after objects 0 through 8 emit',
+test('W555 object 10 is now the next blocker after objects 0 through 9 emit',
   { skip: SKIP }, () => {
     const b = bench();
-    for (let id = 0; id <= 9; id++) a2Run2598E6(b.ram, id);
+    for (let id = 0; id <= 10; id++) a2Run2598E6(b.ram, id);
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, HIBACHI_A2.object9);
-    for (let id = 0; id <= 9; id++) {
+    assert.equal(error?.romAddress, HIBACHI_A2.object10);
+    for (let id = 0; id <= 10; id++) {
       assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * id), 0x8001);
     }
-    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 9,
-      'objects 0 through 8 emitted before object 9 stopped the frame');
+    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 10,
+      'objects 0 through 9 emitted before object 10 stopped the frame');
     assert.equal(requestHex(b.ram), '81ff8038000fff0416700012');
   });
 
@@ -161,9 +176,10 @@ test('W555 exports exactly six new authentic frames into the boss shard',
       added: 6,
       already: 0,
     });
-    assert.equal(manifest.spr.streamCount, 4979);
-    assert.equal(manifest.spr.shards[17].streams, 1303);
-    assert.equal(manifest.spr.shards[17].maskLen, 816278);
-    assert.equal(manifest.spr.shards[17].colLen, 2001559);
-    assert.equal(manifest.spr.maskUsed, 2656278);
+    assert.equal(manifest.spr.streamCount, 4986);
+    assert.equal(manifest.spr.shards[17].streams, 1310);
+    assert.equal(manifest.spr.shards[17].maskLen, 825604);
+    assert.equal(manifest.spr.shards[17].colLen, 2015094);
+    assert.equal(manifest.spr.maskUsed, 2665604);
+    assert.equal(manifest.spr.colUsed, 6497985);
   });

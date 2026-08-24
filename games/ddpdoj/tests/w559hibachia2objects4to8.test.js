@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
+import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
 import {
   SCHED, installScripts, a2Run2598E6, runScheduler25962E, scriptAddresses,
@@ -22,6 +23,7 @@ const SKIP = existsSync(IMAGE) && existsSync(TABLES) ? false
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
+const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
 const A5 = 0x81332c;
 const A6 = 0x81533c;
 const PARTS = Object.freeze([
@@ -52,7 +54,8 @@ const requestHex = (ram, index) => Buffer.from(Array.from(
 function bench() {
   const ram = new Ram();
   const log = new UnportedLog();
-  const ctx = { bossRec: A5, bossSubRec: A6, unported: log, unportedLog: log };
+  const ctx = { bossRec: A5, bossSubRec: A6, tables: MT,
+    unported: log, unportedLog: log };
   ram.setU32(A5 + 0x06, A6);
   installScripts(ram, ROM, { a2: HIBACHI_A2.table });
   ram.setU16(A6 + 0x1fa, 0x01f0);
@@ -102,16 +105,16 @@ test('W559 pins all five exact routine boundaries and their one shared art table
     assert.equal(beU16(HIBACHI_A2.object9), 0x303c, '$2A4AF6 starts object 9');
   });
 
-test('W559 scheduler runs objects 4 through 8 faithfully before object 9 blocks',
+test('W559 scheduler runs objects 4 through 9 faithfully before object 10 blocks',
   { skip: SKIP }, () => {
     const b = bench();
-    for (let id = 4; id <= 9; id++) a2Run2598E6(b.ram, id);
+    for (let id = 4; id <= 10; id++) a2Run2598E6(b.ram, id);
 
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, HIBACHI_A2.object9,
-      'object 9 is the exact next live blocker');
-    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * PARTS.length,
-      'all five registered objects emitted before slot 9 was reached');
+    assert.equal(error?.romAddress, HIBACHI_A2.object10,
+      'object 10 is the exact next live blocker');
+    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * (PARTS.length + 1),
+      'all five shared parts and object 9 emitted before slot 10 was reached');
 
     PARTS.forEach(({ id, part }, i) => {
       const slot = SCHED.a2Base + SCHED.a2Stride * id;

@@ -81,7 +81,7 @@ test('W217 pins the complete Type-A1 closure and sixteen new frames',
     // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
     // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
     // shard 9 at 313/166,218.
-    assert.equal(manifest.spr.streamCount, 4979);
+    assert.equal(manifest.spr.streamCount, 4986);
   });
 
 test('W217 real clock-$236 spawn animates, draws, and retires on re-entry',

@@ -1,5 +1,5 @@
-// HIBACHI'S A2 OBJECTS 0..8, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559.
+// HIBACHI'S A2 OBJECTS 0..9, 11..13 AND 15, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -141,6 +141,21 @@ export const HIBACHI_A2 = Object.freeze({
   object8: 0x2a49a6,
   object8CodeEnd: 0x2a49f4,
   object9: 0x2a4af6,
+  object9CodeEnd: 0x2a4b3e,
+  object9Art: 0x2a4b40,
+  object9ArtFrames: 6,
+  object10: 0x2a4c42,
+  object11: 0x2a4b58,
+  object11CodeEnd: 0x2a4b9e,
+  object12: 0x2a4bc8,
+  object12CodeEnd: 0x2a4c06,
+  object13: 0x2a4ba0,
+  object13CodeEnd: 0x2a4bc6,
+  object14: 0x2a4c08,
+  object15: 0x2a4af6,
+  object16: 0x2a4cfc,
+  object17: 0x2a4d5e,
+  object18: 0x2a4de0,
 });
 
 /** `$2A4300` installs this main-sequencer table. It contains twelve init/step pairs;
@@ -452,6 +467,86 @@ export function a2Object7_2A4956(ram, rom, ctx) {
 /** `$2A49A6`. Update and enqueue attached record `$80`. */
 export function a2Object8_2A49A6(ram, rom, ctx) {
   a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object8, 0x080);
+}
+
+// =========================================== A2 OBJECTS 9, 11, 12, 13 AND 15
+// IDs 9 and 15 point to the same routine. IDs 10, 14, and 16 through 18 index
+// separate cartridge tables that remain outside the exported ROM windows.
+
+/** Shared orbit-vector and long-position arithmetic for the three new orbiting parts. */
+function a2OrbitPart(ram, rom, ctx, spec) {
+  const a6 = bossA6(ctx, spec.entry);
+  const angle = ram.u8(a6 + spec.angleAt);
+  const { dy } = ctx.tables.shotVector(spec.radius, angle);
+  if (spec.angleStep !== 0) {
+    ram.setU8(a6 + spec.angleAt, (angle + spec.angleStep) & 0xff);
+  }
+
+  let d1 = ((u16(ram.u16(a6 + 0x02) + dy) << 16) | ram.u16(a6 + 0x04)) >>> 0;
+  d1 = (d1 + spec.bias1) >>> 0;
+  d1 = (d1 + spec.bias2) >>> 0;
+  const art = spec.artAt === null
+    ? spec.art
+    : rom.u32(spec.art + i16(ram.u16(a6 + spec.artAt)));
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1, art,
+    spec.d3, ram.u8(a6 + spec.paletteAt));
+}
+
+/** `$2A4AF6`, shared by A2 ids 9 and 15. Advance heading `$131` and select one of six frames. */
+export function a2Objects9And15_2A4AF6(ram, rom, ctx) {
+  a2OrbitPart(ram, rom, ctx, {
+    entry: HIBACHI_A2.object9,
+    radius: 0x10,
+    angleAt: 0x131,
+    angleStep: 2,
+    bias1: 0x00000000,
+    bias2: 0xee00ec00,
+    art: HIBACHI_A2.object9Art,
+    artAt: 0x126,
+    d3: 0x12a0,
+    paletteAt: 0x0e6,
+  });
+}
+
+/** `$2A4B58`. Advance heading `$13D` by three and reuse object 0's six-frame table. */
+export function a2Object11_2A4B58(ram, rom, ctx) {
+  a2OrbitPart(ram, rom, ctx, {
+    entry: HIBACHI_A2.object11,
+    radius: 0x1c,
+    angleAt: 0x13d,
+    angleStep: 3,
+    bias1: 0xee000000,
+    bias2: 0xea00f200,
+    art: HIBACHI_A2.object0Art,
+    artAt: 0x128,
+    d3: 0x1670,
+    paletteAt: 0x0e8,
+  });
+}
+
+/** `$2A4BC8`. Reuse the root orbit heading and object 2's fixed upper-body art. */
+export function a2Object12_2A4BC8(ram, rom, ctx) {
+  a2OrbitPart(ram, rom, ctx, {
+    entry: HIBACHI_A2.object12,
+    radius: 0x1a,
+    angleAt: 0x13d,
+    angleStep: 0,
+    bias1: 0xd8000000,
+    bias2: 0xf400f900,
+    art: HIBACHI_A2.object2Art,
+    artAt: null,
+    d3: 0x0c38,
+    paletteAt: 0x0e8,
+  });
+}
+
+/** `$2A4BA0`. Enqueue the fixed centre part with the cartridge's two long biases. */
+export function a2Object13_2A4BA0(ram, rom, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A2.object13);
+  let d1 = (ram.u32(a6 + 0x02) + 0x0200ffc0) >>> 0;
+  d1 = (d1 + 0xf200f400) >>> 0;
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1,
+    0x0011796c, 0x0e60, ram.u8(a6 + 0x0e7));
 }
 
 // ========================================================== A0 MAIN SCRIPT 0 -- THE ARRIVAL POSITION
@@ -1106,6 +1201,10 @@ registerScript(HIBACHI_A2.object5, a2Object5_2A48B6);
 registerScript(HIBACHI_A2.object6, a2Object6_2A4906);
 registerScript(HIBACHI_A2.object7, a2Object7_2A4956);
 registerScript(HIBACHI_A2.object8, a2Object8_2A49A6);
+registerScript(HIBACHI_A2.object9, a2Objects9And15_2A4AF6); // object 15 is the same pointer
+registerScript(HIBACHI_A2.object11, a2Object11_2A4B58);
+registerScript(HIBACHI_A2.object12, a2Object12_2A4BC8);
+registerScript(HIBACHI_A2.object13, a2Object13_2A4BA0);
 
 registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Init2A4F56(ram, rom, ctx),

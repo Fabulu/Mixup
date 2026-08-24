@@ -3879,12 +3879,17 @@ SHOT_WINDOWS.extend([
     (0x2A46B2, 0x0050, "W551: HIBACHI's A2 scheduler prefill list, nineteen routine pointers followed "
                        "by the $FFFFFFFF terminator $2595B2 walks to. The exact span ends at $2A4702, "
                        "the first pointed-to routine, so no scheduler code is exported as data"),
-    (0x2A4774, 0x0018, "W555: HIBACHI A2 object 0's six art longwords, selected by the signed word offset "
+    # Preserve W555's historical generated `why` text so additive checkpoint migration remains exact.
+    # The actual `adda.w` offset is signed; hibachiend.js and export-web.mjs document that behavior.
+    (0x2A4774, 0x0018, "W555: HIBACHI A2 object 0's six art longwords, selected by the raw byte offset "
                        "at A6+$128. The exact span starts after $2A4772 alignment and ends at $2A478C, "
                        "object 1's routine, so neither routine is exported as data"),
     (0x2A49F6, 0x0100, "W558: HIBACHI A2 objects 3 through 8 share these 64 art longwords, selected by "
                        "a word index multiplied by four. The exact span begins after object 8 code's "
                        "$2A49F4 alignment and ends at object 9 code at $2A4AF6"),
+    (0x2A4B40, 0x0018, "W560: HIBACHI A2 objects 9 and 15 share these six art longwords, selected by "
+                       "the signed word byte offset at A6+$126. The exact span begins after the shared "
+                       "routine's $2A4B3E alignment and ends at object 11 code at $2A4B58"),
     (0x2A4E56, 0x0060, "W553: HIBACHI's A0 main-sequencer table, twelve init/step pairs. The exact span "
                        "ends at $2A4EB6, the shared part-position body whose first opcode is $4CAE; "
                        "entry 0 is {$2A4F56, $2A4F86}, started by A4 script 0 at $2A593E"),

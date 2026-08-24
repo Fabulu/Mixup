@@ -109,14 +109,14 @@ test('W553 the live five-table install runs main id 0 before the later blocker',
       a3: 0x2a5492,
       a4: HIBACHI_A4.table,
     });
-    for (const id of [0, 1, 2, 5, 4, 3, 8, 7, 6, 9]) a2Run2598E6(b.ram, id);
+    for (const id of [0, 1, 2, 5, 4, 3, 8, 7, 6, 9, 10]) a2Run2598E6(b.ram, id);
     assert.equal(b.ram.u32(SCHED.a2Base + 0x02), 0x2a4702,
       'the generated A2 prefill remains a single-pointer object slot, not an init/step pair');
     assert.equal(a4Start25980C(b.ram, 0), true);
 
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, HIBACHI_A2.object9,
-      'main id 0, the live A3 pair, and A2 objects 0 through 8 complete before object 9');
+    assert.equal(error?.romAddress, HIBACHI_A2.object10,
+      'main id 0, the live A3 pair, and A2 objects 0 through 9 complete before object 10');
     assert.equal(b.ram.u16(SCHED.seqSub), 4);
     assert.equal(b.ram.u16(SCHED.a4Base + 0x02), HIBACHI_A4.s0Frames - 1,
       'A4 script 0 made its first timer step before the later stop');

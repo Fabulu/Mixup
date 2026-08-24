@@ -309,6 +309,10 @@ const HARVEST = Object.freeze([
   // Object 9 code begins at the exact end.
   [17, 0x2a49f6, 64, 4, 64, 0x2a4af6,
     'Hibachi A2 objects 3 through 8, 64 selector frames ending at object 9 code'],
+  // W560. A2 objects 9 and 15 share six body frames. Object 11 code starts
+  // exactly where the table ends, and none of these streams existed in the prior harvest.
+  [17, 0x2a4b40, 6, 4, 6, 0x2a4b58,
+    'Hibachi A2 objects 9 and 15, six selector frames ending exactly at object 11 code'],
   [17, TYPE3B_ART.hullTable, TYPE3B_ART.hullFrames + 1, 4,
     30, 0x265348,
     'stage-3 type $3B hull animation plus its fixed satellite. The handler '
@@ -905,6 +909,11 @@ const W557_IMMEDIATES = Object.freeze([
   [17, 0x101728, 'Hibachi A2 object 2 fixed upper-body stream'],
 ]);
 
+// W560. Hibachi A2 object 13 emits this fixed descriptor directly from `$2A4BA0`.
+const W560_IMMEDIATES = Object.freeze([
+  [17, 0x11796c, 'Hibachi A2 object 13 fixed centre-part stream'],
+]);
+
 /** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
  *  boot and promoted by the page's miss guard. */
 // ------------------------------------------------------------------- WAVE 52
@@ -1295,16 +1304,17 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
       || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
       || w203StreamsBefore !== 166 + typeBShipAdded
-      || streams.size !== 2090 + typeBShipAdded) {
+      || streams.size !== 2096 + typeBShipAdded) {
     throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
       + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
       + `expected 64 on the $F4 chain, ${166 + typeBShipAdded} before, and `
-      + `${2090 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
+      + `${2096 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
   }
   // W419 moved the fixed post-harvest baseline from 1975 to 2011. W498 adds
   // slot 14's separately asserted nine-stream Game Over family, making it 2020;
   // W555 adds Hibachi's six body frames, making it 2026. W558 adds the shared
-  // 64-frame part table, making it 2090.
+  // 64-frame part table, making it 2090. W560 adds six more Hibachi frames,
+  // making it 2096.
   // W497's 17 Type-B ship streams remain an independent addition to both exact
   // totals. The two W203 rows remain added 32 / already 0.
 }
@@ -1499,6 +1509,13 @@ for (const [shard, offs, why] of W556_IMMEDIATES) {
   void why;
 }
 for (const [shard, offs, why] of W557_IMMEDIATES) {
+  if (streams.has(offs)) { harvestAlready++; continue; }
+  streams.set(offs, romExtent(offs));
+  shardOfStream.set(offs, shard);
+  harvested++;
+  void why;
+}
+for (const [shard, offs, why] of W560_IMMEDIATES) {
   if (streams.has(offs)) { harvestAlready++; continue; }
   streams.set(offs, romExtent(offs));
   shardOfStream.set(offs, shard);

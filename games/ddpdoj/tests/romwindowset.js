@@ -442,7 +442,15 @@
 // `$2A4AF6`. Measured: 814 -> 815 windows, 450,893 -> 451,149 bytes,
 // 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 815;
+// ---------------------------------------------------------------------------
+// W560 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$2A4B40 + $18` is the six-longword art table shared by Hibachi A2 objects 9
+// and 15. It begins after their shared routine's alignment and ends exactly at
+// object 11 `$2A4B58`. Measured: 815 -> 816 windows,
+// 451,149 -> 451,173 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 816;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

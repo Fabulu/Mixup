@@ -73,7 +73,7 @@ test('W557 cartridge pins object 2, its fixed art immediate, and object 3 bounda
     assert.equal(ROM.u32(HIBACHI_A2.table + 8), HIBACHI_A2.object2);
     assert.equal(ROM.u32(HIBACHI_A2.table + 12), HIBACHI_A2.object3);
     assert.ok(scriptAddresses().includes(HIBACHI_A2.object2));
-    assert.equal(TABLE_JSON.rom.windows.length, 815);
+    assert.equal(TABLE_JSON.rom.windows.length, 816);
     assert.equal(TABLE_JSON.rom.windows.some((w) => w.base === '$2A47D6'), false,
       'object 2 reads no cartridge data and declares no code-as-data window');
   });
@@ -101,15 +101,15 @@ test('W557 object 2 emits exactly without advancing its angle and persists',
     assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object2);
   });
 
-test('W557 object 9 is now the live blocker after objects 2 through 8 emit', { skip: SKIP }, () => {
+test('W557 object 10 is now the live blocker after objects 2 through 9 emit', { skip: SKIP }, () => {
   const b = bench();
-  for (let id = 2; id <= 9; id++) a2Run2598E6(b.ram, id);
+  for (let id = 2; id <= 10; id++) a2Run2598E6(b.ram, id);
   const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-  assert.equal(error?.romAddress, HIBACHI_A2.object9);
-  for (let id = 2; id <= 9; id++) {
+  assert.equal(error?.romAddress, HIBACHI_A2.object10);
+  for (let id = 2; id <= 10; id++) {
     assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * id), 0x8001);
   }
-  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 7);
+  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 8);
   assert.equal(requestHex(b.ram), '81cf8054001017280c380012');
 });
 
@@ -127,11 +127,12 @@ test('W557 ships the fixed upper-body stream in the boss shard',
     }
     const row = rows.get(HIBACHI_A2.object2Art);
     const shard = manifest.spr.shards[17];
-    assert.deepEqual(row, { base: 2234580, maskWords: 338 });
+    assert.deepEqual(row, { base: 2243232, maskWords: 338 });
     assert.ok(row.base >= shard.maskFrom && row.base + row.maskWords <= shard.maskFrom + shard.maskLen);
-    assert.equal(manifest.spr.streamCount, 4979);
-    assert.equal(shard.streams, 1303);
-    assert.equal(shard.maskLen, 816278);
-    assert.equal(shard.colLen, 2001559);
-    assert.equal(manifest.spr.maskUsed, 2656278);
+    assert.equal(manifest.spr.streamCount, 4986);
+    assert.equal(shard.streams, 1310);
+    assert.equal(shard.maskLen, 825604);
+    assert.equal(shard.colLen, 2015094);
+    assert.equal(manifest.spr.maskUsed, 2665604);
+    assert.equal(manifest.spr.colUsed, 6497985);
   });

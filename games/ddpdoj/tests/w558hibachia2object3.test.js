@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
+import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
 import {
   SCHED, installScripts, a2Run2598E6, runScheduler25962E, scriptAddresses,
@@ -28,10 +29,12 @@ const SKIP_ASSETS = existsSync(MANIFEST) && existsSync(STREAMS) ? false
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
+const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
 const A5 = 0x81332c;
 const A6 = 0x81533c;
 const PRIOR_TABLE_SHA256 = 'd70eab3e9152e70ee51fc4d653b244c58d665b1b8908bb2e75caa05207ec7769';
 const W558_TABLE_SHA256 = '250d097bf5c060d214fe690ef264b71a50225690909174320b3b921a76e33e1d';
+const W560_TABLE_SHA256 = 'd55cfe3af945d92941c3b4b397cf52d11c864513cfb43a2502cc38f348ea6694';
 
 const beU16 = (address) => IMG.readUInt16BE(address);
 const beU32 = (address) => IMG.readUInt32BE(address);
@@ -43,7 +46,8 @@ const caught = (fn) => {
 function bench() {
   const ram = new Ram();
   const log = new UnportedLog();
-  const ctx = { bossRec: A5, bossSubRec: A6, unported: log, unportedLog: log };
+  const ctx = { bossRec: A5, bossSubRec: A6, tables: MT,
+    unported: log, unportedLog: log };
   ram.setU32(A5 + 0x06, A6);
   installScripts(ram, ROM, { a2: HIBACHI_A2.table });
   ram.setU16(A6 + 0x062, 0xff80);
@@ -91,6 +95,21 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
       object8: 0x2a49a6,
       object8CodeEnd: 0x2a49f4,
       object9: 0x2a4af6,
+      object9CodeEnd: 0x2a4b3e,
+      object9Art: 0x2a4b40,
+      object9ArtFrames: 6,
+      object10: 0x2a4c42,
+      object11: 0x2a4b58,
+      object11CodeEnd: 0x2a4b9e,
+      object12: 0x2a4bc8,
+      object12CodeEnd: 0x2a4c06,
+      object13: 0x2a4ba0,
+      object13CodeEnd: 0x2a4bc6,
+      object14: 0x2a4c08,
+      object15: 0x2a4af6,
+      object16: 0x2a4cfc,
+      object17: 0x2a4d5e,
+      object18: 0x2a4de0,
     });
     assert.equal(beU16(HIBACHI_A2.object3), 0x303c, '$2A4816 starts move.w #$A00,D0');
     assert.equal(beU16(0x2a482e), 0x41fa, '$2A482E loads the shared art table');
@@ -103,16 +122,21 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
     assert.ok(scriptAddresses().includes(HIBACHI_A2.object3));
 
     const window = TABLE_JSON.rom.windows.find((w) => w.base === '$2A49F6');
-    assert.equal(TABLE_JSON.rom.windows.length, 815);
+    assert.equal(TABLE_JSON.rom.windows.length, 816);
     assert.equal(window?.len, 0x100);
     assert.equal(window?.hex, IMG.subarray(HIBACHI_A2.object3Art, HIBACHI_A2.object3Art + 0x100)
       .toString('hex'));
     for (let i = 0; i < HIBACHI_A2.object3ArtFrames; i++) {
       assert.equal(ROM.u32(HIBACHI_A2.object3Art + i * 4), beU32(HIBACHI_A2.object3Art + i * 4));
     }
-    assert.equal(canonicalHash(TABLE_JSON), W558_TABLE_SHA256);
-    const prior = { ...TABLE_JSON, rom: { ...TABLE_JSON.rom,
-      windows: TABLE_JSON.rom.windows.filter((w) => w !== window) } };
+    assert.equal(canonicalHash(TABLE_JSON), W560_TABLE_SHA256);
+    const w558 = { ...TABLE_JSON, rom: { ...TABLE_JSON.rom,
+      windows: TABLE_JSON.rom.windows.filter((w) => w.base !== '$2A4B40') } };
+    assert.equal(w558.rom.windows.length, 815);
+    assert.equal(canonicalHash(w558), W558_TABLE_SHA256,
+      'removing exactly the later W560 window reconstructs the W558 table identity');
+    const prior = { ...w558, rom: { ...w558.rom,
+      windows: w558.rom.windows.filter((w) => w.base !== '$2A49F6') } };
     assert.equal(prior.rom.windows.length, 814);
     assert.equal(canonicalHash(prior), PRIOR_TABLE_SHA256,
       'removing exactly the W558 window reconstructs the prior table identity');
@@ -143,15 +167,15 @@ test('W558 object 3 updates offsets, emits exact registers, and persists',
     assert.equal(b.ram.u16(slot), 0x8001, 'object 3 persists across later dispatches');
   });
 
-test('W558 object 9 is now the live blocker after objects 3 through 8 emit', { skip: SKIP }, () => {
+test('W558 object 10 is now the live blocker after objects 3 through 9 emit', { skip: SKIP }, () => {
   const b = bench();
-  for (let id = 3; id <= 9; id++) a2Run2598E6(b.ram, id);
+  for (let id = 3; id <= 10; id++) a2Run2598E6(b.ram, id);
   const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-  assert.equal(error?.romAddress, HIBACHI_A2.object9);
-  for (let id = 3; id <= 9; id++) {
+  assert.equal(error?.romAddress, HIBACHI_A2.object10);
+  for (let id = 3; id <= 10; id++) {
     assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * id), 0x8001);
   }
-  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 6);
+  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 7);
   assert.equal(requestHex(b.ram), '80058001001165341670ab12');
 });
 
@@ -172,15 +196,16 @@ test('W558 ships all 64 shared part frames in the boss shard', { skip: SKIP_ASSE
   }
   const first = beU32(HIBACHI_A2.object3Art);
   const last = beU32(HIBACHI_A2.object3Art + (HIBACHI_A2.object3ArtFrames - 1) * 4);
-  assert.deepEqual(rows.get(first), { base: 2234918, maskWords: 562 });
-  assert.deepEqual(rows.get(last), { base: 2270324, maskWords: 562 });
+  assert.deepEqual(rows.get(first), { base: 2243570, maskWords: 562 });
+  assert.deepEqual(rows.get(last), { base: 2278976, maskWords: 562 });
   for (let i = 0; i < HIBACHI_A2.object3ArtFrames; i++) {
     assert.equal(rows.get(beU32(HIBACHI_A2.object3Art + i * 4))?.maskWords, 562);
   }
   const shard = manifest.spr.shards[17];
-  assert.equal(manifest.spr.streamCount, 4979);
-  assert.equal(shard.streams, 1303);
-  assert.equal(shard.maskLen, 816278);
-  assert.equal(shard.colLen, 2001559);
-  assert.equal(manifest.spr.maskUsed, 2656278);
+  assert.equal(manifest.spr.streamCount, 4986);
+  assert.equal(shard.streams, 1310);
+  assert.equal(shard.maskLen, 825604);
+  assert.equal(shard.colLen, 2015094);
+  assert.equal(manifest.spr.maskUsed, 2665604);
+  assert.equal(manifest.spr.colUsed, 6497985);
 });
