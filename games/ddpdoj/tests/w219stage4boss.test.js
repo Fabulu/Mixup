@@ -104,7 +104,7 @@ test('W219 pins the final Stage-4 record, arrival closure, and 16 live streams',
     // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
     // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
     // shard 9 at 313/166,218.
-    assert.equal(manifest.spr.streamCount, 4913);
+    assert.equal(manifest.spr.streamCount, 4914);
   });
 
 test('W219 real clock-$2E8 spawn runs F0, MAIN0, and the visible body same pass',

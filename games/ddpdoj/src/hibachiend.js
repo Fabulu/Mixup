@@ -1,5 +1,5 @@
-// HIBACHI'S A2 OBJECT 0, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
-// W399, W403, W409, W552, W553, W555.
+// HIBACHI'S A2 OBJECTS 0/1, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
+// W399, W403, W409, W552, W553, W555, W556.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -121,6 +121,9 @@ export const HIBACHI_A2 = Object.freeze({
   object0Art: 0x2a4774,
   object0ArtFrames: 6,
   object1: 0x2a478c,
+  object1CodeEnd: 0x2a47d4,
+  object1Art: 0x00116768,
+  object2: 0x2a47d6,
 });
 
 /** `$2A4300` installs this main-sequencer table. It contains twelve init/step pairs;
@@ -324,6 +327,26 @@ export function a2Object0_2A4702(ram, rom, ctx) {
 
   const art = rom.u32(HIBACHI_A2.object0Art + i16(ram.u16(a6 + 0x128)));
   enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1, art, 0x1670, ram.u8(a6 + 0xe8));
+}
+
+// ========================================================== A2 OBJECT 1 -- THE LOWER BODY
+// `$2A478C..$2A47D3` is straight-line code ending in a tail `jmp $23DFEA`.
+// `$2A47D4` is alignment and object 2 starts at `$2A47D6`.
+
+/** `$2A478C`. Save the root vector and enqueue the lower body at its orbit position. */
+export function a2Object1_2A478C(ram, rom, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A2.object1);
+  const angle = ram.u8(a6 + 0x1b);
+  const { dy } = ctx.tables.shotVector(ram.u8(a6 + 0x1a), angle);
+  ram.setU16(a6 + 0x1fa, u16(dy));                          // $2A479E
+  ram.setU8(a6 + 0x1b, (angle + 2) & 0xff);                // $2A47A2
+
+  // `$2A47B2/$2A47B8` are long additions, including low-word carry.
+  let d1 = ((u16(ram.u16(a6 + 0x02) + dy) << 16) | ram.u16(a6 + 0x04)) >>> 0;
+  d1 = (d1 + 0xfc000000) >>> 0;
+  d1 = (d1 + 0xe000dc00) >>> 0;
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1,
+    HIBACHI_A2.object1Art, 0x2120, ram.u8(a6 + 0xe7));
 }
 
 // ========================================================== A0 MAIN SCRIPT 0 -- THE ARRIVAL POSITION
@@ -970,6 +993,7 @@ export function s14Step2A6B80(ram, a4) {
 }
 
 registerScript(HIBACHI_A2.object0, a2Object0_2A4702);
+registerScript(HIBACHI_A2.object1, a2Object1_2A478C);
 
 registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Init2A4F56(ram, rom, ctx),
