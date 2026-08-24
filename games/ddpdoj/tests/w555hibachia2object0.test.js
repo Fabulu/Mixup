@@ -67,6 +67,9 @@ test('W555 cartridge pins the object-0 code, art table, and direct registration'
       object1CodeEnd: 0x2a47d4,
       object1Art: 0x00116768,
       object2: 0x2a47d6,
+      object2CodeEnd: 0x2a4814,
+      object2Art: 0x00101728,
+      object3: 0x2a4816,
     });
     assert.equal(beU16(HIBACHI_A2.object0), 0x303c, '$2A4702 is move.w #$1A,D0');
     assert.equal(beU16(0x2a476c), 0x4ef9, '$2A476C is the tail jmp');
@@ -115,19 +118,21 @@ test('W555 object 0 emits the exact checkpoint request and remains running',
     assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object0);
   });
 
-test('W555 object 2 is the next scheduler blocker after objects 0 and 1 emit',
+test('W555 object 3 is the next scheduler blocker after objects 0, 1, and 2 emit',
   { skip: SKIP }, () => {
     const b = bench();
     a2Run2598E6(b.ram, 0);
     a2Run2598E6(b.ram, 1);
     a2Run2598E6(b.ram, 2);
+    a2Run2598E6(b.ram, 3);
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, HIBACHI_A2.object2);
+    assert.equal(error?.romAddress, HIBACHI_A2.object3);
     assert.equal(b.ram.u16(SCHED.a2Base), 0x8001);
     assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride), 0x8001);
     assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 2), 0x8001);
-    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 2,
-      'objects 0 and 1 emitted before object 2 stopped the frame');
+    assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 3), 0x8001);
+    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 3,
+      'objects 0, 1, and 2 emitted before object 3 stopped the frame');
     assert.equal(requestHex(b.ram), '81ff8038000fff0416700012');
   });
 
@@ -146,9 +151,9 @@ test('W555 exports exactly six new authentic frames into the boss shard',
       added: 6,
       already: 0,
     });
-    assert.equal(manifest.spr.streamCount, 4914);
-    assert.equal(manifest.spr.shards[17].streams, 1238);
-    assert.equal(manifest.spr.shards[17].maskLen, 779972);
-    assert.equal(manifest.spr.shards[17].colLen, 1968237);
-    assert.equal(manifest.spr.maskUsed, 2619972);
+    assert.equal(manifest.spr.streamCount, 4915);
+    assert.equal(manifest.spr.shards[17].streams, 1239);
+    assert.equal(manifest.spr.shards[17].maskLen, 780310);
+    assert.equal(manifest.spr.shards[17].colLen, 1969112);
+    assert.equal(manifest.spr.maskUsed, 2620310);
   });

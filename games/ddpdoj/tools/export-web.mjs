@@ -896,6 +896,11 @@ const W556_IMMEDIATES = Object.freeze([
   [17, 0x116768, 'Hibachi A2 object 1 fixed lower-body stream'],
 ]);
 
+// W557. Hibachi A2 object 2 emits this fixed descriptor directly from `$2A47FE`.
+const W557_IMMEDIATES = Object.freeze([
+  [17, 0x101728, 'Hibachi A2 object 2 fixed upper-body stream'],
+]);
+
 /** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
  *  boot and promoted by the page's miss guard. */
 // ------------------------------------------------------------------- WAVE 52
@@ -1482,6 +1487,13 @@ for (const [shard, offs, why] of W202_IMMEDIATES) {
   void why;
 }
 for (const [shard, offs, why] of W556_IMMEDIATES) {
+  if (streams.has(offs)) { harvestAlready++; continue; }
+  streams.set(offs, romExtent(offs));
+  shardOfStream.set(offs, shard);
+  harvested++;
+  void why;
+}
+for (const [shard, offs, why] of W557_IMMEDIATES) {
   if (streams.has(offs)) { harvestAlready++; continue; }
   streams.set(offs, romExtent(offs));
   shardOfStream.set(offs, shard);

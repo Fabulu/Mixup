@@ -1,5 +1,5 @@
-// HIBACHI'S A2 OBJECTS 0/1, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
-// W399, W403, W409, W552, W553, W555, W556.
+// HIBACHI'S A2 OBJECTS 0/1/2, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
+// W399, W403, W409, W552, W553, W555, W556, W557.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -124,6 +124,9 @@ export const HIBACHI_A2 = Object.freeze({
   object1CodeEnd: 0x2a47d4,
   object1Art: 0x00116768,
   object2: 0x2a47d6,
+  object2CodeEnd: 0x2a4814,
+  object2Art: 0x00101728,
+  object3: 0x2a4816,
 });
 
 /** `$2A4300` installs this main-sequencer table. It contains twelve init/step pairs;
@@ -347,6 +350,23 @@ export function a2Object1_2A478C(ram, rom, ctx) {
   d1 = (d1 + 0xe000dc00) >>> 0;
   enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1,
     HIBACHI_A2.object1Art, 0x2120, ram.u8(a6 + 0xe7));
+}
+
+// ========================================================== A2 OBJECT 2 -- THE UPPER BODY
+// `$2A47D6..$2A4813` is straight-line code ending in a tail `jmp $23DFEA`.
+// `$2A4814` is alignment and object 3 starts at `$2A4816`.
+
+/** `$2A47D6`. Enqueue the fixed upper body at the root's orbit position. */
+export function a2Object2_2A47D6(ram, rom, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A2.object2);
+  const { dy } = ctx.tables.shotVector(0x1a, ram.u8(a6 + 0x13d));
+
+  // `$2A47F2/$2A47F8` are long additions, including low-word carry.
+  let d1 = ((u16(ram.u16(a6 + 0x02) + dy) << 16) | ram.u16(a6 + 0x04)) >>> 0;
+  d1 = (d1 + 0xd0000000) >>> 0;
+  d1 = (d1 + 0xf400f900) >>> 0;
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1,
+    HIBACHI_A2.object2Art, 0x0c38, ram.u8(a6 + 0xe8));
 }
 
 // ========================================================== A0 MAIN SCRIPT 0 -- THE ARRIVAL POSITION
@@ -994,6 +1014,7 @@ export function s14Step2A6B80(ram, a4) {
 
 registerScript(HIBACHI_A2.object0, a2Object0_2A4702);
 registerScript(HIBACHI_A2.object1, a2Object1_2A478C);
+registerScript(HIBACHI_A2.object2, a2Object2_2A47D6);
 
 registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Init2A4F56(ram, rom, ctx),

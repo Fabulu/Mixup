@@ -1,4 +1,4 @@
-// W556: HIBACHI A2 OBJECT 1, `$2A478C..$2A47D5`.
+// W557: HIBACHI A2 OBJECT 2, `$2A47D6..$2A4815`.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -46,9 +46,8 @@ function bench() {
   installScripts(ram, ROM, { a2: HIBACHI_A2.table });
   ram.setU16(A6 + 0x02, 0xafc0);
   ram.setU16(A6 + 0x04, 0x1c00);
-  ram.setU8(A6 + 0x1a, 0x18);
-  ram.setU8(A6 + 0x1b, 0x86);
-  ram.setU8(A6 + 0xe7, 0x11);
+  ram.setU8(A6 + 0x0e8, 0x12);
+  ram.setU8(A6 + 0x13d, 0xc6);
   return { ram, ctx };
 }
 
@@ -56,62 +55,65 @@ const requestHex = (ram, index = 0) => Buffer.from(Array.from(
   { length: RECORD_BYTES }, (_, i) => ram.u8(BUCKETS[1].buffer + index * RECORD_BYTES + i),
 )).toString('hex');
 
-test('W556 cartridge pins object 1, its fixed art immediate, and object 2 boundary',
+test('W557 cartridge pins object 2, its fixed art immediate, and object 3 boundary',
   { skip: SKIP }, () => {
-    assert.equal(HIBACHI_A2.object1, 0x2a478c);
-    assert.equal(HIBACHI_A2.object1CodeEnd, 0x2a47d4);
-    assert.equal(HIBACHI_A2.object1Art, 0x00116768);
     assert.equal(HIBACHI_A2.object2, 0x2a47d6);
-    assert.equal(beU16(HIBACHI_A2.object1), 0x7000, '$2A478C clears D0 with moveq');
-    assert.equal(beU16(0x2a47be), 0x243c, '$2A47BE loads a fixed art immediate');
-    assert.equal(beU32(0x2a47c0), HIBACHI_A2.object1Art);
-    assert.equal(beU16(0x2a47ce), 0x4ef9, '$2A47CE is the tail jmp');
-    assert.equal(beU32(0x2a47d0), 0x23dfea, 'the tail target is the bucket-1 stub');
-    assert.equal(beU16(HIBACHI_A2.object1CodeEnd), 0x4e71, '$2A47D4 is alignment nop');
-    assert.equal(beU16(HIBACHI_A2.object2), 0x303c, '$2A47D6 begins object 2');
-    assert.equal(ROM.u32(HIBACHI_A2.table + 4), HIBACHI_A2.object1);
+    assert.equal(HIBACHI_A2.object2CodeEnd, 0x2a4814);
+    assert.equal(HIBACHI_A2.object2Art, 0x00101728);
+    assert.equal(HIBACHI_A2.object3, 0x2a4816);
+    assert.equal(beU16(HIBACHI_A2.object2), 0x303c, '$2A47D6 is move.w #$1A,D0');
+    assert.equal(beU16(0x2a47fe), 0x243c, '$2A47FE loads a fixed art immediate');
+    assert.equal(beU32(0x2a4800), HIBACHI_A2.object2Art);
+    assert.equal(beU16(0x2a4804), 0x363c, '$2A4804 loads the fixed sprite flags');
+    assert.equal(beU16(0x2a4806), 0x0c38);
+    assert.equal(beU16(0x2a480e), 0x4ef9, '$2A480E is the tail jmp');
+    assert.equal(beU32(0x2a4810), 0x23dfea, 'the tail target is the bucket-1 stub');
+    assert.equal(beU16(HIBACHI_A2.object2CodeEnd), 0x4e71, '$2A4814 is alignment nop');
+    assert.equal(beU16(HIBACHI_A2.object3), 0x303c, '$2A4816 begins object 3');
     assert.equal(ROM.u32(HIBACHI_A2.table + 8), HIBACHI_A2.object2);
-    assert.ok(scriptAddresses().includes(HIBACHI_A2.object1));
-    assert.equal(TABLE_JSON.rom.windows.some((w) => w.base === '$2A478C'), false,
-      'object 1 reads no cartridge data and declares no code-as-data window');
+    assert.equal(ROM.u32(HIBACHI_A2.table + 12), HIBACHI_A2.object3);
+    assert.ok(scriptAddresses().includes(HIBACHI_A2.object2));
+    assert.equal(TABLE_JSON.rom.windows.length, 814);
+    assert.equal(TABLE_JSON.rom.windows.some((w) => w.base === '$2A47D6'), false,
+      'object 2 reads no cartridge data and declares no code-as-data window');
   });
 
-test('W556 object 1 stores its vector, emits exactly, and persists', { skip: SKIP }, () => {
+test('W557 object 2 emits exactly without advancing its angle and persists',
+  { skip: SKIP }, () => {
+    const b = bench();
+    const slot = SCHED.a2Base + SCHED.a2Stride * 2;
+    assert.equal(b.ram.u16(slot), 0x8000);
+    assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object2);
+    a2Run2598E6(b.ram, 2);
+    assert.equal(b.ram.u16(slot), 0x8001);
+
+    assert.equal(runScheduler25962E(b.ram, ROM, b.ctx), false);
+    assert.equal(b.ram.u8(A6 + 0x13d), 0xc6, 'object 2 reads but does not advance the angle');
+    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES);
+    assert.equal(requestHex(b.ram), '81cf8054001017280c380012',
+      'the two long additions preserve low-word carry before $23DFEA shifts D1');
+    assert.equal(b.ram.u16(slot), 0x8001, 'object 2 does not retire itself');
+
+    assert.equal(runScheduler25962E(b.ram, ROM, b.ctx), false);
+    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 2);
+    assert.equal(requestHex(b.ram, 1), '81cf8054001017280c380012');
+    assert.equal(b.ram.u16(slot), 0x8001, 'object 2 persists across later dispatches');
+    assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object2);
+  });
+
+test('W557 object 3 is the live next blocker after object 2 emits', { skip: SKIP }, () => {
   const b = bench();
-  const slot = SCHED.a2Base + SCHED.a2Stride;
-  assert.equal(b.ram.u16(slot), 0x8000);
-  assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object1);
-  a2Run2598E6(b.ram, 1);
-  assert.equal(b.ram.u16(slot), 0x8001);
-
-  assert.equal(runScheduler25962E(b.ram, ROM, b.ctx), false);
-  assert.equal(b.ram.u8(A6 + 0x1b), 0x88);
-  assert.equal(b.ram.u16(A6 + 0x1fa), 0xfef8);
-  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES);
-  assert.equal(requestHex(b.ram), '862a83e00011676821200011');
-  assert.equal(b.ram.u16(slot), 0x8001, 'object 1 does not retire itself');
-
-  assert.equal(runScheduler25962E(b.ram, ROM, b.ctx), false);
-  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 2);
-  assert.equal(b.ram.u16(slot), 0x8001, 'object 1 persists across later dispatches');
-  assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object1);
-});
-
-test('W556 object 3 is the live next blocker after objects 1 and 2 emit', { skip: SKIP }, () => {
-  const b = bench();
-  a2Run2598E6(b.ram, 1);
   a2Run2598E6(b.ram, 2);
   a2Run2598E6(b.ram, 3);
   const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
   assert.equal(error?.romAddress, HIBACHI_A2.object3);
-  assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride), 0x8001);
   assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 2), 0x8001);
   assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 3), 0x8001);
-  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 2);
-  assert.equal(requestHex(b.ram), '862a83e00011676821200011');
+  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES);
+  assert.equal(requestHex(b.ram), '81cf8054001017280c380012');
 });
 
-test('W556 ships the one fixed lower-body stream in the boss shard',
+test('W557 ships the fixed upper-body stream in the boss shard',
   { skip: SKIP_ASSETS }, () => {
     const manifest = JSON.parse(readFileSync(MANIFEST, 'utf8'));
     const raw = gunzipSync(readFileSync(STREAMS));
@@ -123,9 +125,9 @@ test('W556 ships the one fixed lower-body stream in the boss shard',
       base = (base + flat[manifest.spr.streamCount + i]) >>> 0;
       rows.set(offs, { base, maskWords: flat[manifest.spr.streamCount * 2 + i] });
     }
-    const row = rows.get(HIBACHI_A2.object1Art);
+    const row = rows.get(HIBACHI_A2.object2Art);
     const shard = manifest.spr.shards[17];
-    assert.deepEqual(row, { base: 2234918, maskWords: 4610 });
+    assert.deepEqual(row, { base: 2234580, maskWords: 338 });
     assert.ok(row.base >= shard.maskFrom && row.base + row.maskWords <= shard.maskFrom + shard.maskLen);
     assert.equal(manifest.spr.streamCount, 4915);
     assert.equal(shard.streams, 1239);
