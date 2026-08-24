@@ -242,7 +242,7 @@ const note = (ctx, a) => (ctx.unported ?? ctx.unportedLog)?.note(a, HIBACHI_END_
 // ---------------------------------------------------------------- the $8039xx setters
 // Five three-instruction routines at $23C4A0/B0/C0/D0/E0, read out of the image this wave.
 // `$23C4C0` has no caller here and is not written.
-const shakeMode23C4A0 = (ram) => {                       // $23C4A0
+export const shakeMode23C4A0 = (ram) => {                       // $23C4A0
   ram.setU16(0x803934, 1);
   ram.setU16(0x803936, 0);
 };

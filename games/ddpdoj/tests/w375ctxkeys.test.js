@@ -280,27 +280,16 @@ test('W375: slot [14] state 0 resets BOTH scrolls through ctx.videoRegs, tx_xscr
   assert.equal(g.ram.u8(a5 + 0x16), 1);
 });
 
-// Slot [7] gets its own test because it CANNOT finish state 0 yet, and that is a finding rather
-// than a reason to leave it out. `$290B20 jsr $23C6C6` (the wipe) is followed by THREE cue posts
-// in a row, and until W425 the first of them stopped the frame:
+// Slot [7] gets its own test because its state 0 wipes both tilemaps and posts three preserving
+// sound entries in sequence:
 //
-//     290B26  jsr $28C170     -> $28BBAC, the BGM-command packer
-//     290B2C  jsr $28C0FC     -> $28BB76, the streaming ENTRY
-//     290B32  jsr $28C10C     -> $28BB8A, the other streaming ENTRY
+//     290B26  jsr $28C170     -> $28BBAC, packs $15000000
+//     290B2C  jsr $28C0FC     -> $28BB76, packs $10000000
+//     290B32  jsr $28C10C     -> $28BB8A, packs $20000000
 //
-// **W425 (D58) CLOSED THE FIRST ONE AND THE GAP MOVED ONE INSTRUCTION.** That is the measured
-// result, not a hope: the throw this test catches used to read `no wrapper at $28C170` and now
-// reads `no wrapper at $28C0FC`. `$28C170` was never a missing WRAPPERS row -- W375 decoded it
-// off the cartridge and it sets D0=$15/D1=0 and calls `$28BBAC`, a SECOND packer building
-// `((D0<<8|D1)<<16)` with a ZERO low word, where every WRAPPERS row routes through `$28BB04`'s
-// four-field `packLongword`. W423 gave that tier its own path (`postBgmCommand`) and W425 made
-// `postWrapper` dispatch to it, so the cue POSTS and no id, pan or channel is invented.
-//
-// `$28C0FC` and `$28C10C` are a THIRD and FOURTH packer (`$28BB76`/`$28BB8A`) entered with the
-// caller's inherited D0..D3, so they are still gaps and this test still names them as such.
-// The old assertion is rewritten rather than deleted because the frame really does get further
-// than it did.
-test('W425: slot [7] state 0 POSTS $28C170 and the gap has moved on to $28C0FC', () => {
+// W425 added the first direct-entry dispatch. W567 added the latter two without inventing
+// WRAPPERS rows, because all three cartridge entries preserve a fixed bare longword.
+test('W567: slot [7] state 0 wipes the screen and posts all three preserving entries', () => {
   const g = game();
   plant(g, firstEmptySlot(g), 7, 0);
   dirty(g);
@@ -308,20 +297,15 @@ test('W425: slot [7] state 0 POSTS $28C170 and the gap has moved on to $28C0FC',
   let err = null;
   try { g.step(0); } catch (e) { err = e; }
 
-  // The wipe ran: $23C6C6 -> $23C61E and $23C64E both landed, through the two aliases.
+  assert.equal(err, null, 'all three preserving entries are now directly postable');
   assert.equal(txAllZero(g), true, 'slot [7] state 0 did not clear the TX map through ctx.tx');
   assert.equal(g.video.tx_xscroll, 1);
   assert.equal(g.video.bg_xscroll, 0);
 
-  // THE STATE TRACE, not just "it still throws": $290B26 got PAST, and the proof is in the ring.
   const ring = Array.from({ length: 0x190 / 4 }, (_, i) => g.ram.u32(SOUND.ring + i * 4));
-  assert.ok(ring.includes(0x15000000),
-    '$290B26 enqueued $15000000 -- the $28BBAC-tier command, packed word high, low word ZERO');
-
-  // And the frame now stops one instruction LATER, on a packer this wave did not touch.
-  assert.ok(err !== null, 'slot [7] state 0 still cannot finish -- $290B2C is the next gap');
-  assert.match(err.message, /no wrapper at \$28C0FC/,
-    `slot [7] state 0 stopped on something new: ${err.message}`);
+  assert.ok(ring.includes(0x15000000), '$290B26 enqueued the BGM-command longword');
+  assert.ok(ring.includes(0x10000000), '$290B2C enqueued the first preserving longword');
+  assert.ok(ring.includes(0x20000000), '$290B32 enqueued the second preserving longword');
 });
 
 test('W375: the two callees, called directly off a real ctx, take the aliased objects', () => {

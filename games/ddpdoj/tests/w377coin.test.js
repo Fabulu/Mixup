@@ -45,7 +45,9 @@ import { fileURLToPath } from 'node:url';
 import { Game } from '../src/main.js';
 import { COIN } from '../src/isr.js';
 import { COIN_BITS } from '../src/web/input.js';
-import { SOUND, SOUND_WRAPPERS, STREAMING_LEAVES, postWrapper, SoundState } from '../src/sound.js';
+import {
+  SOUND, SOUND_ENTRY, SOUND_WRAPPERS, STREAMING_LEAVES, postWrapper, SoundState,
+} from '../src/sound.js';
 import { SCREEN8, setState25A764 } from '../src/objslot8.js';
 import { ALLOC } from '../src/objalloc.js';
 import { FRONTTEXT } from '../src/fronttext.js';
@@ -213,19 +215,19 @@ test('W425 $28C170 still has NO WRAPPERS row, and posting it no longer throws', 
   assert.ok(SOUND_WRAPPERS[SCREEN8.cueWrapper], '$28C5B0 IS a WRAPPERS row');
   assert.doesNotThrow(() => postWrapper(ram, sound, SCREEN8.cueWrapper));
 
-  // NEGATIVE CONTROL: an address in neither table is still a loud gap.
-  assert.throws(() => postWrapper(ram, sound, 0x28c0fc),
-    /no wrapper at \$28C0FC/, '$28C0FC is $28BB76, a third packer, and is NOT closed by this');
+  // W567 direct-dispatches the preserving entry without inventing a WRAPPERS row.
+  assert.deepEqual(SOUND_ENTRY[0x28c0fc], { type: 0x10, gate: 'none', tail: false });
+  const entryRam = new Ram();
+  assert.equal(postWrapper(entryRam, new SoundState(), 0x28c0fc), true);
+  assert.equal(entryRam.u32(SOUND.ring), 0x10000000);
 });
 
 // ---------------------------------------------------------------------------------------------
 // 4 -- THE SECOND ONE, FOUND WHILE FIXING THE FIRST. `$28C0FC`.
 //
-// `objslot8.js` posted `$28C0FC` at THREE more sites, and `$28C0FC` is unpostable for exactly
-// the same reason as `$28C170`: it is `movem / jsr $28BB76 / movem / rts`, and `$28BB76` builds
-// the bare longword `$10000000` (moveq #$10 / lsl.w #8 / swap) and enqueues it. No id, no pan,
-// no channel. `sound.js` carries it in `ENTRY` but `postWrapper` reads `WRAPPERS` and
-// `STREAMING_LEAVES`, so `ctx.soundPost(0x28C0FC)` threw.
+// W567 direct-dispatches `$28C0FC` through `ENTRY`, preserving the cartridge's fixed bare
+// longword `$10000000`. It remains absent from `WRAPPERS` and `STREAMING_LEAVES`, because adding
+// it to either table would describe the wrong packer shape.
 //
 // TWO of the three are in the COIN TEARDOWN `$25A7C0` itself, which makes this the same bug as
 // unit A wearing a different address. Before the fix, BOTH of the branches below threw
@@ -280,11 +282,13 @@ for (const [name, seed, site] of [
   });
 }
 
-test('W377 $28C0FC is in neither sound table, so posting it would still throw', () => {
+test('W567 $28C0FC stays outside both sound tables and direct-posts its preserving entry', () => {
   assert.equal(SOUND_WRAPPERS[SCREEN8.cueStream], undefined, '$28C0FC has no wrapper row');
   assert.equal(STREAMING_LEAVES.has(SCREEN8.cueStream), false, 'and is not a streaming leaf');
-  assert.throws(() => postWrapper(new Ram(), new SoundState(), SCREEN8.cueStream),
-    /no wrapper at \$28C0FC/);
+  assert.deepEqual(SOUND_ENTRY[SCREEN8.cueStream], { type: 0x10, gate: 'none', tail: false });
+  const ram = new Ram();
+  assert.equal(postWrapper(ram, new SoundState(), SCREEN8.cueStream), true);
+  assert.equal(ram.u32(SOUND.ring), 0x10000000);
 });
 
 // ===============================================================================================

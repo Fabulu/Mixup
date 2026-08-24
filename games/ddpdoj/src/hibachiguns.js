@@ -194,6 +194,7 @@ import { bossA5, bossA6 } from './boss.js';
 // `src/boss.js` imports `bossscripts.js` (line 1165) before it imports this file (line 1201),
 // so the module is fully evaluated by the time anything here runs.
 import { dist242494 } from './bossscripts.js';
+import { shakeMode23C4A0 } from './hibachiend.js';
 
 const u8 = (v) => v & 0xff;
 /** a byte read SIGNED -- `cmpi.b #$D0` and `asr.b` are both signed operations. */
@@ -853,12 +854,6 @@ const ALT_GUN4_SITES = Object.freeze([
 ]);
 const ALT_GUN4_HEADINGS = Object.freeze([0x00, 0x10, 0x40, 0x50, 0x80, 0x90, 0xc0, 0xd0]);
 
-/** `$23C4A0`: select shake mode 1 and clear the divide-gate cursor. */
-function altGun4Shake23C4A0(ram) {
-  ram.setU16(0x803934, 1);
-  ram.setU16(0x803936, 0);
-}
-
 /** `$2AA072`. Copy the nine template words and return without any side effect. */
 export function altGun4Init2AA072(ram, rom, a4) {
   copyTemplate(ram, rom, a4, HIBACHI_A1.altGun4Template, 9);
@@ -887,7 +882,7 @@ export function altGun4Step2AA084(ram, rom, ctx, a4, a5, a6) {
   let cadence = ram.u8(a4 + 0x08);
   if (lowHp) {
     cadence = u8(cadence - 2);
-    altGun4Shake23C4A0(ram);
+    shakeMode23C4A0(ram);
   }
   ram.setU8(a4 + 0x02, cadence);
 
@@ -915,7 +910,7 @@ export function altGun4Step2AA084(ram, rom, ctx, a4, a5, a6) {
   if (ram.u8(a4 + 0x08) > 7) {
     const reduced = u8(ram.u8(a4 + 0x08) - 2);
     ram.setU8(a4 + 0x08, reduced);
-    if (reduced <= 7) altGun4Shake23C4A0(ram);
+    if (reduced <= 7) shakeMode23C4A0(ram);
   }
   if (ram.u8(a4 + 0x05) < 0xc7) {
     ram.setU8(a4 + 0x05, u8(ram.u8(a4 + 0x05) + 0x14));
