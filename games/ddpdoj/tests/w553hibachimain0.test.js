@@ -14,7 +14,7 @@ import {
   SCHED, installScripts, seqStart2598D0, a2Run2598E6, a4Start25980C,
   runScheduler25962E, scriptAddresses,
 } from '../src/scheduler.js';
-import { HIBACHI_A0, HIBACHI_A4 } from '../src/hibachiend.js';
+import { HIBACHI_A0, HIBACHI_A2, HIBACHI_A4 } from '../src/hibachiend.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -115,8 +115,8 @@ test('W553 the live five-table install runs main id 0 before the later blocker',
     assert.equal(a4Start25980C(b.ram, 0), true);
 
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, 0x2a4866,
-      'main id 0, the live A3 pair, and A2 objects 0 through 3 complete before object 4');
+    assert.equal(error?.romAddress, HIBACHI_A2.object9,
+      'main id 0, the live A3 pair, and A2 objects 0 through 8 complete before object 9');
     assert.equal(b.ram.u16(SCHED.seqSub), 4);
     assert.equal(b.ram.u16(SCHED.a4Base + 0x02), HIBACHI_A4.s0Frames - 1,
       'A4 script 0 made its first timer step before the later stop');

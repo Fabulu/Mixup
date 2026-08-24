@@ -81,6 +81,16 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
       object3Art: 0x2a49f6,
       object3ArtFrames: 64,
       object4: 0x2a4866,
+      object4CodeEnd: 0x2a48b4,
+      object5: 0x2a48b6,
+      object5CodeEnd: 0x2a4904,
+      object6: 0x2a4906,
+      object6CodeEnd: 0x2a4954,
+      object7: 0x2a4956,
+      object7CodeEnd: 0x2a49a4,
+      object8: 0x2a49a6,
+      object8CodeEnd: 0x2a49f4,
+      object9: 0x2a4af6,
     });
     assert.equal(beU16(HIBACHI_A2.object3), 0x303c, '$2A4816 starts move.w #$A00,D0');
     assert.equal(beU16(0x2a482e), 0x41fa, '$2A482E loads the shared art table');
@@ -133,15 +143,15 @@ test('W558 object 3 updates offsets, emits exact registers, and persists',
     assert.equal(b.ram.u16(slot), 0x8001, 'object 3 persists across later dispatches');
   });
 
-test('W558 object 4 is the live next blocker after object 3 emits', { skip: SKIP }, () => {
+test('W558 object 9 is now the live blocker after objects 3 through 8 emit', { skip: SKIP }, () => {
   const b = bench();
-  a2Run2598E6(b.ram, 3);
-  a2Run2598E6(b.ram, 4);
+  for (let id = 3; id <= 9; id++) a2Run2598E6(b.ram, id);
   const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-  assert.equal(error?.romAddress, HIBACHI_A2.object4);
-  assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 3), 0x8001);
-  assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 4), 0x8001);
-  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES);
+  assert.equal(error?.romAddress, HIBACHI_A2.object9);
+  for (let id = 3; id <= 9; id++) {
+    assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * id), 0x8001);
+  }
+  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 6);
   assert.equal(requestHex(b.ram), '80058001001165341670ab12');
 });
 

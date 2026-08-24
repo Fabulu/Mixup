@@ -101,17 +101,15 @@ test('W557 object 2 emits exactly without advancing its angle and persists',
     assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object2);
   });
 
-test('W557 object 4 is the live next blocker after objects 2 and 3 emit', { skip: SKIP }, () => {
+test('W557 object 9 is now the live blocker after objects 2 through 8 emit', { skip: SKIP }, () => {
   const b = bench();
-  a2Run2598E6(b.ram, 2);
-  a2Run2598E6(b.ram, 3);
-  a2Run2598E6(b.ram, 4);
+  for (let id = 2; id <= 9; id++) a2Run2598E6(b.ram, id);
   const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-  assert.equal(error?.romAddress, HIBACHI_A2.object4);
-  assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 2), 0x8001);
-  assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 3), 0x8001);
-  assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 4), 0x8001);
-  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 2);
+  assert.equal(error?.romAddress, HIBACHI_A2.object9);
+  for (let id = 2; id <= 9; id++) {
+    assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * id), 0x8001);
+  }
+  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 7);
   assert.equal(requestHex(b.ram), '81cf8054001017280c380012');
 });
 

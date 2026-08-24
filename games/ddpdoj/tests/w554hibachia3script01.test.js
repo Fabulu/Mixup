@@ -13,7 +13,7 @@ import {
   SCHED, installScripts, a2Run2598E6, a3Start259962,
   a4Start25980C, runScheduler25962E, scriptAddresses,
 } from '../src/scheduler.js';
-import { HIBACHI_A0, HIBACHI_A3, HIBACHI_A4 } from '../src/hibachiend.js';
+import { HIBACHI_A0, HIBACHI_A2, HIBACHI_A3, HIBACHI_A4 } from '../src/hibachiend.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -150,7 +150,7 @@ test('W554 the live five-table dispatch reaches the next measured blocker',
     assert.equal(a4Start25980C(b.ram, 0), true);
 
     const error = caught(() => frame(b));
-    assert.equal(error?.romAddress, 0x2a4866);
+    assert.equal(error?.romAddress, HIBACHI_A2.object9);
     assert.deepEqual([
       b.ram.u16(SCHED.a3Base),
       b.ram.u16(SCHED.a3Base + SCHED.a3Stride),

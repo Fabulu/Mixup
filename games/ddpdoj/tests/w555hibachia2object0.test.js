@@ -74,6 +74,16 @@ test('W555 cartridge pins the object-0 code, art table, and direct registration'
       object3Art: 0x2a49f6,
       object3ArtFrames: 64,
       object4: 0x2a4866,
+      object4CodeEnd: 0x2a48b4,
+      object5: 0x2a48b6,
+      object5CodeEnd: 0x2a4904,
+      object6: 0x2a4906,
+      object6CodeEnd: 0x2a4954,
+      object7: 0x2a4956,
+      object7CodeEnd: 0x2a49a4,
+      object8: 0x2a49a6,
+      object8CodeEnd: 0x2a49f4,
+      object9: 0x2a4af6,
     });
     assert.equal(beU16(HIBACHI_A2.object0), 0x303c, '$2A4702 is move.w #$1A,D0');
     assert.equal(beU16(0x2a476c), 0x4ef9, '$2A476C is the tail jmp');
@@ -122,23 +132,17 @@ test('W555 object 0 emits the exact checkpoint request and remains running',
     assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object0);
   });
 
-test('W555 object 4 is the next scheduler blocker after objects 0 through 3 emit',
+test('W555 object 9 is now the next blocker after objects 0 through 8 emit',
   { skip: SKIP }, () => {
     const b = bench();
-    a2Run2598E6(b.ram, 0);
-    a2Run2598E6(b.ram, 1);
-    a2Run2598E6(b.ram, 2);
-    a2Run2598E6(b.ram, 3);
-    a2Run2598E6(b.ram, 4);
+    for (let id = 0; id <= 9; id++) a2Run2598E6(b.ram, id);
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, HIBACHI_A2.object4);
-    assert.equal(b.ram.u16(SCHED.a2Base), 0x8001);
-    assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride), 0x8001);
-    assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 2), 0x8001);
-    assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 3), 0x8001);
-    assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 4), 0x8001);
-    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 4,
-      'objects 0 through 3 emitted before object 4 stopped the frame');
+    assert.equal(error?.romAddress, HIBACHI_A2.object9);
+    for (let id = 0; id <= 9; id++) {
+      assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * id), 0x8001);
+    }
+    assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 9,
+      'objects 0 through 8 emitted before object 9 stopped the frame');
     assert.equal(requestHex(b.ram), '81ff8038000fff0416700012');
   });
 

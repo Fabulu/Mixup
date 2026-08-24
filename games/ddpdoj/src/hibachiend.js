@@ -1,5 +1,5 @@
-// HIBACHI'S A2 OBJECTS 0/1/2/3, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558.
+// HIBACHI'S A2 OBJECTS 0..8, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -131,6 +131,16 @@ export const HIBACHI_A2 = Object.freeze({
   object3Art: 0x2a49f6,
   object3ArtFrames: 64,
   object4: 0x2a4866,
+  object4CodeEnd: 0x2a48b4,
+  object5: 0x2a48b6,
+  object5CodeEnd: 0x2a4904,
+  object6: 0x2a4906,
+  object6CodeEnd: 0x2a4954,
+  object7: 0x2a4956,
+  object7CodeEnd: 0x2a49a4,
+  object8: 0x2a49a6,
+  object8CodeEnd: 0x2a49f4,
+  object9: 0x2a4af6,
 });
 
 /** `$2A4300` installs this main-sequencer table. It contains twelve init/step pairs;
@@ -394,6 +404,54 @@ export function a2Object3_2A4816(ram, rom, ctx) {
   const d4 = (ram.u16(a6 + 0x07c) & 0xff00) | ram.u8(a6 + 0x0e9);
   enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1, art,
     ram.u16(a6 + 0x06e), d4);
+}
+
+// ============================================= A2 OBJECTS 4..8 -- THE SHARED PARTS
+// Each routine is exactly $50 bytes including its trailing alignment nop. They differ only in
+// which attached record they read and write, and all five index the same 64-longword art table.
+
+function a2SharedPart2A4866(ram, rom, ctx, entryAddress, part) {
+  const a6 = bossA6(ctx, entryAddress);
+  const vector = ram.u16(a6 + 0x1fa);
+  ram.setU16(a6 + part + 0x10, u16(0x0a00 + vector));
+  ram.setU16(a6 + part + 0x12, u16(0x0600 - vector));
+
+  // The two `add.w D2,D2` instructions wrap before the signed word index is extended.
+  const artOffset = i16(u16(ram.u16(a6 + part + 0x1a) * 4));
+  const art = rom.u32(HIBACHI_A2.object3Art + artOffset);
+
+  // The record offset is added as a long, including carry from X into Y.
+  let d1 = ((u16(ram.u16(a6 + part + 0x02) + vector) << 16)
+    | ram.u16(a6 + part + 0x04)) >>> 0;
+  d1 = (d1 + ram.u32(a6 + part + 0x06)) >>> 0;
+  const d4 = (ram.u16(a6 + part + 0x1c) & 0xff00) | ram.u8(a6 + 0x0e9);
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1, art,
+    ram.u16(a6 + part + 0x0e), d4);
+}
+
+/** `$2A4866`. Update and enqueue attached record `$40`. */
+export function a2Object4_2A4866(ram, rom, ctx) {
+  a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object4, 0x040);
+}
+
+/** `$2A48B6`. Update and enqueue attached record `$20`. */
+export function a2Object5_2A48B6(ram, rom, ctx) {
+  a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object5, 0x020);
+}
+
+/** `$2A4906`. Update and enqueue attached record `$C0`. */
+export function a2Object6_2A4906(ram, rom, ctx) {
+  a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object6, 0x0c0);
+}
+
+/** `$2A4956`. Update and enqueue attached record `$A0`. */
+export function a2Object7_2A4956(ram, rom, ctx) {
+  a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object7, 0x0a0);
+}
+
+/** `$2A49A6`. Update and enqueue attached record `$80`. */
+export function a2Object8_2A49A6(ram, rom, ctx) {
+  a2SharedPart2A4866(ram, rom, ctx, HIBACHI_A2.object8, 0x080);
 }
 
 // ========================================================== A0 MAIN SCRIPT 0 -- THE ARRIVAL POSITION
@@ -1043,6 +1101,11 @@ registerScript(HIBACHI_A2.object0, a2Object0_2A4702);
 registerScript(HIBACHI_A2.object1, a2Object1_2A478C);
 registerScript(HIBACHI_A2.object2, a2Object2_2A47D6);
 registerScript(HIBACHI_A2.object3, a2Object3_2A4816);
+registerScript(HIBACHI_A2.object4, a2Object4_2A4866);
+registerScript(HIBACHI_A2.object5, a2Object5_2A48B6);
+registerScript(HIBACHI_A2.object6, a2Object6_2A4906);
+registerScript(HIBACHI_A2.object7, a2Object7_2A4956);
+registerScript(HIBACHI_A2.object8, a2Object8_2A49A6);
 
 registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Init2A4F56(ram, rom, ctx),
