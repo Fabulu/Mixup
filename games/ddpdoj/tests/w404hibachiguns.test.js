@@ -1018,10 +1018,11 @@ test('W404 SECTION 7: every counted gun\'s extent is MEASURED from the image, no
     // W408 CORRECTION: the ported set is now SEVEN guns, so gun $A's $11E leaves the counted
     // sum and comes back in here by name, the way W405's two, W406's one and W407's one did.
     // W570 CORRECTION: main gun 0's $4C6 also leaves the counted sum and returns here.
+    // W571 CORRECTION: main gun 1's $262 now does the same.
     assert.equal(HIBACHI_A1.alt - l(HIBACHI_A1.main),
       Object.values(HIBACHI_A1_COUNTED).reduce((s, c) => s + c.bytes, 0)
-      + 0x4c6 + 0x1b4 + 0x1a6 + 0x2ea + 0x1ba + 0x1c2 + 0x11e + 0x236,
+      + 0x4c6 + 0x262 + 0x1b4 + 0x1a6 + 0x2ea + 0x1ba + 0x1c2 + 0x11e + 0x236,
       'the fourteen main-table guns fill $2A738A..$2A92A8 exactly -- $1F1E, of which the port '
-      + 'now runs $4C6 (gun 0) + $1B4 (gun 5) + $1A6 (gun 6) + $2EA (gun 7) + $1BA '
-      + '(gun 8) + $1C2 (gun 9) + $11E (gun $A) + $236 (gun $B) = $12DA');
+      + 'now runs $4C6 (gun 0) + $262 (gun 1) + $1B4 (gun 5) + $1A6 (gun 6) + $2EA '
+      + '(gun 7) + $1BA (gun 8) + $1C2 (gun 9) + $11E (gun $A) + $236 (gun $B) = $153C');
   });

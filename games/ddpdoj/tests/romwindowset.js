@@ -510,7 +510,15 @@
 // curtain rows, and one 64-longword vector table. Measured: 839 -> 843 windows,
 // 451,951 -> 452,313 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 843;
+// ---------------------------------------------------------------------------
+// W571 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$2A7812 + $1E` is main-table Hibachi A1 gun 1's exact fifteen-word slot
+// template. It abuts gun 0's vector table and ends before eight unused
+// self-pointers. Measured: 843 -> 844 windows, 452,313 -> 452,343 bytes,
+// 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 844;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -543,6 +551,31 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W571_WINDOWS = Object.freeze([
+  Object.freeze(['$2A7812', 0x001e]),
+]);
+
+/** Reconstruct the exact W570 table by removing W571's additive window. */
+export function tableBeforeW571(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const found = copy.rom.windows.filter((w) =>
+    W571_WINDOWS.some(([base]) => w.base === base));
+  if (found.length === 0) return copy;
+  if (found.length !== W571_WINDOWS.length) {
+    throw new Error('the W571 HIBACHI gun-1 window is only partially present');
+  }
+  for (const [base, len] of W571_WINDOWS) {
+    const matches = found.filter((w) => w.base === base);
+    if (matches.length !== 1 || matches[0].len !== len
+        || matches[0].hex.length !== len * 2 || !matches[0].why.startsWith('W571:')) {
+      throw new Error(`${base} is not the exact W571 additive shape`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((w) =>
+    !W571_WINDOWS.some(([base]) => w.base === base));
+  return copy;
+}
+
 const W570_WINDOWS = Object.freeze([
   Object.freeze(['$2A733C', 0x0016]), Object.freeze(['$2A7372', 0x0018]),
   Object.freeze(['$2A76D6', 0x003c]), Object.freeze(['$2A7712', 0x0100]),
@@ -550,7 +583,7 @@ const W570_WINDOWS = Object.freeze([
 
 /** Reconstruct the exact W569 table by removing W570's four additive windows. */
 export function tableBeforeW570(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW571(tables);
   const found = copy.rom.windows.filter((w) =>
     W570_WINDOWS.some(([base]) => w.base === base));
   if (found.length === 0) return copy;
@@ -641,4 +674,5 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "moved no pair. W568 added the disjoint $29139E+$D2 menu intro and thirteen "
   + "sparse spawn-table longwords, totalling $106 bytes, and moved no pair. W570 "
   + "added four disjoint main HIBACHI gun-0 data windows totalling $16A and moved "
-  + "no pair. See tests/romwindowset.js.";
+  + "no pair. W571 added the disjoint $2A7812+$1E main HIBACHI gun-1 template and "
+  + "moved no pair. See tests/romwindowset.js.";

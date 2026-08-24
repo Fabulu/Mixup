@@ -218,6 +218,7 @@ export const HIBACHI_A1 = Object.freeze({
   gun0Template: 0x2a733c, gun0Init: 0x2a738a, gun0Step: 0x2a7400,
   gun0Muzzles: 0x2a7372, gun0Curtain: 0x2a76d6, gun0Vectors: 0x2a7712,
   gun0Spawn: 0x2816f6,
+  gun1Template: 0x2a7812, gun1Init: 0x2a7850, gun1Step: 0x2a78d0,
   altGun0Template: 0x2a9318, altGun0Init: 0x2a9366, altGun0Step: 0x2a93dc,
   altGun0Muzzles: 0x2a934e, altGun0Burst: 0x2a967a,
   altGun0Vectors: 0x2a96b6, altGun0Spawn: 0x2817b8,
@@ -469,6 +470,135 @@ export function gun0Step2A7400(ram, rom, ctx, a4, a5, a6) {
 }
 
 // ===========================================================================
+// MAIN GUN 1 -- $2A7850 / $2A78D0
+// ===========================================================================
+
+const MAIN_GUN1_LEFT_SITES = Object.freeze([0x2a797e, 0x2a798c, 0x2a799a]);
+const MAIN_GUN1_RIGHT_SITES = Object.freeze([0x2a79ca, 0x2a79d8, 0x2a79e6]);
+
+/** The main and loop-zero gun-1 inits are instruction-for-instruction twins
+ *  apart from the copied template address. */
+function gun1Init(ram, rom, a4, a6, template) {
+  copyTemplate(ram, rom, a4, template, 15);
+  if (drawNegative242EC2(ram, rom)) {
+    ram.setU8(a4 + 0x1e, u8(-ram.u8(a4 + 0x1e)));
+    ram.setU8(a4 + 0x1f, u8(-ram.u8(a4 + 0x1f)));
+    ram.setU8(a4 + 0x1e, u8(ram.u8(a4 + 0x1e) + drawByte2431F4(ram, rom)));
+    ram.setU8(a4 + 0x1f, u8(ram.u8(a4 + 0x1f) + drawByte2431F4(ram, rom)));
+  }
+  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 1);
+
+  const volleyRamp = ram.u8(a6 + 0x1cc);
+  ram.setU8(a4 + 0x04, u8(ram.u8(a4 + 0x04) + volleyRamp));
+  ram.setU8(a4 + 0x05, u8(ram.u8(a4 + 0x05) + volleyRamp));
+  ram.setU16(a4 + 0x0a, u16(ram.u16(a4 + 0x0a) + ram.u16(a6 + 0x1ce)));
+  const mirrorRamp = ram.u16(a6 + 0x1d0);
+  for (const off of [0x0e, 0x12, 0x16]) {
+    ram.setU16(a4 + off, u16(ram.u16(a4 + off) + mirrorRamp));
+  }
+}
+
+/** `$2A7850`. Copy fifteen words, choose a mirrored drift, lock all six parts,
+ *  and apply the three loop-nonzero ramps. */
+export function gun1Init2A7850(ram, rom, a4, a6) {
+  gun1Init(ram, rom, a4, a6, HIBACHI_A1.gun1Template);
+}
+
+/** Fire the one aimed center shot. Returns its jittered heading, or null when
+ *  both player records are dead. */
+function gun1Aim(ram, rom, ctx, a4, a5, a6) {
+  const target = pickTarget(ram, a5);
+  if (target === null) return null;
+  const aim = aim256(aimTables(rom),
+    u16(ram.u16(a6 + 0x02) + 0xf0c0), ram.u16(a6 + 0x04),
+    ram.u16(target + 0x02), ram.u16(target + 0x04));
+  const d1 = u8(aim + (i8(drawByte242B3C(ram, rom)) >> 1));
+  shot(ram, rom, ctx, 0x2a7940, {
+    d0: ram.u32(a4 + 0x0a), d1, d2: ram.u32(a6 + 0x02),
+    d3: 0xf0c00000, d4: 0, d5: 0, a5,
+  }, HIBACHI_A1.gun0Spawn);
+  ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);
+  return d1;
+}
+
+function gun1Wings(ram, rom, ctx, a4, a5, a6, odd) {
+  const d2 = ram.u32(a6 + 0x02);
+  let d1 = ram.u8(a4 + 0x08);
+  let d3 = 0xf2c0fc00;
+  shot(ram, rom, ctx, MAIN_GUN1_LEFT_SITES[0],
+    { d0: ram.u32(a4 + 0x0e), d1, d2, d3, d4: 0, d5: 0, a5 }, 0x281764);
+  d1 = u8(d1 + 0x20);
+  shot(ram, rom, ctx, MAIN_GUN1_LEFT_SITES[1],
+    { d0: ram.u32(a4 + 0x12), d1, d2, d3, d4: 0, d5: 0, a5 }, 0x281764);
+  d1 = u8(d1 + 0x60);
+  shot(ram, rom, ctx, MAIN_GUN1_LEFT_SITES[2],
+    { d0: ram.u32(a4 + 0x16), d1, d2, d3, d4: 0, d5: 0, a5 }, HIBACHI_A1.gun0Spawn);
+  if (odd) {
+    d1 = u8(d1 + 0x20);
+    shot(ram, rom, ctx, 0x2a79b2,
+      { d0: 0x00010003, d1, d2, d3, d4: 0, d5: 0, a5 }, HIBACHI_A1.gun0Spawn);
+  }
+
+  d1 = ram.u8(a4 + 0x09);
+  d3 = 0xf2c00400;
+  shot(ram, rom, ctx, MAIN_GUN1_RIGHT_SITES[0],
+    { d0: ram.u32(a4 + 0x0e), d1, d2, d3, d4: 0, d5: 0, a5 }, 0x281764);
+  d1 = u8(d1 + 0x20);
+  shot(ram, rom, ctx, MAIN_GUN1_RIGHT_SITES[1],
+    { d0: ram.u32(a4 + 0x12), d1, d2, d3, d4: 0, d5: 0, a5 }, 0x281764);
+  d1 = u8(d1 + 0x60);
+  shot(ram, rom, ctx, MAIN_GUN1_RIGHT_SITES[2],
+    { d0: ram.u32(a4 + 0x16), d1, d2, d3, d4: 0, d5: 0, a5 }, HIBACHI_A1.gun0Spawn);
+  if (odd) {
+    shot(ram, rom, ctx, 0x2a79fa,
+      { d0: 0x00010003, d1, d2, d3, d4: 0, d5: 0, a5 }, HIBACHI_A1.gun0Spawn);
+  }
+}
+
+/** `$2A78D0`. Run the aimed odd volleys and mirrored wings, then advance the
+ *  loop-nonzero cartridge ramps and retire. */
+export function gun1Step2A78D0(ram, rom, ctx, a4, a5, a6) {
+  if (!gunTick(ram, a4, () => gun1Init2A7850(ram, rom, a4, a6))) return;
+
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x06));
+  const life = ram.u8(a4 + 0x04);
+  const odd = (life & 1) !== 0;
+  let fireWings = true;
+  if (odd) {
+    const heading = gun1Aim(ram, rom, ctx, a4, a5, a6);
+    if (heading === null) fireWings = false;
+    else if (life === ram.u8(a4 + 0x05)) {
+      ram.setU8(a4 + 0x08, u8(heading + 0x40));
+      ram.setU8(a4 + 0x09, u8(0x40 - heading));
+    }
+  }
+
+  if (fireWings) {
+    gun1Wings(ram, rom, ctx, a4, a5, a6, odd);
+    ram.setU8(a4 + 0x08, u8(ram.u8(a4 + 0x08) + ram.u8(a4 + 0x1e)));
+    ram.setU8(a4 + 0x09, u8(ram.u8(a4 + 0x09) + ram.u8(a4 + 0x1f)));
+  }
+
+  ram.setU8(a4 + 0x04, u8(life - 1));
+  if (life !== 0) return;
+
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  ram.setU8(a4 + 0x1e, u8(-ram.u8(a4 + 0x1e)));
+  ram.setU8(a4 + 0x1f, u8(-ram.u8(a4 + 0x1f)));
+  if (ram.u8(a6 + 0x1cc) < 0x3c) {
+    ram.setU8(a6 + 0x1cc, u8(ram.u8(a6 + 0x1cc) + 0x14));
+  }
+  if (i16(ram.u16(a6 + 0x1ce)) < 4) {
+    ram.setU16(a6 + 0x1ce, u16(ram.u16(a6 + 0x1ce) + 1));
+  }
+  if (i16(ram.u16(a6 + 0x1d0)) < 0x1a) {
+    ram.setU16(a6 + 0x1d0, u16(ram.u16(a6 + 0x1d0) + 1));
+  }
+  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
+  a1Stop259B08(ram, 1);
+}
+
+// ===========================================================================
 // LOOP-ZERO GUN 0 -- $2A9366 / $2A93DC
 // ===========================================================================
 
@@ -582,23 +712,7 @@ const ALT_GUN1_RIGHT_SITES = Object.freeze([0x2a99b8, 0x2a99c6, 0x2a99d4]);
 /** `$2A97F4`. Copy fifteen words, choose the mirrored drift, mark all six parts,
  *  and apply the three loop-zero difficulty ramps. */
 export function altGun1Init2A97F4(ram, rom, a4, a6) {
-  copyTemplate(ram, rom, a4, HIBACHI_A1.altGun1Template, 15);
-  if (drawNegative242EC2(ram, rom)) {
-    ram.setU8(a4 + 0x1e, u8(-ram.u8(a4 + 0x1e)));
-    ram.setU8(a4 + 0x1f, u8(-ram.u8(a4 + 0x1f)));
-    ram.setU8(a4 + 0x1e, u8(ram.u8(a4 + 0x1e) + drawByte2431F4(ram, rom)));
-    ram.setU8(a4 + 0x1f, u8(ram.u8(a4 + 0x1f) + drawByte2431F4(ram, rom)));
-  }
-  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 1);
-
-  const volleyRamp = ram.u8(a6 + 0x1cc);
-  ram.setU8(a4 + 0x04, u8(ram.u8(a4 + 0x04) + volleyRamp));
-  ram.setU8(a4 + 0x05, u8(ram.u8(a4 + 0x05) + volleyRamp));
-  ram.setU16(a4 + 0x0a, u16(ram.u16(a4 + 0x0a) + ram.u16(a6 + 0x1ce)));
-  const mirrorRamp = ram.u16(a6 + 0x1d0);
-  for (const off of [0x0e, 0x12, 0x16]) {
-    ram.setU16(a4 + off, u16(ram.u16(a4 + off) + mirrorRamp));
-  }
+  gun1Init(ram, rom, a4, a6, HIBACHI_A1.altGun1Template);
 }
 
 /** The seven-shot aimed accent at `$2A989A..$2A9938`.
@@ -2242,6 +2356,11 @@ registerScript(HIBACHI_A1.gun0Init, (ram, rom, ctx, a4) =>
 registerScript(HIBACHI_A1.gun0Step, (ram, rom, ctx, a4) =>
   gun0Step2A7400(ram, rom, ctx, a4, bossA5(ctx, HIBACHI_A1.gun0Step),
     bossA6(ctx, HIBACHI_A1.gun0Step)));
+registerScript(HIBACHI_A1.gun1Init, (ram, rom, ctx, a4) =>
+  gun1Init2A7850(ram, rom, a4, bossA6(ctx, HIBACHI_A1.gun1Init)));
+registerScript(HIBACHI_A1.gun1Step, (ram, rom, ctx, a4) =>
+  gun1Step2A78D0(ram, rom, ctx, a4, bossA5(ctx, HIBACHI_A1.gun1Step),
+    bossA6(ctx, HIBACHI_A1.gun1Step)));
 registerScript(HIBACHI_A1.altGun0Init, (ram, rom, ctx, a4) =>
   altGun0Init2A9366(ram, rom, a4, bossA6(ctx, HIBACHI_A1.altGun0Init)));
 registerScript(HIBACHI_A1.altGun0Step, (ram, rom, ctx, a4) =>
@@ -2329,7 +2448,7 @@ registerScript(0x2a6a76, (ram, rom, ctx, a4) => a4Ten2A6A76(ram, a4, true));
 registerScript(0x2a6a7c, (ram, rom, ctx, a4) => a4Ten2A6A76(ram, a4, false));
 
 /** The shared/main-table A1 ids whose init AND step this file registers. */
-export const HIBACHI_A1_SCRIPTS = Object.freeze([0, 5, 6, 7, 8, 9, 0x0a, 0x0b]);
+export const HIBACHI_A1_SCRIPTS = Object.freeze([0, 1, 5, 6, 7, 8, 9, 0x0a, 0x0b]);
 /** The loop-zero table's unique ids whose init AND step this file registers. */
 export const HIBACHI_A1_ALT_SCRIPTS = Object.freeze([0, 1, 2, 3, 4]);
 /** The A4 attack-loop ids this file registers alongside `hibachiend.js`. */
@@ -2343,7 +2462,6 @@ export const HIBACHI_GUN_A4_SCRIPTS = Object.freeze([0x0a, 0x0b, 0x0c, 0x0d, 0x0
  * header's layout note.  `alt` marks the five that exist only in `$2A92A8`.
  */
 export const HIBACHI_A1_COUNTED = Object.freeze({
-  0x01: { init: 0x2a7850, step: 0x2a78d0, bytes: 0x0262, why: 'A4 7 ($2A6804)' },
   0x02: { init: 0x2a7ab2, step: 0x2a7b20, bytes: 0x03b2, why: 'A4 8 ($2A683C)' },
   0x03: { init: 0x2a7e64, step: 0x2a7e96, bytes: 0x01f6, why: 'A4 9 ($2A687A)' },
   0x04: { init: 0x2a805a, step: 0x2a806c, bytes: 0x0162, why: 'A4 $E ($2A6A16)' },

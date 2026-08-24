@@ -23,6 +23,7 @@ import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
   ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs, tableBeforeW570,
+  tableBeforeW571,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -38,8 +39,10 @@ const SKIP = required.every(existsSync) ? false
   : 'exact W570 image, tables, assets, or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W570_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW570(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
+const CURRENT_HASH = '376e17ddc03d3e56d728cb804ba091ab098b4039b2d51ba7b2d6689ccd07f7c8';
 const TABLE_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
 const PRIOR_HASH = '3c480c86d79e63da7149fbf1ada5a454d4217cb2dffa6e0aab63ecebc94e9717';
 const A5 = 0x810c00;
@@ -88,16 +91,20 @@ async function bundle() {
 
 test('W570 adds exactly four disjoint gun-0 windows and reconstructs W569',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 843);
-    assert.equal(TABLE_JSON.rom.windows.length, 843);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452313);
-    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
+    assert.equal(ROM_WINDOW_COUNT, 844);
+    assert.equal(TABLE_JSON.rom.windows.length, 844);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452343);
+    assert.equal(canonicalHash(TABLE_JSON), CURRENT_HASH);
+    assert.equal(W570_TABLE.rom.windows.length, 843);
+    assert.equal(W570_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452313);
+    assert.equal(canonicalHash(W570_TABLE), TABLE_HASH,
+      'removing only the W571 window reconstructs W570 byte for byte');
     assert.equal(PRIOR_TABLE.rom.windows.length, 839);
     assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451951);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH,
       'removing only the four W570 windows reconstructs W569 byte for byte');
 
-    const windows = TABLE_JSON.rom.windows.filter((w) => WINDOW_BASES.has(w.base));
+    const windows = W570_TABLE.rom.windows.filter((w) => WINDOW_BASES.has(w.base));
     assert.deepEqual(windows.map(({ base, len }) => [base, len]), [
       ['$2A733C', 0x16], ['$2A7372', 0x18], ['$2A76D6', 0x3c], ['$2A7712', 0x100],
     ]);
@@ -260,7 +267,8 @@ test('W570 fires twelve attachments plus the 54-shot curtain and retires faithfu
 test('W570 preserves the migrated frontier, checkpoints at 500, and reaches main gun 1',
   { skip: SKIP }, async () => {
     const exact = await bundle();
-    assert.equal(canonicalHash(exact.tables), TABLE_HASH);
+    assert.equal(canonicalHash(exact.tables), CURRENT_HASH);
+    const w570Bundle = { ...exact, tables: W570_TABLE };
     const frontier = JSON.parse(readFileSync(FRONTIER, 'utf8'));
     assert.deepEqual([
       frontier.tablesSha256, frontier.frame.logic, frontier.frame.video,
@@ -271,6 +279,7 @@ test('W570 preserves the migrated frontier, checkpoints at 500, and reaches main
       'cb290e6ee0d50a296233a76a7be1a1fc1dea4a10e1c995770a2d3b7a63ba3b15',
       '9340889f30fe7ceaf774fd1c6c5ca2133ab4c5569929d4456aeb73dc479ac6e1',
     ]);
+    restoreCheckpoint(frontier, w570Bundle, frontier.selection);
     const historical = { ...exact, tables: PRIOR_TABLE };
     restoreCheckpoint({ ...frontier, tablesSha256: PRIOR_HASH }, historical, frontier.selection);
 
@@ -284,9 +293,9 @@ test('W570 preserves the migrated frontier, checkpoints at 500, and reaches main
       '96fca098a3ed4ce80618ae0f675d8afd2e18442d19574d070ca016924adbf9d9',
       'a4fac661dfc90179650cce42318fb7b46923044d0ef94c97786fad92f7745e99',
     ]);
-    restoreCheckpoint(periodic, exact, periodic.selection);
+    restoreCheckpoint(periodic, w570Bundle, periodic.selection);
 
-    const restored = restoreCheckpoint(frontier, exact, frontier.selection);
+    const restored = restoreCheckpoint(frontier, w570Bundle, frontier.selection);
     let error = null;
     let attempted = 0;
     for (attempted = 1; attempted <= 1000; attempted++) {
@@ -303,8 +312,8 @@ test('W570 preserves the migrated frontier, checkpoints at 500, and reaches main
     assert.equal(restored.game.videoFrame, 156059);
     assert.equal(restored.game.ram.u16(0x813092), 4);
     assert.equal(restored.game.ram.u16(0x813098), 1);
-    assert.equal(error?.romAddress, 0x2a7850);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A7850/);
+    assert.equal(error?.romAddress, 0x2a7812);
+    assert.match(error?.message ?? '', /word at \$2A7812/);
     assert.equal(caught(() => ROM.u8(HIBACHI_A1.gun0Template)), null);
-    assert.equal(ROM.u32(HIBACHI_A1.main + 8), 0x2a7850);
+    assert.equal(ROM.u32(HIBACHI_A1.main + 8), HIBACHI_A1.gun1Init);
   });

@@ -148,7 +148,7 @@ test('W562 is exactly four disjoint additive windows and $16A bytes', { skip: SK
   assert.deepEqual(W562_TABLE, FUTURE_TABLE,
     'removing the later W563-W568 windows reconstructs the exact W562 additive result');
   assert.equal(TABLE_JSON.rom.windows.length, ROM_WINDOW_COUNT);
-  assert.equal(ROM_WINDOW_COUNT, 843);
+  assert.equal(ROM_WINDOW_COUNT, 844);
   assert.equal(W562_TABLE.rom.windows.length, 820);
   assert.equal(canonicalHash(W562_TABLE), FUTURE_HASH,
     'the reconstructed table has the exact W562 identity');

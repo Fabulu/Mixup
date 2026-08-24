@@ -3922,6 +3922,8 @@ SHOT_WINDOWS.extend([
                        "$2A75B0 moveq #$5 and the primary vector table beginning exactly at $2A7712"),
     (0x2A7712, 0x0100, "W570: loop-nonzero HIBACHI A1 gun 0's complete 64-longword primary vector table, "
                        "indexed by each attached facing byte multiplied by four"),
+    (0x2A7812, 0x001E, "W571: loop-nonzero HIBACHI A1 gun 1's fifteen-word slot template, copied by "
+                       "$2A7850 moveq #$E plus dbra and ending before its unused self-pointer block"),
     (0x2A9318, 0x0016, "W562: loop-zero HIBACHI A1 gun 0's eleven-word slot template, copied by "
                        "$2A9366 moveq #$A plus dbra and ending before its unused self-pointer block"),
     (0x2A934E, 0x0018, "W562: loop-zero HIBACHI A1 gun 0's six attached-position longwords, walked "

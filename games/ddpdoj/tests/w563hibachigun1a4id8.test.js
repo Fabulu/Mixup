@@ -129,7 +129,7 @@ async function bundle() {
 test('W563 adds only the strict $2A97B6+$1E template window', { skip: SKIP }, () => {
   assert.deepEqual(W563_TABLE, FUTURE_TABLE,
     'removing the later W564-W568 windows reconstructs the strict W563 additive result');
-  assert.equal(TABLE_JSON.rom.windows.length, 843);
+  assert.equal(TABLE_JSON.rom.windows.length, 844);
   assert.equal(PRIOR_TABLE.rom.windows.length, 820);
   assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
   assert.equal(W563_TABLE.rom.windows.length, 821);
