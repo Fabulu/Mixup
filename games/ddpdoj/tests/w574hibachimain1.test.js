@@ -215,7 +215,7 @@ test('W574 byte borrow, reload, state reversal, and id-2 handoff are exact',
     ], [130, 2, 4, 0, [0x28cb88]], 'canonical script lifetime is exactly 130 dispatches');
   });
 
-test('W574 resumes the migrated W573 state and proves A3 id 3 as the next blocker',
+test('W574 resumes the migrated W573 state and reaches the W575 A2 id-10 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const exact = await bundle();
     assert.equal(canonicalHash(exact.tables), TABLE_HASH);
@@ -251,8 +251,8 @@ test('W574 resumes the migrated W573 state and proves A3 id 3 as the next blocke
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-    ], [1913, 148043, 158657, 0x2a56a2, 4, 8, 16, 1]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A56A2/);
+    ], [1913, 148043, 158657, 0x2a4c42, 4, 8, 16, 1]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4C42/);
     assert.deepEqual([
       ROM.u32(HIBACHI_A3.table + 3 * 8), ROM.u32(HIBACHI_A3.table + 4 * 8),
       resumed.game.ram.u16(SCHED.seqDst + 0x02),
@@ -261,7 +261,7 @@ test('W574 resumes the migrated W573 state and proves A3 id 3 as the next blocke
       resumed.game.ram.u16(SCHED.seqDst + 0x06),
     ], [0x2a56a2, 0x2a56ce, 0, 7, 8, 0]);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      '8d78182b767003500a7fe041633a41a3e993be23e09d304258bc636c2a72db4a',
+      '241687e521ddff90fd53e3c281772b2a2e15e7583cbfcd705b9dd54f2598997c',
       '1ceb1158c3b8144490ad8d69ce5d85d41b303eb2557738b73c10aa1661bf953a',
     ]);
   });

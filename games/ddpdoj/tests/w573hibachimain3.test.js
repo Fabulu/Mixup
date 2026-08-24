@@ -664,14 +664,14 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
     const attemptState = checkpointDocument(resumed.game, exact, {
       ...migrated.selection, inputWord: resumed.probe.inputWord, invulnerable: true,
     });
-    // W574 ports the former A0 id-1 blocker, so this same migrated run now reaches A3 id 3.
+    // W575 ports A3 ids 3 and 4, so the same frame now reaches the A2 id-10 blocker.
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, attemptState.ramSha256, attemptState.gameSha256,
     ], [
-      1913, 148043, 158657, 0x2a56a2,
-      '8d78182b767003500a7fe041633a41a3e993be23e09d304258bc636c2a72db4a',
+      1913, 148043, 158657, 0x2a4c42,
+      '241687e521ddff90fd53e3c281772b2a2e15e7583cbfcd705b9dd54f2598997c',
       '1ceb1158c3b8144490ad8d69ce5d85d41b303eb2557738b73c10aa1661bf953a',
     ]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A56A2/);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4C42/);
   });

@@ -79,7 +79,7 @@ test('W554 the loader names the exact eight-pair Hibachi A3 table', { skip: SKIP
   });
 });
 
-test('W554 only live A3 ids 0 and 1 have both exact entries registered',
+test('W554 live A3 ids 0 and 1 have both exact entries registered',
   { skip: SKIP }, () => {
     const registered = new Set(scriptAddresses());
     for (const address of PAIRS[0]) assert.ok(registered.has(address));

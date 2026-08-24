@@ -1,5 +1,5 @@
 // HIBACHI'S A2 OBJECTS 0..9, 11..13 AND 15, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -181,6 +181,8 @@ export const HIBACHI_A3 = Object.freeze({
   s0Init: 0x2a54d6, s0Step: 0x2a54e2, s0Selector: 0x0126,
   s1Init: 0x2a5502, s1Step: 0x2a550e, s1Selector: 0x0128,
   s2Init: 0x2a552e, s2Step: 0x2a5534,
+  s3Init: 0x2a56a2, s3Step: 0x2a56ae, s3End: 0x2a56ce, s3Selector: 0x012a,
+  s4Init: 0x2a56ce, s4Step: 0x2a56da, s4End: 0x2a56fa, s4Selector: 0x012c,
 });
 
 /** Every address in this file's flow that is real ROM data or a real ROM entry point, so a
@@ -686,17 +688,18 @@ function hibachiAimTables(rom) {
   return tables;
 }
 
-// ======================================================= A3 SCRIPTS 0, 1 AND 2
-/** Shared byte-underflow cadence for `$2A54E2` and `$2A550E`. */
-function a3SelectorStep(ram, ctx, a4, selector, entryAddress) {
+// ======================================================= A3 SCRIPTS 0 THROUGH 4
+/** Shared byte-underflow cadence for the selector-only A3 scripts. */
+function a3SelectorStep(ram, ctx, a4, selector, entryAddress,
+  increment = 4, resetAt = 0x0018, resetTo = 0) {
   const a6 = bossA6(ctx, entryAddress);
   const old = ram.u8(a4 + 0x02);
   ram.setU8(a4 + 0x02, (old - 1) & 0xff);                  // subq.b #1,($2,A4)
   if (old !== 0) return;                                   // bcc.s -> rts
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));                // reload the current byte
-  const next = u16(ram.u16(a6 + selector) + 4);
-  ram.setU16(a6 + selector, next);                         // addq.w #4
-  if (next === 0x0018) ram.setU16(a6 + selector, 0);       // equality, not a range or modulo
+  const next = u16(ram.u16(a6 + selector) + increment);
+  ram.setU16(a6 + selector, next);
+  if (next === resetAt) ram.setU16(a6 + selector, resetTo); // equality, not a range or modulo
 }
 
 /** `$2A54D6`. Seed cadence 1, clear A6+$126, then fall through into the step. */
@@ -754,6 +757,32 @@ export function a3s2Step2A5534(ram, rom, ctx, a4) {
     ram.setU16(a6 + part + 0x1a, slew64(ram.u16(a6 + part + 0x1a), target));
     ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);
   }
+}
+
+/** `$2A56A2`. Seed a one-dispatch cadence and clear A6+$12A. */
+export function a3s3Init2A56A2(ram, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A3.s3Init);
+  ram.setU16(a4 + 0x02, 0x0000);
+  ram.setU16(a6 + HIBACHI_A3.s3Selector, 0);
+}
+
+/** `$2A56AE`. Advance A6+$12A by four every dispatch and cycle at $0C. */
+export function a3s3Step2A56AE(ram, ctx, a4) {
+  a3SelectorStep(ram, ctx, a4, HIBACHI_A3.s3Selector, HIBACHI_A3.s3Step,
+    4, 0x000c, 0);
+}
+
+/** `$2A56CE`. Seed a two-dispatch cadence and clear A6+$12C. */
+export function a3s4Init2A56CE(ram, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A3.s4Init);
+  ram.setU16(a4 + 0x02, 0x0001);
+  ram.setU16(a6 + HIBACHI_A3.s4Selector, 0);
+}
+
+/** `$2A56DA`. Advance A6+$12C by six every two dispatches and reset $90 to $5A. */
+export function a3s4Step2A56DA(ram, ctx, a4) {
+  a3SelectorStep(ram, ctx, a4, HIBACHI_A3.s4Selector, HIBACHI_A3.s4Step,
+    6, 0x0090, 0x005a);
 }
 
 // =============================================================== A4 SCRIPT 0 -- THE ARRIVAL
@@ -1459,6 +1488,16 @@ registerScript(HIBACHI_A3.s2Init, initThenStep(
   (ram, rom, ctx, a4) => a3s2Step2A5534(ram, rom, ctx, a4)));
 registerScript(HIBACHI_A3.s2Step,
   (ram, rom, ctx, a4) => a3s2Step2A5534(ram, rom, ctx, a4));
+registerScript(HIBACHI_A3.s3Init, initThenStep(
+  (ram, _rom, ctx, a4) => a3s3Init2A56A2(ram, ctx, a4),
+  (ram, _rom, ctx, a4) => a3s3Step2A56AE(ram, ctx, a4)));
+registerScript(HIBACHI_A3.s3Step,
+  (ram, _rom, ctx, a4) => a3s3Step2A56AE(ram, ctx, a4));
+registerScript(HIBACHI_A3.s4Init, initThenStep(
+  (ram, _rom, ctx, a4) => a3s4Init2A56CE(ram, ctx, a4),
+  (ram, _rom, ctx, a4) => a3s4Step2A56DA(ram, ctx, a4)));
+registerScript(HIBACHI_A3.s4Step,
+  (ram, _rom, ctx, a4) => a3s4Step2A56DA(ram, ctx, a4));
 
 registerScript(HIBACHI_A4.s0Init, initThenStep(
   (ram, rom, ctx, a4) => s0Init2A592E(ram, ctx, a4),
