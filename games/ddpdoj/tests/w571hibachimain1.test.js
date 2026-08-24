@@ -7,7 +7,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { RAM, P } from '../src/machine.js';
 import { Ram, u16 } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { AIM, AimTables, aim256 } from '../src/aim.js';
@@ -23,7 +22,8 @@ import {
 import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
-  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs, tableBeforeW571,
+  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs,
+  tableBeforeW571, tableBeforeW572,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -42,9 +42,11 @@ const SKIP_CHECKPOINT = [FRONTIER, PERIODIC,
   : 'exact W571 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
+const LIVE_TABLE_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
 const TABLE_HASH = '376e17ddc03d3e56d728cb804ba091ab098b4039b2d51ba7b2d6689ccd07f7c8';
 const PRIOR_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
 const TEMPLATE = Object.freeze([
@@ -115,16 +117,20 @@ async function bundle() {
 
 test('W571 adds exactly one disjoint template window and reconstructs strict W570',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 844);
-    assert.equal(TABLE_JSON.rom.windows.length, 844);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452343);
-    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
+    assert.equal(ROM_WINDOW_COUNT, 845);
+    assert.equal(TABLE_JSON.rom.windows.length, 845);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452367);
+    assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
+    assert.equal(W571_TABLE.rom.windows.length, 844);
+    assert.equal(W571_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452343);
+    assert.equal(canonicalHash(W571_TABLE), TABLE_HASH,
+      'removing only W572 preserves strict historical W571');
     assert.equal(PRIOR_TABLE.rom.windows.length, 843);
     assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452313);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH,
       'removing only W571 reconstructs W570 byte for byte');
 
-    const added = TABLE_JSON.rom.windows.filter((w) => w.base === '$2A7812');
+    const added = W571_TABLE.rom.windows.filter((w) => w.base === '$2A7812');
     assert.deepEqual(added, [{
       base: '$2A7812', len: 0x1e,
       why: "W571: loop-nonzero HIBACHI A1 gun 1's fifteen-word slot template, copied by $2A7850 moveq #$E plus dbra and ending before its unused self-pointer block",
@@ -162,7 +168,9 @@ test('W571 pins pair boundaries, separate registration, lists, and first dispatc
     assert.ok(registered.has(HIBACHI_A1.gun1Step));
     assert.ok(HIBACHI_A1_SCRIPTS.includes(1));
     assert.equal(HIBACHI_A1_COUNTED[1], undefined);
-    assert.equal(HIBACHI_A1_COUNTED[2].init, 0x2a7ab2);
+    assert.equal(HIBACHI_A1_COUNTED[2], undefined,
+      'W572 registers the next gun without changing gun 1');
+    assert.equal(HIBACHI_A1_COUNTED[3].init, 0x2a7e64);
 
     const b = gunBench();
     const positive = rngIndex(false);
@@ -447,12 +455,14 @@ test('W571 retirement negates drift, applies thresholds, clears locks, and stops
       'the byte comparison is unsigned while both word comparisons are signed');
   });
 
-test('W571 migrates only after additive proof, resumes the 500-frame checkpoint, and pins gun 2',
+test('W571 historical identity composes through W572 and its checkpoint migrates exactly',
   { skip: SKIP_CHECKPOINT }, async () => {
     const exact = await bundle();
-    assert.equal(canonicalHash(exact.tables), TABLE_HASH);
+    assert.equal(canonicalHash(exact.tables), LIVE_TABLE_HASH);
+    assert.deepEqual(tableBeforeW572(exact.tables), W571_TABLE,
+      'removing W572 reconstructs strict historical W571');
     assert.deepEqual(tableBeforeW571(exact.tables), PRIOR_TABLE,
-      'the exact additive proof precedes checkpoint hash migration');
+      'the older reconstruction composes through W572 before removing W571');
 
     const frontier = JSON.parse(readFileSync(FRONTIER, 'utf8'));
     assert.deepEqual([
@@ -464,10 +474,9 @@ test('W571 migrates only after additive proof, resumes the 500-frame checkpoint,
       '96fca098a3ed4ce80618ae0f675d8afd2e18442d19574d070ca016924adbf9d9',
       'a4fac661dfc90179650cce42318fb7b46923044d0ef94c97786fad92f7745e99',
     ]);
-    const historical = { ...exact, tables: PRIOR_TABLE };
-    restoreCheckpoint(frontier, historical, frontier.selection);
-    const migrated = { ...frontier, tablesSha256: TABLE_HASH };
-    restoreCheckpoint(migrated, exact, frontier.selection);
+    restoreCheckpoint(frontier, { ...exact, tables: PRIOR_TABLE }, frontier.selection);
+    const migratedW571 = { ...frontier, tablesSha256: TABLE_HASH };
+    restoreCheckpoint(migratedW571, { ...exact, tables: W571_TABLE }, frontier.selection);
 
     const periodic = JSON.parse(readFileSync(PERIODIC, 'utf8'));
     assert.deepEqual([
@@ -479,25 +488,12 @@ test('W571 migrates only after additive proof, resumes the 500-frame checkpoint,
       '26400c3c024c4bda3a1578210a599ba49b6ea9c154a86c2530e7294de053332b',
       'd25395bda9a3c25f53a2a9c06ce747f9924a4bc418268cd7d937414765c8cb1c',
     ]);
-    const resumed = restoreCheckpoint(periodic, exact, periodic.selection);
-    let error = null;
-    let attempted = 0;
-    for (attempted = 1; attempted <= 1000; attempted++) {
-      try {
-        resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
-        resumed.game.step(resumed.probe.inputWord);
-      } catch (caughtError) {
-        error = caughtError;
-        break;
-      }
-    }
-    assert.equal(attempted, 524, 'W571 gun 2 is reached on resume attempt 524');
-    assert.equal(resumed.game.logicFrame, 146154);
-    assert.equal(resumed.game.videoFrame, 156744);
-    assert.equal(resumed.game.ram.u16(0x813092), 4);
-    assert.equal(resumed.game.ram.u16(0x813098), 1);
-    assert.equal(error?.romAddress, 0x2a7ab2);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A7AB2/);
-    assert.equal(ROM.u32(HIBACHI_A1.main + 16), 0x2a7ab2);
-    assert.equal(HIBACHI_A1_COUNTED[2].init, 0x2a7ab2);
+    restoreCheckpoint(periodic, { ...exact, tables: W571_TABLE }, periodic.selection);
+    const migratedW572 = { ...periodic, tablesSha256: LIVE_TABLE_HASH };
+    restoreCheckpoint(migratedW572, exact, periodic.selection);
+    assert.deepEqual([migratedW572.ramSha256, migratedW572.gameSha256],
+      [periodic.ramSha256, periodic.gameSha256],
+      'W572 migration changes only the table identity');
+    assert.ok(scriptAddresses().includes(HIBACHI_A1.gun2Init));
+    assert.equal(HIBACHI_A1_COUNTED[2], undefined);
   });

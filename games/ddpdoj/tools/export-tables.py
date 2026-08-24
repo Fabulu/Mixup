@@ -3924,6 +3924,8 @@ SHOT_WINDOWS.extend([
                        "indexed by each attached facing byte multiplied by four"),
     (0x2A7812, 0x001E, "W571: loop-nonzero HIBACHI A1 gun 1's fifteen-word slot template, copied by "
                        "$2A7850 moveq #$E plus dbra and ending before its unused self-pointer block"),
+    (0x2A7A7A, 0x0018, "W572: loop-nonzero HIBACHI A1 gun 2's twelve-word slot template, copied by "
+                       "$2A7AB2 moveq #$B plus dbra and ending before its unused self-pointer block"),
     (0x2A9318, 0x0016, "W562: loop-zero HIBACHI A1 gun 0's eleven-word slot template, copied by "
                        "$2A9366 moveq #$A plus dbra and ending before its unused self-pointer block"),
     (0x2A934E, 0x0018, "W562: loop-zero HIBACHI A1 gun 0's six attached-position longwords, walked "

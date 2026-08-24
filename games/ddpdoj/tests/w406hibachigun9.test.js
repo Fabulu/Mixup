@@ -1033,8 +1033,8 @@ test('W406 SECTION 7: ONE new window, bounded three ways and none of them an abs
 test('W406 SECTION 7: gun 9 is PORTED and A4 $F is out of hibachiend.js\'s counted list',
   { skip: SKIP }, () => {
     // W407 CORRECTION: gun $B, A4 $10 and A4 $11 joined the ported sets.
-    assert.deepEqual([...HIBACHI_A1_SCRIPTS], [0, 1, 5, 6, 7, 8, 9, 0x0a, 0x0b],
-      'W571 CORRECTION: NINE A1 ids are ported now');
+    assert.deepEqual([...HIBACHI_A1_SCRIPTS], [0, 1, 2, 5, 6, 7, 8, 9, 0x0a, 0x0b],
+      'W572 CORRECTION: TEN A1 ids are ported now');
     assert.deepEqual([...HIBACHI_GUN_A4_SCRIPTS],
       [0x0a, 0x0b, 0x0c, 0x0d, 0x0f, 0x10, 0x11], '  ...and seven A4');
     assert.equal(HIBACHI_A1_COUNTED[9], undefined, 'A1 9 is no longer counted');
