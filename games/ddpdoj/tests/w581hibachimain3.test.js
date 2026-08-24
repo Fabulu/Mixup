@@ -204,7 +204,7 @@ test('W581 freeze and persistence leave A4, attachments, RNG, and unrelated pool
       Array(SCHED.a1Slots).fill(0));
   });
 
-test('W581 restores exact lf150131 and reaches the exact A0 id-4 frontier',
+test('W581 restores exact lf150131 and reaches the W582 A3 id-6 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -257,20 +257,20 @@ test('W581 restores exact lf150131 and reaches the exact A0 id-4 frontier',
       resumed.game.ram.u8(a6 + 0x1a), resumed.game.ram.u8(a6 + 0x1b),
       resumed.game.ram.u16(RNG_STATE),
     ], [
-      457, 150587, 161201, 0x2a50e4, 4, 8, 16, 1,
-      0x81378c, 0x81533c, 0x4a60, 0x20d8, 3, 0x20, 0x00b8,
+      457, 150587, 161201, 0x2a5758, 4, 8, 16, 1,
+      0x81378c, 0x81533c, 0x4a1d, 0x20d8, 6, 0x20, 0x00b9,
     ]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A50E4/);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5758/);
     assert.deepEqual([
       resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
       resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
-    ], [4, 0, 4, 0]);
+    ], [4, 4, 4, 0]);
     assert.deepEqual(slotWords(resumed.game.ram,
       SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride), [0, 0x8104, 0, 0, 0]);
     assert.deepEqual(slotWords(resumed.game.ram,
       SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride), Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'a5c986442ce2ad5c55a3385381297c9cba311fc67b0e1bc3afb3314cbdf67ad4',
+      'f5c0bdc79406f625aa957982b10198b197d442feaab47f82859e55821d72bb4b',
       '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
     ]);
   });

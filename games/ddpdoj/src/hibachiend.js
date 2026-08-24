@@ -1,5 +1,5 @@
 // HIBACHI'S A2 OBJECTS 0..15, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579, W580, W581.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579, W580, W581, W582.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -187,6 +187,10 @@ export const HIBACHI_A0 = Object.freeze({
   s3Init: 0x2a50d0,
   s3Step: 0x2a50dc,
   s3End: 0x2a50e4,
+  s4Row: 0x2a4e76,
+  s4Init: 0x2a50e4,
+  s4Step: 0x2a50f2,
+  s4End: 0x2a5156,
   s5Init: 0x2a5156,
   s5Step: 0x2a516e,
   s5End: 0x2a51d2,
@@ -790,6 +794,49 @@ export function main3Init2A50D0(ram, ctx) {
 export function main3Step2A50DC(ram, ctx) {
   const a6 = bossA6(ctx, HIBACHI_A0.s3Step);
   applyVelocityA6(ram, ctx.tables, a6);                       // $2A50DC
+}
+
+// =============================================================== A0 MAIN SCRIPT 4
+// `$2A4E76` entry 4 is {$2A50E4, $2A50F2}. The init clears its target
+// state, sets speed six, inherits the prior heading, and falls through.
+
+/** `$2A50E4`. Clear target state and set speed six without changing heading. */
+export function main4Init2A50E4(ram, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s4Init);
+  ram.setU8(a4, 0);                                          // $2A50E4/$2A50E6
+  ram.setU8(a4 + 0x01, 0);                                   // $2A50E8
+  ram.setU8(a6 + 0x1a, 6);                                   // $2A50EC
+}
+
+/** `$2A50F2`. Move, slew, draw a replacement target, and refresh all parts. */
+export function main4Step2A50F2(ram, rom, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s4Step);
+  applyVelocityA6(ram, ctx.tables, a6);                       // $2A50F2
+
+  if (ram.u8(a4 + 0x01) !== 0) {                              // $2A50F8
+    const target = ram.u8(a4);
+    const heading = slew64FromRecord(ram, a6, target);         // $2A50FE/$2A5100
+    ram.setU8(a6 + 0x1b, heading);                            // $24217E's store
+    if (heading === target) ram.setU8(a4 + 0x01, 0);           // $2A5106..$2A510A
+  }
+
+  let target = drawByte242B3C(ram, rom);                      // $2A510E
+  const x = u16(ram.u16(a6 + 0x04) + 0x2800);                 // $2A5114/$2A5118
+  if (x < 0x3600) {                                           // unsigned BCC boundary
+    target = (target + 0x10) & 0xff;                          // $2A5122
+  } else if (x >= 0x5200) {                                   // unsigned BCS boundary
+    target = (target + 0x30) & 0xff;                          // $2A512E
+  } else {
+    const y = ram.u16(a6 + 0x02);                             // $2A5134 swap D1
+    if (y >= 0x5e00 && y < 0x6200) {                          // $2A5136..$2A5140
+      placeMain0Parts2A4EB6(ram, a6);                        // $2A5152 bra.w
+      return;
+    }
+    if (y >= 0x6200) target = (target + 0x20) & 0xff;         // $2A5142
+  }
+  ram.setU8(a4, target & 0x3f);                               // $2A5146/$2A514A
+  ram.setU8(a4 + 0x01, 1);                                   // $2A514C
+  placeMain0Parts2A4EB6(ram, a6);                            // $2A5152 bra.w
 }
 
 // =============================================================== A0 MAIN SCRIPT 5
@@ -1731,6 +1778,11 @@ registerScript(HIBACHI_A0.s3Init, initThenStep(
   (ram, _rom, ctx) => main3Step2A50DC(ram, ctx)));
 registerScript(HIBACHI_A0.s3Step,
   (ram, _rom, ctx) => main3Step2A50DC(ram, ctx));
+registerScript(HIBACHI_A0.s4Init, initThenStep(
+  (ram, _rom, ctx, a4) => main4Init2A50E4(ram, ctx, a4),
+  (ram, rom, ctx, a4) => main4Step2A50F2(ram, rom, ctx, a4)));
+registerScript(HIBACHI_A0.s4Step,
+  (ram, rom, ctx, a4) => main4Step2A50F2(ram, rom, ctx, a4));
 registerScript(HIBACHI_A0.s5Init, initThenStep(
   (ram, rom, ctx, a4) => main5Init2A5156(ram, rom, ctx, a4),
   (ram, rom, ctx, a4) => main5Step2A516E(ram, rom, ctx, a4)));
