@@ -110,6 +110,7 @@ import { finalBlast2440E0 } from './boss2.js';
 import { finalBurst27CBB6 } from './stage4type9f.js';
 import { bossA5, bossA6, bigBurst28B34A } from './boss.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
+import { AimTables, aim64, slew64, targetSelect } from './aim.js';
 
 /** `$2A432E` installs this nineteen-object A2 list. Object 0 is armed immediately by
  *  `$2A4336 jsr $2598E6`; its six-frame art selector is advanced by A3 script 1. */
@@ -173,6 +174,7 @@ export const HIBACHI_A3 = Object.freeze({
   pairs: 8,
   s0Init: 0x2a54d6, s0Step: 0x2a54e2, s0Selector: 0x0126,
   s1Init: 0x2a5502, s1Step: 0x2a550e, s1Selector: 0x0128,
+  s2Init: 0x2a552e, s2Step: 0x2a5534,
 });
 
 /** Every address in this file's flow that is real ROM data or a real ROM entry point, so a
@@ -189,6 +191,7 @@ export const HIBACHI_A4 = Object.freeze({
   s4Init: 0x2a62fa, s4Step: 0x2a6312,       // W403 -- the $11E bytes W399 counted
   s5Init: 0x2a6418, s5Step: 0x2a6458,       // W409 -- the $3AA W408 counted
   s6Init: 0x2a67c2, s6Step: 0x2a67d2,       // W561 -- opening attack handoff
+  s7Init: 0x2a67e8, s7Step: 0x2a67ee,       // W562 -- gun 1 handoff
   s14Init: 0x2a6b7a, s14Step: 0x2a6b80,     // W420 -- $18 of code, NOT the $1A counted
   // A4 5's own data, all four bases named by a `lea` that is decoded rather than assumed
   s5Emit: 0x2a6688, s5EmitRows: 16, s5EmitStride: 8,   // $2A657E and $2A6628, the SAME base
@@ -211,6 +214,7 @@ export const HIBACHI_A4 = Object.freeze({
   push2At: 0x2a61e0, push2Speed: 0x0200,
   // the fork
   forkLoopWord: 0x813098, forkFlag: 0x80393a,
+  freeze: 0x8130d4,
   firstLoopExit: 0x14,                      // $2A5CB4 moveq #$14 -> A4 $14 -> $2595E8 SUSPEND
   // script 3's shadow
   deadBlockFrom: 0x2a5fd4, deadBlockTo: 0x2a61cc,
@@ -595,7 +599,17 @@ export function main0Step2A4F86(ram, _rom, ctx) {
   placeMain0Parts2A4EB6(ram, a6);                          // $2A4F8C bra.w $2A4EB6
 }
 
-// ======================================================= A3 SCRIPTS 0 AND 1 -- SELECTORS
+const HIBACHI_AIM_TABLES = new WeakMap();
+function hibachiAimTables(rom) {
+  let tables = HIBACHI_AIM_TABLES.get(rom);
+  if (!tables) {
+    tables = new AimTables(rom);
+    HIBACHI_AIM_TABLES.set(rom, tables);
+  }
+  return tables;
+}
+
+// ======================================================= A3 SCRIPTS 0, 1 AND 2
 /** Shared byte-underflow cadence for `$2A54E2` and `$2A550E`. */
 function a3SelectorStep(ram, ctx, a4, selector, entryAddress) {
   const a6 = bossA6(ctx, entryAddress);
@@ -630,6 +644,39 @@ export function a3s1Init2A5502(ram, ctx, a4) {
 /** `$2A550E`. Advance A6+$128 every three dispatches. */
 export function a3s1Step2A550E(ram, ctx, a4) {
   a3SelectorStep(ram, ctx, a4, HIBACHI_A3.s1Selector, HIBACHI_A3.s1Step);
+}
+
+const A3_S2_PARTS = Object.freeze([0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0]);
+
+/** `$2A552E`. Seed a two-dispatch cadence, then fall through into the step. */
+export function a3s2Init2A552E(ram, a4) {
+  ram.setU16(a4 + 0x02, 0x0001);
+}
+
+/** `$2A5534`. Aim each enabled attached gun toward the selected live player. */
+export function a3s2Step2A5534(ram, rom, ctx, a4) {
+  const old = ram.u8(a4 + 0x02);
+  ram.setU8(a4 + 0x02, (old - 1) & 0xff);
+  if (old !== 0) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+
+  const a5 = bossA5(ctx, HIBACHI_A3.s2Step);
+  const a6 = bossA6(ctx, HIBACHI_A3.s2Step);
+  const selected = targetSelect(ram, a5);
+  if (selected.carry) return;
+  const targetY = ram.u16(selected.addr + 0x02);
+  const targetX = ram.u16(selected.addr + 0x04);
+  ram.setU16(a6 + 0x134, targetY);
+  ram.setU16(a6 + 0x136, targetX);
+
+  const tables = hibachiAimTables(rom);
+  for (const part of A3_S2_PARTS) {
+    if (ram.u8(a6 + part + 0x1f) !== 0 || ram.u8(a6 + part + 0x1e) !== 0) continue;
+    const target = aim64(tables,
+      ram.u16(a6 + part + 0x02), ram.u16(a6 + part + 0x04), targetY, targetX);
+    ram.setU16(a6 + part + 0x1a, slew64(ram.u16(a6 + part + 0x1a), target));
+    ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);
+  }
 }
 
 // =============================================================== A4 SCRIPT 0 -- THE ARRIVAL
@@ -1149,6 +1196,25 @@ export function s6Step2A67D2(ram, a4) {
   ram.setU16(a4, 0);                                      // $2A67E4 clr.w (A4)
 }
 
+/** `$2A67E8`. Seed the 96-frame delay, then fall through into the step. */
+export function s7Init2A67E8(ram, a4) {
+  ram.setU16(a4 + 0x02, 0x0060);
+}
+
+/** `$2A67EE`. Start gun 1 after the freeze-aware delay, then wait and hand to A4 8. */
+export function s7Step2A67EE(ram, a4) {
+  if (ram.u16(a4 + 0x02) !== 0) {
+    if (ram.u16(HIBACHI_A4.freeze) !== 0) return;
+    const left = u16(ram.u16(a4 + 0x02) - 1);
+    ram.setU16(a4 + 0x02, left);
+    if (left !== 0) return;
+    a1Start259A18(ram, 1);
+  }
+  if (a1Running259A4A(ram, 1)) return;
+  a4Start25980C(ram, 8);
+  ram.setU16(a4, 0);
+}
+
 // ------------------------------------------------------------------------- the registrations
 //
 // **THE INIT IS NOT A ROUTINE OF ITS OWN.**  W403, and it was wrong in every one of W399's
@@ -1241,6 +1307,11 @@ registerScript(HIBACHI_A3.s1Init, initThenStep(
   (ram, _rom, ctx, a4) => a3s1Step2A550E(ram, ctx, a4)));
 registerScript(HIBACHI_A3.s1Step,
   (ram, _rom, ctx, a4) => a3s1Step2A550E(ram, ctx, a4));
+registerScript(HIBACHI_A3.s2Init, initThenStep(
+  (ram, _rom, _ctx, a4) => a3s2Init2A552E(ram, a4),
+  (ram, rom, ctx, a4) => a3s2Step2A5534(ram, rom, ctx, a4)));
+registerScript(HIBACHI_A3.s2Step,
+  (ram, rom, ctx, a4) => a3s2Step2A5534(ram, rom, ctx, a4));
 
 registerScript(HIBACHI_A4.s0Init, initThenStep(
   (ram, rom, ctx, a4) => s0Init2A592E(ram, ctx, a4),
@@ -1270,6 +1341,10 @@ registerScript(HIBACHI_A4.s6Init, initThenStep(
   (ram) => s6Init2A67C2(ram),
   (ram, rom, ctx, a4) => s6Step2A67D2(ram, a4)));
 registerScript(HIBACHI_A4.s6Step, (ram, rom, ctx, a4) => s6Step2A67D2(ram, a4));
+registerScript(HIBACHI_A4.s7Init, initThenStep(
+  (ram, rom, ctx, a4) => s7Init2A67E8(ram, a4),
+  (ram, rom, ctx, a4) => s7Step2A67EE(ram, a4)));
+registerScript(HIBACHI_A4.s7Step, (ram, rom, ctx, a4) => s7Step2A67EE(ram, a4));
 registerScript(HIBACHI_A4.s14Init, initThenStep(
   (ram, rom, ctx, a4) => s14Init2A6B7A(ram, a4),
   (ram, rom, ctx, a4) => s14Step2A6B80(ram, a4)));
@@ -1277,7 +1352,7 @@ registerScript(HIBACHI_A4.s14Step, (ram, rom, ctx, a4) => s14Step2A6B80(ram, a4)
 
 /** The A4 ids whose init AND step this file registers. A test asserts this against the
  *  cartridge's own table rather than against the list above. */
-export const HIBACHI_END_SCRIPTS = Object.freeze([0, 1, 2, 3, 4, 5, 6, 0x14]);
+export const HIBACHI_END_SCRIPTS = Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 0x14]);
 
 /** Every A4 id the chain hands to that is NOT ported, with the byte extent each occupies
  *  between its table entry and the next one. Counted, with the numbers measured. */

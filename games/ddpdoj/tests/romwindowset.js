@@ -450,7 +450,17 @@
 // object 11 `$2A4B58`. Measured: 815 -> 816 windows,
 // 451,149 -> 451,173 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 816;
+// ---------------------------------------------------------------------------
+// W562 ADDED FOUR DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// Loop-zero Hibachi A1 gun 0 reads its eleven-word template at `$2A9318 + $16`,
+// six attached-position longwords at `$2A934E + $18`, six ten-byte burst rows at
+// `$2A967A + $3C`, and its 64-longword attached-vector table at `$2A96B6 + $100`.
+// All four declarations are disjoint. Measured: 816 -> 820 windows,
+// 451,173 -> 451,535 bytes, 77 -> 77 overlapping pairs. The exact additive
+// payload is four windows and $16A bytes.
+
+export const ROM_WINDOW_COUNT = 820;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -527,4 +537,5 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "abutting $29177C+$42 final script plus two sparse longwords. W518 added "
   + "three mutually abutting slot-[15] text and glyph-table windows; the vertical "
   + "table's final ten bytes overlap W23's existing $2926D0+$20 slot-[14] "
-  + "init-stub window, adding the 77th pair. See tests/romwindowset.js.";
+  + "init-stub window, adding the 77th pair. W562 added four disjoint Hibachi "
+  + "gun-0 data windows totalling $16A and moved no pair. See tests/romwindowset.js.";

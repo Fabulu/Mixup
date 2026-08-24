@@ -3,11 +3,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
+import { MoveTables } from '../src/vectors.js';
+import { defaultHandlers } from '../src/main.js';
 import { RAM, P } from '../src/machine.js';
 import {
   SCHED, installScripts, a4Start25980C, runScheduler25962E, scriptAddresses,
@@ -17,20 +20,18 @@ import {
   s6Init2A67C2, s6Step2A67D2,
 } from '../src/hibachiend.js';
 import { HIBACHI_A1 } from '../src/hibachiguns.js';
-import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = path.resolve(HERE, '../tools/oracle/out/maincpu.bin');
 const TABLES = path.resolve(HERE, '../rip/port/player.tables.json');
 const ASSETS = path.resolve(HERE, '../assets');
+const SEED = path.join(ASSETS, 'seed.bin.gz');
 const CHECKPOINT = path.resolve(HERE, '../probes/checkpoints/ship0-style4-lf00071111.json');
 const SKIP = existsSync(IMAGE) && existsSync(TABLES) ? false
   : 'decrypted image or generated tables absent. This is a skip, not a pass.';
-const SKIP_CHECKPOINT = existsSync(CHECKPOINT)
-  && existsSync(path.join(ASSETS, 'seed.bin.gz'))
-  && existsSync(path.join(ASSETS, 'player.tables.json.gz')) ? false
-  : 'exact checkpoint bundle absent. This is a skip, not a pass.';
+const SKIP_CHECKPOINT = existsSync(CHECKPOINT) && existsSync(SEED) && !SKIP ? false
+  : 'checkpoint, seed, or generated cartridge table absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
@@ -40,8 +41,13 @@ const caught = (fn) => {
   try { fn(); return null; } catch (error) { return error; }
 };
 
-async function bundle() {
-  return loadBundle(async (name) => new Uint8Array(readFileSync(path.join(ASSETS, name))));
+const W562_WINDOW_BASES = new Set(['$2A9318', '$2A934E', '$2A967A', '$2A96B6']);
+function checkpointBundlesWithW562Ablated() {
+  const exact = { seed: new Uint8Array(gunzipSync(readFileSync(SEED))), tables: TABLE_JSON };
+  const ablatedTables = JSON.parse(JSON.stringify(TABLE_JSON));
+  ablatedTables.rom.windows = ablatedTables.rom.windows.filter(
+    (w) => !W562_WINDOW_BASES.has(w.base));
+  return { exact, ablatedTables };
 }
 
 test('W561 pins A4 table pair 6 and its exact code boundaries', { skip: SKIP }, () => {
@@ -109,11 +115,13 @@ test('W561 init falls through to the step in one scheduler dispatch', { skip: SK
   a4Start25980C(ram, 6);
 
   const error = caught(() => runScheduler25962E(ram, ROM, {}));
-  assert.equal(error?.romAddress, 0x2a67e8,
-    'a full A1 table drops gun 0, so fallthrough immediately starts and dispatches script 7');
+  assert.equal(error, null,
+    'a full A1 table drops gun 0, so fallthrough starts and dispatches the now-ported script 7');
   assert.equal(ram.u16(SCHED.a4Base), 0, 'script 6 cleared itself during its init dispatch');
   assert.equal(ram.u16(SCHED.a4Base + SCHED.a4Stride), 0x8107,
     'the same A4 walk reached the newly claimed script-7 slot');
+  assert.equal(ram.u16(SCHED.a4Base + SCHED.a4Stride + 2), 0x005f,
+    'script 7 seeded 96 and its init fallthrough decremented once');
   assert.equal(ram.u16(SCHED.a3Base), 0x8002, 'the init still started A3 script 2 first');
   assert.deepEqual(Array.from({ length: SCHED.a1Slots }, (_, i) =>
     ram.u16(SCHED.a1Base + i * SCHED.a1Stride)),
@@ -121,14 +129,18 @@ test('W561 init falls through to the step in one scheduler dispatch', { skip: SK
   '$259A18 reproduces the cartridge silent drop when all ten slots are occupied');
 });
 
-test('W561 checkpoint now reaches loop-zero A1 gun 0 as the next exact blocker',
+test('W561 checkpoint with explicit W562-window ablation stops at gun 0 template',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const exact = await bundle();
+    const { exact, ablatedTables } = checkpointBundlesWithW562Ablated();
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
     const { game, probe } = restoreCheckpoint(checkpoint, exact, checkpoint.selection);
     assert.deepEqual(probe, {
       ship: 0, style: 4, inputWord: checkpoint.inputWord, invulnerable: true,
     });
+    const ablatedRom = new RomWindows(ablatedTables.rom);
+    game.rom = ablatedRom;
+    game.tables = new MoveTables(ablatedTables, ablatedRom);
+    game.handlers = defaultHandlers(ablatedRom, game.vram, { mutate: game.bgMutate });
 
     let error = null;
     let attempted = 0;
@@ -146,14 +158,18 @@ test('W561 checkpoint now reaches loop-zero A1 gun 0 as the next exact blocker',
     assert.equal(game.logicFrame, 71217);
     assert.equal(game.ram.u16(HIBACHI_A4.forkLoopWord), 0, 'this checkpoint installs the alt A1 table');
     assert.equal(game.ram.u32(SCHED.ptrA1), HIBACHI_A1.alt);
-    assert.equal(error?.romAddress, 0x2a9366);
-    assert.equal(error?.romAddress, new RomWindows(exact.tables.rom).u32(HIBACHI_A1.alt),
-      'the next blocker is the exact alt-table gun-0 init pointer');
+    assert.equal(error?.romAddress, HIBACHI_A1.altGun0Template);
+    const generated = new RomWindows(ablatedTables.rom);
+    assert.equal(generated.u32(HIBACHI_A1.alt), HIBACHI_A1.altGun0Init,
+      'the generated table still supplies the exact alt-table gun-0 init pointer');
+    assert.equal(caught(() => generated.u16(HIBACHI_A1.altGun0Template))?.romAddress,
+      HIBACHI_A1.altGun0Template,
+      'the explicit W562 ablation keeps this historical checkpoint independent of web export state');
     assert.equal(game.ram.u16(SCHED.a1Base), 0x8100,
       'gun 0 was claimed and selected for its init before the throw');
     assert.equal(game.ram.u16(SCHED.a3Base + 2 * SCHED.a3Stride), 0x8002,
       'A3 script 2 was claimed but the earlier A1 walk blocked before dispatching it');
     assert.equal(game.ram.u16(SCHED.a4Base + SCHED.a4Stride), 0x8106,
       'A4 script 6 remains alive while gun 0 is running');
-    assert.equal(scriptAddresses().includes(0x2a9366), false);
+    assert.equal(scriptAddresses().includes(HIBACHI_A1.altGun0Init), true);
   });

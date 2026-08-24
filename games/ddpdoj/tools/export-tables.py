@@ -3897,6 +3897,14 @@ SHOT_WINDOWS.extend([
                        "The exact span ends at $2A54D2, where $4254/$4E75 clear a slot and return"),
     (0x2A6788, 0x003A, "W552: HIBACHI A4 script 0's $246410 animation chain. Its count word is four, "
                        "so the exact span is 2 + 4 * 14 bytes and ends at $2A67C2, A4 script 6's init"),
+    (0x2A9318, 0x0016, "W562: loop-zero HIBACHI A1 gun 0's eleven-word slot template, copied by "
+                       "$2A9366 moveq #$A plus dbra and ending before its unused self-pointer block"),
+    (0x2A934E, 0x0018, "W562: loop-zero HIBACHI A1 gun 0's six attached-position longwords, walked "
+                       "once by $2A940E through $2A9540 and ending at the gun init $2A9366"),
+    (0x2A967A, 0x003C, "W562: loop-zero HIBACHI A1 gun 0's six ten-byte burst rows, bounded by "
+                       "$2A9566 moveq #$5 and the vector table beginning exactly at $2A96B6"),
+    (0x2A96B6, 0x0100, "W562: loop-zero HIBACHI A1 gun 0's complete 64-longword attached vector table, "
+                       "indexed by a facing byte multiplied by four at all six firing groups"),
     (0x268DD2, 0x0068, "W353: type $1A's FIVE palette rows, 15-word record prototype and $20-byte sub "
                        "prototype, $268DD2..$268E3A -- three contiguous structures the init walks in "
                        "order. The rows are byte PAIRS indexed by $813094: 15 0a / 15 0a / 15 0a / "

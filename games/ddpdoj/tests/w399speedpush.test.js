@@ -306,8 +306,8 @@ test('W399 SECTION 2: nine callers of $261100, FOUR of them unclaimed and two pu
       '$2A5886[3] is $2A5A28, A4 script 1\'s STEP');
     assert.ok(HIBACHI_A4.s1Step < 0x2a5d28 && 0x2a5d28 < HIBACHI_A4.s2Init,
       '  ...and $2A5D28 is inside it, between entry [3] and entry [4]');
-    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 0x14],
-      'A4 0 from W552, 1, 2 and 3 from this wave, 4 from W403, 5 from W409, 6 from W561 and $14');
+    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7, 0x14],
+      'A4 0 from W552, 1, 2 and 3 from this wave, 4 from W403, 5 from W409, 6 from W561, 7 from W562 and $14');
     for (const id of HIBACHI_END_SCRIPTS) {
       for (const off of [0, 4]) {
         assert.ok(scriptAddresses().includes(l(HIBACHI_A4.table + id * 8 + off)),
