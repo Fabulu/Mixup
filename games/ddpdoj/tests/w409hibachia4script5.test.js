@@ -291,8 +291,8 @@ test('W409 SECTION 3: THE RUN NO LONGER STOPS -- $2595E8 fires on frame 4889 and
   assert.ok(new Set(scriptAddresses()).has(A4_5_INIT), '(c) $2A6418 is registered');
   assert.ok(new Set(scriptAddresses()).has(HIBACHI_A4.s5Step), '  ...and $2A6458');
   assert.equal(HIBACHI_END_COUNTED[0x05], undefined, '  ...and it is out of the counted list');
-  assert.deepEqual([...HIBACHI_END_SCRIPTS], [0, 1, 2, 3, 4, 5, 6, 7, 0x14],
-    '  ...and in the ported one, including W562 script 7 and W420 script $14');
+  assert.deepEqual([...HIBACHI_END_SCRIPTS], [0, 1, 2, 3, 4, 5, 6, 7, 8, 0x14],
+    '  ...and in the ported one, including W563 script 8 and W420 script $14');
 
   // ---- WHAT IS STILL NOT REACHED, stated so the next reader is not misled: this bench is
   // script 1's SECOND-loop arm. A4 $14 -- the FIRST-loop arm's ending -- is PORTED as of W420,

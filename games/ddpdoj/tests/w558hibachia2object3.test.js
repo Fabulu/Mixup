@@ -16,6 +16,7 @@ import {
 } from '../src/scheduler.js';
 import { BUCKETS, RECORD_BYTES } from '../src/spritequeue.js';
 import { HIBACHI_A2 } from '../src/hibachiend.js';
+import { ROM_WINDOW_COUNT } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -34,7 +35,9 @@ const A5 = 0x81332c;
 const A6 = 0x81533c;
 const PRIOR_TABLE_SHA256 = 'd70eab3e9152e70ee51fc4d653b244c58d665b1b8908bb2e75caa05207ec7769';
 const W558_TABLE_SHA256 = '250d097bf5c060d214fe690ef264b71a50225690909174320b3b921a76e33e1d';
-const W560_TABLE_SHA256 = 'd55cfe3af945d92941c3b4b397cf52d11c864513cfb43a2502cc38f348ea6694';
+const POST_W558_BASES = new Set([
+  '$2A4B40', '$2A9318', '$2A934E', '$2A967A', '$2A96B6', '$2A97B6',
+]);
 
 const beU16 = (address) => IMG.readUInt16BE(address);
 const beU32 = (address) => IMG.readUInt32BE(address);
@@ -122,19 +125,18 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
     assert.ok(scriptAddresses().includes(HIBACHI_A2.object3));
 
     const window = TABLE_JSON.rom.windows.find((w) => w.base === '$2A49F6');
-    assert.equal(TABLE_JSON.rom.windows.length, 816);
+    assert.equal(TABLE_JSON.rom.windows.length, ROM_WINDOW_COUNT);
     assert.equal(window?.len, 0x100);
     assert.equal(window?.hex, IMG.subarray(HIBACHI_A2.object3Art, HIBACHI_A2.object3Art + 0x100)
       .toString('hex'));
     for (let i = 0; i < HIBACHI_A2.object3ArtFrames; i++) {
       assert.equal(ROM.u32(HIBACHI_A2.object3Art + i * 4), beU32(HIBACHI_A2.object3Art + i * 4));
     }
-    assert.equal(canonicalHash(TABLE_JSON), W560_TABLE_SHA256);
     const w558 = { ...TABLE_JSON, rom: { ...TABLE_JSON.rom,
-      windows: TABLE_JSON.rom.windows.filter((w) => w.base !== '$2A4B40') } };
+      windows: TABLE_JSON.rom.windows.filter((w) => !POST_W558_BASES.has(w.base)) } };
     assert.equal(w558.rom.windows.length, 815);
     assert.equal(canonicalHash(w558), W558_TABLE_SHA256,
-      'removing exactly the later W560 window reconstructs the W558 table identity');
+      'stripping W560, W562, and W563 reconstructs the exact W558 identity');
     const prior = { ...w558, rom: { ...w558.rom,
       windows: w558.rom.windows.filter((w) => w.base !== '$2A49F6') } };
     assert.equal(prior.rom.windows.length, 814);

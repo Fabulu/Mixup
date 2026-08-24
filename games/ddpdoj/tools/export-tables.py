@@ -3905,6 +3905,8 @@ SHOT_WINDOWS.extend([
                        "$2A9566 moveq #$5 and the vector table beginning exactly at $2A96B6"),
     (0x2A96B6, 0x0100, "W562: loop-zero HIBACHI A1 gun 0's complete 64-longword attached vector table, "
                        "indexed by a facing byte multiplied by four at all six firing groups"),
+    (0x2A97B6, 0x001E, "W563: loop-zero HIBACHI A1 gun 1's fifteen-word slot template, copied by "
+                       "$2A97F4 moveq #$E plus dbra and ending before its unused self-pointer block"),
     (0x268DD2, 0x0068, "W353: type $1A's FIVE palette rows, 15-word record prototype and $20-byte sub "
                        "prototype, $268DD2..$268E3A -- three contiguous structures the init walks in "
                        "order. The rows are byte PAIRS indexed by $813094: 15 0a / 15 0a / 15 0a / "

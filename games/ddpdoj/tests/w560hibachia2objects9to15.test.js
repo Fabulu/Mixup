@@ -42,7 +42,9 @@ const W560_WINDOW = SKIP ? null : Object.freeze({
   why: WINDOW_WHY,
   hex: IMG.subarray(0x2a4b40, 0x2a4b58).toString('hex'),
 });
-const POST_W560_BASES = new Set(['$2A9318', '$2A934E', '$2A967A', '$2A96B6']);
+const POST_W560_BASES = new Set([
+  '$2A9318', '$2A934E', '$2A967A', '$2A96B6', '$2A97B6',
+]);
 const PRIOR_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
   copy.rom.windows = copy.rom.windows.filter((w) =>
@@ -150,8 +152,8 @@ test('W560 is a strict one-window additive superset with exact count and hashes'
     assert.equal(PRIOR_TABLE.rom.windows.length, 815);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_TABLE_SHA256,
       'removing W560, if present, reconstructs the W558 checkpoint identity');
-    assert.equal(TABLE_JSON.rom.windows.filter((w) => POST_W560_BASES.has(w.base)).length, 4,
-      'historical reconstruction strips all four post-W560 W562 windows');
+    assert.equal(TABLE_JSON.rom.windows.filter((w) => POST_W560_BASES.has(w.base)).length, 5,
+      'historical reconstruction strips all five post-W560 W562/W563 windows');
     assert.equal(FUTURE_TABLE.rom.windows.length, 816);
     assert.equal(canonicalHash(FUTURE_TABLE), W560_TABLE_SHA256);
 

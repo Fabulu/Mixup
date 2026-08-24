@@ -192,6 +192,7 @@ export const HIBACHI_A4 = Object.freeze({
   s5Init: 0x2a6418, s5Step: 0x2a6458,       // W409 -- the $3AA W408 counted
   s6Init: 0x2a67c2, s6Step: 0x2a67d2,       // W561 -- opening attack handoff
   s7Init: 0x2a67e8, s7Step: 0x2a67ee,       // W562 -- gun 1 handoff
+  s8Init: 0x2a6820, s8Step: 0x2a6826,       // W563 -- gun 2 handoff
   s14Init: 0x2a6b7a, s14Step: 0x2a6b80,     // W420 -- $18 of code, NOT the $1A counted
   // A4 5's own data, all four bases named by a `lea` that is decoded rather than assumed
   s5Emit: 0x2a6688, s5EmitRows: 16, s5EmitStride: 8,   // $2A657E and $2A6628, the SAME base
@@ -1215,6 +1216,25 @@ export function s7Step2A67EE(ram, a4) {
   ram.setU16(a4, 0);
 }
 
+/** `$2A6820`. Seed the 96-frame delay, then fall through into the step. */
+export function s8Init2A6820(ram, a4) {
+  ram.setU16(a4 + 0x02, 0x0060);
+}
+
+/** `$2A6826`. Start gun 2 after the freeze-aware delay, then wait and hand to A4 9. */
+export function s8Step2A6826(ram, a4) {
+  if (ram.u16(a4 + 0x02) !== 0) {
+    if (ram.u16(HIBACHI_A4.freeze) !== 0) return;
+    const left = u16(ram.u16(a4 + 0x02) - 1);
+    ram.setU16(a4 + 0x02, left);
+    if (left !== 0) return;
+    a1Start259A18(ram, 2);
+  }
+  if (a1Running259A4A(ram, 2)) return;
+  a4Start25980C(ram, 9);
+  ram.setU16(a4, 0);
+}
+
 // ------------------------------------------------------------------------- the registrations
 //
 // **THE INIT IS NOT A ROUTINE OF ITS OWN.**  W403, and it was wrong in every one of W399's
@@ -1345,6 +1365,10 @@ registerScript(HIBACHI_A4.s7Init, initThenStep(
   (ram, rom, ctx, a4) => s7Init2A67E8(ram, a4),
   (ram, rom, ctx, a4) => s7Step2A67EE(ram, a4)));
 registerScript(HIBACHI_A4.s7Step, (ram, rom, ctx, a4) => s7Step2A67EE(ram, a4));
+registerScript(HIBACHI_A4.s8Init, initThenStep(
+  (ram, rom, ctx, a4) => s8Init2A6820(ram, a4),
+  (ram, rom, ctx, a4) => s8Step2A6826(ram, a4)));
+registerScript(HIBACHI_A4.s8Step, (ram, rom, ctx, a4) => s8Step2A6826(ram, a4));
 registerScript(HIBACHI_A4.s14Init, initThenStep(
   (ram, rom, ctx, a4) => s14Init2A6B7A(ram, a4),
   (ram, rom, ctx, a4) => s14Step2A6B80(ram, a4)));
@@ -1352,7 +1376,7 @@ registerScript(HIBACHI_A4.s14Step, (ram, rom, ctx, a4) => s14Step2A6B80(ram, a4)
 
 /** The A4 ids whose init AND step this file registers. A test asserts this against the
  *  cartridge's own table rather than against the list above. */
-export const HIBACHI_END_SCRIPTS = Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 0x14]);
+export const HIBACHI_END_SCRIPTS = Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8, 0x14]);
 
 /** Every A4 id the chain hands to that is NOT ported, with the byte extent each occupies
  *  between its table entry and the next one. Counted, with the numbers measured. */

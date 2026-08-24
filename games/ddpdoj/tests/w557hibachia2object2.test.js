@@ -15,6 +15,7 @@ import {
 } from '../src/scheduler.js';
 import { BUCKETS, RECORD_BYTES } from '../src/spritequeue.js';
 import { HIBACHI_A2 } from '../src/hibachiend.js';
+import { ROM_WINDOW_COUNT } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -73,7 +74,7 @@ test('W557 cartridge pins object 2, its fixed art immediate, and object 3 bounda
     assert.equal(ROM.u32(HIBACHI_A2.table + 8), HIBACHI_A2.object2);
     assert.equal(ROM.u32(HIBACHI_A2.table + 12), HIBACHI_A2.object3);
     assert.ok(scriptAddresses().includes(HIBACHI_A2.object2));
-    assert.equal(TABLE_JSON.rom.windows.length, 816);
+    assert.equal(TABLE_JSON.rom.windows.length, ROM_WINDOW_COUNT);
     assert.equal(TABLE_JSON.rom.windows.some((w) => w.base === '$2A47D6'), false,
       'object 2 reads no cartridge data and declares no code-as-data window');
   });
