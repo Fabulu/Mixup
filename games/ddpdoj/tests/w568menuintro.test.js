@@ -14,7 +14,9 @@ import { MENU2911B0, SLOT7 } from '../src/objslot7pool.js';
 import { RomWindows } from '../src/rom.js';
 import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_OVERLAP_PAIRS, overlappingPairs } from './romwindowset.js';
+import {
+  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
@@ -27,6 +29,7 @@ const PERIODIC = here('../probes/checkpoints/ship0-style4-lf00077219.json');
 const FINAL = here('../probes/checkpoints/ship0-style4-lf00077631.json');
 const PRIOR_HASH = '145945830be69de56a76312f0d44aaedd47519083d0da70fce2361ea06dba289';
 const TABLE_HASH = 'a972deffd954503fe4752e93bbc4d3cc5205472c352dc05a0416bd948af944c7';
+const POST_W568_HASH = '3c480c86d79e63da7149fbf1ada5a454d4217cb2dffa6e0aab63ecebc94e9717';
 const INTRO_HASH = '6bce608701378f07dc56b0f0bc9b0ad5e663cbe99bec2537bf91b29e7fd0c3f2';
 const RELEASE = 0xffff;
 const LEFT = 0xfff7;
@@ -54,15 +57,19 @@ const required = [TABLES, IMAGE, EXPORTER, SLOT7_SOURCE, START, PERIODIC, FINAL,
 const SKIP = required.every(existsSync) ? false
   : 'exact W568 tables, image, assets, or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
-const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const LIVE_TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const TABLE_JSON = SKIP ? null : tableBeforeW569(LIVE_TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
   copy.rom.windows = copy.rom.windows.filter((w) => !WINDOW_BASES.has(w.base));
   return copy;
 })();
 const canonicalHash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const bundle = async () => loadBundle(
-  async (name) => new Uint8Array(readFileSync(path.join(ASSETS, name))));
+const bundle = async () => {
+  const live = await loadBundle(
+    async (name) => new Uint8Array(readFileSync(path.join(ASSETS, name))));
+  return { ...live, tables: TABLE_JSON };
+};
 const caught = (fn) => {
   try { fn(); return null; } catch (error) { return error; }
 };
@@ -77,6 +84,10 @@ function liveObject(ram, type) {
 
 test('W568 keeps cursor and seqSel independent, exports the exact intro, and enters loop 2',
   { skip: SKIP }, async () => {
+    assert.equal(canonicalHash(LIVE_TABLE_JSON), POST_W568_HASH);
+    assert.equal(LIVE_TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451951);
+    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH,
+      'removing only W569\'s final chain-meter word reconstructs W568 exactly');
     const windows = TABLE_JSON.rom.windows.filter((w) => WINDOW_BASES.has(w.base));
     assert.deepEqual(windows.map((w) => [w.base, w.len]), WINDOW_SPECS.map(([base, len]) => [
       `$${base.toString(16).toUpperCase()}`, len,
@@ -230,8 +241,9 @@ test('W568 keeps cursor and seqSel independent, exports the exact intro, and ent
     const final = JSON.parse(readFileSync(FINAL, 'utf8'));
     assert.deepEqual([final.frame.logic, final.frame.video, final.raw.stage,
       final.raw.stageX2, final.raw.stageX4, final.raw.loop, final.tablesSha256],
-    [77631, 81690, 0, 0, 0, 1, TABLE_HASH]);
-    const restoredFinal = restoreCheckpoint(final, exact, final.selection);
+    [77631, 81690, 0, 0, 0, 1, POST_W568_HASH]);
+    const restoredFinal = restoreCheckpoint(
+      { ...final, tablesSha256: TABLE_HASH }, exact, final.selection);
     restoredFinal.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
     const frontier = caught(() => restoredFinal.game.step(restoredFinal.probe.inputWord));
     assert.equal(restoredFinal.game.logicFrame, 77631);

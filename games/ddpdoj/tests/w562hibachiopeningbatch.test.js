@@ -30,7 +30,7 @@ import {
 import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
-  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs,
+  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs, tableBeforeW569,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -75,12 +75,12 @@ const POST_W563_BASES = new Set([
   '$2A9A68', '$2A9E50', '$2AA004', '$2AA040', ...W568_BASES,
 ]);
 const CHECKPOINT_TABLE = SKIP ? null : (() => {
-  const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  const copy = tableBeforeW569(TABLE_JSON);
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W563_BASES.has(w.base));
   return copy;
 })();
 const W562_TABLE = SKIP ? null : (() => {
-  const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  const copy = tableBeforeW569(TABLE_JSON);
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W562_BASES.has(w.base));
   return copy;
 })();

@@ -17,7 +17,7 @@ import {
 import { BUCKETS, RECORD_BYTES } from '../src/spritequeue.js';
 import { HIBACHI_A2 } from '../src/hibachiend.js';
 import {
-  ROM_OVERLAP_PAIRS, overlappingPairs,
+  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -49,7 +49,7 @@ const POST_W560_BASES = new Set([
   '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
 ]);
 const PRIOR_TABLE = SKIP ? null : (() => {
-  const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  const copy = tableBeforeW569(TABLE_JSON);
   copy.rom.windows = copy.rom.windows.filter((w) =>
     w.base !== '$2A4B40' && !POST_W560_BASES.has(w.base));
   return copy;

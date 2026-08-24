@@ -21,7 +21,9 @@ import {
   HIBACHI_A1, HIBACHI_A1_ALT_COUNTED, HIBACHI_A1_ALT_END, HIBACHI_A1_ALT_SCRIPTS,
   altGun4Init2AA072, altGun4Step2AA084,
 } from '../src/hibachiguns.js';
-import { ROM_OVERLAP_PAIRS, overlappingPairs } from './romwindowset.js';
+import {
+  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -42,7 +44,7 @@ const W568_BASES = new Set([
   '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
 ]);
 const W566_TABLE = SKIP ? null : (() => {
-  const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  const copy = tableBeforeW569(TABLE_JSON);
   copy.rom.windows = copy.rom.windows.filter((w) => !W568_BASES.has(w.base));
   return copy;
 })();

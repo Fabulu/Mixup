@@ -31,7 +31,9 @@ import {
 } from '../src/hibachiguns.js';
 import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_OVERLAP_PAIRS, overlappingPairs } from './romwindowset.js';
+import {
+  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -60,7 +62,7 @@ const POST_W563_BASES = new Set([
   '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
 ]);
 const W563_TABLE = SKIP ? null : (() => {
-  const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  const copy = tableBeforeW569(TABLE_JSON);
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W563_BASES.has(w.base));
   return copy;
 })();

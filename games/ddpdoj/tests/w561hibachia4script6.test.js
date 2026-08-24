@@ -21,6 +21,7 @@ import {
 } from '../src/hibachiend.js';
 import { HIBACHI_A1 } from '../src/hibachiguns.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
+import { tableBeforeW569 } from './romwindowset.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const IMAGE = path.resolve(HERE, '../tools/oracle/out/maincpu.bin');
@@ -48,7 +49,7 @@ const POST_W563_BASES = new Set([
   '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
 ]);
 function checkpointBundlesWithW562Ablated() {
-  const exactTables = JSON.parse(JSON.stringify(TABLE_JSON));
+  const exactTables = tableBeforeW569(TABLE_JSON);
   exactTables.rom.windows = exactTables.rom.windows.filter(
     (w) => !POST_W563_BASES.has(w.base));
   const exact = { seed: new Uint8Array(gunzipSync(readFileSync(SEED))), tables: exactTables };

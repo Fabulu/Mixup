@@ -16,7 +16,7 @@ import {
 } from '../src/scheduler.js';
 import { BUCKETS, RECORD_BYTES } from '../src/spritequeue.js';
 import { HIBACHI_A2 } from '../src/hibachiend.js';
-import { ROM_WINDOW_COUNT } from './romwindowset.js';
+import { ROM_WINDOW_COUNT, tableBeforeW569 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const IMAGE = here('../tools/oracle/out/maincpu.bin');
@@ -135,8 +135,9 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
     for (let i = 0; i < HIBACHI_A2.object3ArtFrames; i++) {
       assert.equal(ROM.u32(HIBACHI_A2.object3Art + i * 4), beU32(HIBACHI_A2.object3Art + i * 4));
     }
-    const w558 = { ...TABLE_JSON, rom: { ...TABLE_JSON.rom,
-      windows: TABLE_JSON.rom.windows.filter((w) => !POST_W558_BASES.has(w.base)) } };
+    const w568 = tableBeforeW569(TABLE_JSON);
+    const w558 = { ...w568, rom: { ...w568.rom,
+      windows: w568.rom.windows.filter((w) => !POST_W558_BASES.has(w.base)) } };
     assert.equal(w558.rom.windows.length, 815);
     assert.equal(canonicalHash(w558), W558_TABLE_SHA256,
       'stripping W560, W562, and W563 reconstructs the exact W558 identity');

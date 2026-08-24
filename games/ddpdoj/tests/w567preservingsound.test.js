@@ -21,6 +21,7 @@ import { ALLOC } from '../src/objalloc.js';
 import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import { RAM, P } from '../src/machine.js';
+import { tableBeforeW569 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
@@ -40,7 +41,7 @@ const W568_BASES = new Set([
   '$290442', '$290462', '$29051A', '$29058E', '$2905A2', '$2905CA', '$2906C6',
 ]);
 const W567_TABLE = SKIP ? null : (() => {
-  const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  const copy = tableBeforeW569(TABLE_JSON);
   copy.rom.windows = copy.rom.windows.filter((w) => !W568_BASES.has(w.base));
   return copy;
 })();

@@ -497,6 +497,12 @@
 // longwords the intro indexes. Measured: 825 -> 839 windows,
 // 451,687 -> 451,949 bytes, 77 -> 77 pairs.
 
+// ---------------------------------------------------------------------------
+// W569 WIDENED ONE EXISTING WINDOW BY ONE WORD.
+// ---------------------------------------------------------------------------
+// The chain-meter cap is an inclusive maximum index. Loop 2 therefore reads the
+// zero word at $2881CE. Measured: 839 windows, 451,949 -> 451,951 bytes, 77 pairs.
+
 export const ROM_WINDOW_COUNT = 839;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
@@ -529,6 +535,26 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
 /** The count every one of these tests used to inline, kept so the prose below
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
+
+const W568_CHAIN_WHY = 'W113: chain-bar stage pointers $28809E (2 longs to '
+  + '$2880A6/$28811A) + per-stage meter data (loop 0: 56 words, loop 1: 90 words), '
+  + 'far end $2881CE pinned by the panel tile table $2881F2';
+
+/** Reconstruct the exact W568 table from W569's one-word chain-meter widening. */
+export function tableBeforeW569(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const index = copy.rom.windows.findIndex((w) => w.base === '$28809E');
+  if (index === -1) throw new Error('the $28809E chain-meter window is absent');
+  const window = copy.rom.windows[index];
+  if (window.len === 0x0130) return copy;
+  if (window.len !== 0x0132 || !window.hex.endsWith('0000')) {
+    throw new Error('the $28809E chain-meter window is not the exact W569 additive shape');
+  }
+  copy.rom.windows[index] = {
+    base: '$28809E', len: 0x0130, why: W568_CHAIN_WHY, hex: window.hex.slice(0, -4),
+  };
+  return copy;
+}
 
 /** Every unordered pair of windows whose byte ranges intersect. `list` is the
  *  `[base, len]` shape the tests build from `tables.rom.windows`. Abutting is

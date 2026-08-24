@@ -1841,9 +1841,10 @@ SHOT_WINDOWS.extend([
 #            Entry [0] = $2880A6 (loop 0 meter data), [1] = $28811A (loop 1).
 #            The meter data is words indexed by meter*2 ($2859F2 `add.w D6,D6 /
 #            move.w (A0,D6.w),D2`); the chain meter CAP table $287DF0 (W34) pins
-#            the extent: loop 0 cap = $38 = 56 words, loop 1 cap = $5A = 90.
-#            So loop 0 runs $2880A6..$288116 and loop 1 $28811A..$2881CE, and
-#            $2881CE..$2881F2 (the panel tile table below) pins the far end.
+#            the extent: loop 0 cap = $38 and loop 1 cap = $5A. W569 CORRECTION:
+#            these are inclusive maximum indices, not word counts. Loop 0 therefore
+#            has 57 words ending at $288118; loop 1 has 91 ending at $2881D0. The gap
+#            $2881D0..$2881F2 before the panel tile table pins the far end.
 #   $2881F2  the panel tile table, read at $285C86 `lea $2881F2,A0 /
 #            move.l (A0,D2.w),D2` with D2 = hyperlevel * 4 (max 7, from
 #            `divu.w #$4B0`). EIGHT longwords ($1CBF98..$1CBCDC), 32 bytes.
@@ -1854,9 +1855,9 @@ SHOT_WINDOWS.extend([
 #            EIGHT longwords ($1CED18..$1CEC54), 32 bytes.
 #
 SHOT_WINDOWS.extend([
-    (0x28809E, 0x0130, "W113: chain-bar stage pointers $28809E (2 longs to "
-                       "$2880A6/$28811A) + per-stage meter data (loop 0: 56 "
-                       "words, loop 1: 90 words), far end $2881CE pinned by the "
+    (0x28809E, 0x0132, "W113+W569: chain-bar stage pointers $28809E (2 longs to "
+                       "$2880A6/$28811A) + inclusive per-loop meter data (loop 0: "
+                       "57 words, loop 1: 91 words), far end $2881D0 before the "
                        "panel tile table $2881F2"),
     (0x2881F2, 0x0140, "W113: panel tile table $2881F2 (8 longwords, "
                        "$285C86/$285E00) and rank-icon P1 table $2882A6.  W124 "
@@ -8526,9 +8527,10 @@ def check_hud_sprite_extents(d: bytes) -> None:
     """W113.  ASSERT THE HUD SPRITE-FRAME TABLES AGAINST THE CARTRIDGE.
 
     The chain bar reads `$28809E[loop]` as a pointer, then indexes the pointed-to
-    table by meter*2.  The panel and rank tables are 8-longword arrays.  Every
-    extent is pinned by the cap table $287DF0 (chain meter caps) or by counting
-    the longwords the instruction reads -- never by "what a run reached".
+    table by meter*2. The cap table stores inclusive maximum indices, so each
+    table contains cap+1 words. The panel and rank tables are longword arrays.
+    Every extent is pinned by the cap table $287DF0 (chain meter caps) or by
+    counting the longwords the instruction reads, never by "what a run reached".
     """
     # 1. the chain-bar stage pointers must point INSIDE the window.
     p0 = u32(d, 0x28809E)
@@ -8545,8 +8547,8 @@ def check_hud_sprite_extents(d: bytes) -> None:
     if cap0 == 0 or cap1 == 0:
         raise SystemExit("$287DF0 chain meter cap table has a zero entry.")
     # loop 0 data must end at or before loop 1's start; loop 1's end pins the window.
-    end0 = p0 + cap0 * 2
-    end1 = p1 + cap1 * 2
+    end0 = p0 + (cap0 + 1) * 2
+    end1 = p1 + (cap1 + 1) * 2
     if end0 > p1:
         raise SystemExit(
             f"loop 0 meter data ${p0:06X}..${end0:06X} overruns loop 1 at "
@@ -8555,7 +8557,7 @@ def check_hud_sprite_extents(d: bytes) -> None:
     if not declared or 0x28809E + declared[0][1] < end1:
         raise SystemExit(
             f"the $28809E window is {declared} and must reach ${end1:06X} -- "
-            f"loop 1's meter data ($287DF0 cap = {cap1} words). A SHORT window "
+            f"loop 1's meter data ($287DF0 inclusive cap = {cap1}). A SHORT window "
             f"is not caught here, it is caught by src/rom.js on a player's "
             f"machine.")
     # 3. the panel tile table $2881F2 (hyperlevel max 7, so 8 longwords) AND the
