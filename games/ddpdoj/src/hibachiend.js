@@ -1,5 +1,5 @@
-// HIBACHI'S A2 OBJECTS 0/1/2, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
-// W399, W403, W409, W552, W553, W555, W556, W557.
+// HIBACHI'S A2 OBJECTS 0/1/2/3, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -127,6 +127,10 @@ export const HIBACHI_A2 = Object.freeze({
   object2CodeEnd: 0x2a4814,
   object2Art: 0x00101728,
   object3: 0x2a4816,
+  object3CodeEnd: 0x2a4864,
+  object3Art: 0x2a49f6,
+  object3ArtFrames: 64,
+  object4: 0x2a4866,
 });
 
 /** `$2A4300` installs this main-sequencer table. It contains twelve init/step pairs;
@@ -367,6 +371,29 @@ export function a2Object2_2A47D6(ram, rom, ctx) {
   d1 = (d1 + 0xf400f900) >>> 0;
   enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1,
     HIBACHI_A2.object2Art, 0x0c38, ram.u8(a6 + 0xe8));
+}
+
+// ========================================================== A2 OBJECT 3 -- LEFT OUTER PART
+// `$2A4816..$2A4863` is straight-line code ending in a tail `jmp $23DFEA`.
+// `$2A4864` is alignment and object 4 starts at `$2A4866`.
+
+/** `$2A4816`. Update the left attachment offsets and enqueue its selected frame. */
+export function a2Object3_2A4816(ram, rom, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A2.object3);
+  const vector = ram.u16(a6 + 0x1fa);
+  ram.setU16(a6 + 0x070, u16(0x0a00 + vector));
+  ram.setU16(a6 + 0x072, u16(0x0600 - vector));
+
+  // The two `add.w D2,D2` instructions wrap before the signed word index is extended.
+  const artOffset = i16(u16(ram.u16(a6 + 0x07a) * 4));
+  const art = rom.u32(HIBACHI_A2.object3Art + artOffset);
+
+  // `$2A484E` is a long addition, including carry from X into Y.
+  let d1 = ((u16(ram.u16(a6 + 0x062) + vector) << 16) | ram.u16(a6 + 0x064)) >>> 0;
+  d1 = (d1 + ram.u32(a6 + 0x066)) >>> 0;
+  const d4 = (ram.u16(a6 + 0x07c) & 0xff00) | ram.u8(a6 + 0x0e9);
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1, art,
+    ram.u16(a6 + 0x06e), d4);
 }
 
 // ========================================================== A0 MAIN SCRIPT 0 -- THE ARRIVAL POSITION
@@ -1015,6 +1042,7 @@ export function s14Step2A6B80(ram, a4) {
 registerScript(HIBACHI_A2.object0, a2Object0_2A4702);
 registerScript(HIBACHI_A2.object1, a2Object1_2A478C);
 registerScript(HIBACHI_A2.object2, a2Object2_2A47D6);
+registerScript(HIBACHI_A2.object3, a2Object3_2A4816);
 
 registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Init2A4F56(ram, rom, ctx),

@@ -434,7 +434,15 @@
 // after the routine's alignment word and ends exactly at object 1 `$2A478C`.
 // Measured: 813 -> 814 windows, 450,869 -> 450,893 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 814;
+// ---------------------------------------------------------------------------
+// W558 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$2A49F6 + $100` is Hibachi A2 objects 3 through 8's shared 64-longword art
+// table. It begins after object 8's alignment and ends exactly at object 9
+// `$2A4AF6`. Measured: 814 -> 815 windows, 450,893 -> 451,149 bytes,
+// 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 815;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

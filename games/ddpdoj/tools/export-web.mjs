@@ -302,9 +302,13 @@ const HARVEST = Object.freeze([
   [0, 0x288d82, 8, 4, 17, 0x288dc6,
     'slot-14 Game Over rank-selected table B, eight reachable descriptors'],
   // W555. Hibachi A2 object 0 selects one of these six authentic body frames
-  // through the raw byte offset at A6+$128. Object 1 code begins at the exact end.
+  // through the signed word offset at A6+$128. Object 1 code begins at the exact end.
   [17, 0x2a4774, 6, 4, 6, 0x2a478c,
     'Hibachi A2 object 0, six selector frames ending exactly at object 1 code'],
+  // W558. Hibachi A2 objects 3 through 8 share this complete 64-frame table.
+  // Object 9 code begins at the exact end.
+  [17, 0x2a49f6, 64, 4, 64, 0x2a4af6,
+    'Hibachi A2 objects 3 through 8, 64 selector frames ending at object 9 code'],
   [17, TYPE3B_ART.hullTable, TYPE3B_ART.hullFrames + 1, 4,
     30, 0x265348,
     'stage-3 type $3B hull animation plus its fixed satellite. The handler '
@@ -1291,15 +1295,16 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
       || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
       || w203StreamsBefore !== 166 + typeBShipAdded
-      || streams.size !== 2026 + typeBShipAdded) {
+      || streams.size !== 2090 + typeBShipAdded) {
     throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
       + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
       + `expected 64 on the $F4 chain, ${166 + typeBShipAdded} before, and `
-      + `${2026 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
+      + `${2090 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
   }
   // W419 moved the fixed post-harvest baseline from 1975 to 2011. W498 adds
   // slot 14's separately asserted nine-stream Game Over family, making it 2020;
-  // W555 adds Hibachi's six body frames, making it 2026.
+  // W555 adds Hibachi's six body frames, making it 2026. W558 adds the shared
+  // 64-frame part table, making it 2090.
   // W497's 17 Type-B ship streams remain an independent addition to both exact
   // totals. The two W203 rows remain added 32 / already 0.
 }

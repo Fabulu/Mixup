@@ -97,17 +97,19 @@ test('W556 object 1 stores its vector, emits exactly, and persists', { skip: SKI
   assert.equal(b.ram.u32(slot + 2), HIBACHI_A2.object1);
 });
 
-test('W556 object 3 is the live next blocker after objects 1 and 2 emit', { skip: SKIP }, () => {
+test('W556 object 4 is the live next blocker after objects 1 through 3 emit', { skip: SKIP }, () => {
   const b = bench();
   a2Run2598E6(b.ram, 1);
   a2Run2598E6(b.ram, 2);
   a2Run2598E6(b.ram, 3);
+  a2Run2598E6(b.ram, 4);
   const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-  assert.equal(error?.romAddress, HIBACHI_A2.object3);
+  assert.equal(error?.romAddress, HIBACHI_A2.object4);
   assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride), 0x8001);
   assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 2), 0x8001);
   assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 3), 0x8001);
-  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 2);
+  assert.equal(b.ram.u16(SCHED.a2Base + SCHED.a2Stride * 4), 0x8001);
+  assert.equal(b.ram.u16(BUCKETS[1].counter), RECORD_BYTES * 3);
   assert.equal(requestHex(b.ram), '862a83e00011676821200011');
 });
 
@@ -125,11 +127,11 @@ test('W556 ships the one fixed lower-body stream in the boss shard',
     }
     const row = rows.get(HIBACHI_A2.object1Art);
     const shard = manifest.spr.shards[17];
-    assert.deepEqual(row, { base: 2234918, maskWords: 4610 });
+    assert.deepEqual(row, { base: 2270886, maskWords: 4610 });
     assert.ok(row.base >= shard.maskFrom && row.base + row.maskWords <= shard.maskFrom + shard.maskLen);
-    assert.equal(manifest.spr.streamCount, 4915);
-    assert.equal(shard.streams, 1239);
-    assert.equal(shard.maskLen, 780310);
-    assert.equal(shard.colLen, 1969112);
-    assert.equal(manifest.spr.maskUsed, 2620310);
+    assert.equal(manifest.spr.streamCount, 4979);
+    assert.equal(shard.streams, 1303);
+    assert.equal(shard.maskLen, 816278);
+    assert.equal(shard.colLen, 2001559);
+    assert.equal(manifest.spr.maskUsed, 2656278);
   });

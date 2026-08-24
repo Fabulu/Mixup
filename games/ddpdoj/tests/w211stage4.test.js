@@ -115,7 +115,7 @@ test('W211 static Stage-4 census, resource, terrain, and opening closure',
   // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
   // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
   // shard 9 at 313/166,218.
-  assert.equal(manifest.spr.streamCount, 4915);
+  assert.equal(manifest.spr.streamCount, 4979);
 });
 
 test('W211 real Stage-4 opening installs terrain, draws id 5, and pulses A6',
