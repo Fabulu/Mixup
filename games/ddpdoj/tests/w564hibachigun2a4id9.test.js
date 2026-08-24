@@ -125,7 +125,7 @@ async function bundle() {
 test('W564 is one strict additive $2A9A68+$18 window with no padding', { skip: SKIP }, () => {
   assert.deepEqual(W564_TABLE, FUTURE_TABLE,
     'removing the later W565-W568 windows reconstructs the strict W564 additive result');
-  assert.equal(TABLE_JSON.rom.windows.length, 839);
+  assert.equal(TABLE_JSON.rom.windows.length, 843);
   assert.equal(PRIOR_TABLE.rom.windows.length, 821);
   assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
   assert.equal(W564_TABLE.rom.windows.length, 822);

@@ -16,7 +16,7 @@ import { UnportedLog } from '../src/unported.js';
 import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
-  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569,
+  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569, tableBeforeW570,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -28,20 +28,25 @@ const MIGRATED = here('../probes/checkpoints/ship0-style4-lf00077631.json');
 const FRONTIER = here('../probes/checkpoints/ship0-style4-lf00144631.json');
 const PRIOR_HASH = 'a972deffd954503fe4752e93bbc4d3cc5205472c352dc05a0416bd948af944c7';
 const TABLE_HASH = '3c480c86d79e63da7149fbf1ada5a454d4217cb2dffa6e0aab63ecebc94e9717';
+const POST_W569_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
 const required = [TABLES, IMAGE, EXPORTER, MIGRATED, FRONTIER,
   path.join(ASSETS, 'seed.bin.gz'), path.join(ASSETS, 'player.tables.json.gz')];
 const SKIP = required.every(existsSync) ? false
   : 'exact W569 tables, image, assets, or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
-const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const LIVE_TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const TABLE_JSON = SKIP ? null : tableBeforeW570(LIVE_TABLE_JSON);
 const WINDOW_INDEX = SKIP ? -1
   : TABLE_JSON.rom.windows.findIndex((w) => w.base === '$28809E');
 const WINDOW = SKIP ? null : TABLE_JSON.rom.windows[WINDOW_INDEX];
 const PRIOR_TABLE = SKIP ? null : tableBeforeW569(TABLE_JSON);
 const canonicalHash = (value) => createHash('sha256')
   .update(JSON.stringify(value)).digest('hex');
-const bundle = async () => loadBundle(
-  async (name) => new Uint8Array(readFileSync(path.join(ASSETS, name))));
+const bundle = async () => {
+  const live = await loadBundle(
+    async (name) => new Uint8Array(readFileSync(path.join(ASSETS, name))));
+  return { ...live, tables: TABLE_JSON };
+};
 const caught = (fn) => {
   try { fn(); return null; } catch (error) { return error; }
 };
@@ -123,11 +128,12 @@ test('W569 migrates the exact frontier, clears loop-2 stages 1 to 4, and reaches
       frontier.raw.stage, frontier.raw.stageX2, frontier.raw.stageX4, frontier.raw.loop,
       frontier.ramSha256, frontier.gameSha256,
     ], [
-      TABLE_HASH, 144631, 155220, 4, 8, 16, 1,
+      POST_W569_HASH, 144631, 155220, 4, 8, 16, 1,
       'cb290e6ee0d50a296233a76a7be1a1fc1dea4a10e1c995770a2d3b7a63ba3b15',
       '9340889f30fe7ceaf774fd1c6c5ca2133ab4c5569929d4456aeb73dc479ac6e1',
     ]);
-    const restored = restoreCheckpoint(frontier, exact, frontier.selection);
+    const restored = restoreCheckpoint(
+      { ...frontier, tablesSha256: TABLE_HASH }, exact, frontier.selection);
     let error = null;
     let attempted = 0;
     for (attempted = 1; attempted <= 500; attempted++) {
@@ -144,6 +150,7 @@ test('W569 migrates the exact frontier, clears loop-2 stages 1 to 4, and reaches
     assert.equal(restored.game.videoFrame, 155579);
     assert.equal(restored.game.ram.u16(0x813092), 4);
     assert.equal(restored.game.ram.u16(0x813098), 1);
-    assert.equal(error?.romAddress, 0x2a738a);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A738A/);
+    assert.equal(error?.romAddress, 0x2a733c);
+    assert.match(error?.message ?? '', /word at \$2A733C/,
+      'the later gun-0 port reaches its first W570-only template word at the same frontier');
   });

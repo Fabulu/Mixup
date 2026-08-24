@@ -215,6 +215,9 @@ export const HIBACHI_A1 = Object.freeze({
   afterMain: 0x2a7338,
   /** `$2A9318`: the head of the alt table's data blob. */
   afterAlt: 0x2a9318,
+  gun0Template: 0x2a733c, gun0Init: 0x2a738a, gun0Step: 0x2a7400,
+  gun0Muzzles: 0x2a7372, gun0Curtain: 0x2a76d6, gun0Vectors: 0x2a7712,
+  gun0Spawn: 0x2816f6,
   altGun0Template: 0x2a9318, altGun0Init: 0x2a9366, altGun0Step: 0x2a93dc,
   altGun0Muzzles: 0x2a934e, altGun0Burst: 0x2a967a,
   altGun0Vectors: 0x2a96b6, altGun0Spawn: 0x2817b8,
@@ -352,29 +355,29 @@ function shot(ram, rom, ctx, site, regs, entry = HIBACHI_A1.spawn) {
 }
 
 // ===========================================================================
-// LOOP-ZERO GUN 0 -- $2A9366 / $2A93DC
+// MAIN GUN 0 -- $2A738A / $2A7400
 // ===========================================================================
 
-const ALT_GUN0_PARTS = Object.freeze([0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0]);
-const ALT_GUN0_CALLS = Object.freeze([
-  Object.freeze([0x2a943a, 0x2a9444, 0x2a944e]),
-  Object.freeze([0x2a947c]),
-  Object.freeze([0x2a94aa]),
-  Object.freeze([0x2a94d8, 0x2a94e2, 0x2a94ec]),
-  Object.freeze([0x2a951a]),
-  Object.freeze([0x2a9548]),
+const GUN0_PARTS = Object.freeze([0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0]);
+const MAIN_GUN0_CALLS = Object.freeze([
+  Object.freeze([[0x00, 0x18, -0x18], [0x2a7468, 0x2a7472, 0x2a747c]]),
+  Object.freeze([[0x0c, -0x0c], [0x2a74ae, 0x2a74b8]]),
+  Object.freeze([[0x00], [0x2a74e6]]),
+  Object.freeze([[0x00, 0x18, -0x18], [0x2a7514, 0x2a751e, 0x2a7528]]),
+  Object.freeze([[0x0c, -0x0c], [0x2a755a, 0x2a7564]]),
+  Object.freeze([[0x00], [0x2a7592]]),
 ]);
+const MAIN_GUN0_CURTAIN_SITES = Object.freeze([0x2a75e6, 0x2a75dc]);
 
-function altGun0Randomize(ram, rom, a4) {
-  for (let i = 0; i < ALT_GUN0_PARTS.length; i++) {
+function gun0Randomize(ram, rom, a4) {
+  for (let i = 0; i < GUN0_PARTS.length; i++) {
     ram.setU8(a4 + 0x1a + i, drawByte242B3C(ram, rom));
   }
 }
 
-/** `$2A9366`. Copy eleven words, draw six headings, and apply the loop-zero ramps. */
-export function altGun0Init2A9366(ram, rom, a4, a6) {
-  copyTemplate(ram, rom, a4, HIBACHI_A1.altGun0Template, 11);
-  altGun0Randomize(ram, rom, a4);
+function gun0Init(ram, rom, a4, a6, template) {
+  copyTemplate(ram, rom, a4, template, 11);
+  gun0Randomize(ram, rom, a4);
   const volleyRamp = ram.u8(a6 + 0x1c6);
   ram.setU8(a4 + 0x06, u8(ram.u8(a4 + 0x06) + volleyRamp));
   ram.setU8(a4 + 0x07, u8(ram.u8(a4 + 0x07) + volleyRamp));
@@ -385,12 +388,110 @@ export function altGun0Init2A9366(ram, rom, a4, a6) {
   ram.setU16(a4 + 0x0e, u16(ram.u16(a4 + 0x0e) + biasRamp));
 }
 
+/** `$2A738A`. Copy eleven words, draw six headings, and apply the shared gun-0 ramps. */
+export function gun0Init2A738A(ram, rom, a4, a6) {
+  gun0Init(ram, rom, a4, a6, HIBACHI_A1.gun0Template);
+}
+
+function gun0PrimaryVolley(ram, rom, ctx, a4, a5, a6) {
+  const d0 = ram.u32(a4 + 0x0a);
+  const d2 = ram.u32(a6 + 0x02);
+  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 1);
+  for (let i = 0; i < GUN0_PARTS.length; i++) {
+    const facing = ram.u16(a6 + GUN0_PARTS[i] + 0x1a);
+    const scaled = u16((facing & 0xff00) | u8((facing & 0xff) * 4));
+    const base = u16((scaled & 0xff00) | u8(scaled + ram.u8(a4 + 0x1a + i)));
+    const d3 = (rom.u32(HIBACHI_A1.gun0Vectors + i16(scaled))
+      + rom.u32(HIBACHI_A1.gun0Muzzles + i * 4)) >>> 0;
+    const [offsets, sites] = MAIN_GUN0_CALLS[i];
+    for (let k = 0; k < offsets.length; k++) {
+      const d1 = u16((base & 0xff00) | u8(base + offsets[k]));
+      shot(ram, rom, ctx, sites[k],
+        { d0, d1, d2, d3, d4: 0, d5: 0, a5 }, HIBACHI_A1.gun0Spawn);
+    }
+  }
+}
+
+function gun0Curtain(ram, rom, ctx, a4, a5, a6) {
+  const d2 = ram.u32(a6 + 0x02);
+  for (let row = 0; row < 6; row++) {
+    const at = HIBACHI_A1.gun0Curtain + row * 10;
+    const bias = u16(ram.u16(a6 + 0x1d8) + rom.u16(at));
+    const d0 = ((bias << 16) | rom.u16(at + 2)) >>> 0;
+    let d1 = u16(rom.u16(at + 4) - 0x20);
+    const d5 = rom.u32(at + 6);
+    for (let k = 0; k < 9; k++) {
+      shot(ram, rom, ctx, MAIN_GUN0_CURTAIN_SITES[k & 1],
+        { d0, d1, d2, d3: vector(rom, d1, d5), d4: 0, d5, a5 },
+        HIBACHI_A1.gun0Spawn);
+      d1 = u16(d1 + 8);
+    }
+  }
+}
+
+/** `$2A7400`. Fire twelve attached shots, the periodic 54-shot curtain, and retire. */
+export function gun0Step2A7400(ram, rom, ctx, a4, a5, a6) {
+  if (!gunTick(ram, a4, () => gun0Init2A738A(ram, rom, a4, a6))) return;
+
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x08));
+  gun0PrimaryVolley(ram, rom, ctx, a4, a5, a6);
+  if (ram.u8(a4 + 0x04) === 0) gun0Curtain(ram, rom, ctx, a4, a5, a6);
+
+  const magazine = ram.u8(a4 + 0x04);
+  ram.setU8(a4 + 0x04, u8(magazine - 1));
+  if (magazine !== 0) return;
+
+  ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
+  gun0Randomize(ram, rom, a4);
+  if (i16(ram.u16(a4 + 0x0a)) < 0x10) {
+    ram.setU16(a4 + 0x0a, u16(ram.u16(a4 + 0x0a) + 1));
+  }
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x09));
+  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
+  ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);
+
+  const groups = ram.u8(a4 + 0x06);
+  ram.setU8(a4 + 0x06, u8(groups - 1));
+  if (groups !== 0) return;
+
+  ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));
+  if (ram.u8(a6 + 0x1c6) < 6) ram.setU8(a6 + 0x1c6, u8(ram.u8(a6 + 0x1c6) + 2));
+  if (ram.u8(a6 + 0x1c8) < 3) ram.setU8(a6 + 0x1c8, u8(ram.u8(a6 + 0x1c8) + 1));
+  if (ram.u8(a6 + 0x1c9) < 0x20) ram.setU8(a6 + 0x1c9, u8(ram.u8(a6 + 0x1c9) + 8));
+  if (i16(ram.u16(a6 + 0x1ca)) < 0x10) {
+    ram.setU16(a6 + 0x1ca, u16(ram.u16(a6 + 0x1ca) + 1));
+  }
+  if (i16(ram.u16(a6 + 0x1d8)) < 4) {
+    ram.setU16(a6 + 0x1d8, u16(ram.u16(a6 + 0x1d8) + 1));
+  }
+  a1Stop259B08(ram, 0);
+}
+
+// ===========================================================================
+// LOOP-ZERO GUN 0 -- $2A9366 / $2A93DC
+// ===========================================================================
+
+const ALT_GUN0_CALLS = Object.freeze([
+  Object.freeze([0x2a943a, 0x2a9444, 0x2a944e]),
+  Object.freeze([0x2a947c]),
+  Object.freeze([0x2a94aa]),
+  Object.freeze([0x2a94d8, 0x2a94e2, 0x2a94ec]),
+  Object.freeze([0x2a951a]),
+  Object.freeze([0x2a9548]),
+]);
+
+/** `$2A9366`. Copy eleven words, draw six headings, and apply the loop-zero ramps. */
+export function altGun0Init2A9366(ram, rom, a4, a6) {
+  gun0Init(ram, rom, a4, a6, HIBACHI_A1.altGun0Template);
+}
+
 function altGun0AttachedVolley(ram, rom, ctx, a4, a5, a6) {
   const d0 = ram.u32(a4 + 0x0a);
   const d2 = ram.u32(a6 + 0x02);
-  for (const part of ALT_GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 1);
-  for (let i = 0; i < ALT_GUN0_PARTS.length; i++) {
-    const part = ALT_GUN0_PARTS[i];
+  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 1);
+  for (let i = 0; i < GUN0_PARTS.length; i++) {
+    const part = GUN0_PARTS[i];
     const facing = ram.u16(a6 + part + 0x1a);
     const scaled = u16((facing & 0xff00) | u8((facing & 0xff) * 4));
     let d1 = u16((scaled & 0xff00) | u8(scaled + ram.u8(a4 + 0x1a + i)));
@@ -442,12 +543,12 @@ export function altGun0Step2A93DC(ram, rom, ctx, a4, a5, a6) {
   if (magazine !== 0) return;
 
   ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
-  altGun0Randomize(ram, rom, a4);
+  gun0Randomize(ram, rom, a4);
   if (i16(ram.u16(a4 + 0x0a)) < 0x10) {
     ram.setU16(a4 + 0x0a, u16(ram.u16(a4 + 0x0a) + 1));
   }
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x09));
-  for (const part of ALT_GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
+  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
   ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);
 
   const groups = ram.u8(a4 + 0x06);
@@ -488,7 +589,7 @@ export function altGun1Init2A97F4(ram, rom, a4, a6) {
     ram.setU8(a4 + 0x1e, u8(ram.u8(a4 + 0x1e) + drawByte2431F4(ram, rom)));
     ram.setU8(a4 + 0x1f, u8(ram.u8(a4 + 0x1f) + drawByte2431F4(ram, rom)));
   }
-  for (const part of ALT_GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 1);
+  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 1);
 
   const volleyRamp = ram.u8(a6 + 0x1cc);
   ram.setU8(a4 + 0x04, u8(ram.u8(a4 + 0x04) + volleyRamp));
@@ -606,7 +707,7 @@ export function altGun1Step2A9874(ram, rom, ctx, a4, a5, a6) {
   if (i16(ram.u16(a6 + 0x1d0)) < 0x1a) {
     ram.setU16(a6 + 0x1d0, u16(ram.u16(a6 + 0x1d0) + 1));
   }
-  for (const part of ALT_GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
+  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
   a1Stop259B08(ram, 1);
 }
 
@@ -624,7 +725,7 @@ const ALT_GUN2_STANDARD = Object.freeze([
 ]);
 
 function altGun2Randomize(ram, rom, a4) {
-  for (let i = 0; i < ALT_GUN0_PARTS.length; i++) {
+  for (let i = 0; i < GUN0_PARTS.length; i++) {
     ram.setU8(a4 + 0x14 + i, drawByte242B3C(ram, rom));
   }
 }
@@ -696,8 +797,8 @@ function altGun2Standard(ram, rom, ctx, a4, a5, a6) {
 
 function altGun2RotateParts(ram, a4, a6) {
   const step = ram.u8(a4 + 0x12);
-  for (let i = 0; i < ALT_GUN0_PARTS.length; i++) {
-    const at = a6 + ALT_GUN0_PARTS[i] + 0x1b;
+  for (let i = 0; i < GUN0_PARTS.length; i++) {
+    const at = a6 + GUN0_PARTS[i] + 0x1b;
     const next = i % 2 === 0 ? ram.u8(at) + step : ram.u8(at) - step;
     ram.setU8(at, u8(next) & 0x3f);
   }
@@ -710,7 +811,7 @@ export function altGun2Step2A9B0E(ram, rom, ctx, a4, a5, a6) {
   if (timer !== 0) return;
 
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x08));
-  for (const part of ALT_GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 1);
+  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 1);
 
   let skipStandard = false;
   if ((ram.u8(a4 + 0x04) & 2) !== 0) {
@@ -740,7 +841,7 @@ export function altGun2Step2A9B0E(ram, rom, ctx, a4, a5, a6) {
   if (ram.u16(a6 + 0x1d4) < 4) {
     ram.setU16(a6 + 0x1d4, u16(ram.u16(a6 + 0x1d4) + 1));
   }
-  for (const part of ALT_GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
+  for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
   a1Stop259B08(ram, 2);
 }
 
@@ -2136,6 +2237,11 @@ export function a4Ten2A6A76(ram, a4, init) {
 // ===========================================================================
 // The A1 pairs register SEPARATELY, because `4E75` at `step - 2` says the init
 // does NOT fall through -- the opposite of `hibachiend.js`'s `initThenStep`.
+registerScript(HIBACHI_A1.gun0Init, (ram, rom, ctx, a4) =>
+  gun0Init2A738A(ram, rom, a4, bossA6(ctx, HIBACHI_A1.gun0Init)));
+registerScript(HIBACHI_A1.gun0Step, (ram, rom, ctx, a4) =>
+  gun0Step2A7400(ram, rom, ctx, a4, bossA5(ctx, HIBACHI_A1.gun0Step),
+    bossA6(ctx, HIBACHI_A1.gun0Step)));
 registerScript(HIBACHI_A1.altGun0Init, (ram, rom, ctx, a4) =>
   altGun0Init2A9366(ram, rom, a4, bossA6(ctx, HIBACHI_A1.altGun0Init)));
 registerScript(HIBACHI_A1.altGun0Step, (ram, rom, ctx, a4) =>
@@ -2223,7 +2329,7 @@ registerScript(0x2a6a76, (ram, rom, ctx, a4) => a4Ten2A6A76(ram, a4, true));
 registerScript(0x2a6a7c, (ram, rom, ctx, a4) => a4Ten2A6A76(ram, a4, false));
 
 /** The shared/main-table A1 ids whose init AND step this file registers. */
-export const HIBACHI_A1_SCRIPTS = Object.freeze([5, 6, 7, 8, 9, 0x0a, 0x0b]);
+export const HIBACHI_A1_SCRIPTS = Object.freeze([0, 5, 6, 7, 8, 9, 0x0a, 0x0b]);
 /** The loop-zero table's unique ids whose init AND step this file registers. */
 export const HIBACHI_A1_ALT_SCRIPTS = Object.freeze([0, 1, 2, 3, 4]);
 /** The A4 attack-loop ids this file registers alongside `hibachiend.js`. */
@@ -2237,7 +2343,6 @@ export const HIBACHI_GUN_A4_SCRIPTS = Object.freeze([0x0a, 0x0b, 0x0c, 0x0d, 0x0
  * header's layout note.  `alt` marks the five that exist only in `$2A92A8`.
  */
 export const HIBACHI_A1_COUNTED = Object.freeze({
-  0x00: { init: 0x2a738a, step: 0x2a7400, bytes: 0x04c6, why: 'A4 6 ($2A67CC)' },
   0x01: { init: 0x2a7850, step: 0x2a78d0, bytes: 0x0262, why: 'A4 7 ($2A6804)' },
   0x02: { init: 0x2a7ab2, step: 0x2a7b20, bytes: 0x03b2, why: 'A4 8 ($2A683C)' },
   0x03: { init: 0x2a7e64, step: 0x2a7e96, bytes: 0x01f6, why: 'A4 9 ($2A687A)' },

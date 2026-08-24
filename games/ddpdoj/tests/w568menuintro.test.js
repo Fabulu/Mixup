@@ -15,7 +15,7 @@ import { RomWindows } from '../src/rom.js';
 import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
-  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569,
+  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569, tableBeforeW570,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -58,7 +58,8 @@ const SKIP = required.every(existsSync) ? false
   : 'exact W568 tables, image, assets, or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const LIVE_TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
-const TABLE_JSON = SKIP ? null : tableBeforeW569(LIVE_TABLE_JSON);
+const W569_TABLE_JSON = SKIP ? null : tableBeforeW570(LIVE_TABLE_JSON);
+const TABLE_JSON = SKIP ? null : tableBeforeW569(W569_TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
   copy.rom.windows = copy.rom.windows.filter((w) => !WINDOW_BASES.has(w.base));
@@ -84,8 +85,8 @@ function liveObject(ram, type) {
 
 test('W568 keeps cursor and seqSel independent, exports the exact intro, and enters loop 2',
   { skip: SKIP }, async () => {
-    assert.equal(canonicalHash(LIVE_TABLE_JSON), POST_W568_HASH);
-    assert.equal(LIVE_TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451951);
+    assert.equal(canonicalHash(W569_TABLE_JSON), POST_W568_HASH);
+    assert.equal(W569_TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451951);
     assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH,
       'removing only W569\'s final chain-meter word reconstructs W568 exactly');
     const windows = TABLE_JSON.rom.windows.filter((w) => WINDOW_BASES.has(w.base));

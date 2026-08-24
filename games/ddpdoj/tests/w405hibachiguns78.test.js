@@ -1150,8 +1150,8 @@ test('W405 SECTION 7: guns 7 and 8 are PORTED, and the counted list shrank by ex
   { skip: SKIP }, () => {
     // W406 CORRECTION: gun 9 and A4 $F joined the ported sets.
     // W407 CORRECTION: gun $B, A4 $10 and A4 $11 joined them too.
-    assert.deepEqual([...HIBACHI_A1_SCRIPTS], [5, 6, 7, 8, 9, 0x0a, 0x0b],
-      'W408 CORRECTION: SEVEN A1 ids are ported now');
+    assert.deepEqual([...HIBACHI_A1_SCRIPTS], [0, 5, 6, 7, 8, 9, 0x0a, 0x0b],
+      'W570 CORRECTION: EIGHT A1 ids are ported now');
     assert.deepEqual([...HIBACHI_GUN_A4_SCRIPTS],
       [0x0a, 0x0b, 0x0c, 0x0d, 0x0f, 0x10, 0x11], '  ...and seven A4');
     for (const id of [7, 8]) {

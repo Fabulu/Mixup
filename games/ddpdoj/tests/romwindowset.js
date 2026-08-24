@@ -503,7 +503,14 @@
 // The chain-meter cap is an inclusive maximum index. Loop 2 therefore reads the
 // zero word at $2881CE. Measured: 839 windows, 451,949 -> 451,951 bytes, 77 pairs.
 
-export const ROM_WINDOW_COUNT = 839;
+// ---------------------------------------------------------------------------
+// W570 ADDED FOUR DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// Main-table Hibachi A1 gun 0 reads one template, six correction longwords, six
+// curtain rows, and one 64-longword vector table. Measured: 839 -> 843 windows,
+// 451,951 -> 452,313 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 843;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -536,13 +543,39 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W570_WINDOWS = Object.freeze([
+  Object.freeze(['$2A733C', 0x0016]), Object.freeze(['$2A7372', 0x0018]),
+  Object.freeze(['$2A76D6', 0x003c]), Object.freeze(['$2A7712', 0x0100]),
+]);
+
+/** Reconstruct the exact W569 table by removing W570's four additive windows. */
+export function tableBeforeW570(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const found = copy.rom.windows.filter((w) =>
+    W570_WINDOWS.some(([base]) => w.base === base));
+  if (found.length === 0) return copy;
+  if (found.length !== W570_WINDOWS.length) {
+    throw new Error('the W570 HIBACHI gun-0 windows are only partially present');
+  }
+  for (const [base, len] of W570_WINDOWS) {
+    const matches = found.filter((w) => w.base === base);
+    if (matches.length !== 1 || matches[0].len !== len
+        || matches[0].hex.length !== len * 2 || !matches[0].why.startsWith('W570:')) {
+      throw new Error(`${base} is not the exact W570 additive shape`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((w) =>
+    !W570_WINDOWS.some(([base]) => w.base === base));
+  return copy;
+}
+
 const W568_CHAIN_WHY = 'W113: chain-bar stage pointers $28809E (2 longs to '
   + '$2880A6/$28811A) + per-stage meter data (loop 0: 56 words, loop 1: 90 words), '
   + 'far end $2881CE pinned by the panel tile table $2881F2';
 
 /** Reconstruct the exact W568 table from W569's one-word chain-meter widening. */
 export function tableBeforeW569(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW570(tables);
   const index = copy.rom.windows.findIndex((w) => w.base === '$28809E');
   if (index === -1) throw new Error('the $28809E chain-meter window is absent');
   const window = copy.rom.windows[index];
@@ -606,5 +639,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "the disjoint $2A9A68+$18 Hibachi gun-2 template and moved no pair. W565 "
   + "added disjoint $2A9E50+$14 template and $2AA004+$3C pattern windows and "
   + "moved no pair. W568 added the disjoint $29139E+$D2 menu intro and thirteen "
-  + "sparse spawn-table longwords, totalling $106 bytes, and moved no pair. "
-  + "See tests/romwindowset.js.";
+  + "sparse spawn-table longwords, totalling $106 bytes, and moved no pair. W570 "
+  + "added four disjoint main HIBACHI gun-0 data windows totalling $16A and moved "
+  + "no pair. See tests/romwindowset.js.";
