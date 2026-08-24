@@ -1,4 +1,4 @@
-// W577: canonical Hibachi A0 main script 2, its periodic checkpoint, and next frontier.
+// W578: canonical Hibachi A0 main script 5, its periodic checkpoint, and next frontier.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,37 +17,36 @@ import {
   scriptAddresses, seqStart2598D0,
 } from '../src/scheduler.js';
 import {
-  HIBACHI_A0, main2Init2A5054, main2Step2A506C,
+  HIBACHI_A0, main5Init2A5156, main5Step2A516E,
 } from '../src/hibachiend.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_WINDOW_COUNT, tableBeforeW576 } from './romwindowset.js';
+import { ROM_WINDOW_COUNT } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
 const IMAGE = here('../rip/sound/maincpu.bin');
 const ASSETS = here('../assets');
-const CHECKPOINT = here('../probes/checkpoints/ship0-style4-lf00148131.json');
+const CHECKPOINT = here('../probes/checkpoints/ship0-style4-lf00148631.json');
 const required = [TABLES, IMAGE];
 const SKIP = required.every(existsSync) ? false
-  : 'exact W577 image or tables absent. This is a skip, not a pass.';
+  : 'exact W578 image or tables absent. This is a skip, not a pass.';
 const SKIP_CHECKPOINT = [CHECKPOINT,
   path.join(ASSETS, 'seed.bin.gz'), path.join(ASSETS, 'player.tables.json.gz')]
   .every(existsSync) && !SKIP ? false
-  : 'exact W577 assets or checkpoint absent. This is a skip, not a pass.';
+  : 'exact W578 assets or checkpoint absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
-const PRIOR_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
 const TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
-const PRIOR_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const RNG_STATE = 0x803916;
 const FREEZE = 0x8130d2;
 const canonicalHash = (value) => createHash('sha256')
   .update(JSON.stringify(value)).digest('hex');
+const binaryHash = (value) => createHash('sha256').update(value).digest('hex');
 
 function bench() {
   const ram = new Ram();
@@ -80,133 +79,115 @@ function classify({ x, y, desired = 0, active = 0, heading = 0, state = 0 }) {
   const a4 = SCHED.seqDst;
   b.ram.setU16(FREEZE, 1);
   b.ram.setU32(SUB + 0x02, ((y << 16) | x) >>> 0);
-  b.ram.setU8(SUB + 0x1a, 4);
+  b.ram.setU8(SUB + 0x1a, 8);
   b.ram.setU8(SUB + 0x1b, heading);
   b.ram.setU8(a4, desired);
   b.ram.setU8(a4 + 1, active);
   b.ram.setU16(RNG_STATE, state);
-  main2Step2A506C(b.ram, ROM, b.ctx, a4);
+  main5Step2A516E(b.ram, ROM, b.ctx, a4);
   return b;
 }
 
-test('W577 pins the exact id-2 pair, boundary, registrations, and unchanged table set',
+test('W578 pins the exact id-5 pair, raw span, registrations, and unchanged table set',
   { skip: SKIP }, () => {
     assert.deepEqual([
-      ROM.u32(HIBACHI_A0.table + 16), ROM.u32(HIBACHI_A0.table + 20),
-      HIBACHI_A0.s1End, HIBACHI_A0.s2Init, HIBACHI_A0.s2Step, HIBACHI_A0.s2End,
-    ], [0x2a5054, 0x2a506c, 0x2a5054, 0x2a5054, 0x2a506c, 0x2a50d0]);
-    assert.equal(HIBACHI_A0.s2Step - HIBACHI_A0.s2Init, 0x18);
-    assert.equal(HIBACHI_A0.s2End - HIBACHI_A0.s2Step, 0x64);
-    assert.equal(IMG.readUInt16BE(0x2a50cc), 0x6000);
-    assert.equal(IMG.readInt16BE(0x2a50ce), -0x0218);
-    assert.equal(0x2a50ce + IMG.readInt16BE(0x2a50ce), 0x2a4eb6,
-      'the extension-word displacement enters the attachment body');
-    assert.equal(IMG.readUInt16BE(HIBACHI_A0.s2End), 0x1d7c,
-      'A0 id 3 starts at the exclusive end');
+      ROM.u32(HIBACHI_A0.table + 40), ROM.u32(HIBACHI_A0.table + 44),
+      ROM.u32(HIBACHI_A0.table + 48),
+      HIBACHI_A0.s5Init, HIBACHI_A0.s5Step, HIBACHI_A0.s5End,
+    ], [0x2a5156, 0x2a516e, 0x2a51d2, 0x2a5156, 0x2a516e, 0x2a51d2]);
+    assert.equal(HIBACHI_A0.s5Step - HIBACHI_A0.s5Init, 0x18);
+    assert.equal(HIBACHI_A0.s5End - HIBACHI_A0.s5Step, 0x64);
+    assert.deepEqual([
+      binaryHash(IMG.subarray(HIBACHI_A0.s5Init, HIBACHI_A0.s5Step)),
+      binaryHash(IMG.subarray(HIBACHI_A0.s5Step, HIBACHI_A0.s5End)),
+      binaryHash(IMG.subarray(HIBACHI_A0.s5Init, HIBACHI_A0.s5End)),
+    ], [
+      '91b4899409e225a00e8453f425d8baffbec34a40c68b26906573ebcee2289f8f',
+      '67af514debdea9033adac0d26e02f7955bf4c0c6d9123044b27a6e0036b8ecf4',
+      'a796c17654d2f689ad29ec15933d4cf9c522732f575443112c9dfbe60e1bacaa',
+    ]);
+    assert.equal(IMG.readUInt16BE(0x2a51ce), 0x6000);
+    assert.equal(0x2a51d0 + IMG.readInt16BE(0x2a51d0), 0x2a4eb6);
     const registered = new Set(scriptAddresses());
-    assert.ok(registered.has(HIBACHI_A0.s2Init));
-    assert.ok(registered.has(HIBACHI_A0.s2Step));
+    assert.ok(registered.has(HIBACHI_A0.s5Init));
+    assert.ok(registered.has(HIBACHI_A0.s5Step));
 
     assert.equal(ROM_WINDOW_COUNT, 849);
     assert.equal(TABLE_JSON.rom.windows.length, 849);
     assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452603);
     assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
-    assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
-    assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W577:')), []);
+    assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W578:')), []);
   });
 
-test('W577 init falls through, consumes two draws, and moves on the seeded heading',
+test('W578 init falls through, consumes two draws, and moves at speed eight',
   { skip: SKIP }, () => {
     const b = bench();
     const a4 = SCHED.seqDst;
-    b.ram.setU32(SUB + 0x02, 0x50001000);
+    b.ram.setU32(SUB + 0x02, 0x50000000);
     b.ram.setU16(RNG_STATE, 0);
     installScripts(b.ram, ROM, { a0: HIBACHI_A0.table });
-    seqStart2598D0(b.ram, 2);
+    seqStart2598D0(b.ram, 5);
 
     const seeded = IMG.readUInt8(0x242e42 + 1);
-    const vector = MT.vector(4, seeded & 0x3f);
+    const vector = MT.vector(8, seeded & 0x3f);
     const target = (IMG.readUInt8(0x242bac + 2) + 0x10) & 0x3f;
     clearDispatched();
     assert.equal(runScheduler25962E(b.ram, ROM, b.ctx), false);
-    assert.deepEqual(dumpDispatched(), [HIBACHI_A0.s2Init]);
+    assert.deepEqual(dumpDispatched(), [HIBACHI_A0.s5Init]);
     assert.deepEqual([
       b.ram.u8(SUB + 0x1a), b.ram.u8(SUB + 0x1b), b.ram.u16(RNG_STATE),
       b.ram.u16(SUB + 0x02), b.ram.u16(SUB + 0x04),
       b.ram.u8(a4), b.ram.u8(a4 + 1),
-    ], [4, seeded, 2, u16(0x5000 + vector.dy), u16(0x1000 + vector.dx), target, 1]);
+    ], [8, seeded, 2, u16(0x5000 + vector.dy), u16(vector.dx), target, 1]);
     assert.equal(attached(b.ram, 0x180), b.ram.u32(SUB + 0x02));
   });
 
-test('W577 moves before slew and handles reached, wrapped, and half-turn targets literally',
+test('W578 moves before slew and pins every widened unsigned classifier boundary',
   { skip: SKIP }, () => {
     const moving = bench();
     const a4 = SCHED.seqDst;
     moving.ram.setU32(SUB + 0x02, 0x40001400);
-    moving.ram.setU8(SUB + 0x1a, 4);
+    moving.ram.setU8(SUB + 0x1a, 8);
     moving.ram.setU8(SUB + 0x1b, 7);
     moving.ram.setU8(a4, 8);
     moving.ram.setU8(a4 + 1, 1);
-    const vector = MT.vector(4, 7);
-    main2Step2A506C(moving.ram, ROM, moving.ctx, a4);
+    const vector = MT.vector(8, 7);
+    main5Step2A516E(moving.ram, ROM, moving.ctx, a4);
     assert.deepEqual([
       moving.ram.u16(SUB + 0x02), moving.ram.u16(SUB + 0x04), moving.ram.u8(SUB + 0x1b),
-    ], [u16(0x4000 + vector.dy), u16(0x1400 + vector.dx), 8],
-    'movement uses heading 7 before the slew stores heading 8');
+    ], [u16(0x4000 + vector.dy), u16(0x1400 + vector.dx), 8]);
 
-    const reached = classify({ x: 0x1800, y: 0x6400, desired: 0, active: 1, heading: 1 });
-    assert.deepEqual([
-      reached.ram.u8(SUB + 0x1b), reached.ram.u8(SCHED.seqDst),
-      reached.ram.u8(SCHED.seqDst + 1), reached.ram.u16(RNG_STATE),
-    ], [0, 0, 0, 1], 'suppression preserves the reached target and cleared active byte');
-
-    const wrapped = classify({ x: 0x1800, y: 0x6400, desired: 0, active: 1, heading: 0x3f });
-    assert.equal(wrapped.ram.u8(SUB + 0x1b), 0);
-    assert.equal(wrapped.ram.u8(SCHED.seqDst + 1), 0);
-
-    const half = classify({ x: 0x1800, y: 0x6400, desired: 0x20, active: 7, heading: 0 });
-    assert.deepEqual([
-      half.ram.u8(SUB + 0x1b), half.ram.u8(SCHED.seqDst), half.ram.u8(SCHED.seqDst + 1),
-    ], [0x3f, 0x20, 7], 'difference $20 takes the decrement direction and preserves nonzero active');
-  });
-
-test('W577 target classifier pins every unsigned X and Y boundary and byte bias',
-  { skip: SKIP }, () => {
     const draw = IMG.readUInt8(0x242bac + 1);
     const cases = [
-      [0x13ff, 0x0000, 0x10], [0x1400, 0x5fff, 0x00],
-      [0x23ff, 0x5fff, 0x00], [0x2400, 0x0000, 0x30],
-      [0xe000, 0x0000, 0x10], [0x1800, 0x5fff, 0x00],
-      [0x1800, 0x6800, 0x20], [0x1800, 0xffff, 0x20],
+      [0x0fff, 0x0000, 0x10], [0x1000, 0x63ff, 0x00],
+      [0x27ff, 0x63ff, 0x00], [0x2800, 0x0000, 0x30],
+      [0xd7ff, 0x0000, 0x30], [0xd800, 0x0000, 0x10],
+      [0x1800, 0x63ff, 0x00], [0x1800, 0x6c00, 0x20],
     ];
     for (const [x, y, bias] of cases) {
       const b = classify({ x, y });
       assert.deepEqual([
         b.ram.u8(SCHED.seqDst), b.ram.u8(SCHED.seqDst + 1), b.ram.u16(RNG_STATE),
-      ], [((draw + bias) & 0xff) & 0x3f, 1, 1],
-      `classifier mismatch at X $${x.toString(16)} Y $${y.toString(16)}`);
+      ], [((draw + bias) & 0xff) & 0x3f, 1, 1]);
     }
-
-    for (const y of [0x6000, 0x67ff]) {
+    for (const y of [0x6400, 0x6bff]) {
       const b = classify({ x: 0x1800, y, desired: 0x2a, active: 0 });
       assert.deepEqual([
         b.ram.u8(SCHED.seqDst), b.ram.u8(SCHED.seqDst + 1), b.ram.u16(RNG_STATE),
-      ], [0x2a, 0, 1], 'suppression consumes the draw but writes neither target byte');
+      ], [0x2a, 0, 1], 'suppression consumes RNG but preserves both target bytes');
     }
-
-    const wrap = classify({ x: 0x13ff, y: 0, state: 0x00ff });
-    const wrappedDraw = IMG.readUInt8(0x242bac);
+    const wrap = classify({ x: 0x0fff, y: 0, state: 0x00ff });
     assert.deepEqual([
       wrap.ram.u16(RNG_STATE), wrap.ram.u8(SCHED.seqDst),
-    ], [0x0000, (wrappedDraw + 0x10) & 0x3f],
-    'the RNG counter wraps as a byte without carrying into the high byte');
+    ], [0, (IMG.readUInt8(0x242bac) + 0x10) & 0x3f]);
   });
 
-test('W577 freeze still turns, draws, and refreshes all ten wrapped attachments',
+test('W578 freeze preserves the root while refreshing all ten attachments',
   { skip: SKIP }, () => {
-    const b = classify({ x: 0xf900, y: 0xf400, desired: 0x12, active: 0 });
+    const b = classify({ x: 0xf900, y: 0xf400, desired: 0x12, active: 1, heading: 0x11 });
     const root = 0xf400f900;
     assert.equal(b.ram.u32(SUB + 0x02), root);
+    assert.equal(b.ram.u8(SUB + 0x1b), 0x12);
     for (const [part, dy, dx] of OFFSET_PARTS) {
       assert.deepEqual([
         b.ram.u16(SUB + part + 0x02), b.ram.u16(SUB + part + 0x04),
@@ -217,41 +198,11 @@ test('W577 freeze still turns, draws, and refreshes all ten wrapped attachments'
     assert.deepEqual(b.sounds, []);
   });
 
-test('W577 persists without player, object, bullet, sound, or sequencer transitions',
-  { skip: SKIP }, () => {
-    const b = bench();
-    const a4 = SCHED.seqDst;
-    b.ram.setU32(SUB + 0x02, 0x64001800);
-    b.ram.setU8(SUB + 0x1a, 4);
-    b.ram.setU8(SUB + 0x1b, 0x10);
-    installScripts(b.ram, ROM, { a0: HIBACHI_A0.table });
-    seqStart2598D0(b.ram, 2);
-    runScheduler25962E(b.ram, ROM, b.ctx);
-    const p1 = Array.from(b.ram.b.slice(RAM.player1, RAM.player1 + 0x62));
-    const p2 = Array.from(b.ram.b.slice(RAM.player2, RAM.player2 + 0x62));
-    const objects = Array.from(b.ram.b.slice(RAM.objTable, RAM.objTableEnd));
-    const bullets = Array.from(b.ram.b.slice(0x817f8c, 0x81b40c));
-    for (let i = 0; i < 200; i++) runScheduler25962E(b.ram, ROM, b.ctx);
-    assert.deepEqual([
-      b.ram.u16(SCHED.seqCursor), b.ram.u16(SCHED.seqRestart),
-      b.ram.u16(SCHED.seqPending), b.sounds.length,
-    ], [2, 0, 2, 0]);
-    assert.deepEqual(Array.from(b.ram.b.slice(RAM.player1, RAM.player1 + 0x62)), p1);
-    assert.deepEqual(Array.from(b.ram.b.slice(RAM.player2, RAM.player2 + 0x62)), p2);
-    assert.deepEqual(Array.from(b.ram.b.slice(RAM.objTable, RAM.objTableEnd)), objects);
-    assert.deepEqual(Array.from(b.ram.b.slice(0x817f8c, 0x81b40c)), bullets);
-    assert.notEqual(b.ram.u16(a4), 0, 'the target state remains live without clearing the A0 slot');
-  });
-
-test('W577 restores the exact lf148131 checkpoint and reaches A0 id 6 through W578',
+test('W578 restores lf148631 and reaches the exact A0 id-6 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const live = await bundle();
-    assert.equal(canonicalHash(live.tables), TABLE_HASH);
-    assert.deepEqual(live.tables, TABLE_JSON);
-    const assets = { ...live, tables: PRIOR_TABLE };
-    assert.equal(canonicalHash(assets.tables), PRIOR_HASH);
-    assert.deepEqual(assets.tables, PRIOR_TABLE);
-    const exact = live;
+    const assets = await bundle();
+    assert.equal(canonicalHash(assets.tables), TABLE_HASH);
+    assert.deepEqual(assets.tables, TABLE_JSON);
 
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
     assert.deepEqual([
@@ -259,14 +210,14 @@ test('W577 restores the exact lf148131 checkpoint and reaches A0 id 6 through W5
       checkpoint.raw.stage, checkpoint.raw.stageX2, checkpoint.raw.stageX4, checkpoint.raw.loop,
       checkpoint.ramSha256, checkpoint.gameSha256,
     ], [
-      TABLE_HASH, 148131, 158744, 4, 8, 16, 1,
-      '4b10c9936658b340e8deb501c4924a1ff7ce4dcbba6b38ffcd155582333c3e71',
-      '079c70c717faacc08c5ff1fdbea27d42c359bdace0f276f8c4306ed324a7b4e5',
+      TABLE_HASH, 148631, 159244, 4, 8, 16, 1,
+      '3f03210ccc722ab539cb22d26af1b86443e4d6250cb572f2efecce654449b449',
+      '52192c7dcc2b3883442d07776887016cb75a84bcbfa9d98a9d47f23e6d63eeba',
     ]);
-    const resumed = restoreCheckpoint(checkpoint, exact, { ship: 0, style: 4 });
+    const resumed = restoreCheckpoint(checkpoint, assets, { ship: 0, style: 4 });
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 1000; attempted++) {
+    for (attempted = 1; attempted <= 200; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -275,7 +226,7 @@ test('W577 restores the exact lf148131 checkpoint and reaches A0 id 6 through W5
         break;
       }
     }
-    const state = checkpointDocument(resumed.game, exact, {
+    const state = checkpointDocument(resumed.game, assets, {
       ...checkpoint.selection, inputWord: resumed.probe.inputWord, invulnerable: true,
     });
     const liveBoss = Array.from({ length: ENEMY.slots }, (_, index) =>
@@ -285,8 +236,17 @@ test('W577 restores the exact lf148131 checkpoint and reaches A0 id 6 through W5
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame, error?.romAddress,
       state.raw.stage, state.raw.loop, a6, resumed.game.ram.u8(a6 + 0x1a),
-    ], [561, 148691, 159305, 0x2a51d2, 4, 1, 0x81533c, 8]);
+    ], [61, 148691, 159305, 0x2a51d2, 4, 1, 0x81533c, 8]);
     assert.match(error?.message ?? '', /boss SCRIPT at \$2A51D2/);
+    assert.deepEqual([
+      resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
+      resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
+      resumed.game.ram.u16(SCHED.a4Base),
+      resumed.game.ram.u16(SCHED.a2Base + 0x0e * SCHED.a2Stride),
+    ], [6, 0, 6, 0, 0x810c, 0x8001]);
+    assert.deepEqual(Array.from({ length: SCHED.a1Slots }, (_, index) =>
+      resumed.game.ram.u16(SCHED.a1Base + index * SCHED.a1Stride)),
+    Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
       '78120e53fc005b615ae08d2d61ff73893ee69ca8ceee0b4e1c5b9d2ae82d113b',
       '1e3e448ba8c1f27a536799576f1785fba7d271c378d7a542917b4612fe488cc7',

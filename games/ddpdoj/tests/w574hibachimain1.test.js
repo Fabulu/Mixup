@@ -220,13 +220,15 @@ test('W574 byte borrow, reload, state reversal, and id-2 handoff are exact',
     ], [130, 2, 4, 0, [0x28cb88]], 'canonical script lifetime is exactly 130 dispatches');
   });
 
-test('W574 resumes the migrated W573 state and reaches the W577 A0 id-5 frontier',
+test('W574 resumes the migrated W573 state and reaches the W578 A0 id-6 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
+    const live = await bundle();
+    assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
+    assert.deepEqual(live.tables, TABLE_JSON);
+    const assets = { ...live, tables: W575_TABLE };
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
     assert.deepEqual(assets.tables, W575_TABLE);
-    const exact = { ...assets, tables: TABLE_JSON };
-    assert.equal(canonicalHash(exact.tables), LIVE_TABLE_HASH);
+    const exact = live;
 
     const frontier = JSON.parse(readFileSync(FRONTIER, 'utf8'));
     assert.deepEqual([
@@ -247,7 +249,7 @@ test('W574 resumes the migrated W573 state and reaches the W577 A0 id-5 frontier
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 2500; attempted++) {
+    for (attempted = 1; attempted <= 3000; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -262,15 +264,15 @@ test('W574 resumes the migrated W573 state and reaches the W577 A0 id-5 frontier
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-    ], [2349, 148479, 159093, 0x2a5156, 4, 8, 16, 1]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5156/);
+    ], [2561, 148691, 159305, 0x2a51d2, 4, 8, 16, 1]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A51D2/);
     assert.deepEqual([
       ROM.u32(HIBACHI_A3.table + 3 * 8), ROM.u32(HIBACHI_A3.table + 4 * 8),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s3Selector),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s4Selector),
-    ], [0x2a56a2, 0x2a56ce, 4, 0x78]);
+    ], [0x2a56a2, 0x2a56ce, 0, 0x6c]);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'e369fb912f3708cf4bd9dba91f14009c997e5df90b1b8c65f5821dbf60a1a7d5',
-      '2b4316a41e9b32695691d3c2febf6edf2c286f4f4ebcc369c4a2263e6303a608',
+      '78120e53fc005b615ae08d2d61ff73893ee69ca8ceee0b4e1c5b9d2ae82d113b',
+      '1e3e448ba8c1f27a536799576f1785fba7d271c378d7a542917b4612fe488cc7',
     ]);
   });

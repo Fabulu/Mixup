@@ -591,12 +591,14 @@ test('W573 main and alternate gun-3 differentials remain explicit', { skip: SKIP
 
 test('W573 migrates lf146131 additively and pins every periodic frontier and blocker',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
+    const live = await bundle();
+    assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
+    assert.deepEqual(live.tables, TABLE_JSON);
+    const assets = { ...live, tables: W575_TABLE };
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
     assert.deepEqual(tableBeforeW576(TABLE_JSON), assets.tables,
       'strict additive W576 identity is proven before checkpoint migration');
-    const exact = { ...assets, tables: TABLE_JSON };
-    assert.equal(canonicalHash(exact.tables), LIVE_TABLE_HASH);
+    const exact = live;
     assert.deepEqual(tableBeforeW573(exact.tables), W572_TABLE,
       'strict additive identity composes through W576 before checkpoint migration');
 
@@ -684,14 +686,14 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
     const attemptState = checkpointDocument(resumed.game, exact, {
       ...migrated.selection, inputWord: resumed.probe.inputWord, invulnerable: true,
     });
-    // W577 runs A0 id 2, crosses the exact lf148131 checkpoint, and reaches A0 id 5.
+    // W578 runs A0 id 5, crosses the exact lf148631 checkpoint, and reaches A0 id 6.
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, attemptState.ramSha256, attemptState.gameSha256,
     ], [
-      2349, 148479, 159093, 0x2a5156,
-      'e369fb912f3708cf4bd9dba91f14009c997e5df90b1b8c65f5821dbf60a1a7d5',
-      '2b4316a41e9b32695691d3c2febf6edf2c286f4f4ebcc369c4a2263e6303a608',
+      2561, 148691, 159305, 0x2a51d2,
+      '78120e53fc005b615ae08d2d61ff73893ee69ca8ceee0b4e1c5b9d2ae82d113b',
+      '1e3e448ba8c1f27a536799576f1785fba7d271c378d7a542917b4612fe488cc7',
     ]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5156/);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A51D2/);
   });

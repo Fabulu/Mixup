@@ -253,13 +253,15 @@ test('W575 A3 ids 3 and 4 still run earlier in the same scheduler pass than A2 i
     'both A3 init fallthroughs complete before the A2 walk dispatches id 10');
   });
 
-test('W575 exact progression crosses lf148131 and reaches W577 A0 id 5',
+test('W575 exact progression crosses lf148631 and reaches W578 A0 id 6',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
+    const live = await bundle();
+    assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
+    assert.deepEqual(live.tables, TABLE_JSON);
+    const assets = { ...live, tables: W575_TABLE };
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
     assert.deepEqual(assets.tables, W575_TABLE);
-    const exact = { ...assets, tables: TABLE_JSON };
-    assert.equal(canonicalHash(exact.tables), LIVE_TABLE_HASH);
+    const exact = live;
 
     const frontier = JSON.parse(readFileSync(FRONTIER, 'utf8'));
     assert.deepEqual([
@@ -280,7 +282,7 @@ test('W575 exact progression crosses lf148131 and reaches W577 A0 id 5',
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 2500; attempted++) {
+    for (attempted = 1; attempted <= 3000; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -295,18 +297,18 @@ test('W575 exact progression crosses lf148131 and reaches W577 A0 id 5',
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-    ], [2349, 148479, 159093, 0x2a5156, 4, 8, 16, 1]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5156/);
+    ], [2561, 148691, 159305, 0x2a51d2, 4, 8, 16, 1]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A51D2/);
     assert.deepEqual([
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s3Selector),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s4Selector),
       state.ramSha256, state.gameSha256,
     ], [
-      4, 0x78,
-      'e369fb912f3708cf4bd9dba91f14009c997e5df90b1b8c65f5821dbf60a1a7d5',
-      '2b4316a41e9b32695691d3c2febf6edf2c286f4f4ebcc369c4a2263e6303a608',
+      0, 0x6c,
+      '78120e53fc005b615ae08d2d61ff73893ee69ca8ceee0b4e1c5b9d2ae82d113b',
+      '1e3e448ba8c1f27a536799576f1785fba7d271c378d7a542917b4612fe488cc7',
     ]);
-    assert.equal(frontier.frame.logic + 500, 148131);
-    assert.ok(resumed.game.logicFrame > frontier.frame.logic + 500,
-      'W577 crosses the periodic checkpoint boundary before reaching A0 id 5');
+    assert.equal(frontier.frame.logic + 1000, 148631);
+    assert.ok(resumed.game.logicFrame > frontier.frame.logic + 1000,
+      'W578 crosses the second periodic checkpoint boundary before reaching A0 id 6');
   });

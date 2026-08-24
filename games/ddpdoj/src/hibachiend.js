@@ -1,5 +1,5 @@
 // HIBACHI'S A2 OBJECTS 0..15, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -183,6 +183,9 @@ export const HIBACHI_A0 = Object.freeze({
   s2Init: 0x2a5054,
   s2Step: 0x2a506c,
   s2End: 0x2a50d0,
+  s5Init: 0x2a5156,
+  s5Step: 0x2a516e,
+  s5End: 0x2a51d2,
 });
 
 /** `$2A4312` installs this A3 scheduler table. It contains eight init/step pairs. */
@@ -758,6 +761,50 @@ export function main2Step2A506C(ram, rom, ctx, a4) {
   ram.setU8(a4, target & 0x3f);                               // $2A50C0/$2A50C4
   ram.setU8(a4 + 0x01, 1);                                   // $2A50C6
   placeMain0Parts2A4EB6(ram, a6);                            // $2A50CC bra.w
+}
+
+// =============================================================== A0 MAIN SCRIPT 5
+// `$2A4E56` entry 5 is {$2A5156, $2A516E}. It is the faster, wider
+// roaming phase: speed eight with broader central X and Y strips.
+
+/** `$2A5156`. Clear target state, set speed eight, and seed the first heading. */
+export function main5Init2A5156(ram, rom, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s5Init);
+  ram.setU8(a4, 0);                                          // $2A5156/$2A5158
+  ram.setU8(a4 + 0x01, 0);                                   // $2A515A
+  ram.setU8(a6 + 0x1a, 8);                                   // $2A515E
+  ram.setU8(a6 + 0x1b, drawByte242E24(ram, rom));             // $2A5164/$2A516A
+}
+
+/** `$2A516E`. Move, slew, draw a replacement target, and refresh all parts. */
+export function main5Step2A516E(ram, rom, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s5Step);
+  applyVelocityA6(ram, ctx.tables, a6);                       // $2A516E
+
+  if (ram.u8(a4 + 0x01) !== 0) {                              // $2A5174
+    const target = ram.u8(a4);
+    const heading = slew64FromRecord(ram, a6, target);         // $2A517A/$2A517C
+    ram.setU8(a6 + 0x1b, heading);                            // $24217E's store
+    if (heading === target) ram.setU8(a4 + 0x01, 0);           // $2A5182..$2A5186
+  }
+
+  let target = drawByte242B3C(ram, rom);                      // $2A518A
+  const x = u16(ram.u16(a6 + 0x04) + 0x2800);                 // $2A5190/$2A5194
+  if (x < 0x3800) {                                           // unsigned BCC boundary
+    target = (target + 0x10) & 0xff;                          // $2A519E
+  } else if (x >= 0x5000) {                                   // unsigned BCS boundary
+    target = (target + 0x30) & 0xff;                          // $2A51AA
+  } else {
+    const y = ram.u16(a6 + 0x02);                             // $2A51B0 swap D1
+    if (y >= 0x6400 && y < 0x6c00) {                          // $2A51B2..$2A51BC
+      placeMain0Parts2A4EB6(ram, a6);                        // $2A51CE bra.w
+      return;
+    }
+    if (y >= 0x6c00) target = (target + 0x20) & 0xff;         // $2A51BE
+  }
+  ram.setU8(a4, target & 0x3f);                               // $2A51C2/$2A51C6
+  ram.setU8(a4 + 0x01, 1);                                   // $2A51C8
+  placeMain0Parts2A4EB6(ram, a6);                            // $2A51CE bra.w
 }
 
 const HIBACHI_AIM_TABLES = new WeakMap();
@@ -1561,6 +1608,11 @@ registerScript(HIBACHI_A0.s2Init, initThenStep(
   (ram, rom, ctx, a4) => main2Step2A506C(ram, rom, ctx, a4)));
 registerScript(HIBACHI_A0.s2Step,
   (ram, rom, ctx, a4) => main2Step2A506C(ram, rom, ctx, a4));
+registerScript(HIBACHI_A0.s5Init, initThenStep(
+  (ram, rom, ctx, a4) => main5Init2A5156(ram, rom, ctx, a4),
+  (ram, rom, ctx, a4) => main5Step2A516E(ram, rom, ctx, a4)));
+registerScript(HIBACHI_A0.s5Step,
+  (ram, rom, ctx, a4) => main5Step2A516E(ram, rom, ctx, a4));
 
 registerScript(HIBACHI_A3.s0Init, initThenStep(
   (ram, _rom, ctx, a4) => a3s0Init2A54D6(ram, ctx, a4),
