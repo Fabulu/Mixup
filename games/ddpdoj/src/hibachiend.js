@@ -1,5 +1,5 @@
 // HIBACHI'S A2 OBJECTS 0..15, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -186,6 +186,9 @@ export const HIBACHI_A0 = Object.freeze({
   s5Init: 0x2a5156,
   s5Step: 0x2a516e,
   s5End: 0x2a51d2,
+  s6Init: 0x2a51d2,
+  s6Step: 0x2a51ea,
+  s6End: 0x2a524e,
 });
 
 /** `$2A4312` installs this A3 scheduler table. It contains eight init/step pairs. */
@@ -805,6 +808,50 @@ export function main5Step2A516E(ram, rom, ctx, a4) {
   ram.setU8(a4, target & 0x3f);                               // $2A51C2/$2A51C6
   ram.setU8(a4 + 0x01, 1);                                   // $2A51C8
   placeMain0Parts2A4EB6(ram, a6);                            // $2A51CE bra.w
+}
+
+// =============================================================== A0 MAIN SCRIPT 6
+// `$2A4E56` entry 6 is {$2A51D2, $2A51EA}. It is the middle-speed roaming
+// phase, with narrower central X and Y strips than ids 2 and 5.
+
+/** `$2A51D2`. Clear target state, set speed six, and seed the first heading. */
+export function main6Init2A51D2(ram, rom, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s6Init);
+  ram.setU8(a4, 0);                                          // $2A51D2/$2A51D4
+  ram.setU8(a4 + 0x01, 0);                                   // $2A51D6
+  ram.setU8(a6 + 0x1a, 6);                                   // $2A51DA
+  ram.setU8(a6 + 0x1b, drawByte242E24(ram, rom));             // $2A51E0/$2A51E6
+}
+
+/** `$2A51EA`. Move, slew, draw a replacement target, and refresh all parts. */
+export function main6Step2A51EA(ram, rom, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s6Step);
+  applyVelocityA6(ram, ctx.tables, a6);                       // $2A51EA
+
+  if (ram.u8(a4 + 0x01) !== 0) {                              // $2A51F0
+    const target = ram.u8(a4);
+    const heading = slew64FromRecord(ram, a6, target);         // $2A51F6/$2A51F8
+    ram.setU8(a6 + 0x1b, heading);                            // $24217E's store
+    if (heading === target) ram.setU8(a4 + 0x01, 0);           // $2A51FE..$2A5204
+  }
+
+  let target = drawByte242B3C(ram, rom);                      // $2A5206
+  const x = u16(ram.u16(a6 + 0x04) + 0x2800);                 // $2A520C/$2A5210
+  if (x < 0x4000) {                                           // unsigned BCC boundary
+    target = (target + 0x10) & 0xff;                          // $2A521A
+  } else if (x >= 0x4800) {                                   // unsigned BCS boundary
+    target = (target + 0x30) & 0xff;                          // $2A5226
+  } else {
+    const y = ram.u16(a6 + 0x02);                             // $2A522C swap D1
+    if (y >= 0x5400 && y < 0x5c00) {                          // $2A522E..$2A5238
+      placeMain0Parts2A4EB6(ram, a6);                        // $2A524A bra.w
+      return;
+    }
+    if (y >= 0x5c00) target = (target + 0x20) & 0xff;         // $2A523A
+  }
+  ram.setU8(a4, target & 0x3f);                               // $2A523E/$2A5242
+  ram.setU8(a4 + 0x01, 1);                                   // $2A5244
+  placeMain0Parts2A4EB6(ram, a6);                            // $2A524A bra.w
 }
 
 const HIBACHI_AIM_TABLES = new WeakMap();
@@ -1613,6 +1660,11 @@ registerScript(HIBACHI_A0.s5Init, initThenStep(
   (ram, rom, ctx, a4) => main5Step2A516E(ram, rom, ctx, a4)));
 registerScript(HIBACHI_A0.s5Step,
   (ram, rom, ctx, a4) => main5Step2A516E(ram, rom, ctx, a4));
+registerScript(HIBACHI_A0.s6Init, initThenStep(
+  (ram, rom, ctx, a4) => main6Init2A51D2(ram, rom, ctx, a4),
+  (ram, rom, ctx, a4) => main6Step2A51EA(ram, rom, ctx, a4)));
+registerScript(HIBACHI_A0.s6Step,
+  (ram, rom, ctx, a4) => main6Step2A51EA(ram, rom, ctx, a4));
 
 registerScript(HIBACHI_A3.s0Init, initThenStep(
   (ram, _rom, ctx, a4) => a3s0Init2A54D6(ram, ctx, a4),

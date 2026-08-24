@@ -291,7 +291,7 @@ test('W576 renderers mutate only the sprite bucket, not boss, RNG, players, obje
     assert.deepEqual(bytes(b.ram, bulletBase, 0x81b40c - bulletBase), bullets);
   });
 
-test('W576 migrates table identity only and reaches the exact W578 A0 id 6 frontier',
+test('W576 migrates table identity only and reaches the exact W579 A0 id 7 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const live = await bundle();
     assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
@@ -321,7 +321,7 @@ test('W576 migrates table identity only and reaches the exact W578 A0 id 6 front
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 3000; attempted++) {
+    for (attempted = 1; attempted <= 3500; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -342,13 +342,13 @@ test('W576 migrates table identity only and reaches the exact W578 A0 id 6 front
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
       liveSub, resumed.game.ram.u16(liveSub + 0x12a), resumed.game.ram.u16(liveSub + 0x12c),
-    ], [2561, 148691, 159305, 0x2a51d2, 4, 8, 16, 1, 0x81533c, 0, 0x6c]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A51D2/);
+    ], [3100, 149230, 159844, 0x2a524e, 4, 8, 16, 1, 0x81533c, 8, 0x6c]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A524E/);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      '78120e53fc005b615ae08d2d61ff73893ee69ca8ceee0b4e1c5b9d2ae82d113b',
-      '1e3e448ba8c1f27a536799576f1785fba7d271c378d7a542917b4612fe488cc7',
+      '229bba27766244af699873a98d2e4c3b8ebd494959c48c5bddfe625e8d5bf631',
+      'c41520cf72b5099b2601baa7774aa10dc98cbb98d3c933acffa8cbf063038fcc',
     ]);
-    assert.equal(frontier.frame.logic + 1000, 148631);
-    assert.ok(resumed.game.logicFrame > frontier.frame.logic + 1000,
-      'W578 crosses the second periodic checkpoint boundary before reaching A0 id 6');
+    assert.equal(frontier.frame.logic + 1500, 149131);
+    assert.ok(resumed.game.logicFrame > frontier.frame.logic + 1500,
+      'W579 crosses the third periodic checkpoint boundary before reaching A0 id 7');
   });
