@@ -1,5 +1,5 @@
 // HIBACHI'S A2 OBJECTS 0..9, 11..13 AND 15, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -99,7 +99,7 @@ import {
   suspend2595E8, fadeArm259B7E, fadeDone259B9E,
 } from './scheduler.js';
 import { pushExternalSpeed } from './background.js';
-import { scrollCompensate } from './movement.js';
+import { applyVelocityA6, scrollCompensate } from './movement.js';
 import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { install24150A } from './palette.js';
 import { spawnEffect, clearEffectPool, B } from './effects.js';
@@ -166,6 +166,12 @@ export const HIBACHI_A0 = Object.freeze({
   pairs: 12,
   s0Init: 0x2a4f56,
   s0Step: 0x2a4f86,
+  s1Init: 0x2a4f90,
+  s1Step: 0x2a4fae,
+  s1End: 0x2a5054,
+  s1Next: 2,
+  s1A3: Object.freeze([3, 4]),
+  s1A2: Object.freeze([0x0a, 0x0e]),
 });
 
 /** `$2A4312` installs this A3 scheduler table. It contains eight init/step pairs. */
@@ -600,6 +606,74 @@ export function main0Step2A4F86(ram, _rom, ctx) {
   const a6 = bossA6(ctx, HIBACHI_A0.s0Step);
   scrollCompensate(ram, a5);                               // $2A4F86 jsr $24179E
   placeMain0Parts2A4EB6(ram, a6);                          // $2A4F8C bra.w $2A4EB6
+}
+
+// =============================================================== A0 MAIN SCRIPT 1
+// `$2A4E56` entry 1 is {$2A4F90, $2A4FAE}. Like main 0, its init has no RTS and
+// falls through into the step. The opening word timer blocks movement for exactly
+// $40 dispatches. Its expiry starts A3 ids 3 and 4 plus A2 ids $A and $E, arms
+// the two second-form damage parts, and begins the out-and-back animation.
+
+/** `$2A4F90..$2A4FAD`. Seed all three timers and clear speed and heading. */
+export function main1Init2A4F90(ram, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s1Init);
+  ram.setU16(a4 + 0x02, 0x0000);                            // $2A4F90
+  ram.setU16(a4 + 0x04, 0x0808);                            // $2A4F96
+  ram.setU16(a4 + 0x06, 0x0040);                            // $2A4F9C
+  ram.setU8(a6 + 0x1a, 0);                                 // $2A4FA2
+  ram.setU8(a6 + 0x1b, 0);                                 // $2A4FA8
+}
+
+/** `$2A4FAE..$2A5053`. Spend the opening timer, move, animate out to frame 8,
+ * return to frame 4, then hand the main sequencer to id 2. */
+export function main1Step2A4FAE(ram, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s1Step);
+
+  if (ram.u16(a4 + 0x06) !== 0) {                           // $2A4FAE/$2A4FB2
+    const left = u16(ram.u16(a4 + 0x06) - 1);               // $2A4FB4
+    ram.setU16(a4 + 0x06, left);
+    if (left !== 0) {                                       // $2A4FB8 bne.w $2A5050
+      placeMain0Parts2A4EB6(ram, a6);
+      return;
+    }
+
+    ctx.soundPost?.(0x28cb88);                              // $2A4FBC
+    for (const id of HIBACHI_A0.s1A3) a3Start259962(ram, id); // $2A4FC2..$2A4FCC
+    for (const id of HIBACHI_A0.s1A2) a2Run2598E6(ram, id); // $2A4FD2..$2A4FDC
+    ram.setU16(a6 + 0x172, 0x1000);                         // $2A4FE2
+    ram.setU16(a6 + 0x140, ram.u16(a6 + 0x140) | 0xa001);  // $2A4FE8 jsr $2A6E5C
+    ram.setU16(a6 + 0x160, ram.u16(a6 + 0x160) | 0xa001);
+    ram.setU16(a6 + 0x106, 0);                              // $2A4FEE jsr $2A6ECE
+  }
+
+  applyVelocityA6(ram, ctx.tables, a6);                     // $2A4FF4 jsr $2417DE
+  if (ram.u16(a4 + 0x02) === 0) {                           // $2A4FFA
+    const old = ram.u8(a4 + 0x04);
+    ram.setU8(a4 + 0x04, (old - 1) & 0xff);                 // $2A5002 subq.b #1
+    if (old === 0) {                                        // $2A5006 bcc skips on no borrow
+      ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));              // $2A5008
+      ram.setU8(a4 + 0x05, (ram.u8(a4 + 0x05) - 1) & 0xff); // $2A500E
+      const frame = (ram.u8(a6 + 0x1a) + 1) & 0xff;         // $2A5012
+      ram.setU8(a6 + 0x1a, frame);
+      if (frame === 8) {                                    // $2A5016/$2A501C
+        ram.setU16(a4 + 0x04, 0x0303);                      // $2A501E
+        ram.setU16(a4 + 0x02, 1);                           // $2A5024
+      }
+    }
+  } else {
+    const old = ram.u8(a4 + 0x04);
+    ram.setU8(a4 + 0x04, (old - 1) & 0xff);                 // $2A502E subq.b #1
+    if (old === 0) {                                        // $2A5032 bcc skips on no borrow
+      ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));              // $2A5034
+      const frame = (ram.u8(a6 + 0x1a) - 1) & 0xff;         // $2A503A
+      ram.setU8(a6 + 0x1a, frame);
+      if (frame === 4) {                                    // $2A503E/$2A5044
+        seqStart2598D0(ram, HIBACHI_A0.s1Next);             // $2A5046/$2A5048
+        ram.setU16(a4, 0);                                  // $2A504E
+      }
+    }
+  }
+  placeMain0Parts2A4EB6(ram, a6);                          // $2A5050 bra.w $2A4EB6
 }
 
 const HIBACHI_AIM_TABLES = new WeakMap();
@@ -1364,6 +1438,11 @@ registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Step2A4F86(ram, rom, ctx)));
 registerScript(HIBACHI_A0.s0Step,
   (ram, rom, ctx) => main0Step2A4F86(ram, rom, ctx));
+registerScript(HIBACHI_A0.s1Init, initThenStep(
+  (ram, _rom, ctx, a4) => main1Init2A4F90(ram, ctx, a4),
+  (ram, _rom, ctx, a4) => main1Step2A4FAE(ram, ctx, a4)));
+registerScript(HIBACHI_A0.s1Step,
+  (ram, _rom, ctx, a4) => main1Step2A4FAE(ram, ctx, a4));
 
 registerScript(HIBACHI_A3.s0Init, initThenStep(
   (ram, _rom, ctx, a4) => a3s0Init2A54D6(ram, ctx, a4),
