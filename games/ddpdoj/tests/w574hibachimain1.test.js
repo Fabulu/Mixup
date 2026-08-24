@@ -220,7 +220,7 @@ test('W574 byte borrow, reload, state reversal, and id-2 handoff are exact',
     ], [130, 2, 4, 0, [0x28cb88]], 'canonical script lifetime is exactly 130 dispatches');
   });
 
-test('W574 resumes the migrated W573 state and reaches the W579 A0 id-7 frontier',
+test('W574 resumes the migrated W573 state and reaches the W580 A0 id-3 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const live = await bundle();
     assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
@@ -249,7 +249,7 @@ test('W574 resumes the migrated W573 state and reaches the W579 A0 id-7 frontier
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 3500; attempted++) {
+    for (attempted = 1; attempted <= 4500; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -264,15 +264,15 @@ test('W574 resumes the migrated W573 state and reaches the W579 A0 id-7 frontier
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-    ], [3100, 149230, 159844, 0x2a524e, 4, 8, 16, 1]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A524E/);
+    ], [4266, 150396, 161010, 0x2a50d0, 4, 8, 16, 1]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A50D0/);
     assert.deepEqual([
       ROM.u32(HIBACHI_A3.table + 3 * 8), ROM.u32(HIBACHI_A3.table + 4 * 8),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s3Selector),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s4Selector),
-    ], [0x2a56a2, 0x2a56ce, 8, 0x6c]);
+    ], [0x2a56a2, 0x2a56ce, 4, 0x60]);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      '229bba27766244af699873a98d2e4c3b8ebd494959c48c5bddfe625e8d5bf631',
-      'c41520cf72b5099b2601baa7774aa10dc98cbb98d3c933acffa8cbf063038fcc',
+      'd5df6b6d6b1bf0b2100edef3be4ca0e4c399555f4b11ae3a5398797aba59bf64',
+      '6424b2bb7695afbe5a88dd2e902e55f6a5eb237a5d36228fb361cf0da31494ad',
     ]);
   });

@@ -198,7 +198,7 @@ test('W578 freeze preserves the root while refreshing all ten attachments',
     assert.deepEqual(b.sounds, []);
   });
 
-test('W578 restores lf148631 and reaches the exact A0 id-7 frontier through W579',
+test('W578 restores lf148631 and reaches the exact A0 id-3 frontier through W580',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -217,7 +217,7 @@ test('W578 restores lf148631 and reaches the exact A0 id-7 frontier through W579
     const resumed = restoreCheckpoint(checkpoint, assets, { ship: 0, style: 4 });
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 700; attempted++) {
+    for (attempted = 1; attempted <= 1800; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -236,21 +236,21 @@ test('W578 restores lf148631 and reaches the exact A0 id-7 frontier through W579
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame, error?.romAddress,
       state.raw.stage, state.raw.loop, a6, resumed.game.ram.u8(a6 + 0x1a),
-    ], [600, 149230, 159844, 0x2a524e, 4, 1, 0x81533c, 6]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A524E/);
+    ], [1766, 150396, 161010, 0x2a50d0, 4, 1, 0x81533c, 4]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A50D0/);
     assert.deepEqual([
       resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
       resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
       resumed.game.ram.u16(SCHED.a2Base + 0x0e * SCHED.a2Stride),
-    ], [7, 0, 7, 0, 0x8001]);
+    ], [3, 0, 3, 0, 0x8000]);
     assert.deepEqual(Array.from({ length: SCHED.a4Slots }, (_, index) =>
       resumed.game.ram.u16(SCHED.a4Base + index * SCHED.a4Stride)),
-    [0, 0x810d, 0, 0, 0]);
+    [0x8103, 0, 0, 0, 0]);
     assert.deepEqual(Array.from({ length: SCHED.a1Slots }, (_, index) =>
       resumed.game.ram.u16(SCHED.a1Base + index * SCHED.a1Stride)),
     Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      '229bba27766244af699873a98d2e4c3b8ebd494959c48c5bddfe625e8d5bf631',
-      'c41520cf72b5099b2601baa7774aa10dc98cbb98d3c933acffa8cbf063038fcc',
+      'd5df6b6d6b1bf0b2100edef3be4ca0e4c399555f4b11ae3a5398797aba59bf64',
+      '6424b2bb7695afbe5a88dd2e902e55f6a5eb237a5d36228fb361cf0da31494ad',
     ]);
   });
