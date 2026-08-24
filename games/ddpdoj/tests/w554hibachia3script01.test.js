@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
+import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
 import {
   SCHED, installScripts, a2Run2598E6, a3Start259962,
@@ -22,6 +23,7 @@ const SKIP = existsSync(IMAGE) && existsSync(TABLES) ? false
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
+const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
 
 const beU16 = (addr) => IMG.readUInt16BE(addr);
 const beU32 = (addr) => IMG.readUInt32BE(addr);
@@ -41,7 +43,8 @@ const PAIRS = Object.freeze([
 function bench(tables = { a3: HIBACHI_A3.table }) {
   const ram = new Ram();
   const log = new UnportedLog();
-  const ctx = { bossRec: REC, bossSubRec: SUB, unported: log, unportedLog: log };
+  const ctx = { bossRec: REC, bossSubRec: SUB, tables: MT,
+    unported: log, unportedLog: log };
   ram.setU32(REC + 0x06, SUB);
   installScripts(ram, ROM, tables);
   return { ram, log, ctx };
@@ -147,7 +150,7 @@ test('W554 the live five-table dispatch reaches the next measured blocker',
     assert.equal(a4Start25980C(b.ram, 0), true);
 
     const error = caught(() => frame(b));
-    assert.equal(error?.romAddress, 0x2a4702);
+    assert.equal(error?.romAddress, 0x2a478c);
     assert.deepEqual([
       b.ram.u16(SCHED.a3Base),
       b.ram.u16(SCHED.a3Base + SCHED.a3Stride),

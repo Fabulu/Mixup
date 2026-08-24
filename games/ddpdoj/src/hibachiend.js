@@ -1,5 +1,5 @@
-// HIBACHI'S A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5, WITH BOTH SPEED PUSHES.
-// W399, W403, W409, W552, W553.
+// HIBACHI'S A2 OBJECT 0, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..5.
+// W399, W403, W409, W552, W553, W555.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -109,6 +109,19 @@ import {
 import { finalBlast2440E0 } from './boss2.js';
 import { finalBurst27CBB6 } from './stage4type9f.js';
 import { bossA5, bossA6, bigBurst28B34A } from './boss.js';
+import { enqueueRegistersThroughStub } from './spritequeue.js';
+
+/** `$2A432E` installs this nineteen-object A2 list. Object 0 is armed immediately by
+ *  `$2A4336 jsr $2598E6`; its six-frame art selector is advanced by A3 script 1. */
+export const HIBACHI_A2 = Object.freeze({
+  table: 0x2a46b2,
+  objects: 19,
+  object0: 0x2a4702,
+  object0CodeEnd: 0x2a4772,
+  object0Art: 0x2a4774,
+  object0ArtFrames: 6,
+  object1: 0x2a478c,
+});
 
 /** `$2A4300` installs this main-sequencer table. It contains twelve init/step pairs;
  *  A4 script 0 starts id 0 on Hibachi's first scheduler frame. */
@@ -285,6 +298,32 @@ function frameBurst2A61F2(ram, rom, ctx, a4, a6) {
   // again: a dead store, kept as a comment rather than as JavaScript that does nothing.
   ram.setU16(a0 + B.nudge, u16(i16(drawWord24328E(ram, rom)) - 0x800));
   ram.setU16(a0 + B.nudge + 2, u16(i16(drawWord24328E(ram, rom)) >> 1));  // $2A626C..$2A6274
+}
+
+// ========================================================== A2 OBJECT 0 -- THE ROOT BODY
+// `$2A4702..$2A4771` is straight-line code ending in a tail `jmp $23DFEA`.
+// `$2A4772` is alignment and `$2A4774..$2A478B` is the six-longword art table.
+
+/** `$2A4702`. Orbit four attached points around the root and enqueue the selected body art. */
+export function a2Object0_2A4702(ram, rom, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A2.object0);
+  const angle = ram.u8(a6 + 0x13d);
+  const { dy } = ctx.tables.shotVector(0x1a, angle);       // $2A4702..$2A470C jsr $241D34
+  ram.setU8(a6 + 0x13d, (angle + 2) & 0xff);              // $2A4712 addq.b #2
+
+  ram.setU16(a6 + 0x010, u16(0x1400 + dy));               // $2A4716..$2A471C
+  ram.setU16(a6 + 0x012, u16(0x2200 - dy));               // $2A4720..$2A4726
+  ram.setU16(a6 + 0x1b0, u16(0xde00 + dy));               // $2A472A..$2A4730
+  ram.setU16(a6 + 0x1b2, u16(0x2600 - dy));               // $2A4734..$2A473A
+
+  // The two cartridge additions are LONG operations. Carry from the low position
+  // word into the high word is observable and must not be split into word adds.
+  let d1 = ((u16(ram.u16(a6 + 0x02) + dy) << 16) | ram.u16(a6 + 0x04)) >>> 0;
+  d1 = (d1 + 0xe6000000) >>> 0;                            // $2A474A
+  d1 = (d1 + 0xea00f200) >>> 0;                            // $2A4750
+
+  const art = rom.u32(HIBACHI_A2.object0Art + i16(ram.u16(a6 + 0x128)));
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1, art, 0x1670, ram.u8(a6 + 0xe8));
 }
 
 // ========================================================== A0 MAIN SCRIPT 0 -- THE ARRIVAL POSITION
@@ -929,6 +968,8 @@ export function s14Step2A6B80(ram, a4) {
   suspend2595E8(ram);                                    // $2A6B88 jsr $2595E8
   ram.setU16(a4, 0);                                     // $2A6B8E clr.w (A4) -- 4254, the SLOT
 }
+
+registerScript(HIBACHI_A2.object0, a2Object0_2A4702);
 
 registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Init2A4F56(ram, rom, ctx),

@@ -483,6 +483,11 @@ test('every registered script address is in an installed boss scheduler table',
     for (let i = 0; i < 8; i++) {                      // A3, $2A5492
       legal.push(ROM.u32(0x2a5492 + i * 8), ROM.u32(0x2a5492 + i * 8 + 4));
     }
+    // W555 registers HIBACHI A2 object 0. Carry the complete nineteen-entry
+    // pointer list installed through $2A432E, plus the cartridge terminator witness.
+    for (let i = 0; i < 19; i++) legal.push(ROM.u32(0x2a46b2 + i * 4)); // A2
+    assert.strictEqual(ROM.u32(0x2a46b2 + 19 * 4) >>> 0, 0xffffffff,
+      'Hibachi A2 is nineteen longwords and a $FFFFFFFF terminator');
     // W404 carries HIBACHI's A1 GUN table, installed by the SAME body four instructions above
     // the A4 lea ($2A4306 lea $2A72C8,A1), and its loop-zero twin ($2A4328 lea $2A92A8,A1,
     // which $2A4324's bne.w skips whenever $813098 is non-zero). FOURTEEN pairs each, not

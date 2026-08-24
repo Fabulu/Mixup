@@ -102,7 +102,7 @@ test('W220 pins D9/D10 and the complete six-object visible asset set',
     // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
     // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
     // shard 9 at 313/166,218.
-    assert.equal(manifest.spr.streamCount, 4907);
+    assert.equal(manifest.spr.streamCount, 4913);
   });
 
 test('W220 MAIN0 terminal runs D9, D10, and six boss draws in the same pass',
