@@ -256,7 +256,7 @@ test('W579 persists without retirement, sound, bullets, or scheduler transition'
     assert.notEqual(b.ram.u16(a4), 0);
   });
 
-test('W579 restores exact lf149131 and reaches the exact A0 id-3 frontier through W580',
+test('W579 restores exact lf149131 and reaches the exact A0 id-4 frontier through W581',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -286,7 +286,7 @@ test('W579 restores exact lf149131 and reaches the exact A0 id-3 frontier throug
 
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 1300; attempted++) {
+    for (attempted = 1; attempted <= 1600; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -308,22 +308,22 @@ test('W579 restores exact lf149131 and reaches the exact A0 id-3 frontier throug
       a5, a6, resumed.game.ram.u8(a6 + 0x1a), resumed.game.ram.u8(a6 + 0x1b),
       resumed.game.ram.u16(RNG_STATE),
     ], [
-      1266, 150396, 161010, 0x2a50d0, 4, 8, 16, 1,
-      0x81378c, 0x81533c, 4, 0x3e, 0x008e,
+      1457, 150587, 161201, 0x2a50e4, 4, 8, 16, 1,
+      0x81378c, 0x81533c, 3, 0x20, 0x00b8,
     ]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A50D0/);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A50E4/);
     assert.deepEqual([
       resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
       resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
-    ], [3, 0, 3, 0]);
+    ], [4, 0, 4, 0]);
     assert.deepEqual(Array.from({ length: SCHED.a4Slots }, (_, index) =>
       resumed.game.ram.u16(SCHED.a4Base + index * SCHED.a4Stride)),
-    [0x8103, 0, 0, 0, 0]);
+    [0, 0x8104, 0, 0, 0]);
     assert.deepEqual(Array.from({ length: SCHED.a1Slots }, (_, index) =>
       resumed.game.ram.u16(SCHED.a1Base + index * SCHED.a1Stride)),
     Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'd5df6b6d6b1bf0b2100edef3be4ca0e4c399555f4b11ae3a5398797aba59bf64',
-      '6424b2bb7695afbe5a88dd2e902e55f6a5eb237a5d36228fb361cf0da31494ad',
+      'a5c986442ce2ad5c55a3385381297c9cba311fc67b0e1bc3afb3314cbdf67ad4',
+      '39ed51b2b8f599714912c9c2402dfd299d79f8c812fe021dc5226e39c327fc15',
     ]);
   });

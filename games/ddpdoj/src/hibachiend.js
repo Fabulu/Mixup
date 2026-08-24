@@ -1,5 +1,5 @@
 // HIBACHI'S A2 OBJECTS 0..15, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579, W580.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579, W580, W581.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -183,6 +183,10 @@ export const HIBACHI_A0 = Object.freeze({
   s2Init: 0x2a5054,
   s2Step: 0x2a506c,
   s2End: 0x2a50d0,
+  s3Row: 0x2a4e6e,
+  s3Init: 0x2a50d0,
+  s3Step: 0x2a50dc,
+  s3End: 0x2a50e4,
   s5Init: 0x2a5156,
   s5Step: 0x2a516e,
   s5End: 0x2a51d2,
@@ -768,6 +772,24 @@ export function main2Step2A506C(ram, rom, ctx, a4) {
   ram.setU8(a4, target & 0x3f);                               // $2A50C0/$2A50C4
   ram.setU8(a4 + 0x01, 1);                                   // $2A50C6
   placeMain0Parts2A4EB6(ram, a6);                            // $2A50CC bra.w
+}
+
+// =============================================================== A0 MAIN SCRIPT 3
+// `$2A4E6E` entry 3 is {$2A50D0, $2A50DC}. The init has no RTS, so its
+// first dispatch sets speed three and heading $20 before falling through to
+// the persistent movement-only step. Neither entry reads A4.
+
+/** `$2A50D0`. Set the fixed speed and heading. */
+export function main3Init2A50D0(ram, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s3Init);
+  ram.setU8(a6 + 0x1a, 3);                                   // $2A50D0
+  ram.setU8(a6 + 0x1b, 0x20);                                // $2A50D6
+}
+
+/** `$2A50DC`. Apply the fixed velocity once and persist. */
+export function main3Step2A50DC(ram, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s3Step);
+  applyVelocityA6(ram, ctx.tables, a6);                       // $2A50DC
 }
 
 // =============================================================== A0 MAIN SCRIPT 5
@@ -1704,6 +1726,11 @@ registerScript(HIBACHI_A0.s2Init, initThenStep(
   (ram, rom, ctx, a4) => main2Step2A506C(ram, rom, ctx, a4)));
 registerScript(HIBACHI_A0.s2Step,
   (ram, rom, ctx, a4) => main2Step2A506C(ram, rom, ctx, a4));
+registerScript(HIBACHI_A0.s3Init, initThenStep(
+  (ram, _rom, ctx) => main3Init2A50D0(ram, ctx),
+  (ram, _rom, ctx) => main3Step2A50DC(ram, ctx)));
+registerScript(HIBACHI_A0.s3Step,
+  (ram, _rom, ctx) => main3Step2A50DC(ram, ctx));
 registerScript(HIBACHI_A0.s5Init, initThenStep(
   (ram, rom, ctx, a4) => main5Init2A5156(ram, rom, ctx, a4),
   (ram, rom, ctx, a4) => main5Step2A516E(ram, rom, ctx, a4)));
