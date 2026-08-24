@@ -23,7 +23,7 @@ import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
   ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs, tableBeforeW570,
-  tableBeforeW571,
+  tableBeforeW571, tableBeforeW576,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -42,7 +42,8 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W570_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW570(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
-const CURRENT_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
+const CURRENT_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
+const ASSET_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const TABLE_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
 const PRIOR_HASH = '3c480c86d79e63da7149fbf1ada5a454d4217cb2dffa6e0aab63ecebc94e9717';
 const A5 = 0x810c00;
@@ -91,9 +92,9 @@ async function bundle() {
 
 test('W570 adds exactly four disjoint gun-0 windows and reconstructs W569',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 847);
-    assert.equal(TABLE_JSON.rom.windows.length, 847);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452447);
+    assert.equal(ROM_WINDOW_COUNT, 849);
+    assert.equal(TABLE_JSON.rom.windows.length, 849);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452603);
     assert.equal(canonicalHash(TABLE_JSON), CURRENT_HASH);
     assert.equal(W570_TABLE.rom.windows.length, 843);
     assert.equal(W570_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452313);
@@ -266,9 +267,12 @@ test('W570 fires twelve attachments plus the 54-shot curtain and retires faithfu
 
 test('W570 preserves the migrated frontier, checkpoints at 500, and reaches main gun 1',
   { skip: SKIP }, async () => {
-    const exact = await bundle();
+    const assets = await bundle();
+    assert.equal(canonicalHash(assets.tables), ASSET_TABLE_HASH);
+    assert.deepEqual(assets.tables, tableBeforeW576(TABLE_JSON));
+    const exact = { ...assets, tables: TABLE_JSON };
     assert.equal(canonicalHash(exact.tables), CURRENT_HASH);
-    const w570Bundle = { ...exact, tables: W570_TABLE };
+    const w570Bundle = { ...assets, tables: W570_TABLE };
     const frontier = JSON.parse(readFileSync(FRONTIER, 'utf8'));
     assert.deepEqual([
       frontier.tablesSha256, frontier.frame.logic, frontier.frame.video,

@@ -1,5 +1,5 @@
-// HIBACHI'S A2 OBJECTS 0..9, 11..13 AND 15, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575.
+// HIBACHI'S A2 OBJECTS 0..15, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -146,6 +146,10 @@ export const HIBACHI_A2 = Object.freeze({
   object9Art: 0x2a4b40,
   object9ArtFrames: 6,
   object10: 0x2a4c42,
+  object10CodeEnd: 0x2a4c6a,
+  object10Table: 0x2a4c6c,
+  object10Rows: 24,
+  object10Stride: 6,
   object11: 0x2a4b58,
   object11CodeEnd: 0x2a4b9e,
   object12: 0x2a4bc8,
@@ -153,6 +157,9 @@ export const HIBACHI_A2 = Object.freeze({
   object13: 0x2a4ba0,
   object13CodeEnd: 0x2a4bc6,
   object14: 0x2a4c08,
+  object14CodeEnd: 0x2a4c34,
+  object14Art: 0x2a4c36,
+  object14ArtFrames: 3,
   object15: 0x2a4af6,
   object16: 0x2a4cfc,
   object17: 0x2a4d5e,
@@ -485,9 +492,9 @@ export function a2Object8_2A49A6(ram, rom, ctx) {
   a2SharedPart(ram, rom, ctx, HIBACHI_A2.object8, 0x080);
 }
 
-// =========================================== A2 OBJECTS 9, 11, 12, 13 AND 15
-// IDs 9 and 15 point to the same routine. IDs 10, 14, and 16 through 18 index
-// separate cartridge tables that remain outside the exported ROM windows.
+// =========================================== A2 OBJECTS 9 THROUGH 15
+// IDs 9 and 15 point to the same routine. IDs 16 through 18 index separate
+// cartridge data that remains outside the exported ROM windows.
 
 /** Shared orbit-vector and long-position arithmetic for the three new orbiting parts. */
 function a2OrbitPart(ram, rom, ctx, spec) {
@@ -563,6 +570,30 @@ export function a2Object13_2A4BA0(ram, rom, ctx) {
   d1 = (d1 + 0xf200f400) >>> 0;
   enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1,
     0x0011796c, 0x0e60, ram.u8(a6 + 0x0e7));
+}
+
+/** `$2A4C08`. Select one of three lower-part frames and enqueue it with the live palette. */
+export function a2Object14_2A4C08(ram, rom, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A2.object14);
+  const art = rom.u32(HIBACHI_A2.object14Art + i16(ram.u16(a6 + 0x12a)));
+  let d1 = ram.u32(a6 + 0x02);
+  d1 = (d1 + 0xf4000000) >>> 0;
+  d1 = (d1 + 0xf000de00) >>> 0;
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1,
+    art, 0x1110, ram.u8(a6 + 0x0ea));
+}
+
+/** `$2A4C42`. Select one of twenty-four six-byte upper-part rows and enqueue it. */
+export function a2Object10_2A4C42(ram, rom, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A2.object10);
+  const row = HIBACHI_A2.object10Table + i16(ram.u16(a6 + 0x12c));
+  const art = rom.u32(row);
+  const palette = rom.u16(row + 4);
+  let d1 = ram.u32(a6 + 0x02);
+  d1 = (d1 + 0x0c000000) >>> 0;
+  d1 = (d1 + 0xf200e000) >>> 0;
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1,
+    art, 0x0f00, palette);
 }
 
 // ========================================================== A0 MAIN SCRIPT 0 -- THE ARRIVAL POSITION
@@ -1458,9 +1489,11 @@ registerScript(HIBACHI_A2.object6, a2Object6_2A4906);
 registerScript(HIBACHI_A2.object7, a2Object7_2A4956);
 registerScript(HIBACHI_A2.object8, a2Object8_2A49A6);
 registerScript(HIBACHI_A2.object9, a2Objects9And15_2A4AF6); // object 15 is the same pointer
+registerScript(HIBACHI_A2.object10, a2Object10_2A4C42);
 registerScript(HIBACHI_A2.object11, a2Object11_2A4B58);
 registerScript(HIBACHI_A2.object12, a2Object12_2A4BC8);
 registerScript(HIBACHI_A2.object13, a2Object13_2A4BA0);
+registerScript(HIBACHI_A2.object14, a2Object14_2A4C08);
 
 registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Init2A4F56(ram, rom, ctx),

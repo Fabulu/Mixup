@@ -23,7 +23,7 @@ import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
   ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs,
-  tableBeforeW571, tableBeforeW572, tableBeforeW573,
+  tableBeforeW571, tableBeforeW572, tableBeforeW573, tableBeforeW576,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -46,7 +46,8 @@ const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const W570_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
-const LIVE_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
+const LIVE_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
+const ASSET_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const TABLE_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
 const W571_HASH = '376e17ddc03d3e56d728cb804ba091ab098b4039b2d51ba7b2d6689ccd07f7c8';
 const W570_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
@@ -137,9 +138,9 @@ async function bundle() {
 
 test('W572 adds one strict template window and reconstructs W571 and W570',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 847);
-    assert.equal(TABLE_JSON.rom.windows.length, 847);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452447);
+    assert.equal(ROM_WINDOW_COUNT, 849);
+    assert.equal(TABLE_JSON.rom.windows.length, 849);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452603);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(W572_TABLE.rom.windows.length, 845);
     assert.equal(W572_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452367);
@@ -477,9 +478,12 @@ test('W572 magazine and outer borrow transitions consume one draw and retire exa
       [4, 0xffff], 'unsigned words exactly at or above four do not increment');
   });
 
-test('W572 checkpoint remains strict through the W573 additive migration',
+test('W572 checkpoint remains strict through the W576 additive migration',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const exact = await bundle();
+    const assets = await bundle();
+    assert.equal(canonicalHash(assets.tables), ASSET_TABLE_HASH);
+    assert.deepEqual(assets.tables, tableBeforeW576(TABLE_JSON));
+    const exact = { ...assets, tables: TABLE_JSON };
     assert.equal(canonicalHash(exact.tables), LIVE_TABLE_HASH);
     assert.deepEqual(tableBeforeW573(exact.tables), W572_TABLE,
       'removing W573 reconstructs strict historical W572');
@@ -501,7 +505,7 @@ test('W572 checkpoint remains strict through the W573 additive migration',
     restoreCheckpoint(migrated, exact, historical.selection);
     assert.deepEqual([migrated.ramSha256, migrated.gameSha256],
       [historical.ramSha256, historical.gameSha256],
-      'W573 migration changes only the table identity');
+      'live migration changes only the table identity');
     assert.ok(scriptAddresses().includes(HIBACHI_A1.gun3Init));
     assert.equal(HIBACHI_A1_COUNTED[3], undefined);
   });

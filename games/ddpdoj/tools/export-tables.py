@@ -3907,6 +3907,12 @@ SHOT_WINDOWS.extend([
     (0x2A4B40, 0x0018, "W560: HIBACHI A2 objects 9 and 15 share these six art longwords, selected by "
                        "the signed word byte offset at A6+$126. The exact span begins after the shared "
                        "routine's $2A4B3E alignment and ends at object 11 code at $2A4B58"),
+    (0x2A4C36, 0x000C, "W576: HIBACHI A2 object 14's three art longwords, selected by the signed word "
+                       "byte offset at A6+$12A. The exact span starts after the unreachable $2A4C34 "
+                       "alignment nop and ends at object 10 code at $2A4C42"),
+    (0x2A4C6C, 0x0090, "W576: HIBACHI A2 object 10's twenty-four six-byte rows, each holding an art "
+                       "longword and palette word selected by signed A6+$12C. The exact span starts "
+                       "after the unreachable $2A4C6A alignment nop and ends at object 16 code at $2A4CFC"),
     (0x2A4E56, 0x0060, "W553: HIBACHI's A0 main-sequencer table, twelve init/step pairs. The exact span "
                        "ends at $2A4EB6, the shared part-position body whose first opcode is $4CAE; "
                        "entry 0 is {$2A4F56, $2A4F86}, started by A4 script 0 at $2A593E"),

@@ -27,7 +27,7 @@ import {
 } from '../tools/progression-checkpoint.mjs';
 import {
   ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs,
-  tableBeforeW572, tableBeforeW573,
+  tableBeforeW572, tableBeforeW573, tableBeforeW576,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -46,10 +46,12 @@ const SKIP_CHECKPOINT = [HISTORICAL, MIGRATED,
   : 'exact W573 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const W572_TABLE = SKIP ? null : tableBeforeW573(TABLE_JSON);
 const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
+const LIVE_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
 const TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const W572_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
 const W571_HASH = '376e17ddc03d3e56d728cb804ba091ab098b4039b2d51ba7b2d6689ccd07f7c8';
@@ -147,12 +149,18 @@ async function bundle() {
     new Uint8Array(readFileSync(path.join(ASSETS, name))));
 }
 
+const migrateW576 = (document) => ({ ...document, tablesSha256: LIVE_TABLE_HASH });
+
 test('W573 adds only the exact template and five-row pattern windows',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 847);
-    assert.equal(TABLE_JSON.rom.windows.length, 847);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452447);
-    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
+    assert.equal(ROM_WINDOW_COUNT, 849);
+    assert.equal(TABLE_JSON.rom.windows.length, 849);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452603);
+    assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
+    assert.equal(W575_TABLE.rom.windows.length, 847);
+    assert.equal(W575_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452447);
+    assert.equal(canonicalHash(W575_TABLE), TABLE_HASH,
+      'removing only W576 reconstructs strict W575 byte for byte');
     assert.equal(W572_TABLE.rom.windows.length, 845);
     assert.equal(W572_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452367);
     assert.equal(canonicalHash(W572_TABLE), W572_HASH,
@@ -583,10 +591,14 @@ test('W573 main and alternate gun-3 differentials remain explicit', { skip: SKIP
 
 test('W573 migrates lf146131 additively and pins every periodic frontier and blocker',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const exact = await bundle();
-    assert.equal(canonicalHash(exact.tables), TABLE_HASH);
+    const assets = await bundle();
+    assert.equal(canonicalHash(assets.tables), TABLE_HASH);
+    assert.deepEqual(tableBeforeW576(TABLE_JSON), assets.tables,
+      'strict additive W576 identity is proven before checkpoint migration');
+    const exact = { ...assets, tables: TABLE_JSON };
+    assert.equal(canonicalHash(exact.tables), LIVE_TABLE_HASH);
     assert.deepEqual(tableBeforeW573(exact.tables), W572_TABLE,
-      'strict additive identity is proven before checkpoint migration');
+      'strict additive identity composes through W576 before checkpoint migration');
 
     const historical = JSON.parse(readFileSync(HISTORICAL, 'utf8'));
     assert.deepEqual([
@@ -613,7 +625,11 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
       TABLE_HASH, 146131, 156720,
       historical.ramSha256, historical.gameSha256,
     ]);
-    restoreCheckpoint(migrated, exact, migrated.selection);
+    restoreCheckpoint(migrated, assets, migrated.selection);
+    const currentMigrated = migrateW576(migrated);
+    assert.deepEqual({ ...currentMigrated, tablesSha256: migrated.tablesSha256 }, migrated,
+      'W576 migration changes only the proven additive cartridge-table identity');
+    restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
 
     const periodics = [
       {
@@ -646,10 +662,14 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
         document.selection.ship, document.selection.style,
         document.inputWord, document.probeOnly.invulnerable,
       ], [0, 4, 65499, true]);
-      restoreCheckpoint(document, exact, { ship: 0, style: 4 });
+      restoreCheckpoint(document, assets, { ship: 0, style: 4 });
+      const current = migrateW576(document);
+      assert.deepEqual({ ...current, tablesSha256: document.tablesSha256 }, document,
+        'periodic checkpoint migration changes only table identity');
+      restoreCheckpoint(current, exact, { ship: 0, style: 4 });
     }
 
-    const resumed = restoreCheckpoint(migrated, exact, migrated.selection);
+    const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;
     for (attempted = 1; attempted <= 5000; attempted++) {
@@ -664,14 +684,14 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
     const attemptState = checkpointDocument(resumed.game, exact, {
       ...migrated.selection, inputWord: resumed.probe.inputWord, invulnerable: true,
     });
-    // W575 ports A3 ids 3 and 4, so the same frame now reaches the A2 id-10 blocker.
+    // W576 ports A2 ids 10 and 14, so progression reaches A0 id 2 before lf148131.
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, attemptState.ramSha256, attemptState.gameSha256,
     ], [
-      1913, 148043, 158657, 0x2a4c42,
-      '241687e521ddff90fd53e3c281772b2a2e15e7583cbfcd705b9dd54f2598997c',
-      '1ceb1158c3b8144490ad8d69ce5d85d41b303eb2557738b73c10aa1661bf953a',
+      1980, 148110, 158724, 0x2a5054,
+      'c935b62437760a4b9233add6d6a3ba49f98b40f457f2d2b0b8248c9082b4851d',
+      '0464af79bbc1b60bfaf01b8ae288820191db2974f5b0a2184692e7ca87014636',
     ]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4C42/);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5054/);
   });

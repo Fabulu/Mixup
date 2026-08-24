@@ -23,7 +23,7 @@ import {
 } from '../src/hibachiend.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_WINDOW_COUNT } from './romwindowset.js';
+import { ROM_WINDOW_COUNT, tableBeforeW576 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
@@ -40,11 +40,14 @@ const SKIP_CHECKPOINT = [MIGRATED, FRONTIER,
   : 'exact W575 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
+const LIVE_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
 const TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const REC = 0x810c00;
 const SUB = 0x814800;
+const FRONTIER_A6 = 0x81533c;
 const canonicalHash = (value) => createHash('sha256')
   .update(JSON.stringify(value)).digest('hex');
 
@@ -68,16 +71,13 @@ async function bundle() {
 const bytes = (ram, base, length) =>
   Array.from({ length }, (_, offset) => ram.u8(base + offset));
 
-const caught = (fn) => {
-  try { fn(); return null; } catch (error) { return error; }
-};
-
 test('W575 pins both raw A3 pairs, exclusive boundaries, registrations, and no ROM window',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 847);
-    assert.equal(TABLE_JSON.rom.windows.length, 847);
-    assert.equal(TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0), 452447);
-    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
+    assert.equal(ROM_WINDOW_COUNT, 849);
+    assert.equal(TABLE_JSON.rom.windows.length, 849);
+    assert.equal(TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0), 452603);
+    assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
+    assert.equal(canonicalHash(W575_TABLE), TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W575:')), []);
 
     assert.deepEqual([
@@ -231,7 +231,7 @@ test('W575 both scripts persist without RNG, player, target, helper, or self-cle
       'neither selector script produces a bullet-helper side effect');
   });
 
-test('W575 A3 ids 3 and 4 run earlier in the same scheduler pass than A2 id 10',
+test('W575 A3 ids 3 and 4 still run earlier in the same scheduler pass than A2 id 10',
   { skip: SKIP }, () => {
     const b = bench({ a2: HIBACHI_A2.table, a3: HIBACHI_A3.table });
     assert.equal(a3Start259962(b.ram, 3), true);
@@ -240,9 +240,7 @@ test('W575 A3 ids 3 and 4 run earlier in the same scheduler pass than A2 id 10',
     assert.equal(b.ram.u16(SCHED.a2Base + 10 * SCHED.a2Stride), 0x8001);
 
     clearDispatched();
-    const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, HIBACHI_A2.object10);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4C42/);
+    assert.equal(runScheduler25962E(b.ram, ROM, b.ctx), false);
     assert.deepEqual(dumpDispatched(), [
       HIBACHI_A2.object10, HIBACHI_A3.s3Init, HIBACHI_A3.s4Init,
     ].sort((a, z) => a - z));
@@ -252,13 +250,16 @@ test('W575 A3 ids 3 and 4 run earlier in the same scheduler pass than A2 id 10',
       b.ram.u16(SUB + HIBACHI_A3.s3Selector),
       b.ram.u16(SUB + HIBACHI_A3.s4Selector),
     ], [0x0000, 0x0101, 0x0004, 0x0006],
-    'both A3 init fallthroughs complete before the A2 walk reports id 10');
+    'both A3 init fallthroughs complete before the A2 walk dispatches id 10');
   });
 
-test('W575 exact progression reaches A2 id 10 on the same frame with no new 500-frame crossing',
+test('W575 exact progression reaches W576 A0 id 2 with no new 500-frame crossing',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const exact = await bundle();
-    assert.equal(canonicalHash(exact.tables), TABLE_HASH);
+    const assets = await bundle();
+    assert.equal(canonicalHash(assets.tables), TABLE_HASH);
+    assert.deepEqual(assets.tables, W575_TABLE);
+    const exact = { ...assets, tables: TABLE_JSON };
+    assert.equal(canonicalHash(exact.tables), LIVE_TABLE_HASH);
 
     const frontier = JSON.parse(readFileSync(FRONTIER, 'utf8'));
     assert.deepEqual([
@@ -270,10 +271,13 @@ test('W575 exact progression reaches A2 id 10 on the same frame with no new 500-
       'c63fba57effb9490ed814c76f12d791c3862f11ec912368960ca8654e5e7c528',
       '1472ca7c0f85a8ddbe2e7e56bfe43c1096f17cf2ec7065d7edf3915ddf78e0d9',
     ]);
-    restoreCheckpoint(frontier, exact, { ship: 0, style: 4 });
+    restoreCheckpoint(frontier, assets, { ship: 0, style: 4 });
 
     const migrated = JSON.parse(readFileSync(MIGRATED, 'utf8'));
-    const resumed = restoreCheckpoint(migrated, exact, migrated.selection);
+    restoreCheckpoint(migrated, assets, migrated.selection);
+    const currentMigrated = { ...migrated, tablesSha256: LIVE_TABLE_HASH };
+    assert.deepEqual({ ...currentMigrated, tablesSha256: migrated.tablesSha256 }, migrated);
+    const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;
     for (attempted = 1; attempted <= 2500; attempted++) {
@@ -291,11 +295,16 @@ test('W575 exact progression reaches A2 id 10 on the same frame with no new 500-
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-    ], [1913, 148043, 158657, HIBACHI_A2.object10, 4, 8, 16, 1]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A4C42/);
-    assert.deepEqual([state.ramSha256, state.gameSha256], [
-      '241687e521ddff90fd53e3c281772b2a2e15e7583cbfcd705b9dd54f2598997c',
-      '1ceb1158c3b8144490ad8d69ce5d85d41b303eb2557738b73c10aa1661bf953a',
+    ], [1980, 148110, 158724, 0x2a5054, 4, 8, 16, 1]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5054/);
+    assert.deepEqual([
+      resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s3Selector),
+      resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s4Selector),
+      state.ramSha256, state.gameSha256,
+    ], [
+      4, 0x60,
+      'c935b62437760a4b9233add6d6a3ba49f98b40f457f2d2b0b8248c9082b4851d',
+      '0464af79bbc1b60bfaf01b8ae288820191db2974f5b0a2184692e7ca87014636',
     ]);
     assert.equal(frontier.frame.logic + 500, 148131);
     assert.ok(resumed.game.logicFrame < frontier.frame.logic + 500,

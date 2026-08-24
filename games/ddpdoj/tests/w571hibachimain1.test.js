@@ -23,7 +23,7 @@ import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
   ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs,
-  tableBeforeW571, tableBeforeW572, tableBeforeW573,
+  tableBeforeW571, tableBeforeW572, tableBeforeW573, tableBeforeW576,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -47,7 +47,8 @@ const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
-const LIVE_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
+const LIVE_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
+const ASSET_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const W572_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
 const TABLE_HASH = '376e17ddc03d3e56d728cb804ba091ab098b4039b2d51ba7b2d6689ccd07f7c8';
 const PRIOR_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
@@ -119,9 +120,9 @@ async function bundle() {
 
 test('W571 adds exactly one disjoint template window and reconstructs strict W570',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 847);
-    assert.equal(TABLE_JSON.rom.windows.length, 847);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452447);
+    assert.equal(ROM_WINDOW_COUNT, 849);
+    assert.equal(TABLE_JSON.rom.windows.length, 849);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452603);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(W571_TABLE.rom.windows.length, 844);
     assert.equal(W571_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452343);
@@ -459,9 +460,12 @@ test('W571 retirement negates drift, applies thresholds, clears locks, and stops
       'the byte comparison is unsigned while both word comparisons are signed');
   });
 
-test('W571 historical identity composes through W572 and its checkpoint migrates exactly',
+test('W571 historical identity composes through W576 and its checkpoint migrates exactly',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const exact = await bundle();
+    const assets = await bundle();
+    assert.equal(canonicalHash(assets.tables), ASSET_TABLE_HASH);
+    assert.deepEqual(assets.tables, tableBeforeW576(TABLE_JSON));
+    const exact = { ...assets, tables: TABLE_JSON };
     assert.equal(canonicalHash(exact.tables), LIVE_TABLE_HASH);
     assert.deepEqual(tableBeforeW572(exact.tables), W571_TABLE,
       'removing W572 reconstructs strict historical W571');
