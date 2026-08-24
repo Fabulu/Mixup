@@ -492,10 +492,10 @@ test('SECTION 5: normal and at-max collected arms expose ADD.L carry and no-carr
 test('SECTION 6: source census has one implementation and preserves every A5/A6 convention', () => {
   assert.deepEqual(nameCensus('applyVelocityA6'), {
     'handlers.js': 3,
-    'hibachiend.js': 7,
+    'hibachiend.js': 8,
     'items.js': 2,
     'movement.js': 3,
-  }, 'raw calls are three handlers after W481 type $52, seven Hibachi A0 scripts, two reusable item paths, wrapper, stick and declaration');
+  }, 'raw calls are three handlers after W481 type $52, eight Hibachi A0 scripts, two reusable item paths, wrapper, stick and declaration');
   assert.deepEqual(nameCensus('applyVelocity'), {
     'boss2.js': 3,
     'boss3.js': 4,

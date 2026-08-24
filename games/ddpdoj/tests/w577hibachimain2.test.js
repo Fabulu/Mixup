@@ -244,7 +244,7 @@ test('W577 persists without player, object, bullet, sound, or sequencer transiti
     assert.notEqual(b.ram.u16(a4), 0, 'the target state remains live without clearing the A0 slot');
   });
 
-test('W577 restores exact lf148131 and reaches the W584 A0 id-9 frontier',
+test('W577 restores exact lf148131 and reaches the W586 A0 id-8 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const live = await bundle();
     assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
@@ -270,7 +270,7 @@ test('W577 restores exact lf148131 and reaches the W584 A0 id-9 frontier',
     const resumed = restoreCheckpoint(currentCheckpoint, exact, { ship: 0, style: 4 });
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 3000; attempted++) {
+    for (attempted = 1; attempted <= 3700; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -289,10 +289,10 @@ test('W577 restores exact lf148131 and reaches the W584 A0 id-9 frontier',
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame, error?.romAddress,
       state.raw.stage, state.raw.loop, a6, resumed.game.ram.u8(a6 + 0x1a),
-    ], [2975, 151105, 161743, 0x2a5338, 4, 1, 0x81533c, 6]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A5338/);
+    ], [3578, 151708, 162346, 0x2a52c6, 4, 1, 0x81533c, 6]);
+    assert.match(error?.message ?? '', /boss SCRIPT at \$2A52C6/);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      '69e51e37e3e90c00f30d8e15990f318b366b802a9b9e0aa229e34663d7053b53',
-      '5c4bf88fe422542636a99de6b4801bc63c196020ba7a14dba63a0f2fe74089d6',
+      '2817f3b21a19f9853e2125aceab4768c6418d9a92af518e97c66b98d1f7e636c',
+      '846f494a996cf9102366401d72c1f144f9680694e8825a670f3db5d20a27589a',
     ]);
   });
