@@ -285,7 +285,7 @@ test('W566 has no gun-level freeze gate while the bullet core may decline every 
     assert.equal(b.ram.u8(SCHED.a1Base + 0x13), 0x41);
   });
 
-test('W566 exact lf73711 replay reaches external cleanup then sound wrapper $28C0FC',
+test('W566 exact lf73711 replay reaches external cleanup then the menu cursor frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const exact = await bundle();
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
@@ -302,9 +302,10 @@ test('W566 exact lf73711 replay reaches external cleanup then sound wrapper $28C
         break;
       }
     }
-    assert.equal(attempted, 3008);
-    assert.equal(game.logicFrame, 76718);
-    assert.match(error?.message ?? '', /no wrapper at \$28C0FC/);
+    assert.equal(attempted, 3009);
+    assert.equal(game.logicFrame, 76719);
+    assert.equal(error?.romAddress, 0x29139eff);
+    assert.match(error?.message ?? '', /word at \$29139EFF/);
     assert.deepEqual(Array.from({ length: SCHED.a1Slots }, (_, i) =>
       game.ram.u16(SCHED.a1Base + i * SCHED.a1Stride)), Array(SCHED.a1Slots).fill(0),
     'external boss cleanup retires the otherwise permanent gun before the new seam');

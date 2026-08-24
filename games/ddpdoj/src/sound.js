@@ -371,10 +371,17 @@ export function postEntry(ram, sound, entryAddr, id, panArg, chan) {
  *  is the same kind of fork to `postBgmCommand`. Keeping the fork here rather
  *  than at each call site is what let ONE change light up nine sites, and it is
  *  why `ctx.soundPost` needed nothing: main.js hands every address through
- *  `postWrapperWithRuntime` -> here. */
+ *  `postWrapperWithRuntime` -> here.
+ *
+ *  W567: `$28C0FC` and `$28C10C` are preserving entry shells whose live slot-7
+ *  caller supplies no parameters. They dispatch here with zeroed D0-D3 values
+ *  and remain ENTRY rows, never WRAPPERS rows. */
 export function postWrapper(ram, sound, wrapperAddr) {
   const w = WRAPPERS[wrapperAddr];
   if (!w) {
+    if (wrapperAddr === 0x28C0FC || wrapperAddr === 0x28C10C) {
+      return postEntry(ram, sound, wrapperAddr, 0, 0, 0);
+    }
     if (STREAMING_LEAVES.has(wrapperAddr)) {
       return postStreamingLeaf(ram, sound, wrapperAddr);
     }
