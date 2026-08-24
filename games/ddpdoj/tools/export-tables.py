@@ -3882,6 +3882,8 @@ SHOT_WINDOWS.extend([
     (0x2A4E56, 0x0060, "W553: HIBACHI's A0 main-sequencer table, twelve init/step pairs. The exact span "
                        "ends at $2A4EB6, the shared part-position body whose first opcode is $4CAE; "
                        "entry 0 is {$2A4F56, $2A4F86}, started by A4 script 0 at $2A593E"),
+    (0x2A5492, 0x0040, "W554: HIBACHI's A3 scheduler table, eight init/step pairs loaded at $2A4312. "
+                       "The exact span ends at $2A54D2, where $4254/$4E75 clear a slot and return"),
     (0x2A6788, 0x003A, "W552: HIBACHI A4 script 0's $246410 animation chain. Its count word is four, "
                        "so the exact span is 2 + 4 * 14 bytes and ends at $2A67C2, A4 script 6's init"),
     (0x268DD2, 0x0068, "W353: type $1A's FIVE palette rows, 15-word record prototype and $20-byte sub "

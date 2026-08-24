@@ -96,7 +96,7 @@ test('W553 main id 0 runs init fallthrough and keeps Hibachi parts attached',
     assert.equal(b.ram.u8(RNG.counter), 1, 'the step does not draw again');
   });
 
-test('W553 the live five-table install advances to the Hibachi A3 table',
+test('W553 the live five-table install runs main id 0 before the later blocker',
   { skip: SKIP }, () => {
     const b = bench();
     installScripts(b.ram, ROM, {
@@ -112,11 +112,11 @@ test('W553 the live five-table install advances to the Hibachi A3 table',
     assert.equal(a4Start25980C(b.ram, 0), true);
 
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, 0x2a5492,
-      'main id 0 completed and A3 script 0 is now the next concrete blocker');
+    assert.equal(error?.romAddress, 0x2a4702,
+      'main id 0 and the live A3 pair complete before the later A2 blocker');
     assert.equal(b.ram.u16(SCHED.seqSub), 4);
     assert.equal(b.ram.u16(SCHED.a4Base + 0x02), HIBACHI_A4.s0Frames - 1,
-      'A4 script 0 made its first timer step before the A3 table stop');
+      'A4 script 0 made its first timer step before the later stop');
     assert.equal(b.ram.u16(SUB + 0x02), 0xb020,
       'the main init and first step executed before the new blocker');
   });

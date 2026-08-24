@@ -420,7 +420,14 @@
 // exactly at the shared `$2A4EB6` part-position body. Measured: 811 -> 812
 // windows, 450,709 -> 450,805 bytes, 77 -> 77 pairs.
 
-export const ROM_WINDOW_COUNT = 812;
+// ---------------------------------------------------------------------------
+// W554 ADDED ONE DISJOINT WINDOW.
+// ---------------------------------------------------------------------------
+// `$2A5492 + $40` is Hibachi's eight-pair A3 scheduler table. It ends exactly
+// at `$2A54D2` code. Measured: 812 -> 813 windows,
+// 450,805 -> 450,869 bytes, 77 -> 77 pairs.
+
+export const ROM_WINDOW_COUNT = 813;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

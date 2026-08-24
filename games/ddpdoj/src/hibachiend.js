@@ -119,6 +119,14 @@ export const HIBACHI_A0 = Object.freeze({
   s0Step: 0x2a4f86,
 });
 
+/** `$2A4312` installs this A3 scheduler table. It contains eight init/step pairs. */
+export const HIBACHI_A3 = Object.freeze({
+  table: 0x2a5492,
+  pairs: 8,
+  s0Init: 0x2a54d6, s0Step: 0x2a54e2, s0Selector: 0x0126,
+  s1Init: 0x2a5502, s1Step: 0x2a550e, s1Selector: 0x0128,
+});
+
 /** Every address in this file's flow that is real ROM data or a real ROM entry point, so a
  *  test can assert the map instead of a prose claim. */
 export const HIBACHI_A4 = Object.freeze({
@@ -322,6 +330,43 @@ export function main0Step2A4F86(ram, _rom, ctx) {
   const a6 = bossA6(ctx, HIBACHI_A0.s0Step);
   scrollCompensate(ram, a5);                               // $2A4F86 jsr $24179E
   placeMain0Parts2A4EB6(ram, a6);                          // $2A4F8C bra.w $2A4EB6
+}
+
+// ======================================================= A3 SCRIPTS 0 AND 1 -- SELECTORS
+/** Shared byte-underflow cadence for `$2A54E2` and `$2A550E`. */
+function a3SelectorStep(ram, ctx, a4, selector, entryAddress) {
+  const a6 = bossA6(ctx, entryAddress);
+  const old = ram.u8(a4 + 0x02);
+  ram.setU8(a4 + 0x02, (old - 1) & 0xff);                  // subq.b #1,($2,A4)
+  if (old !== 0) return;                                   // bcc.s -> rts
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));                // reload the current byte
+  const next = u16(ram.u16(a6 + selector) + 4);
+  ram.setU16(a6 + selector, next);                         // addq.w #4
+  if (next === 0x0018) ram.setU16(a6 + selector, 0);       // equality, not a range or modulo
+}
+
+/** `$2A54D6`. Seed cadence 1, clear A6+$126, then fall through into the step. */
+export function a3s0Init2A54D6(ram, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A3.s0Init);
+  ram.setU16(a4 + 0x02, 0x0001);
+  ram.setU16(a6 + HIBACHI_A3.s0Selector, 0);
+}
+
+/** `$2A54E2`. Advance A6+$126 every two dispatches. */
+export function a3s0Step2A54E2(ram, ctx, a4) {
+  a3SelectorStep(ram, ctx, a4, HIBACHI_A3.s0Selector, HIBACHI_A3.s0Step);
+}
+
+/** `$2A5502`. Seed cadence 2, clear A6+$128, then fall through into the step. */
+export function a3s1Init2A5502(ram, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A3.s1Init);
+  ram.setU16(a4 + 0x02, 0x0002);
+  ram.setU16(a6 + HIBACHI_A3.s1Selector, 0);
+}
+
+/** `$2A550E`. Advance A6+$128 every three dispatches. */
+export function a3s1Step2A550E(ram, ctx, a4) {
+  a3SelectorStep(ram, ctx, a4, HIBACHI_A3.s1Selector, HIBACHI_A3.s1Step);
 }
 
 // =============================================================== A4 SCRIPT 0 -- THE ARRIVAL
@@ -890,6 +935,17 @@ registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Step2A4F86(ram, rom, ctx)));
 registerScript(HIBACHI_A0.s0Step,
   (ram, rom, ctx) => main0Step2A4F86(ram, rom, ctx));
+
+registerScript(HIBACHI_A3.s0Init, initThenStep(
+  (ram, _rom, ctx, a4) => a3s0Init2A54D6(ram, ctx, a4),
+  (ram, _rom, ctx, a4) => a3s0Step2A54E2(ram, ctx, a4)));
+registerScript(HIBACHI_A3.s0Step,
+  (ram, _rom, ctx, a4) => a3s0Step2A54E2(ram, ctx, a4));
+registerScript(HIBACHI_A3.s1Init, initThenStep(
+  (ram, _rom, ctx, a4) => a3s1Init2A5502(ram, ctx, a4),
+  (ram, _rom, ctx, a4) => a3s1Step2A550E(ram, ctx, a4)));
+registerScript(HIBACHI_A3.s1Step,
+  (ram, _rom, ctx, a4) => a3s1Step2A550E(ram, ctx, a4));
 
 registerScript(HIBACHI_A4.s0Init, initThenStep(
   (ram, rom, ctx, a4) => s0Init2A592E(ram, ctx, a4),
