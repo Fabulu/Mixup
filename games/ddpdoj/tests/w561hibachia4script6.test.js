@@ -43,8 +43,10 @@ const caught = (fn) => {
 
 const W562_WINDOW_BASES = new Set(['$2A9318', '$2A934E', '$2A967A', '$2A96B6']);
 function checkpointBundlesWithW562Ablated() {
-  const exact = { seed: new Uint8Array(gunzipSync(readFileSync(SEED))), tables: TABLE_JSON };
-  const ablatedTables = JSON.parse(JSON.stringify(TABLE_JSON));
+  const exactTables = JSON.parse(JSON.stringify(TABLE_JSON));
+  exactTables.rom.windows = exactTables.rom.windows.filter((w) => w.base !== '$2A9A68');
+  const exact = { seed: new Uint8Array(gunzipSync(readFileSync(SEED))), tables: exactTables };
+  const ablatedTables = JSON.parse(JSON.stringify(exactTables));
   ablatedTables.rom.windows = ablatedTables.rom.windows.filter(
     (w) => !W562_WINDOW_BASES.has(w.base));
   return { exact, ablatedTables };

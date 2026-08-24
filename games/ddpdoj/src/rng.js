@@ -357,6 +357,20 @@ export function drawByte242B3C(ram, rom) {
   return rom.u8(RNG_242B3C.table + idx);                      // $242B50
 }
 
+/**
+ * `$242B90`, the D5-return twin of `$242B3C` over the same `$242BAC` table.
+ * `move.w $803916,D5` replaces D5's low word, then `move.b (A0,D5.w),D5`
+ * replaces only that word's low byte. The caller at `$2A9BA8` immediately uses
+ * `asr.b #1,D5`, but preserving the high byte here pins the wrapper itself.
+ * @returns {number} D5's low word after the byte load.
+ */
+export function drawWord242B90(ram, rom) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);   // $242B90
+  const i = u16(ram.u16(RNG.state));                          // $242B96 move.w -> D5
+  const idx = i >= 0x8000 ? i - 0x10000 : i;
+  return (i & 0xff00) | rom.u8(RNG_242B3C.table + idx);       // $242BA4 move.b -> D5
+}
+
 /** `$24311A` -- `moveq #$7F,D0 / and.w $803916,D0 / lea ($243174,PC),A0 /
  *  move.b (A0,D0.w),D0`.  `[M]` the table holds only 0, 1 and 2.
  *  @returns {number} D0, 0..2 for every byte of the real table. */

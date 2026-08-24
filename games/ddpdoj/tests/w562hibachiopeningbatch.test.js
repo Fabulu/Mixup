@@ -64,7 +64,12 @@ const W562_WINDOWS = SKIP ? null : WINDOW_SPECS.map(([base, len, why]) => Object
   base: `$${base.toString(16).toUpperCase()}`,
   len, why, hex: IMG.subarray(base, base + len).toString('hex'),
 }));
-const POST_W562_BASES = new Set(['$2A97B6']);
+const POST_W562_BASES = new Set(['$2A97B6', '$2A9A68']);
+const CHECKPOINT_TABLE = SKIP ? null : (() => {
+  const copy = JSON.parse(JSON.stringify(TABLE_JSON));
+  copy.rom.windows = copy.rom.windows.filter((w) => w.base !== '$2A9A68');
+  return copy;
+})();
 const W562_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W562_BASES.has(w.base));
@@ -134,7 +139,7 @@ test('W562 is exactly four disjoint additive windows and $16A bytes', { skip: SK
   assert.deepEqual(W562_TABLE, FUTURE_TABLE,
     'removing the later W563 window reconstructs the exact W562 additive result');
   assert.equal(TABLE_JSON.rom.windows.length, ROM_WINDOW_COUNT);
-  assert.equal(ROM_WINDOW_COUNT, 821);
+  assert.equal(ROM_WINDOW_COUNT, 822);
   assert.equal(W562_TABLE.rom.windows.length, 820);
   assert.equal(canonicalHash(W562_TABLE), FUTURE_HASH,
     'the reconstructed table has the exact W562 identity');
@@ -203,9 +208,10 @@ test('W562 pins all three exact pairs, boundaries, and registrations', { skip: S
     HIBACHI_A3.s2Init, HIBACHI_A3.s2Step,
     HIBACHI_A4.s7Init, HIBACHI_A4.s7Step,
   ]) assert.ok(registered.has(address), `$${address.toString(16)} is registered`);
-  assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1]);
+  assert.deepEqual(HIBACHI_A1_ALT_SCRIPTS, [0, 1, 2]);
   assert.equal(HIBACHI_A1_ALT_COUNTED[0], undefined);
   assert.equal(HIBACHI_A1_ALT_COUNTED[1], undefined);
+  assert.equal(HIBACHI_A1_ALT_COUNTED[2], undefined);
   assert.equal(HIBACHI_A1_ALT_SCRIPTS.length + Object.keys(HIBACHI_A1_ALT_COUNTED).length, 5,
     'implemented plus counted reconstructs all five alt-only ids');
   assert.ok(HIBACHI_END_SCRIPTS.includes(7));
@@ -451,7 +457,8 @@ test('W562 future-window checkpoint reaches gun 1 template as the W563 window se
   { skip: SKIP_CHECKPOINT }, async () => {
     const exact = await bundle();
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
-    const { game, probe } = restoreCheckpoint(checkpoint, exact, checkpoint.selection);
+    const checkpointExact = { ...exact, tables: CHECKPOINT_TABLE };
+    const { game, probe } = restoreCheckpoint(checkpoint, checkpointExact, checkpoint.selection);
     assert.deepEqual(probe, {
       ship: 0, style: 4, inputWord: checkpoint.inputWord, invulnerable: true,
     });
