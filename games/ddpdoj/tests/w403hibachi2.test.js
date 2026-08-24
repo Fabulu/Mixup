@@ -126,8 +126,8 @@ test('W403 SECTION 1: exactly TWO instructions in 6 MB write ($10E,A6), and they
     // The second writer is inside A4 script 4, which W399 counted and W403 ports.
     assert.ok(HIBACHI_A4.s4Init <= 0x2a637a && 0x2a637a < 0x2a6418,
       '$2A637A is inside A4 script 4, $2A62FA..$2A6417');
-    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 0x14],
-      '  ...and scripts 0 through 5 plus $14 are registered now, including W552 script 0');
+    assert.deepEqual(HIBACHI_END_SCRIPTS.slice().sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 0x14],
+      '  ...and scripts 0 through 6 plus $14 are registered now, including W561 script 6');
     for (const off of [0, 4]) {
       assert.ok(scriptAddresses().includes(l(HIBACHI_A4.table + 4 * 8 + off)),
         `$2A5886[4]${off ? '.step' : '.init'} is registered with the scheduler`);

@@ -120,8 +120,8 @@ test('W552 first-loop hold enables the fight on frame $160 and hands to A4 6 on 
       return seed;
     });
     const error = caught(() => frame(b));
-    assert.equal(error?.romAddress, 0x2a67c2,
-      'the translated script completed and the same A4 walk reached the next unported script');
+    assert.equal(error, null,
+      'W561 runs A4 script 6, which now waits on its newly started A1 gun 0');
     assert.equal(b.ram.u16(0x81b6e4), 1);
     assert.equal(b.ram.u8(0x8130f8), 0x17, 'the final frame also sets bits 1 and 4');
     PARTS.forEach((off, i) => {
@@ -149,6 +149,9 @@ test('W552 first-loop hold enables the fight on frame $160 and hands to A4 6 on 
     assert.equal(b.ram.u16(SCHED.a4Base), 0, 'script 0 retired its own slot');
     assert.equal(b.ram.u16(SCHED.a4Base + SCHED.a4Stride), 0x8106,
       'A4 6 took the next slot and was dispatched in the same walk');
+    assert.equal(b.ram.u16(SCHED.a1Base), 0x8000, 'A4 6 started A1 gun 0');
+    assert.equal(b.ram.u16(SCHED.a3Base + 2 * SCHED.a3Stride), 0x8002,
+      'A4 6 also started A3 script 2');
   });
 
 test('W552 loop and flag branches skip the hold with the ROM-specific HP behavior',
