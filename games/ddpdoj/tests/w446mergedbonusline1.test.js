@@ -319,11 +319,12 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 // W475 removes the palette-reporting method's $24133C claim, leaving widened 68.
 // W497 registers the authentic `$2491C0` seed adapter, two Type-B hit-flag wrapper
 // rows, and one head-visible body pair: narrow 16, widened 71, body pairs 28.
-test('SECTION 2c [W450/W497]: the widened register is 71, so narrow 16 remains a floor', async () => {
+// W554's shared A3 selector and script-0 step both claim `$2A54E2`, taking widened to 72.
+test('SECTION 2c [W450/W554]: the widened register is 72, so narrow 16 remains a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 71,
+  assert.equal(headRegister().length, 72,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 71. ' + W453_NOTE
+    + 'span, not just `export function`) is not 72. ' + W453_NOTE
     + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
     + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
     + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '

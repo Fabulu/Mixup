@@ -428,7 +428,7 @@ test('SECTION 5: cartridge and production-source reachability are proved separat
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live scanner APIs reconcile W459 through W497 and derive body-only count', () => {
+test('SECTION 6: live scanner APIs reconcile W459 through W554 and derive body-only count', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -443,7 +443,8 @@ test('SECTION 6: live scanner APIs reconcile W459 through W497 and derive body-o
   const removedRank = 'initbody.js rankByte242E24 <> rng.js drawByte242E24';
 
   assert.equal(narrow.length, 16, 'W497 registers the authentic-selection adapter at $2491C0');
-  assert.equal(heads.length, 71, 'W475 left 68; W497 adds $2491C0 and $253D82/$253D90');
+  assert.equal(heads.length, 72,
+    'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; W554 adds $2A54E2');
   assert.equal(pairs.length, 28,
     'W461 left 27; W497 adds the authentic-selection/player-object body pair');
   assert.equal(bodyOnly.length, 22,

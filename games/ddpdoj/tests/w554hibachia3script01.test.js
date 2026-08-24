@@ -150,7 +150,7 @@ test('W554 the live five-table dispatch reaches the next measured blocker',
     assert.equal(a4Start25980C(b.ram, 0), true);
 
     const error = caught(() => frame(b));
-    assert.equal(error?.romAddress, 0x2a478c);
+    assert.equal(error?.romAddress, 0x2a4866);
     assert.deepEqual([
       b.ram.u16(SCHED.a3Base),
       b.ram.u16(SCHED.a3Base + SCHED.a3Stride),

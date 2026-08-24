@@ -464,7 +464,7 @@ test('SECTION 5b: cartridge static reachability, production source coverage and 
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live registers reconcile to 16 narrow, 71 widened after W497, 28 pairs and 22 body-only',
+test('SECTION 6: live registers reconcile to 16 narrow, 72 widened after W554, 28 pairs and 22 body-only',
   () => {
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
     const heads = headRegister();
@@ -478,7 +478,8 @@ test('SECTION 6: live registers reconcile to 16 narrow, 71 widened after W497, 2
       .some((body) => !visibleHeads.has(body)));
 
     assert.equal(narrow.length, 16, 'W497 registers the authentic-selection adapter at $2491C0');
-    assert.equal(heads.length, 71, 'W475 left 68; W497 adds $2491C0 and $253D82/$253D90');
+    assert.equal(heads.length, 72,
+      'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; W554 adds $2A54E2');
     assert.equal(heads.includes(BODY_START), false, '$242E24 leaves the widened head register');
     assert.equal(heads.includes(0x2414be), false, '$2414BE leaves the widened head register in W462');
     assert.equal(pairs.length, 28,

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { RNG } from '../src/rng.js';
+import { MoveTables } from '../src/vectors.js';
 import { UnportedLog } from '../src/unported.js';
 import {
   SCHED, installScripts, seqStart2598D0, a2Run2598E6, a4Start25980C,
@@ -23,6 +24,7 @@ const SKIP = existsSync(IMAGE) && existsSync(TABLES) ? false
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
+const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
 
 const beU16 = (addr) => IMG.readUInt16BE(addr);
 const beU32 = (addr) => IMG.readUInt32BE(addr);
@@ -32,7 +34,8 @@ const SUB = 0x814800;
 function bench() {
   const ram = new Ram();
   const log = new UnportedLog();
-  const ctx = { bossRec: REC, bossSubRec: SUB, unported: log, unportedLog: log };
+  const ctx = { bossRec: REC, bossSubRec: SUB, tables: MT,
+    unported: log, unportedLog: log };
   ram.setU32(REC + 0x06, SUB);
   ram.setU16(0x813172, 0x0100);
   ram.setU32(0x80b03c, 0x00200000);
@@ -112,8 +115,8 @@ test('W553 the live five-table install runs main id 0 before the later blocker',
     assert.equal(a4Start25980C(b.ram, 0), true);
 
     const error = caught(() => runScheduler25962E(b.ram, ROM, b.ctx));
-    assert.equal(error?.romAddress, 0x2a4702,
-      'main id 0 and the live A3 pair complete before the later A2 blocker');
+    assert.equal(error?.romAddress, 0x2a4866,
+      'main id 0, the live A3 pair, and A2 objects 0 through 3 complete before object 4');
     assert.equal(b.ram.u16(SCHED.seqSub), 4);
     assert.equal(b.ram.u16(SCHED.a4Base + 0x02), HIBACHI_A4.s0Frames - 1,
       'A4 script 0 made its first timer step before the later stop');

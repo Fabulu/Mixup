@@ -1,7 +1,7 @@
 // WAVE 450 (D69) -- THE DUPLICATE REGISTER, WIDENED UNTIL IT CAN SEE A PRIVATE COPY.
 //
 // ---------------------------------------------------------------------------
-// THE NUMBER WAS 19, W450 FOUND 92, W475 LEFT 68, W497 REGISTERS 71
+// THE NUMBER WAS 19, W450 FOUND 92, W475 LEFT 68, W497 REGISTERED 71, W554 ADDS 72
 // ---------------------------------------------------------------------------
 // W444 built the index; W446, W447, W448 and W449 steered by it and merged five
 // addresses, each of which turned out to be a live defect. Then W449 found a
@@ -29,9 +29,9 @@
 // The live registers are:
 //
 //     shipped `export function` scan     16 addresses claimed twice or more
-//     widened head scan                  71          "
+//     widened head scan                  72          "
 //     of the shipped 16                  16 still there, NONE dropped
-//     newly visible                      55
+//     newly visible                      56
 //
 // ...plus a second register the old scan had no axis for at all: 28 PAIRS OF
 // BODIES that transcribe a shared RUN of ROM instructions. W456 removed four
@@ -54,7 +54,7 @@
 // ---------------------------------------------------------------------------
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
-//   3   THE HEAD REGISTER, exact, 71
+//   3   THE HEAD REGISTER, exact, 72
 //   4   THE BODY REGISTER, exact, 28 pairs; 22 body-only findings
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
@@ -182,7 +182,7 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 
 // ---------------------------------------------------------------- SECTION 3
 
-// THE HEAD REGISTER. 71 ROM addresses claimed by two or more function-like
+// THE HEAD REGISTER. 72 ROM addresses claimed by two or more function-like
 // heads in `src/`, by name suffix or by JSDoc opening span.
 //
 // **DECLARE, NEVER WIDEN** -- W444's rule, and W446/W447/W448/W449 all kept it.
@@ -257,7 +257,8 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
 //     work adds three declared findings: the seeded-browser `$2491C0` adapter and
 //     the `$253D82/$253D90` Type-B hit-flag wrapper/table pair. Functional Black
 //     Label and White Label completion now precede duplicate-only consolidation,
-//     so those exact rows remain registered rather than hidden, leaving 71.
+//     so those exact rows remain registered rather than hidden, leaving 71. W554's
+//     shared A3 selector and script-0 step both claim `$2A54E2`, leaving 72.
 //
 // Each of those is its own wave. W446/W447/W448/W449 say what they cost when
 // they are not: a frozen background, a boss that refills its HP, a death effect
@@ -277,10 +278,10 @@ const HEAD_REGISTER = Object.freeze([
   0x28cb38, 0x28ecb2,
   0x28f588, 0x292902, 0x29321c, 0x293642,
   0x29f8f0, 0x29f9b4, 0x2a00c0, 0x2a0d16, 0x2a11d4, 0x2a3af6,
-  0x2a3e15,
+  0x2a3e15, 0x2a54e2,
 ]);
 
-test('SECTION 3: the widened head register is exactly these 71 addresses', () => {
+test('SECTION 3: the widened head register is exactly these 72 addresses', () => {
   const { idx } = headIndex();
   const wide = headRegister();
   assert.deepEqual(wide.map(hex), [...HEAD_REGISTER].map(hex),
@@ -293,9 +294,10 @@ test('SECTION 3: the widened head register is exactly these 71 addresses', () =>
 
   // ASSERTED AS A NUMBER TOO -- W447's lesson. An empty list satisfies a
   // `deepEqual` against a shrunken array and reads as five merges' progress.
-  assert.equal(wide.length, 71,
-    'the widened register is not 71. W450 found 92; W451 through W475 reduced it to 68, '
-    + 'and W497 registers $2491C0 plus the $253D82/$253D90 Type-B hit-flag wrapper rows');
+  assert.equal(wide.length, 72,
+    'the widened register is not 72. W450 found 92; W451 through W475 reduced it to 68, '
+    + 'W497 registers $2491C0 plus the $253D82/$253D90 Type-B hit-flag wrapper rows, '
+    + 'and W554 adds the shared $2A54E2 A3 selector row');
 
   // ...and every address the four merged waves removed must STAY off it, now
   // measured by a scan that can see private copies rather than only exports.

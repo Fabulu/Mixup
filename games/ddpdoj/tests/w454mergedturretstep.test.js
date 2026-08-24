@@ -352,8 +352,8 @@ test('SECTION 7: W454 merge stays absent after every later register change', () 
   const pairs = bodyPairs();
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   assert.equal(narrow.length, 16, 'W497 registers the authentic-selection adapter at $2491C0');
-  assert.equal(heads.length, 71,
-    'W475 left 68; W497 adds $2491C0 and $253D82/$253D90');
+  assert.equal(heads.length, 72,
+    'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; W554 adds $2A54E2');
   assert.equal(pairs.length, 28,
     'W461 left 27; W497 adds the authentic-selection/player-object body pair');
   assert.ok(!pairs.some(([pair]) => pair === 'handlers.js fire11 <> turret.js turretStep'),
