@@ -14,7 +14,7 @@ import { RomWindows } from '../src/rom.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
-  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, tableBeforeW588,
+  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, tableBeforeW588, tableBeforeW589,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -36,10 +36,12 @@ const SKIP_CHECKPOINT = [...CHECKPOINTS,
   : 'exact W587 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W588_TABLE = SKIP ? null : tableBeforeW589(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const PRIOR_ROM = SKIP ? null : new RomWindows(PRIOR_TABLE.rom);
-const LIVE_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
+const LIVE_TABLE_HASH = 'b062e45b4c4ca0488a0c4660a83a9d868feaf8b6d00b670d1de9948481f3f7c3';
+const W588_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
 const TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const binaryHash = (value) => createHash('sha256').update(value).digest('hex');
 const canonicalHash = (value) => createHash('sha256')
@@ -71,14 +73,19 @@ test('W587 pins the raw target selection, mid-entry aim, and kind-28 split arm',
     ]);
   });
 
-test('W587 adds no ROM window and W588 preserves its exact table identity',
+test('W587 adds no ROM window; W589 live, W588, and W587 tables stay exact',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 854);
+    assert.equal(ROM_WINDOW_COUNT, 906);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 854);
+    assert.equal(TABLE_JSON.rom.windows.length, 906);
     assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0),
-      452789);
+      453741);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
+    assert.deepEqual([
+      W588_TABLE.rom.windows.length,
+      W588_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
+      canonicalHash(W588_TABLE),
+    ], [854, 452789, W588_TABLE_HASH]);
     assert.deepEqual([
       PRIOR_TABLE.rom.windows.length,
       PRIOR_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
@@ -145,10 +152,10 @@ test('W587 exact 500-frame checkpoints restore byte-for-byte',
 
 test('W587 crosses the exact split and W588 reaches the $291836 ROM-table frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle(TABLE_JSON);
+    const assets = await bundle(W588_TABLE);
     const checkpoint = JSON.parse(readFileSync(CHECKPOINTS[0], 'utf8'));
     const resumed = restoreCheckpoint(
-      { ...checkpoint, tablesSha256: LIVE_TABLE_HASH }, assets, checkpoint.selection);
+      { ...checkpoint, tablesSha256: W588_TABLE_HASH }, assets, checkpoint.selection);
     let error = null;
     let attempted = 0;
     for (attempted = 1; attempted <= 3200; attempted++) {

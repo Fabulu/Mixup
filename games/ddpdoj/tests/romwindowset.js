@@ -558,7 +558,15 @@
 // and $91. Measured: 851 -> 854 windows, 452,689 -> 452,789 bytes,
 // 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 854;
+// ---------------------------------------------------------------------------
+// W589 ADDED FIFTY-TWO DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// Seven exact windows cover slot [7]'s complete list-B script family
+// `$291836..$291B3A`; forty-five sparse four-byte windows expose only the new
+// spawn-table longwords those scripts read. Measured: 854 -> 906 windows,
+// 452,789 -> 453,741 bytes, 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 906;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -591,14 +599,65 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W589_WINDOWS = Object.freeze([
+  Object.freeze(['$291836', 0x0078]), Object.freeze(['$2918AE', 0x0064]),
+  Object.freeze(['$291912', 0x0046]), Object.freeze(['$291958', 0x0082]),
+  Object.freeze(['$2919DA', 0x00ae]), Object.freeze(['$291A88', 0x007c]),
+  Object.freeze(['$291B04', 0x0036]),
+  Object.freeze(['$290416', 0x0004]), Object.freeze(['$29044E', 0x0004]),
+  Object.freeze(['$29045A', 0x0004]), Object.freeze(['$290476', 0x0004]),
+  Object.freeze(['$29047E', 0x0004]), Object.freeze(['$290482', 0x0004]),
+  Object.freeze(['$2904AA', 0x0004]), Object.freeze(['$2904DE', 0x0004]),
+  Object.freeze(['$2904E6', 0x0004]), Object.freeze(['$290502', 0x0004]),
+  Object.freeze(['$290526', 0x0004]), Object.freeze(['$29052A', 0x0004]),
+  Object.freeze(['$29056A', 0x0004]), Object.freeze(['$29056E', 0x0004]),
+  Object.freeze(['$290572', 0x0004]), Object.freeze(['$290582', 0x0004]),
+  Object.freeze(['$29058A', 0x0004]), Object.freeze(['$290592', 0x0004]),
+  Object.freeze(['$290596', 0x0004]), Object.freeze(['$29059E', 0x0004]),
+  Object.freeze(['$2905AA', 0x0004]), Object.freeze(['$2905B2', 0x0004]),
+  Object.freeze(['$2905B6', 0x0004]), Object.freeze(['$2905BA', 0x0004]),
+  Object.freeze(['$2905BE', 0x0004]), Object.freeze(['$2905DA', 0x0004]),
+  Object.freeze(['$290602', 0x0004]), Object.freeze(['$29061A', 0x0004]),
+  Object.freeze(['$29062E', 0x0004]), Object.freeze(['$290632', 0x0004]),
+  Object.freeze(['$29063E', 0x0004]), Object.freeze(['$29067E', 0x0004]),
+  Object.freeze(['$29069E', 0x0004]), Object.freeze(['$2906AE', 0x0004]),
+  Object.freeze(['$2906B2', 0x0004]), Object.freeze(['$2906C2', 0x0004]),
+  Object.freeze(['$2906E2', 0x0004]), Object.freeze(['$2906F6', 0x0004]),
+  Object.freeze(['$290566', 0x0004]), Object.freeze(['$2905EE', 0x0004]),
+  Object.freeze(['$2905F6', 0x0004]), Object.freeze(['$290636', 0x0004]),
+  Object.freeze(['$2906AA', 0x0004]), Object.freeze(['$2906B6', 0x0004]),
+  Object.freeze(['$2906E6', 0x0004]),
+]);
+
+/** Reconstruct the exact W588 table by removing W589's additive windows. */
+export function tableBeforeW589(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const found = copy.rom.windows.filter((w) =>
+    W589_WINDOWS.some(([base]) => w.base === base));
+  if (found.length === 0) return copy;
+  if (found.length !== W589_WINDOWS.length) {
+    throw new Error('the W589 slot [7] list-B windows are only partially present');
+  }
+  for (const [base, len] of W589_WINDOWS) {
+    const matches = found.filter((w) => w.base === base);
+    if (matches.length !== 1 || matches[0].len !== len
+        || matches[0].hex.length !== len * 2 || !matches[0].why.startsWith('W589:')) {
+      throw new Error(`${base} is not the exact W589 additive shape`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((w) =>
+    !W589_WINDOWS.some(([base]) => w.base === base));
+  return copy;
+}
+
 const W588_WINDOWS = Object.freeze([
   Object.freeze(['$291040', 0x005c]), Object.freeze(['$2904E2', 0x0004]),
   Object.freeze(['$290506', 0x0004]),
 ]);
 
-/** Reconstruct the exact W587 table by removing W588's additive windows. */
+/** Reconstruct the exact W587 table by removing W589 and W588's additive windows. */
 export function tableBeforeW588(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW589(tables);
   const found = copy.rom.windows.filter((w) =>
     W588_WINDOWS.some(([base]) => w.base === base));
   if (found.length === 0) return copy;
@@ -848,4 +907,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "table and moved no pair. W584 added the disjoint $23FE5C+$36 register enqueue "
   + "stub and $2A4D3E+$20 object-16 art table and moved no pair. W588 added the "
   + "disjoint $291040+$5C variant-1 third script and sparse $2904E2/$290506 spawn "
-  + "pointers and moved no pair. See tests/romwindowset.js.";
+  + "pointers and moved no pair. W589 added seven disjoint list-B scripts from "
+  + "$291836 through $291B3A plus forty-five sparse spawn pointers and moved no "
+  + "pair. See tests/romwindowset.js.";

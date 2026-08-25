@@ -3930,6 +3930,110 @@ const B13_MEASURED = Object.freeze([
     + 'addresses are in it');
 }
 
+// W589: slot [7]'s complete list-B post-boss presentation family. The list at
+// $291816 names seven scripts and then $FFFFFFFF. Walk the script bytecode using
+// the same per-opcode widths as scriptStep2909AA, resolve each plain picture word
+// through $2902C2, and resolve each nonzero $8005 banner selector through
+// $290C72. This runs after all earlier fixed harvests so every newly claimed
+// stream keeps the existing late-presentation owner, deferred shard 17.
+{
+  const listBase = 0x291816;
+  const spawnTable = 0x2902c2;
+  const bannerTable = 0x290c72;
+  const expectedScripts = Object.freeze([
+    [0x291836, 0x2918ae], [0x2918ae, 0x291912], [0x291912, 0x291958],
+    [0x291958, 0x2919da], [0x2919da, 0x291a88], [0x291a88, 0x291b04],
+    [0x291b04, 0x291b3a],
+  ]);
+  const opcodeWidths = Object.freeze({
+    0x8000: 4, 0x8001: 6, 0x8002: 4, 0x8003: 4, 0x8005: 6,
+  });
+  const pictureStreams = new Set();
+  const bannerSelectors = new Set();
+  let pictureOccurrences = 0;
+
+  for (let i = 0; i < expectedScripts.length; i++) {
+    const [expectedStart, expectedEnd] = expectedScripts[i];
+    const script = romBe32(listBase + i * 4);
+    if (script !== expectedStart) {
+      throw new Error(`W589 list-B pointer ${i} is $${script.toString(16)}, expected `
+        + `$${expectedStart.toString(16)}`);
+    }
+    let at = script;
+    for (;;) {
+      const word = romBe16(at);
+      if (word === 0xffff) {
+        at += 2;
+        break;
+      }
+      if ((word & 0x8000) === 0) {
+        const offs = romBe32(spawnTable + word * 4) & 0x7fffff;
+        pictureStreams.add(offs);
+        pictureOccurrences++;
+        at += 2;
+        continue;
+      }
+      const width = opcodeWidths[word];
+      if (width === undefined) {
+        throw new Error(`W589 list-B script ${i} has unknown opcode $${
+          word.toString(16)} at $${at.toString(16)}`);
+      }
+      if (word === 0x8005) {
+        const selector = romBe16(at + 2);
+        if (selector !== 0) bannerSelectors.add(selector);
+      }
+      at += width;
+    }
+    if (at !== expectedEnd) {
+      throw new Error(`W589 list-B script ${i} ends at $${at.toString(16)}, expected `
+        + `$${expectedEnd.toString(16)}`);
+    }
+  }
+  if (romBe32(listBase + expectedScripts.length * 4) !== 0xffffffff) {
+    throw new Error('W589 list-B pointer list lost its $FFFFFFFF terminator');
+  }
+  const selectors = [...bannerSelectors].sort((a, b) => a - b);
+  if (pictureOccurrences !== 247 || pictureStreams.size !== 103
+      || selectors.length !== 2 || selectors[0] !== 3 || selectors[1] !== 4) {
+    throw new Error(`W589 list-B art walk drifted: ${pictureOccurrences} picture `
+      + `occurrences, ${pictureStreams.size} distinct pool streams, banner selectors `
+      + `{${selectors.join(',')}}; expected 247, 103, and {3,4}`);
+  }
+
+  const listBStreams = new Set(pictureStreams);
+  for (const selector of selectors) {
+    listBStreams.add(romBe32(bannerTable + selector * 4) & 0x7fffff);
+  }
+  if (listBStreams.size !== 105) {
+    throw new Error(`W589 list-B art resolves ${listBStreams.size} distinct total `
+      + 'streams, expected 105');
+  }
+
+  let added = 0, already = 0;
+  for (const offs of listBStreams) {
+    if (streams.has(offs)) {
+      already++;
+      continue;
+    }
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, 17);
+    added++;
+  }
+  if (added !== 105 || already !== 0) {
+    throw new Error(`W589 list-B art added ${added} streams and found ${already} `
+      + 'already harvested; expected 105 new streams in deferred shard 17');
+  }
+  harvested += added;
+  harvestAlready += already;
+  harvestReport.push({ shard: 17, base: listBase, entries: pictureOccurrences,
+    stride: 0, runsTo: expectedScripts.length, endsAt: 0x291b3a,
+    distinct: listBStreams.size, added, already,
+    why: 'W589 slot [7] complete list-B scripts: 247 picture occurrences plus banners 3/4' });
+  console.log(`  slot [7] list-B presentation: ${pictureOccurrences} picture occurrences, `
+    + `${pictureStreams.size} pool streams, selectors {${selectors.join(',')}} and `
+    + `${listBStreams.size} total streams in deferred shard 17`);
+}
+
 const bgList = [...bgUsed].sort((a, b) => a - b);
 console.log(`coverage over ${cap.length} captured frames, ${records} records:`);
 console.log(`  BG tiles ${bgList.length}   TX tiles ${txUsed.size}   `
