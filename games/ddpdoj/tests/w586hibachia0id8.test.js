@@ -1,4 +1,4 @@
-// W585: canonical Hibachi A0 main script 9 and exact A0 id-8 frontier.
+// W586: canonical Hibachi A0 main script 8 and the next exact frontier.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +17,7 @@ import {
   scriptAddresses, seqStart2598D0,
 } from '../src/scheduler.js';
 import {
-  HIBACHI_A0, main9Init2A5338, main9Step2A5340,
+  HIBACHI_A0, main8Init2A52C6, main8Step2A52D4,
 } from '../src/hibachiend.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
@@ -33,11 +33,11 @@ const PERIODIC_CHECKPOINTS = Object.freeze([
 ]);
 const required = [TABLES, IMAGE];
 const SKIP = required.every(existsSync) ? false
-  : 'exact W585 image or tables absent. This is a skip, not a pass.';
+  : 'exact W586 image or tables absent. This is a skip, not a pass.';
 const SKIP_CHECKPOINT = [...PERIODIC_CHECKPOINTS,
   path.join(ASSETS, 'seed.bin.gz'), path.join(ASSETS, 'player.tables.json.gz')]
   .every(existsSync) && !SKIP ? false
-  : 'exact W585 assets or checkpoints absent. This is a skip, not a pass.';
+  : 'exact W586 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
@@ -86,7 +86,7 @@ function classify({ x, y, desired = 0, active = 0, heading = 0, state = 0 }) {
   b.ram.setU8(a4, desired);
   b.ram.setU8(a4 + 1, active);
   b.ram.setU16(RNG_STATE, state);
-  main9Step2A5340(b.ram, ROM, b.ctx, a4);
+  main8Step2A52D4(b.ram, ROM, b.ctx, a4);
   return b;
 }
 
@@ -94,47 +94,47 @@ function maskRange(bytes, address, length) {
   bytes.fill(0, address - 0x800000, address - 0x800000 + length);
 }
 
-test('W585 pins the raw id-9 row, code hashes, id-10 boundary, and registration',
+test('W586 pins the raw id-8 row, code hashes, id-9 boundary, and registration',
   { skip: SKIP }, () => {
     assert.deepEqual([
-      HIBACHI_A0.s9Row, ROM.u32(HIBACHI_A0.s9Row), ROM.u32(HIBACHI_A0.s9Row + 4),
-      ROM.u32(HIBACHI_A0.s9Row + 8),
-      HIBACHI_A0.s9Init, HIBACHI_A0.s9Step, HIBACHI_A0.s9End,
+      HIBACHI_A0.s8Row, ROM.u32(HIBACHI_A0.s8Row), ROM.u32(HIBACHI_A0.s8Row + 4),
+      ROM.u32(HIBACHI_A0.s8Row + 8),
+      HIBACHI_A0.s8Init, HIBACHI_A0.s8Step, HIBACHI_A0.s8End,
     ], [
-      0x2a4e9e, 0x2a5338, 0x2a5340, 0x2a53a4,
-      0x2a5338, 0x2a5340, 0x2a53a4,
+      0x2a4e96, 0x2a52c6, 0x2a52d4, 0x2a5338,
+      0x2a52c6, 0x2a52d4, 0x2a5338,
     ]);
     assert.deepEqual([
-      binaryHash(IMG.subarray(HIBACHI_A0.s9Row, HIBACHI_A0.s9Row + 8)),
-      binaryHash(IMG.subarray(HIBACHI_A0.s9Init, HIBACHI_A0.s9Step)),
-      binaryHash(IMG.subarray(HIBACHI_A0.s9Step, HIBACHI_A0.s9End)),
-      binaryHash(IMG.subarray(HIBACHI_A0.s9Init, HIBACHI_A0.s9End)),
+      binaryHash(IMG.subarray(HIBACHI_A0.s8Row, HIBACHI_A0.s8Row + 8)),
+      binaryHash(IMG.subarray(HIBACHI_A0.s8Init, HIBACHI_A0.s8Step)),
+      binaryHash(IMG.subarray(HIBACHI_A0.s8Step, HIBACHI_A0.s8End)),
+      binaryHash(IMG.subarray(HIBACHI_A0.s8Init, HIBACHI_A0.s8End)),
     ], [
-      '16ff30af4b4996095322f6cb4aafc22e9125c1abcb284a6e3cdea09d8936f7e3',
-      '405f8ba296cd10d1928a3d7ab31a879c37a3883e15afbd1bea5b5d54206592a5',
-      '0c52532b37de786895fbabd291daae5a13982b5e5502d8863744a80456e4a518',
-      'ad500785818ca51539b62163d4b24dfe119f7444f00c21a4560bbc2c308260c6',
+      '3c6ef7baaf58164dcccaa7fd896ab917a3f103228b0173002cc74ed60b07ee08',
+      '44aac3a9ee32ba5cf2e4e29957d5cfb36a87df04c8bcfa8cea4bb9419c9a8dc2',
+      'b718cbb158442614fae8b29d27ba1ef4a7a247c8144c72a8c48bab2a1bf76d77',
+      '3e7846852d3ee610ffd32ed0db480f67eb50c32e567ca2f73b50744cb8b14982',
     ]);
-    assert.equal(HIBACHI_A0.s9Step - HIBACHI_A0.s9Init, 0x08);
-    assert.equal(HIBACHI_A0.s9End - HIBACHI_A0.s9Step, 0x64);
-    assert.equal(IMG.readUInt16BE(0x2a53a0), 0x6000);
-    assert.equal(0x2a53a2 + IMG.readInt16BE(0x2a53a2), 0x2a4eb6);
+    assert.equal(HIBACHI_A0.s8Step - HIBACHI_A0.s8Init, 0x0e);
+    assert.equal(HIBACHI_A0.s8End - HIBACHI_A0.s8Step, 0x64);
+    assert.equal(IMG.readUInt16BE(0x2a5334), 0x6000);
+    assert.equal(0x2a5336 + IMG.readInt16BE(0x2a5336), 0x2a4eb6);
     const registered = new Set(scriptAddresses());
-    assert.ok(registered.has(HIBACHI_A0.s9Init));
-    assert.ok(registered.has(HIBACHI_A0.s9Step));
+    assert.ok(registered.has(HIBACHI_A0.s8Init));
+    assert.ok(registered.has(HIBACHI_A0.s8Step));
   });
 
-test('W585 adds no ROM window and preserves the exact W584 table identity',
+test('W586 adds no ROM window and preserves the exact W584 table identity',
   { skip: SKIP }, () => {
     assert.equal(ROM_WINDOW_COUNT, 851);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
     assert.equal(TABLE_JSON.rom.windows.length, 851);
     assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452689);
     assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
-    assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W585:')), []);
+    assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W586:')), []);
   });
 
-test('W585 init clears only target state and registered fallthrough moves at inherited velocity',
+test('W586 init forces speed two and registered fallthrough moves at inherited heading',
   { skip: SKIP }, () => {
     const direct = bench();
     const a4 = SCHED.seqDst;
@@ -143,11 +143,11 @@ test('W585 init clears only target state and registered fallthrough moves at inh
     direct.ram.setU8(SUB + 0x1a, 6);
     direct.ram.setU8(SUB + 0x1b, 7);
     direct.ram.setU16(RNG_STATE, 0x3456);
-    main9Init2A5338(direct.ram, a4);
+    main8Init2A52C6(direct.ram, direct.ctx, a4);
     assert.deepEqual([
       direct.ram.u8(a4), direct.ram.u8(a4 + 1), direct.ram.u8(SUB + 0x1a),
       direct.ram.u8(SUB + 0x1b), direct.ram.u16(RNG_STATE),
-    ], [0, 0, 6, 7, 0x3456]);
+    ], [0, 0, 2, 7, 0x3456]);
 
     const b = bench();
     b.ram.setU32(SUB + 0x02, 0x50001000);
@@ -156,23 +156,23 @@ test('W585 init clears only target state and registered fallthrough moves at inh
     b.ram.setU8(a4, 0xaa);
     b.ram.setU8(a4 + 1, 0xbb);
     installScripts(b.ram, ROM, { a0: HIBACHI_A0.table });
-    seqStart2598D0(b.ram, 9);
-    const vector = MT.vector(6, 7);
+    seqStart2598D0(b.ram, 8);
+    const vector = MT.vector(2, 7);
     const draw = IMG.readUInt8(0x242bac + 1);
     clearDispatched();
     assert.equal(runScheduler25962E(b.ram, ROM, b.ctx), false);
-    assert.deepEqual(dumpDispatched(), [HIBACHI_A0.s9Init]);
+    assert.deepEqual(dumpDispatched(), [HIBACHI_A0.s8Init]);
     assert.deepEqual([
       b.ram.u16(SUB + 0x02), b.ram.u16(SUB + 0x04),
       b.ram.u8(SUB + 0x1a), b.ram.u8(SUB + 0x1b), b.ram.u16(RNG_STATE),
       b.ram.u8(a4), b.ram.u8(a4 + 1),
     ], [
       u16(0x5000 + vector.dy), u16(0x1000 + vector.dx),
-      6, 7, 1, (draw + 0x10) & 0x3f, 1,
+      2, 7, 1, (draw + 0x10) & 0x3f, 1,
     ]);
   });
 
-test('W585 moves before slew and pins every unsigned classifier boundary',
+test('W586 moves before slew and pins every unsigned classifier boundary',
   { skip: SKIP }, () => {
     const moving = bench();
     const a4 = SCHED.seqDst;
@@ -182,18 +182,27 @@ test('W585 moves before slew and pins every unsigned classifier boundary',
     moving.ram.setU8(a4, 8);
     moving.ram.setU8(a4 + 1, 1);
     const vector = MT.vector(6, 7);
-    main9Step2A5340(moving.ram, ROM, moving.ctx, a4);
+    main8Step2A52D4(moving.ram, ROM, moving.ctx, a4);
     assert.deepEqual([
       moving.ram.u16(SUB + 0x02), moving.ram.u16(SUB + 0x04),
       moving.ram.u8(SUB + 0x1b),
     ], [u16(0x5000 + vector.dy), u16(0x1000 + vector.dx), 8]);
 
+    const inactive = classify({ x: 0x1c00, y: 0x5200, desired: 10, active: 0, heading: 7 });
+    const arrived = classify({ x: 0x1c00, y: 0x5200, desired: 8, active: 1, heading: 7 });
+    const partial = classify({ x: 0x1c00, y: 0x5200, desired: 10, active: 1, heading: 7 });
+    assert.deepEqual([
+      inactive.ram.u8(SUB + 0x1b), inactive.ram.u8(a4 + 1),
+      arrived.ram.u8(SUB + 0x1b), arrived.ram.u8(a4 + 1),
+      partial.ram.u8(SUB + 0x1b), partial.ram.u8(a4 + 1),
+    ], [7, 0, 8, 0, 8, 1]);
+
     const draw = IMG.readUInt8(0x242bac + 1);
     const cases = [
-      [0x17ff, 0x0000, 0x10], [0x1800, 0x61ff, 0x00],
-      [0x1fff, 0x61ff, 0x00], [0x2000, 0x0000, 0x30],
+      [0x17ff, 0x0000, 0x10], [0x1800, 0x51ff, 0x00],
+      [0x1fff, 0x51ff, 0x00], [0x2000, 0x0000, 0x30],
       [0xd7ff, 0x0000, 0x30], [0xd800, 0x0000, 0x10],
-      [0x1c00, 0x61ff, 0x00], [0x1c00, 0x6600, 0x20],
+      [0x1c00, 0x51ff, 0x00], [0x1c00, 0x5600, 0x20],
       [0x1c00, 0xffff, 0x20],
     ];
     for (const [x, y, bias] of cases) {
@@ -203,7 +212,7 @@ test('W585 moves before slew and pins every unsigned classifier boundary',
       ], [((draw + bias) & 0xff) & 0x3f, 1, 1],
       `classifier mismatch at X $${x.toString(16)} Y $${y.toString(16)}`);
     }
-    for (const y of [0x6200, 0x65ff]) {
+    for (const y of [0x5200, 0x55ff]) {
       const b = classify({ x: 0x1c00, y, desired: 0x2a, active: 0 });
       assert.deepEqual([
         b.ram.u8(SCHED.seqDst), b.ram.u8(SCHED.seqDst + 1), b.ram.u16(RNG_STATE),
@@ -215,7 +224,7 @@ test('W585 moves before slew and pins every unsigned classifier boundary',
     ], [0xfd, 5, 0x0d]);
   });
 
-test('W585 refreshes all parts, owns no unrelated RAM, and obeys scheduler gates',
+test('W586 refreshes all parts, owns no unrelated RAM, and obeys scheduler gates',
   { skip: SKIP }, () => {
     const b = bench();
     const a4 = SCHED.seqDst;
@@ -225,7 +234,7 @@ test('W585 refreshes all parts, owns no unrelated RAM, and obeys scheduler gates
     b.ram.setU8(SUB + 0x1b, 0x11);
     b.ram.setU16(RNG_STATE, 0);
     const before = Uint8Array.from(b.ram.b);
-    main9Step2A5340(b.ram, ROM, b.ctx, a4);
+    main8Step2A52D4(b.ram, ROM, b.ctx, a4);
     const after = Uint8Array.from(b.ram.b);
     for (const bytes of [before, after]) {
       maskRange(bytes, RNG_STATE, 2);
@@ -248,17 +257,17 @@ test('W585 refreshes all parts, owns no unrelated RAM, and obeys scheduler gates
       gated.ram.setU8(SUB + 0x1a, 6);
       gated.ram.setU8(SUB + 0x1b, 7);
       installScripts(gated.ram, ROM, { a0: HIBACHI_A0.table });
-      seqStart2598D0(gated.ram, 9);
+      seqStart2598D0(gated.ram, 8);
       gated.ram.setU16(gate, 1);
       assert.equal(runScheduler25962E(gated.ram, ROM, gated.ctx), expectedReturn);
       assert.deepEqual([
         gated.ram.u16(SCHED.seqDst), gated.ram.u16(SCHED.seqPending),
         gated.ram.u16(RNG_STATE), gated.ram.u32(SUB + 0x02),
-      ], [0, 9, 0, 0x50001800]);
+      ], [0, 8, 0, 0x50001800]);
     }
   });
 
-test('W585 periodic checkpoints restore exactly and reach the W586 loud frontier',
+test('W586 periodic checkpoints restore exactly and reach the next loud frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -301,7 +310,7 @@ test('W585 periodic checkpoints restore exactly and reach the W586 loud frontier
     const resumed = restoreCheckpoint(checkpoint, assets, checkpoint.selection);
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 300; attempted++) {
+    for (attempted = 1; attempted <= 1000; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);

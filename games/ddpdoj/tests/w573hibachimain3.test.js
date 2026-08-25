@@ -674,7 +674,7 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 5600; attempted++) {
+    for (attempted = 1; attempted <= 5800; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -686,14 +686,14 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
     const attemptState = checkpointDocument(resumed.game, exact, {
       ...migrated.selection, inputWord: resumed.probe.inputWord, invulnerable: true,
     });
-    // W585 runs A0 id 9 through three more periodic checkpoints, then reaches A0 id 8.
+    // W586 runs A0 id 8 and reaches the next loud shared frontier.
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, attemptState.ramSha256, attemptState.gameSha256,
     ], [
-      5578, 151708, 162346, 0x2a52c6,
-      '2817f3b21a19f9853e2125aceab4768c6418d9a92af518e97c66b98d1f7e636c',
-      '846f494a996cf9102366401d72c1f144f9680694e8825a670f3db5d20a27589a',
+      5711, 151841, 162479, 0x242748,
+      'b06548c3009fe4dc10735cec92d13e6c8053f6fe5d7c1cc61df0ecc730cdaaa6',
+      '3ce4500007fede13e21206fae1902cf8f207f12332f5d105527034d8ee893eb6',
     ]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A52C6/);
+    assert.match(error?.message ?? '', /kind 28's SPLIT arm:[\s\S]*\$242748/);
   });

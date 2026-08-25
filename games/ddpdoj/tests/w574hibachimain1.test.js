@@ -220,7 +220,7 @@ test('W574 byte borrow, reload, state reversal, and id-2 handoff are exact',
     ], [130, 2, 4, 0, [0x28cb88]], 'canonical script lifetime is exactly 130 dispatches');
   });
 
-test('W574 resumes the migrated W573 state and reaches the W586 A0 id-8 frontier',
+test('W574 resumes the migrated W573 state and reaches the W586 $242748 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const live = await bundle();
     assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
@@ -249,7 +249,7 @@ test('W574 resumes the migrated W573 state and reaches the W586 A0 id-8 frontier
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 5600; attempted++) {
+    for (attempted = 1; attempted <= 5800; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -264,15 +264,15 @@ test('W574 resumes the migrated W573 state and reaches the W586 A0 id-8 frontier
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame,
       error?.romAddress, state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-    ], [5578, 151708, 162346, 0x2a52c6, 4, 8, 16, 1]);
-    assert.match(error?.message ?? '', /boss SCRIPT at \$2A52C6/);
+    ], [5711, 151841, 162479, 0x242748, 4, 8, 16, 1]);
+    assert.match(error?.message ?? '', /kind 28's SPLIT arm:[\s\S]*\$242748/);
     assert.deepEqual([
       ROM.u32(HIBACHI_A3.table + 3 * 8), ROM.u32(HIBACHI_A3.table + 4 * 8),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s3Selector),
       resumed.game.ram.u16(FRONTIER_A6 + HIBACHI_A3.s4Selector),
-    ], [0x2a56a2, 0x2a56ce, 8, 0x5a]);
+    ], [0x2a56a2, 0x2a56ce, 4, 0x72]);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      '2817f3b21a19f9853e2125aceab4768c6418d9a92af518e97c66b98d1f7e636c',
-      '846f494a996cf9102366401d72c1f144f9680694e8825a670f3db5d20a27589a',
+      'b06548c3009fe4dc10735cec92d13e6c8053f6fe5d7c1cc61df0ecc730cdaaa6',
+      '3ce4500007fede13e21206fae1902cf8f207f12332f5d105527034d8ee893eb6',
     ]);
   });

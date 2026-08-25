@@ -1,5 +1,5 @@
 // HIBACHI'S A2 OBJECTS 0..16, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579, W580, W581, W582, W583, W584, W585.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579, W580, W581, W582, W583, W584, W585, W586.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -204,6 +204,10 @@ export const HIBACHI_A0 = Object.freeze({
   s7Init: 0x2a524e,
   s7Step: 0x2a5262,
   s7End: 0x2a52c6,
+  s8Row: 0x2a4e96,
+  s8Init: 0x2a52c6,
+  s8Step: 0x2a52d4,
+  s8End: 0x2a5338,
   s9Row: 0x2a4e9e,
   s9Init: 0x2a5338,
   s9Step: 0x2a5340,
@@ -997,6 +1001,49 @@ export function main7Step2A5262(ram, rom, ctx, a4) {
   ram.setU8(a4, target & 0x3f);                               // $2A52B6/$2A52BA
   ram.setU8(a4 + 0x01, 1);                                   // $2A52BC
   placeMain0Parts2A4EB6(ram, a6);                            // $2A52C2 bra.w
+}
+
+// =============================================================== A0 MAIN SCRIPT 8
+// `$2A4E96` entry 8 is {$2A52C6, $2A52D4}. It forces speed two, preserves
+// inherited heading, falls through, and uses this phase's centre classifier.
+
+/** `$2A52C6`. Clear target state and force speed two before falling through. */
+export function main8Init2A52C6(ram, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s8Init);
+  ram.setU8(a4, 0);                                          // $2A52C6/$2A52C8
+  ram.setU8(a4 + 0x01, 0);                                   // $2A52CA
+  ram.setU8(a6 + 0x1a, 2);                                   // $2A52CE
+}
+
+/** `$2A52D4`. Move, slew, draw a replacement target, and refresh all parts. */
+export function main8Step2A52D4(ram, rom, ctx, a4) {
+  const a6 = bossA6(ctx, HIBACHI_A0.s8Step);
+  applyVelocityA6(ram, ctx.tables, a6);                       // $2A52D4
+
+  if (ram.u8(a4 + 0x01) !== 0) {                              // $2A52DA
+    const target = ram.u8(a4);
+    const heading = slew64FromRecord(ram, a6, target);         // $2A52E0/$2A52E2
+    ram.setU8(a6 + 0x1b, heading);                            // $24217E's store
+    if (heading === target) ram.setU8(a4 + 0x01, 0);           // $2A52E8..$2A52EC
+  }
+
+  let target = drawByte242B3C(ram, rom);                      // $2A52F0
+  const x = u16(ram.u16(a6 + 0x04) + 0x2800);                 // $2A52F6/$2A52FA
+  if (x < 0x4000) {                                           // unsigned BCC boundary
+    target = (target + 0x10) & 0xff;                          // $2A5304
+  } else if (x >= 0x4800) {                                   // unsigned BCS boundary
+    target = (target + 0x30) & 0xff;                          // $2A5310
+  } else {
+    const y = ram.u16(a6 + 0x02);                             // $2A5316 swap D1
+    if (y >= 0x5200 && y < 0x5600) {                          // $2A5318..$2A5322
+      placeMain0Parts2A4EB6(ram, a6);                        // $2A5334 bra.w
+      return;
+    }
+    if (y >= 0x5600) target = (target + 0x20) & 0xff;         // $2A5324
+  }
+  ram.setU8(a4, target & 0x3f);                               // $2A5328/$2A532C
+  ram.setU8(a4 + 0x01, 1);                                   // $2A532E
+  placeMain0Parts2A4EB6(ram, a6);                            // $2A5334 bra.w
 }
 
 // =============================================================== A0 MAIN SCRIPT 9
@@ -1893,6 +1940,11 @@ registerScript(HIBACHI_A0.s7Init, initThenStep(
   (ram, rom, ctx, a4) => main7Step2A5262(ram, rom, ctx, a4)));
 registerScript(HIBACHI_A0.s7Step,
   (ram, rom, ctx, a4) => main7Step2A5262(ram, rom, ctx, a4));
+registerScript(HIBACHI_A0.s8Init, initThenStep(
+  (ram, _rom, ctx, a4) => main8Init2A52C6(ram, ctx, a4),
+  (ram, rom, ctx, a4) => main8Step2A52D4(ram, rom, ctx, a4)));
+registerScript(HIBACHI_A0.s8Step,
+  (ram, rom, ctx, a4) => main8Step2A52D4(ram, rom, ctx, a4));
 registerScript(HIBACHI_A0.s9Init, initThenStep(
   (ram, _rom, _ctx, a4) => main9Init2A5338(ram, a4),
   (ram, rom, ctx, a4) => main9Step2A5340(ram, rom, ctx, a4)));
