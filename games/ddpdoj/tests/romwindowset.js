@@ -585,10 +585,18 @@
 // windows. Measured: 906 -> 908 windows, 453,757 -> 453,851 bytes,
 // 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 908;
+// ---------------------------------------------------------------------------
+// W597 ADDED THREE DISJOINT WINDOWS AND WIDENED FIVE EXISTING ONES.
+// ---------------------------------------------------------------------------
+// Hyper exposed clipped option-shot pointer, hit-descriptor, rotation, and pod
+// template families. The three added rotation/template windows and five strict
+// widenings cover exactly the live structures. Measured: 908 -> 911 windows,
+// 453,851 -> 454,759 bytes, 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 911;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 453851;
+export const ROM_WINDOW_BYTES = 454759;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -621,13 +629,83 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W597_WIDENINGS = Object.freeze([
+  Object.freeze({ base: '$251526', beforeLen: 0x0082, afterLen: 0x00be,
+    beforeWhy: 'W188 option hyper-shot 0 normal table and structs',
+    afterWhy: 'W597 option hyper-shot 0 complete 25-pointer normal table and all 15 draw structs' }),
+  Object.freeze({ base: '$2519E0', beforeLen: 0x00aa, afterLen: 0x0136,
+    beforeWhy: 'W188 option hyper-shot 0 hit table and structs',
+    afterWhy: 'W597 option hyper-shot 0 complete 25-pointer hit table and all 15 draw structs' }),
+  Object.freeze({ base: '$25211C', beforeLen: 0x0082, afterLen: 0x00be,
+    beforeWhy: 'W188 option hyper-shot 1 normal table and structs',
+    afterWhy: 'W597 option hyper-shot 1 complete 25-pointer normal table and all 15 draw structs' }),
+  Object.freeze({ base: '$2525D6', beforeLen: 0x00aa, afterLen: 0x0136,
+    beforeWhy: 'W188 option hyper-shot 1 hit table and structs',
+    afterWhy: 'W597 option hyper-shot 1 complete 25-pointer hit table and all 15 draw structs' }),
+  Object.freeze({ base: '$251B36', beforeLen: 0x03ca, afterLen: 0x03e2,
+    beforeWhy: 'W188 TYPE-B option hyper spawn/animation tables and templates',
+    afterWhy: 'W597 Type-B option hyper spawn/animation tables and complete formation-4 power-zero template' }),
+]);
+
+const W597_ADDITIONS = Object.freeze([
+  Object.freeze({ base: '$251914', len: 0x00cc,
+    why: 'W597 formation-4 hyper option-shot rotation table and all 17 pointed offset pairs' }),
+  Object.freeze({ base: '$25250A', len: 0x00cc,
+    why: 'W597 formation-4 hyper option-shot rotation table and all 17 pointed offset pairs' }),
+  Object.freeze({ base: '$251FA0', len: 0x004c,
+    why: 'W597 Type-B formation-6 hyper power-zero two-pod template' }),
+]);
+
+/** Reconstruct the exact W596 table by undoing W597's five strict widenings
+ *  and removing its three additive windows. */
+export function tableBeforeW597(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const widened = W597_WIDENINGS.map((shape) => ({
+    shape,
+    matches: copy.rom.windows.filter((w) => w.base === shape.base),
+  }));
+  const additions = W597_ADDITIONS.map((shape) => ({
+    shape,
+    matches: copy.rom.windows.filter((w) => w.base === shape.base),
+  }));
+  const alreadyHistorical = widened.every(({ shape, matches }) =>
+    matches.length === 1 && matches[0].len === shape.beforeLen
+      && matches[0].hex.length === shape.beforeLen * 2
+      && matches[0].why === shape.beforeWhy)
+    && additions.every(({ matches }) => matches.length === 0);
+  if (alreadyHistorical) return copy;
+
+  for (const { shape, matches } of widened) {
+    if (matches.length !== 1 || matches[0].len !== shape.afterLen
+        || matches[0].hex.length !== shape.afterLen * 2
+        || matches[0].why !== shape.afterWhy) {
+      throw new Error(`${shape.base} is not the exact W597 widening`);
+    }
+    const index = copy.rom.windows.indexOf(matches[0]);
+    copy.rom.windows[index] = {
+      base: shape.base, len: shape.beforeLen, why: shape.beforeWhy,
+      hex: matches[0].hex.slice(0, shape.beforeLen * 2),
+    };
+  }
+  for (const { shape, matches } of additions) {
+    if (matches.length !== 1 || matches[0].len !== shape.len
+        || matches[0].hex.length !== shape.len * 2
+        || matches[0].why !== shape.why) {
+      throw new Error(`${shape.base} is not the exact W597 additive shape`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((w) =>
+    !W597_ADDITIONS.some(({ base }) => w.base === base));
+  return copy;
+}
+
 const W596_WINDOWS = Object.freeze([
   Object.freeze(['$29109C', 0x005a]), Object.freeze(['$2904AE', 0x0004]),
 ]);
 
 /** Reconstruct the exact W595 table by removing only W596's additive windows. */
 export function tableBeforeW596(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW597(tables);
   const found = copy.rom.windows.filter((w) =>
     W596_WINDOWS.some(([base]) => w.base === base));
   if (found.length === 0) return copy;
@@ -992,5 +1070,7 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "pair. W595 widened the disjoint $000BF0+$14 BIOS window to $000BE0+$24, "
   + "adding sixteen bytes while moving neither the window count nor overlap count. "
   + "W596 added the abutting $29109C+$5A variant-2 third script and the sparse "
-  + "$2904AE spawn pointer, adding 94 bytes and no overlap pair. "
+  + "$2904AE spawn pointer, adding 94 bytes and no overlap pair. W597 widened five "
+  + "hyper option-shot and pod-template windows and added three disjoint rotation "
+  + "and template windows, adding 908 bytes and no overlap pair. "
   + "See tests/romwindowset.js.";

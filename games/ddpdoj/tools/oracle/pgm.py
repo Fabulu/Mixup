@@ -3342,6 +3342,76 @@ def _pairgate_effects(defs: dict, rest: list[str]) -> int:
     return rc
 
 
+def _pairgate_hyper(defs: dict, rest: list[str]) -> int:
+    """W597 one-run-per-pair authenticated hyper trace and GFX capture."""
+    selected = _pairgate_selection(defs["pairgate"], rest)
+    spec = defs.get("pairhyper")
+    if not spec:
+        raise SystemExit("scenarios.json has no pairhyper definition")
+
+    version = subprocess.run([str(mame_exe()), "-version"], capture_output=True,
+                             text=True, timeout=30).stdout.strip()
+    if version != PAIRGATE_MAME:
+        raise SystemExit(f"pairgate: MAME PIN CHANGED: {version!r} != "
+                         f"{PAIRGATE_MAME!r}")
+
+    root = OUT / "w597-pairhyper"
+    root.mkdir(parents=True, exist_ok=True)
+    rc = 0
+    for pair in selected:
+        ship, style = pair["ship"], pair["style"]
+        out = root / f"pair-{ship}-{style}-{os.getpid()}"
+        try:
+            out.mkdir()
+        except FileExistsError:
+            raise SystemExit(f"pairgate hyper: refusing pre-existing generated output "
+                             f"directory {out}") from None
+        gfx = out / "gfx"
+        try:
+            gfx.mkdir()
+        except FileExistsError:
+            raise SystemExit(f"pairgate hyper: refusing pre-existing GFX directory "
+                             f"{gfx}") from None
+        tsv = out / "hyper.tsv"
+        buttons = (f"{defs['pairgate']['chooserPrefix']};{pair['tail']};"
+                   f"{spec['suffix']}")
+        env = {
+            "PROBE_PORTIN": "1",
+            "PROBE_WATCH": spec["watch"],
+            "PROBE_RAWDUMP": spec["rawDump"],
+            "PROBE_RAWDUMP_FROM": spec["fromLogicFrame"],
+            "PROBE_BUCKETS": spec["buckets"],
+            "PROBE_EXEC": spec["exec"],
+            "PROBE_POKE_ONCE": spec["pokeOnce"],
+            "PROBE_POKE_ONCE_FROM": str(spec["pokeOnceFrom"]),
+            "PROBE_POKE_ONCE_TO": str(spec["pokeOnceTo"]),
+            "PROBE_GFX": str(gfx),
+            "PROBE_GFXAT": spec["gfxAt"],
+        }
+        print(f"=== pair ({ship},{style}): W597 hyper, {spec['frames']} lf")
+        t0 = time.time()
+        r = trace(tsv, frames=spec["frames"], buttons=buttons,
+                  build="B", meter=False, extra_env=env)
+        wall = time.time() - t0
+        check(r, f"pairgate hyper ({ship},{style})")
+        if r.find("MACHINE ") != [PAIRGATE_MACHINE]:
+            print(f"PAIRGATE FAIL: pair {ship},{style} machine lines "
+                  f"{r.find('MACHINE ')!r}", file=sys.stderr)
+            rc = 1
+        if r.find("POKE_ONCE ") != ["POKE_ONCE lf=1999 count=2"]:
+            print(f"PAIRGATE FAIL: pair {ship},{style} one-time grant lines "
+                  f"{r.find('POKE_ONCE ')!r}", file=sys.stderr)
+            rc = 1
+        if r.fails:
+            rc = 1
+        print(f"  ignored authenticated trace: {tsv}")
+        print(f"  ignored event-centered GFX corpus: {gfx}")
+        print(f"  wall: {wall:.1f} s")
+        for line in r.find("CENSUS exec_") + r.find("CENSUS poke_once"):
+            print(f"  {line}")
+    return rc
+
+
 def _pairgate_causality(defs: dict, rest: list[str]) -> int:
     """W594 natural selector evidence plus the ancestry-only 0/2 intervention."""
     selected = _pairgate_selection(defs["pairgate"], rest)
@@ -3427,6 +3497,8 @@ def _cmd_pairgate(argv: list[str]) -> int:
       pgm.py pairgate selector --ship 2 --style 6
       pgm.py pairgate effects --ship 0 --style 4 --smoke
       pgm.py pairgate effects --all
+      pgm.py pairgate hyper --ship 0 --style 2
+      pgm.py pairgate hyper --all
       pgm.py pairgate causality --ship 2 --style 6
       pgm.py pairgate causality --all
       pgm.py pairgate verify --all
@@ -3446,9 +3518,9 @@ def _cmd_pairgate(argv: list[str]) -> int:
             raise SystemExit("pairgate verify: only --all is accepted; verification "
                              "is always the complete six-pair matrix")
         return _pairgate_node(verify_args)
-    if mode not in ("selector", "effects", "causality"):
+    if mode not in ("selector", "effects", "hyper", "causality"):
         raise SystemExit(f"pairgate: unknown mode {mode!r}; use selector, effects, "
-                         "causality or verify")
+                         "hyper, causality or verify")
 
     # Validate the tracked contract before paying for any emulator run.
     if _pairgate_node(verify_args) != 0:
@@ -3458,6 +3530,8 @@ def _cmd_pairgate(argv: list[str]) -> int:
         if _effectgate_node([]) != 0:
             return 1
         return _pairgate_effects(defs, rest)
+    if mode == "hyper":
+        return _pairgate_hyper(defs, rest)
     if mode == "causality":
         if _causalitygate_node([]) != 0:
             return 1

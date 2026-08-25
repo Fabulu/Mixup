@@ -33,6 +33,22 @@
     "buckets": "5,14,15,16,19",
     "gfxAt": "2000,2032,2033,2049,2050,2051,2052,2069,2070,2071,2072,2099,2100,2101,2102,2103,2104,2105,2106,2107,2108,2109,2110,2111,2112,2113,2114,2115,2116,2117,2118,2119,2120,2121,2122,2123,2124,2125,2126,2127,2128,2129,2130,2131,2239,2240,2241,2299,2300,2301,2359,2360,2361,2362,2363,2364,2365,2366,2367,2368,2369,2370"
   },
+  "pairhyper": {
+    "schema": "ddpdoj-pair-hyper-scenarios-v1",
+    "why": "W597 grants one authentic hyper stock and full gauge exactly once, requests activation through active-low Button 2, then measures hyper shot taps, held hyper laser, enemy HP writes, Pool E effects, display state and pixels for all six authentic pairs.",
+    "frames": 2372,
+    "fromLogicFrame": 1999,
+    "toLogicFrame": 2371,
+    "pokeOnce": "81B65C=0001:w,81B642=095F:w",
+    "pokeOnceFrom": 1999,
+    "pokeOnceTo": 1999,
+    "suffix": "2000=B;2001=R;2033=;2050=A;2051=;2070=A;2071=;2100=A;2240=AR;2300=A;2360=",
+    "watch": "cship=81043E,cstyle=810440,hactive=81B63E,hgauge=81B642,hpower=81B646,hsubtick=81B64E,hlevel=81B654,hrequest=81B658,hstock=81B65C,hpending=81B6E0",
+    "rawDump": "p1=8103E6:62,opt=8104AA:64,shots=810572:6C0,segments=8112F2:600,beamctl=811EF2:A0,beamstate=812900:A0,enemies=81459C:12C0,poolE=81D394:7F8,display=800000:A00",
+    "buckets": "5,14,15,16,19,20",
+    "exec": "shot_a_mark=245044:810572:8112F1,shot_a_hp=24505E:81459C:81521B,shot_b_mark=245150:810572:8112F1,shot_b_hp=245170:81521C:81585B,beam_a_mark=2454AC:811EF2:811F31,beam_a_hp=2454EE:81459C:81521B,beam_b_mark=2455AE:811EF2:811F31,beam_b_hp=2455F8:81521C:81585B",
+    "gfxAt": "1999,2000,2001,2002,2003,2004,2005,2048,2049,2050,2051,2052,2053,2054,2068,2069,2070,2071,2072,2073,2074,2098,2099,2100,2101,2102,2103,2104,2105,2106,2107,2108,2109,2110,2111,2112,2113,2114,2115,2116,2117,2118,2119,2120,2121,2122,2123,2124,2125,2126,2127,2128,2129,2130,2131,2132,2133,2134,2135,2238,2239,2240,2241,2242,2243,2244,2245,2298,2299,2300,2301,2302,2303,2304,2305,2358,2359,2360,2361,2362,2363,2364,2365,2366,2367,2368,2369,2370,2371"
+  },
   "paircausality": {
     "schema": "ddpdoj-pair-causality-scenarios-v1",
     "why": "W594 runs the unchanged W593 natural suffix and separates direct enemy selector reads from earlier player-position, hit, RNG, rank, and damage causes.",

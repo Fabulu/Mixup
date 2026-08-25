@@ -87,6 +87,10 @@
 --                  consumes it and derives $803970/72/74 itself, so the input
 --                  mirrors stay a genuinely compared field instead of being
 --                  fed in from the answer.  (NOTES-replay.md constraint 3.)
+--   PROBE_POKE_ONCE "addr=value[:b|w|l],..." -- one atomic intervention after
+--                  emit(), within the inclusive PROBE_POKE_ONCE_FROM/TO LF
+--                  bounds. Both bounds are required. The complete bundle is
+--                  applied exactly once, then never refreshed.
 --   PROBE_CAUSAL   path for W594's bounded selector-read and causal-event TSV.
 --                  It also appends fixed causal state digests and exact scalars
 --                  to the frame TSV. Unset means no taps, files, or columns.
@@ -336,7 +340,7 @@ end
 local BUCKET_SPEC = {
   [5] = {0x862c, 0xafd0}, [14] = {0x8854, 0xafd6},
   [15] = {0x8eb4, 0xafda}, [16] = {0x8bb4, 0xafd8},
-  [19] = {0x8ee4, 0xafdc},
+  [19] = {0x8ee4, 0xafdc}, [20] = {0x8fa4, 0xafde},
 }
 local EFFECT_BUCKETS, CAPTURE_BUCKETS, bucket_pending = {}, {}, {}
 local EFFECT_BUCKET_PC = 0x23d382
@@ -434,6 +438,40 @@ for kv in (os.getenv("PROBE_POKE") or ""):gmatch("[^,]+") do
   end
 end
 local POKE_FROM = tonumber(os.getenv("PROBE_POKE_FROM") or "0")
+
+-- ----------------------------------------------------------- PROBE_POKE_ONCE
+-- Unlike the legacy refreshing byte poke above, this applies one typed bundle
+-- after one completed LF and then disarms itself. Requiring an inclusive bound
+-- on both sides makes a shifted or stalled run fail instead of granting late.
+local POKES_ONCE = {}
+local POKE_ONCE_FROM = tonumber(os.getenv("PROBE_POKE_ONCE_FROM") or "")
+local POKE_ONCE_TO = tonumber(os.getenv("PROBE_POKE_ONCE_TO") or "")
+local poke_once_done, poke_once_lf = false, nil
+for kv in (os.getenv("PROBE_POKE_ONCE") or ""):gmatch("[^,]+") do
+  local a, v, sz = kv:match("^(%x+)=(%x+):?(%a*)$")
+  if a and (sz == "" or sz == "b" or sz == "w" or sz == "l") then
+    a, v, sz = tonumber(a, 16), tonumber(v, 16), (sz ~= "" and sz or "b")
+    if a >= 0x800000 then a = a - 0x800000 end
+    local limit = (sz == "b" and 0xff) or (sz == "w" and 0xffff) or 0xffffffff
+    if a < 0 or a > 0x1ffff or v > limit
+        or (sz ~= "b" and (a & 1) ~= 0)
+        or (sz == "w" and a + 1 > 0x1ffff)
+        or (sz == "l" and a + 3 > 0x1ffff) then
+      p("FAIL POKE_ONCE_RANGE_BAD [%s]", kv)
+    else
+      POKES_ONCE[#POKES_ONCE + 1] = {a, v, sz}
+    end
+  else
+    p("FAIL POKE_ONCE_UNPARSED [%s]", kv)
+  end
+end
+local POKE_ONCE = #POKES_ONCE > 0
+if POKE_ONCE and (not POKE_ONCE_FROM or not POKE_ONCE_TO
+    or POKE_ONCE_FROM > POKE_ONCE_TO) then
+  p("FAIL POKE_ONCE_BOUNDS_BAD from=%s to=%s", tostring(POKE_ONCE_FROM),
+    tostring(POKE_ONCE_TO))
+  POKE_ONCE = false
+end
 
 -- ---------------------------------------------------------------- digests
 -- Mix 64 bits at a time.  The wave-0 probe hashed u32 with a four-byte FNV
@@ -1384,6 +1422,16 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x803940, 0x803941, "sem", function(off
     if lf >= POKE_FROM then
       for _, k in ipairs(POKES) do RAM:write_u8(k[1], k[2]) end
     end
+    if POKE_ONCE and not poke_once_done
+        and lf >= POKE_ONCE_FROM and lf <= POKE_ONCE_TO then
+      for _, k in ipairs(POKES_ONCE) do
+        if k[3] == "b" then RAM:write_u8(k[1], k[2])
+        elseif k[3] == "w" then RAM:write_u16(k[1], k[2])
+        else RAM:write_u32(k[1], k[2]) end
+      end
+      poke_once_done, poke_once_lf = true, lf
+      p("POKE_ONCE lf=%d count=%d", lf, #POKES_ONCE)
+    end
     if DUMP_LF == lf then
       local fh = io.open(DUMP_PATH, "wb")
       if fh then
@@ -1948,6 +1996,11 @@ local function finish()
   for _, w in ipairs(EXECS) do
     p("CENSUS exec_%s pc=$%06X total=%d over %d logic frames", w[1], w[2], w[6], lf)
   end
+  if #POKES_ONCE > 0 then
+    p("CENSUS poke_once applied=%d lf=%s bounds=%s..%s count=%d",
+      poke_once_done and 1 or 0, tostring(poke_once_lf or ""),
+      tostring(POKE_ONCE_FROM), tostring(POKE_ONCE_TO), #POKES_ONCE)
+  end
   if #WRITERS > 0 then
     local a = {}
     for k, v in pairs(WRITERHITS) do a[#a + 1] = { k, v } end
@@ -2129,6 +2182,11 @@ local function finish()
   -- own output and says FAIL loudly.  pgm.py turns FAIL into a non-zero exit.
   -- ------------------------------------------------------------------------
   local fails = {}
+  if #POKES_ONCE > 0 and not poke_once_done then
+    fails[#fails + 1] = string.format(
+      "PROBE_POKE_ONCE was not applied inside LF bounds %s..%s",
+      tostring(POKE_ONCE_FROM), tostring(POKE_ONCE_TO))
+  end
   if lf == 0 then
     fails[#fails + 1] = "no logic frame completed: the game never armed $803940"
   end

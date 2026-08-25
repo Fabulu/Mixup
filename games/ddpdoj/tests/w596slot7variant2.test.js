@@ -51,7 +51,7 @@ const PRIOR_ROM = SKIP ? null : new RomWindows(PRIOR_TABLE.rom);
 const SCRIPT = 0x29109c;
 const SCRIPT_END = 0x2910f6;
 const VARIANT_2_LIST = 0x290f4e;
-const TABLE_HASH = '8854b7ebbc400795e7bcc7cf401e4f4d762220333ccbc6df9e1cf0c4b5ca5f5f';
+const TABLE_HASH = '048ae8ac06bcbef9a8fc7648acb2fd6eaaebb091b26545986f1753f79f2c8d6e';
 const PRIOR_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8';
 const SCRIPT_HASH = '16c0eea9d901d6fd6bc9a7fcaf19673282402c73fc70ef21e843a568f5597163';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
@@ -317,7 +317,7 @@ test('W596 spawns 9/12/8 groups, completes resource 0, rejects truncation, and c
       'a script window clipped before its terminator is rejected');
   });
 
-test('W596 fresh ship-0/style-6 route pins every cadence identity and stops at W597',
+test('W596 fresh ship-0/style-6 route pins every cadence identity and stops at the next frontier',
   { skip: SKIP }, async () => {
     assert.equal(EXPECTED.schema, 'ddpdoj.w596-route-hashes.v1');
     assert.equal(EXPECTED.checkpointSchema, CHECKPOINT_SCHEMA);
@@ -334,7 +334,7 @@ test('W596 fresh ship-0/style-6 route pins every cadence identity and stops at W
     });
     assert.deepEqual(EXPECTED.seed, { bytes: 131072, sha256: SEED_HASH });
     assert.deepEqual(EXPECTED.tables, {
-      sha256: TABLE_HASH, windows: 908, bytes: 453851, overlapPairs: 77,
+      sha256: TABLE_HASH, windows: 911, bytes: 454759, overlapPairs: 77,
     });
     assert.deepEqual(EXPECTED.preW596Tables, {
       sha256: PRIOR_TABLE_HASH, windows: 906, bytes: 453757, overlapPairs: 77,

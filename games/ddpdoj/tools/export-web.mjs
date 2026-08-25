@@ -938,8 +938,8 @@ const W560_IMMEDIATES = Object.freeze([
 // player presses fire.  `SPR_ORDER` below is what says so; the queue used to
 // assume ascending index WAS need order and after this wave it is not.
 const SPR_SHARDS = Object.freeze([
-  [0, 'boot', 'the recording, both ships\' 17 main tilts, and Type-B\'s attached '
-    + 'shadow and two glow families (W12/W497).'],
+  [0, 'boot', 'the recording, both ships\' 17 main tilts, and both ships\' attached '
+    + 'shadow and two glow families (W12/W497/W597).'],
   [1, 'type11', 'type $11\'s hull $268B9E + turret $268C9E, and the laser\'s 5 '
     + '(W45). The owner\'s missing tank bodies.'],
   [2, 'type89', 'type $89\'s body table $272E7A'],
@@ -1319,48 +1319,56 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   // totals. The two W203 rows remain added 32 / already 0.
 }
 
-// W497: Type-B's attached draw dependencies. The selector tables point to a
-// centre address indexed by the same signed 17-value tilt domain as the main
-// ship. Shadows hold one descriptor per tilt. Both glow families hold a pointer
-// per tilt and the runtime indexes phases 0 and 4 through that pointer. These are
-// boot art because they can be requested on the first selected Type-B frame.
-const TYPE_B_ATTACHED = Object.freeze([
+// W497: Type-B's attached draw dependencies. W597 found the symmetric Type-A
+// defect live: bucket 5 requested eight unpacked shadow streams and bucket 19
+// requested sixteen unpacked glow streams during the six-pair hyper path. The
+// selector tables point to a centre address indexed by the same signed 17-value
+// tilt domain as the main ship. Shadows hold one descriptor per tilt. Both glow
+// families hold a pointer per tilt and the runtime indexes phases 0 and 4 through
+// that pointer. They are boot art because either selected ship can request them
+// on its first frame.
+const SHIP_ATTACHED = Object.freeze([
   Object.freeze({ name: 'shadow', table: 0x25545a, phases: Object.freeze([null]) }),
   Object.freeze({ name: 'ordinary glow', table: 0x2556e2, phases: Object.freeze([0, 4]) }),
   Object.freeze({ name: 'down-stick glow', table: 0x255882,
     phases: Object.freeze([0, 4]) }),
 ]);
-for (const family of TYPE_B_ATTACHED) {
-  const perShip = romBe32(family.table + 4);             // ship selector 2 -> +4
-  const familyStreams = new Set();
-  for (let tilt = -0x20; tilt <= 0x20; tilt += 4) {
-    const cell = romBe32(perShip + tilt);
-    for (const phase of family.phases) {
-      const descriptor = phase === null ? cell : romBe32(cell + phase);
-      const offs = descriptor & 0x7fffff;
-      familyStreams.add(offs);
+for (const selected of [
+  Object.freeze({ name: 'Type-B', tableOffset: 4, wave: 'W497' }),
+  Object.freeze({ name: 'Type-A', tableOffset: 0, wave: 'W597' }),
+]) {
+  for (const family of SHIP_ATTACHED) {
+    const perShip = romBe32(family.table + selected.tableOffset);
+    const familyStreams = new Set();
+    for (let tilt = -0x20; tilt <= 0x20; tilt += 4) {
+      const cell = romBe32(perShip + tilt);
+      for (const phase of family.phases) {
+        const descriptor = phase === null ? cell : romBe32(cell + phase);
+        const offs = descriptor & 0x7fffff;
+        familyStreams.add(offs);
+      }
     }
+    const expected = 17 * family.phases.length;
+    if (familyStreams.size !== expected) {
+      throw new Error(`${selected.name} ${family.name} resolves `
+        + `${familyStreams.size} distinct streams over 17 tilts x `
+        + `${family.phases.length} runtime phase(s), not ${expected}. A duplicate `
+        + 'would leave one selected frame without its own packed-map witness.');
+    }
+    let added = 0, already = 0;
+    for (const offs of familyStreams) {
+      if (streams.has(offs)) { already++; continue; }
+      streams.set(offs, romExtent(offs));
+      shardOfStream.set(offs, 0);
+      added++;
+    }
+    harvested += added; harvestAlready += already;
+    harvestReport.push({ shard: 0, base: family.table, entries: expected,
+      stride: 4, runsTo: expected, endsAt: perShip + 0x24,
+      distinct: familyStreams.size, added, already,
+      why: `${selected.name} ship ${family.name}, 17 tilts${family.phases.length === 2
+        ? ' x phases 0/4' : ''} (${selected.wave})` });
   }
-  const expected = 17 * family.phases.length;
-  if (familyStreams.size !== expected) {
-    throw new Error(`Type-B ${family.name} resolves ${familyStreams.size} distinct `
-      + `streams over 17 tilts x ${family.phases.length} runtime phase(s), not `
-      + `${expected}. A duplicate would leave one selected frame without its own `
-      + 'packed-map witness.');
-  }
-  let added = 0, already = 0;
-  for (const offs of familyStreams) {
-    if (streams.has(offs)) { already++; continue; }
-    streams.set(offs, romExtent(offs));
-    shardOfStream.set(offs, 0);
-    added++;
-  }
-  harvested += added; harvestAlready += already;
-  harvestReport.push({ shard: 0, base: family.table, entries: expected,
-    stride: 4, runsTo: expected, endsAt: perShip + 0x24,
-    distinct: familyStreams.size, added, already,
-    why: `Type-B ship ${family.name}, 17 tilts${family.phases.length === 2
-      ? ' x phases 0/4' : ''} (W497)` });
 }
 
 // W205 A2 object 1 carries its fixed hull as an immediate rather than a table.

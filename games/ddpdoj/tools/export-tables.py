@@ -189,11 +189,24 @@ SHOT_WINDOWS = [
     (0x24F3D2, 0x002E, "W188 P2 hyper-shot normal table through $24F400 boundary"),
     (0x251100, 0x0300, "option-pod laser templates $251184.."),
     (0x250F40, 0x01C0, "W188 option-pod hyper spawn and frame animation tables"),
-    (0x251526, 0x0082, "W188 option hyper-shot 0 normal table and structs"),
-    (0x2519E0, 0x00AA, "W188 option hyper-shot 0 hit table and structs"),
-    (0x25211C, 0x0082, "W188 option hyper-shot 1 normal table and structs"),
-    (0x2525D6, 0x00AA, "W188 option hyper-shot 1 hit table and structs"),
-    (0x251B36, 0x03CA, "W188 TYPE-B option hyper spawn/animation tables and templates"),
+    (0x251526, 0x00BE, "W597 option hyper-shot 0 complete 25-pointer normal table "
+                       "and all 15 draw structs"),
+    # W597: formation 4's hyper pod-shot writer indexes this 17-long rotation
+    # table with `(angle & $3E) * 2`, then reads the selected 8-byte offset
+    # pair. The last pair ends exactly where W188's hit-table window begins.
+    (0x251914, 0x00CC, "W597 formation-4 hyper option-shot rotation table "
+                       "and all 17 pointed offset pairs"),
+    (0x2519E0, 0x0136, "W597 option hyper-shot 0 complete 25-pointer hit table "
+                       "and all 15 draw structs"),
+    (0x25211C, 0x00BE, "W597 option hyper-shot 1 complete 25-pointer normal table "
+                       "and all 15 draw structs"),
+    (0x25250A, 0x00CC, "W597 formation-4 hyper option-shot rotation table "
+                       "and all 17 pointed offset pairs"),
+    (0x2525D6, 0x0136, "W597 option hyper-shot 1 complete 25-pointer hit table "
+                       "and all 15 draw structs"),
+    (0x251B36, 0x03E2, "W597 Type-B option hyper spawn/animation tables and "
+                       "complete formation-4 power-zero template"),
+    (0x251FA0, 0x004C, "W597 Type-B formation-6 hyper power-zero two-pod template"),
     # $253B72 lea $24DDD6 / $253C7A lea $24DEB2 -- the per-($26,A6) tables the
     # handlers re-point the record's sprite fields from, and their structs. The
     # second table has 25 pointers through $24DF15 and fifteen 14-byte structs

@@ -40,7 +40,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '8854b7ebbc400795e7bcc7cf401e4f4d762220333ccbc6df9e1cf0c4b5ca5f5f';
+const LIVE_TABLE_HASH = '048ae8ac06bcbef9a8fc7648acb2fd6eaaebb091b26545986f1753f79f2c8d6e';
 const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
 const REC = 0x810c00;
@@ -115,9 +115,9 @@ test('W578 pins the exact id-5 pair, raw span, registrations, and unchanged tabl
     assert.ok(registered.has(HIBACHI_A0.s5Init));
     assert.ok(registered.has(HIBACHI_A0.s5Step));
 
-    assert.equal(ROM_WINDOW_COUNT, 908);
-    assert.equal(TABLE_JSON.rom.windows.length, 908);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 453851);
+    assert.equal(ROM_WINDOW_COUNT, 911);
+    assert.equal(TABLE_JSON.rom.windows.length, 911);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 454759);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W578:')), []);
   });
