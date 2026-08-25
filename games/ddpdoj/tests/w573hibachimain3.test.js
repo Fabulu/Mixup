@@ -27,7 +27,7 @@ import {
 } from '../tools/progression-checkpoint.mjs';
 import {
   ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs,
-  tableBeforeW572, tableBeforeW573, tableBeforeW576,
+  tableBeforeW572, tableBeforeW573, tableBeforeW576, tableBeforeW588,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -46,12 +46,14 @@ const SKIP_CHECKPOINT = [HISTORICAL, MIGRATED,
   : 'exact W573 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const W572_TABLE = SKIP ? null : tableBeforeW573(TABLE_JSON);
 const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
-const LIVE_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const LIVE_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
+const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const W572_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
 const W571_HASH = '376e17ddc03d3e56d728cb804ba091ab098b4039b2d51ba7b2d6689ccd07f7c8';
@@ -149,13 +151,13 @@ async function bundle() {
     new Uint8Array(readFileSync(path.join(ASSETS, name))));
 }
 
-const migrateW576 = (document) => ({ ...document, tablesSha256: LIVE_TABLE_HASH });
+const migrateToW587 = (document) => ({ ...document, tablesSha256: W587_TABLE_HASH });
 
 test('W573 adds only the exact template and five-row pattern windows',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 851);
-    assert.equal(TABLE_JSON.rom.windows.length, 851);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452689);
+    assert.equal(ROM_WINDOW_COUNT, 854);
+    assert.equal(TABLE_JSON.rom.windows.length, 854);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452789);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(W575_TABLE.rom.windows.length, 847);
     assert.equal(W575_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452447);
@@ -598,9 +600,10 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
     assert.deepEqual(tableBeforeW576(TABLE_JSON), assets.tables,
       'strict additive W576 identity is proven before checkpoint migration');
-    const exact = live;
+    const exact = { ...live, tables: W587_TABLE };
+    assert.equal(canonicalHash(exact.tables), W587_TABLE_HASH);
     assert.deepEqual(tableBeforeW573(exact.tables), W572_TABLE,
-      'strict additive identity composes through W576 before checkpoint migration');
+      'strict additive identity composes through W588 and W576 before checkpoint migration');
 
     const historical = JSON.parse(readFileSync(HISTORICAL, 'utf8'));
     assert.deepEqual([
@@ -628,9 +631,9 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
       historical.ramSha256, historical.gameSha256,
     ]);
     restoreCheckpoint(migrated, assets, migrated.selection);
-    const currentMigrated = migrateW576(migrated);
+    const currentMigrated = migrateToW587(migrated);
     assert.deepEqual({ ...currentMigrated, tablesSha256: migrated.tablesSha256 }, migrated,
-      'W576 migration changes only the proven additive cartridge-table identity');
+      'W587 migration changes only the proven additive cartridge-table identity');
     restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
 
     const periodics = [
@@ -665,7 +668,7 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
         document.inputWord, document.probeOnly.invulnerable,
       ], [0, 4, 65499, true]);
       restoreCheckpoint(document, assets, { ship: 0, style: 4 });
-      const current = migrateW576(document);
+      const current = migrateToW587(document);
       assert.deepEqual({ ...current, tablesSha256: document.tablesSha256 }, document,
         'periodic checkpoint migration changes only table identity');
       restoreCheckpoint(current, exact, { ship: 0, style: 4 });

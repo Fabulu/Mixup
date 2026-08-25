@@ -21,7 +21,9 @@ import {
 } from '../src/hibachiend.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT } from './romwindowset.js';
+import {
+  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, tableBeforeW588,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
@@ -37,9 +39,11 @@ const SKIP_CHECKPOINT = [CHECKPOINT,
   : 'exact W582 assets or checkpoint absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const LIVE_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
+const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const RNG_STATE = 0x803916;
@@ -144,11 +148,11 @@ test('W582 pins the exact raw id-4, registration, and unchanged table contract',
     const registered = scriptAddresses();
     assert.equal(registered.filter((address) => address === HIBACHI_A0.s4Init).length, 1);
     assert.equal(registered.filter((address) => address === HIBACHI_A0.s4Step).length, 1);
-    assert.equal(ROM_WINDOW_COUNT, 851);
+    assert.equal(ROM_WINDOW_COUNT, 854);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 851);
-    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 452689);
-    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
+    assert.equal(TABLE_JSON.rom.windows.length, 854);
+    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 452789);
+    assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W582:')), []);
   });
 
@@ -319,9 +323,11 @@ test('W582 freeze blocks only movement and persistence has no unrelated side eff
 
 test('W582 restores exact lf150131 and reaches the exact W587 $291040 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
-    assert.equal(canonicalHash(assets.tables), TABLE_HASH);
-    assert.deepEqual(assets.tables, TABLE_JSON);
+    const live = await bundle();
+    assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
+    assert.deepEqual(live.tables, TABLE_JSON);
+    const assets = { ...live, tables: W587_TABLE };
+    assert.equal(canonicalHash(assets.tables), W587_TABLE_HASH);
 
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
     assert.deepEqual([
@@ -331,7 +337,7 @@ test('W582 restores exact lf150131 and reaches the exact W587 $291040 frontier',
       checkpoint.selection.ship, checkpoint.selection.style,
       checkpoint.inputWord, checkpoint.probeOnly.invulnerable,
     ], [
-      TABLE_HASH, 150131, 160744, 4, 8, 16, 1,
+      W587_TABLE_HASH, 150131, 160744, 4, 8, 16, 1,
       '1003233dd2baeb59bb1af2208f56cd62bfdaf4752458c0d7769ca55429829a07',
       '7f9e1c02322b112168d630483e8c2d6d43ca1d70d4c691886ee036c8a7437f88',
       0, 4, 65499, true,

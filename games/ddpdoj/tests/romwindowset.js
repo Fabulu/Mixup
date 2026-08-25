@@ -550,7 +550,15 @@
 // the art table ends exactly at object 17. Measured: 849 -> 851 windows,
 // 452,603 -> 452,689 bytes, 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 851;
+// ---------------------------------------------------------------------------
+// W588 ADDED THREE DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// `$291040 + $5C` is slot [7] variant 1's exact third script through its `$FFFF`
+// terminator. Two sparse four-byte windows expose only spawn-table indices $88
+// and $91. Measured: 851 -> 854 windows, 452,689 -> 452,789 bytes,
+// 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 854;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -583,13 +591,39 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W588_WINDOWS = Object.freeze([
+  Object.freeze(['$291040', 0x005c]), Object.freeze(['$2904E2', 0x0004]),
+  Object.freeze(['$290506', 0x0004]),
+]);
+
+/** Reconstruct the exact W587 table by removing W588's additive windows. */
+export function tableBeforeW588(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const found = copy.rom.windows.filter((w) =>
+    W588_WINDOWS.some(([base]) => w.base === base));
+  if (found.length === 0) return copy;
+  if (found.length !== W588_WINDOWS.length) {
+    throw new Error('the W588 slot [7] windows are only partially present');
+  }
+  for (const [base, len] of W588_WINDOWS) {
+    const matches = found.filter((w) => w.base === base);
+    if (matches.length !== 1 || matches[0].len !== len
+        || matches[0].hex.length !== len * 2 || !matches[0].why.startsWith('W588:')) {
+      throw new Error(`${base} is not the exact W588 additive shape`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((w) =>
+    !W588_WINDOWS.some(([base]) => w.base === base));
+  return copy;
+}
+
 const W584_WINDOWS = Object.freeze([
   Object.freeze(['$23FE5C', 0x0036]), Object.freeze(['$2A4D3E', 0x0020]),
 ]);
 
-/** Reconstruct the exact W583 table by removing W584's additive windows. */
+/** Reconstruct the exact W583 table by removing W588 and W584's additive windows. */
 export function tableBeforeW584(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW588(tables);
   const found = copy.rom.windows.filter((w) =>
     W584_WINDOWS.some(([base]) => w.base === base));
   if (found.length === 0) return copy;
@@ -812,5 +846,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "gun-3 template and $2A7FEC+$3C pattern windows and moved no pair. W576 added "
   + "the disjoint $2A4C36+$0C object-14 art table and $2A4C6C+$90 object-10 row "
   + "table and moved no pair. W584 added the disjoint $23FE5C+$36 register enqueue "
-  + "stub and $2A4D3E+$20 object-16 art table and moved no pair. See "
-  + "tests/romwindowset.js.";
+  + "stub and $2A4D3E+$20 object-16 art table and moved no pair. W588 added the "
+  + "disjoint $291040+$5C variant-1 third script and sparse $2904E2/$290506 spawn "
+  + "pointers and moved no pair. See tests/romwindowset.js.";

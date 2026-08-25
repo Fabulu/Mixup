@@ -134,7 +134,7 @@ test('W565 is a strict two-window additive superset with no self-pointers or pad
   { skip: SKIP }, () => {
     assert.deepEqual(W565_TABLE, FUTURE_TABLE,
       'removing the later W566 and W568 windows reconstructs the strict W565 additive result');
-    assert.equal(TABLE_JSON.rom.windows.length, 851);
+    assert.equal(TABLE_JSON.rom.windows.length, 854);
     assert.equal(PRIOR_TABLE.rom.windows.length, 822);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
     assert.equal(W565_TABLE.rom.windows.length, 824);

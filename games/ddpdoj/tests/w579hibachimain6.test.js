@@ -21,7 +21,9 @@ import {
 } from '../src/hibachiend.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT } from './romwindowset.js';
+import {
+  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, tableBeforeW588,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
@@ -37,9 +39,11 @@ const SKIP_CHECKPOINT = [CHECKPOINT,
   : 'exact W579 assets or checkpoint absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const LIVE_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
+const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
 const REC = 0x810c00;
 const SUB = 0x814800;
@@ -118,10 +122,10 @@ test('W579 pins the raw id-6 pair, all span hashes, id-7 boundary, and branch ta
 
 test('W579 adds no ROM window and preserves the exact table identity',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 851);
+    assert.equal(ROM_WINDOW_COUNT, 854);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 851);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452689);
+    assert.equal(TABLE_JSON.rom.windows.length, 854);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452789);
     let overlaps = 0;
     for (let i = 0; i < TABLE_JSON.rom.windows.length; i++) {
       const a = TABLE_JSON.rom.windows[i];
@@ -259,9 +263,11 @@ test('W579 persists without retirement, sound, bullets, or scheduler transition'
 
 test('W579 restores exact lf149131 and reaches the exact W587 $291040 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
-    assert.equal(canonicalHash(assets.tables), LIVE_TABLE_HASH);
-    assert.deepEqual(assets.tables, TABLE_JSON);
+    const live = await bundle();
+    assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
+    assert.deepEqual(live.tables, TABLE_JSON);
+    const assets = { ...live, tables: W587_TABLE };
+    assert.equal(canonicalHash(assets.tables), W587_TABLE_HASH);
 
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
     assert.deepEqual([
@@ -276,9 +282,9 @@ test('W579 restores exact lf149131 and reaches the exact W587 $291040 frontier',
       '8f62e99da81abae4193aaeddddd4487124ba7d893836b106c1323a2f5b30e4d1',
       0, 4, 65499, true,
     ]);
-    const currentCheckpoint = { ...checkpoint, tablesSha256: LIVE_TABLE_HASH };
+    const currentCheckpoint = { ...checkpoint, tablesSha256: W587_TABLE_HASH };
     assert.deepEqual({ ...currentCheckpoint, tablesSha256: checkpoint.tablesSha256 }, checkpoint,
-      'W584 compatibility changes only the proven additive table identity');
+      'W587 compatibility changes only the proven additive table identity');
     const resumed = restoreCheckpoint(currentCheckpoint, assets, { ship: 0, style: 4 });
     const restored = checkpointDocument(resumed.game, assets, {
       ...checkpoint.selection, inputWord: resumed.probe.inputWord, invulnerable: true,

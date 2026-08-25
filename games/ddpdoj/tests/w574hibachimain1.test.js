@@ -21,7 +21,7 @@ import {
 import { HIBACHI_A1_COUNTED } from '../src/hibachiguns.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_WINDOW_COUNT, tableBeforeW576 } from './romwindowset.js';
+import { ROM_WINDOW_COUNT, tableBeforeW576, tableBeforeW588 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
@@ -38,10 +38,12 @@ const SKIP_CHECKPOINT = [MIGRATED, FRONTIER,
   : 'exact W574 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const LIVE_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
+const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const REC = 0x810c00;
 const SUB = 0x814800;
@@ -70,9 +72,9 @@ async function bundle() {
 const attached = (ram, part) => ram.u32(SUB + part + 0x02);
 
 test('W574 pins the exact A0 id-1 pair and adds no ROM window', { skip: SKIP }, () => {
-  assert.equal(ROM_WINDOW_COUNT, 851);
-  assert.equal(TABLE_JSON.rom.windows.length, 851);
-  assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452689);
+  assert.equal(ROM_WINDOW_COUNT, 854);
+  assert.equal(TABLE_JSON.rom.windows.length, 854);
+  assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452789);
   assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
   assert.equal(canonicalHash(W575_TABLE), TABLE_HASH);
   assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W574:')), []);
@@ -228,7 +230,8 @@ test('W574 resumes the migrated W573 state and reaches the W587 $291040 frontier
     const assets = { ...live, tables: W575_TABLE };
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
     assert.deepEqual(assets.tables, W575_TABLE);
-    const exact = live;
+    const exact = { ...live, tables: W587_TABLE };
+    assert.equal(canonicalHash(exact.tables), W587_TABLE_HASH);
 
     const frontier = JSON.parse(readFileSync(FRONTIER, 'utf8'));
     assert.deepEqual([
@@ -244,7 +247,7 @@ test('W574 resumes the migrated W573 state and reaches the W587 $291040 frontier
 
     const migrated = JSON.parse(readFileSync(MIGRATED, 'utf8'));
     restoreCheckpoint(migrated, assets, migrated.selection);
-    const currentMigrated = { ...migrated, tablesSha256: LIVE_TABLE_HASH };
+    const currentMigrated = { ...migrated, tablesSha256: W587_TABLE_HASH };
     assert.deepEqual({ ...currentMigrated, tablesSha256: migrated.tablesSha256 }, migrated);
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;

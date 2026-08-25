@@ -24,7 +24,7 @@ import {
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
-  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, tableBeforeW584,
+  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, tableBeforeW584, tableBeforeW588,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -42,9 +42,11 @@ const SKIP_CHECKPOINT = [START, PERIODIC,
   : 'exact W584 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W584_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const W583_TABLE = SKIP ? null : tableBeforeW584(TABLE_JSON);
-const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
-const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
+const ROM = SKIP ? null : new RomWindows(W584_TABLE.rom);
+const MT = SKIP ? null : new MoveTables(W584_TABLE, ROM);
+const LIVE_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
 const TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const W583_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
 const REC = 0x810c00;
@@ -135,7 +137,7 @@ test('W584 pins raw pointer, routine, helper, art, and exact window boundaries',
     assert.deepEqual(ROM.bytes(HIBACHI_A2.object16Art, 0x20),
       Array.from(IMG.subarray(HIBACHI_A2.object16Art, HIBACHI_A2.object17)));
 
-    const added = TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W584:'));
+    const added = W584_TABLE.rom.windows.filter((window) => window.why.startsWith('W584:'));
     assert.deepEqual(added.map(({ base, len }) => [base, len]), [
       ['$23FE5C', 0x0036], ['$2A4D3E', 0x0020],
     ]);
@@ -152,24 +154,29 @@ test('W584 table migration is strict, additive, ordered, and identity-pinned',
       TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(TABLE_JSON),
-    ], [851, 77, 851, 452689, TABLE_HASH]);
+    ], [854, 77, 854, 452789, LIVE_TABLE_HASH]);
+    assert.deepEqual([
+      W584_TABLE.rom.windows.length,
+      W584_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
+      canonicalHash(W584_TABLE),
+    ], [851, 452689, TABLE_HASH]);
     assert.deepEqual([
       W583_TABLE.rom.windows.length,
       W583_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(W583_TABLE),
     ], [849, 452603, W583_TABLE_HASH]);
 
-    const withoutAdded = TABLE_JSON.rom.windows.filter((window) =>
+    const withoutAdded = W584_TABLE.rom.windows.filter((window) =>
       window.base !== '$23FE5C' && window.base !== '$2A4D3E');
     assert.deepEqual(W583_TABLE.rom.windows, withoutAdded,
       'removing exactly W584 preserves every prior window byte and its order');
     assert.deepEqual(tableBeforeW584(W583_TABLE), W583_TABLE,
       'the reconstruction is idempotent on the exact W583 table');
 
-    const partial = clone(TABLE_JSON);
+    const partial = clone(W584_TABLE);
     partial.rom.windows = partial.rom.windows.filter((window) => window.base !== '$2A4D3E');
     assert.throws(() => tableBeforeW584(partial), /only partially present/);
-    const malformed = clone(TABLE_JSON);
+    const malformed = clone(W584_TABLE);
     malformed.rom.windows.find((window) => window.base === '$23FE5C').len++;
     assert.throws(() => tableBeforeW584(malformed), /not the exact W584 additive shape/);
   });
@@ -324,9 +331,10 @@ test('W584 death pause still runs A2, while global suspend returns before it',
 
 test('W584 migrated checkpoints restore exactly and reach the W587 loud frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
+    const loaded = await bundle();
+    const assets = { ...loaded, tables: W584_TABLE };
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
-    assert.deepEqual(assets.tables, TABLE_JSON);
+    assert.deepEqual(assets.tables, W584_TABLE);
 
     const start = JSON.parse(readFileSync(START, 'utf8'));
     assert.deepEqual([

@@ -21,7 +21,9 @@ import {
 } from '../src/hibachiend.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT } from './romwindowset.js';
+import {
+  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, tableBeforeW588,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
@@ -40,8 +42,10 @@ const SKIP_CHECKPOINT = [...PERIODIC_CHECKPOINTS,
   : 'exact W586 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
-const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
-const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
+const W584_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
+const ROM = SKIP ? null : new RomWindows(W584_TABLE.rom);
+const MT = SKIP ? null : new MoveTables(W584_TABLE, ROM);
+const LIVE_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
 const TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const REC = 0x810c00;
 const SUB = 0x814800;
@@ -124,13 +128,18 @@ test('W586 pins the raw id-8 row, code hashes, id-9 boundary, and registration',
     assert.ok(registered.has(HIBACHI_A0.s8Step));
   });
 
-test('W586 adds no ROM window and preserves the exact W584 table identity',
+test('W586 adds no ROM window and W588 preserves the exact W584 table identity',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 851);
+    assert.equal(ROM_WINDOW_COUNT, 854);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 851);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452689);
-    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
+    assert.equal(TABLE_JSON.rom.windows.length, 854);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452789);
+    assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
+    assert.deepEqual([
+      W584_TABLE.rom.windows.length,
+      W584_TABLE.rom.windows.reduce((n, w) => n + w.len, 0),
+      canonicalHash(W584_TABLE),
+    ], [851, 452689, TABLE_HASH]);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W586:')), []);
   });
 
@@ -269,9 +278,10 @@ test('W586 refreshes all parts, owns no unrelated RAM, and obeys scheduler gates
 
 test('W586 periodic checkpoints restore exactly and reach the next loud frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
+    const loaded = await bundle();
+    const assets = { ...loaded, tables: W584_TABLE };
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
-    assert.deepEqual(assets.tables, TABLE_JSON);
+    assert.deepEqual(assets.tables, W584_TABLE);
     const expected = [
       [151131, 161768,
         '91309d06e4b67b8a92de6b4fbdc361d0d38c5d2ce3e84673cc3a2b9798da5909',

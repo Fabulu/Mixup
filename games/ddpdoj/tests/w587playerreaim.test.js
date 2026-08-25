@@ -8,13 +8,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { BUL, REC } from '../src/bullets.js';
-import { ENEMY } from '../src/enemies.js';
 import { RAM, P } from '../src/machine.js';
+import { SLOT7 } from '../src/objslot7pool.js';
 import { RomWindows } from '../src/rom.js';
-import { SCHED } from '../src/scheduler.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT } from './romwindowset.js';
+import {
+  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, tableBeforeW588,
+} from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
@@ -35,19 +36,20 @@ const SKIP_CHECKPOINT = [...CHECKPOINTS,
   : 'exact W587 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const PRIOR_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
+const PRIOR_ROM = SKIP ? null : new RomWindows(PRIOR_TABLE.rom);
+const LIVE_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
 const TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const binaryHash = (value) => createHash('sha256').update(value).digest('hex');
 const canonicalHash = (value) => createHash('sha256')
   .update(JSON.stringify(value)).digest('hex');
 
-async function bundle() {
-  return loadBundle(async (name) =>
+async function bundle(tables) {
+  const assets = await loadBundle(async (name) =>
     new Uint8Array(readFileSync(path.join(ASSETS, name))));
+  return { ...assets, tables };
 }
-
-const slotWords = (ram, base, count, stride) => Array.from({ length: count },
-  (_, index) => ram.u16(base + index * stride));
 
 test('W587 pins the raw target selection, mid-entry aim, and kind-28 split arm',
   { skip: SKIP }, () => {
@@ -69,25 +71,31 @@ test('W587 pins the raw target selection, mid-entry aim, and kind-28 split arm',
     ]);
   });
 
-test('W587 adds no ROM window and preserves the exact W584 table identity',
+test('W587 adds no ROM window and W588 preserves its exact table identity',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 851);
+    assert.equal(ROM_WINDOW_COUNT, 854);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 851);
+    assert.equal(TABLE_JSON.rom.windows.length, 854);
     assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0),
-      452689);
-    assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
+      452789);
+    assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
+    assert.deepEqual([
+      PRIOR_TABLE.rom.windows.length,
+      PRIOR_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
+      canonicalHash(PRIOR_TABLE),
+    ], [851, 452689, TABLE_HASH]);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((window) =>
       window.why.startsWith('W587:')), []);
-    assert.throws(() => ROM.u16(0x291040),
+    assert.throws(() => PRIOR_ROM.u16(0x291040),
       (error) => error?.romAddress === 0x291040);
+    assert.equal(ROM.u16(0x291040), 0x8000);
   });
 
 test('W587 exact 500-frame checkpoints restore byte-for-byte',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
+    const assets = await bundle(PRIOR_TABLE);
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
-    assert.deepEqual(assets.tables, TABLE_JSON);
+    assert.deepEqual(assets.tables, PRIOR_TABLE);
     const expected = [
       [151631, 162268,
         '79b1078f95179e6a4ce3289bee1636a9479f197ac552ac3538520aeb77b9bd62',
@@ -135,14 +143,15 @@ test('W587 exact 500-frame checkpoints restore byte-for-byte',
     }
   });
 
-test('W587 crosses the exact split and reaches the $291040 ROM-table frontier',
+test('W587 crosses the exact split and W588 reaches the $291836 ROM-table frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
-    const assets = await bundle();
+    const assets = await bundle(TABLE_JSON);
     const checkpoint = JSON.parse(readFileSync(CHECKPOINTS[0], 'utf8'));
-    const resumed = restoreCheckpoint(checkpoint, assets, checkpoint.selection);
+    const resumed = restoreCheckpoint(
+      { ...checkpoint, tablesSha256: LIVE_TABLE_HASH }, assets, checkpoint.selection);
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 2400; attempted++) {
+    for (attempted = 1; attempted <= 3200; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -176,34 +185,17 @@ test('W587 crosses the exact split and reaches the $291040 ROM-table frontier',
     const state = checkpointDocument(resumed.game, assets, {
       ...checkpoint.selection, inputWord: resumed.probe.inputWord, invulnerable: true,
     });
-    const a5 = Array.from({ length: ENEMY.slots }, (_, index) =>
-      ENEMY.table + index * ENEMY.stride).find((record) =>
-      resumed.game.ram.u32(record + 0x4c) === 0x2a4606);
-    const a6 = resumed.game.ram.u32(a5 + 0x06);
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame, error?.romAddress,
       state.raw.stage, state.raw.stageX2, state.raw.stageX4, state.raw.loop,
-      a5, a6, resumed.game.ram.u32(a6 + 0x02),
-      resumed.game.ram.u8(a6 + 0x1a), resumed.game.ram.u8(a6 + 0x1b),
-      resumed.game.ram.u16(a6 + 0x12a), resumed.game.ram.u16(a6 + 0x12c),
-      resumed.game.ram.u16(a6 + 0x132), resumed.game.ram.u16(a6 + 0x138),
-      resumed.game.ram.u16(0x803916), resumed.game.ram.u16(0x80390e),
+      state.ramSha256, state.gameSha256,
     ], [
-      2167, 153797, 164459, 0x291040, 4, 8, 16, 1,
-      0x81378c, 0x81533c, 0x541819ac, 2, 0x1b,
-      0, 0x008a, 0x0018, 0x0018, 0x00fb, 0,
+      2940, 154570, 165232, 0x291836, 4, 8, 16, 1,
+      'fd73b75fa8808eb7164a738a4771541013e3e2e78609f9a8cec8c6b403f81d12',
+      'baa2a3e35cf64e952b2144f842307ddeb2ab7bbfab4a3618e7ccd65ef7877d22',
     ]);
-    assert.match(error?.message ?? '', /word at \$291040 is outside every ROM window/);
-    assert.deepEqual([
-      resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
-      resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
-    ], [8, 4, 8, 0]);
-    assert.deepEqual(slotWords(resumed.game.ram,
-      SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride), Array(SCHED.a4Slots).fill(0));
-    assert.deepEqual(slotWords(resumed.game.ram,
-      SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride), Array(SCHED.a1Slots).fill(0));
-    assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      'ad99045f00e36a8a2343880bd4a7e14c3aaac1e7bbecc6f104603f6f7044d85a',
-    ]);
+    assert.equal(SLOT7.seqLists[1], 0x291816);
+    assert.equal(ROM.u32(SLOT7.seqLists[1]), 0x291836,
+      '$291816 list-B entry 0 is the next script at $291836');
+    assert.match(error?.message ?? '', /word at \$291836 is outside every ROM window/);
   });

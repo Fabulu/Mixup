@@ -21,7 +21,7 @@ import {
 } from '../src/hibachiend.js';
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
-import { ROM_WINDOW_COUNT, tableBeforeW576 } from './romwindowset.js';
+import { ROM_WINDOW_COUNT, tableBeforeW576, tableBeforeW588 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const TABLES = here('../rip/port/player.tables.json');
@@ -37,10 +37,12 @@ const SKIP_CHECKPOINT = [CHECKPOINT,
   : 'exact W577 assets or checkpoint absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const LIVE_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
+const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
 const PRIOR_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const REC = 0x810c00;
@@ -108,9 +110,9 @@ test('W577 pins the exact id-2 pair, boundary, registrations, and unchanged tabl
     assert.ok(registered.has(HIBACHI_A0.s2Init));
     assert.ok(registered.has(HIBACHI_A0.s2Step));
 
-    assert.equal(ROM_WINDOW_COUNT, 851);
-    assert.equal(TABLE_JSON.rom.windows.length, 851);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452689);
+    assert.equal(ROM_WINDOW_COUNT, 854);
+    assert.equal(TABLE_JSON.rom.windows.length, 854);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 452789);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W577:')), []);
@@ -252,7 +254,8 @@ test('W577 restores exact lf148131 and reaches the W587 $291040 frontier',
     const assets = { ...live, tables: PRIOR_TABLE };
     assert.equal(canonicalHash(assets.tables), PRIOR_HASH);
     assert.deepEqual(assets.tables, PRIOR_TABLE);
-    const exact = live;
+    const exact = { ...live, tables: W587_TABLE };
+    assert.equal(canonicalHash(exact.tables), W587_TABLE_HASH);
 
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
     assert.deepEqual([
@@ -264,9 +267,9 @@ test('W577 restores exact lf148131 and reaches the W587 $291040 frontier',
       '4b10c9936658b340e8deb501c4924a1ff7ce4dcbba6b38ffcd155582333c3e71',
       '079c70c717faacc08c5ff1fdbea27d42c359bdace0f276f8c4306ed324a7b4e5',
     ]);
-    const currentCheckpoint = { ...checkpoint, tablesSha256: LIVE_TABLE_HASH };
+    const currentCheckpoint = { ...checkpoint, tablesSha256: W587_TABLE_HASH };
     assert.deepEqual({ ...currentCheckpoint, tablesSha256: checkpoint.tablesSha256 }, checkpoint,
-      'W584 compatibility changes only the proven additive table identity');
+      'W587 compatibility changes only the proven additive table identity');
     const resumed = restoreCheckpoint(currentCheckpoint, exact, { ship: 0, style: 4 });
     let error = null;
     let attempted = 0;
