@@ -3454,6 +3454,44 @@ SHOT_WINDOWS.extend([
     (0x2906AA, 0x0004, "W589: slot [7] list-B first-script spawn-table longword for concrete index $FA"),
     (0x2906B6, 0x0004, "W589: slot [7] list-B first-script spawn-table longword for concrete index $FD"),
     (0x2906E6, 0x0004, "W589: slot [7] list-B first-script spawn-table longword for concrete index $109"),
+    (0x291BAE, 0x005E, "W598: slot [7] list-C first script, $291BAE..$291C0B -- $8005 banner 5, "
+                       "$8000 $2000, three ordered $8001 picture groups with 12/5/11 words, $8002 "
+                       "$00C0, $8003 $0000, and $FFFF; it stops exactly at list C's second script $291C0C"),
+    (0x291C0C, 0x0064, "W598: slot [7] list-C second script, $291C0C..$291C6F -- $8000 $0000, "
+                       "three ordered $8001 picture groups with 9/12/13 words, $8002 $00C0, $8003 "
+                       "$0000, and $FFFF; it stops exactly at list C's third script $291C70"),
+    (0x291C70, 0x0034, "W598: slot [7] list-C third script, $291C70..$291CA3 -- $8000 $0404, "
+                       "one $8001 picture group with 13 words, $8002 $0060, $8005 clear/banner 3, "
+                       "$8003 $0003, and $FFFF; it stops exactly at list C's fourth script $291CA4"),
+    (0x291CA4, 0x006A, "W598: slot [7] list-C fourth script, $291CA4..$291D0D -- four ordered "
+                       "$8001 picture groups with 8/10/9/5 words split by $8000 $0000 and $4002, "
+                       "$8002 $0080, $8003 $0000, and $FFFF; it stops exactly at list C's fifth script $291D0E"),
+    (0x291D0E, 0x0046, "W598: slot [7] list-C fifth script, $291D0E..$291D53 -- $8005 banner 6, "
+                       "two $8001 groups with 8/6 words, three trailing pictures under cadences $1000/$0808, "
+                       "$8002 $0060, $8003 $0000, and $FFFF; it stops exactly at list C's sixth script $291D54"),
+    (0x291D54, 0x0072, "W598: slot [7] list-C sixth and final script, $291D54..$291DC5 -- four "
+                       "$8001 groups with 5/10/5/4 words, $8005 clear/banner 6, nine trailing pictures "
+                       "split by cadences $0005/$1010, $8002 $0060, $8003 $0004, and $FFFF; it stops "
+                       "exactly at slot [15]'s sequence-arm code $291DC6"),
+    (0x290536, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $9D"),
+    (0x290552, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $A4"),
+    (0x290562, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $A8"),
+    (0x2905A6, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $B9"),
+    (0x2905EA, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $CA"),
+    (0x29064A, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $E2"),
+    (0x29064E, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $E3"),
+    (0x29065E, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $E7"),
+    (0x290662, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $E8"),
+    (0x29066A, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $EA"),
+    (0x29066E, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $EB"),
+    (0x29067A, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $EE"),
+    (0x290686, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $F1"),
+    (0x29068E, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $F3"),
+    (0x2906A6, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $F9"),
+    (0x2906D2, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $104"),
+    (0x2906DE, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $107"),
+    (0x2906FA, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $10E"),
+    (0x290702, 0x0004, "W598: slot [7] complete list-C spawn-table longword for concrete index $110"),
     (0x2921BA, 0x0220, "W518: slot [15] timed-text pool, bounded below by sequence entry 0's pointer and "
                        "above by the horizontal glyph-pointer table at $2923DA"),
     (0x2923DA, 0x0180, "W518: slot [15] horizontal glyph-pointer table, 96 longwords selected by "

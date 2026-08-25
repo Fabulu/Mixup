@@ -129,6 +129,37 @@ export function streamExtent(mask, colWordCount, offs) {
 }
 
 /**
+ * Size a producer-bounded stream when there is no following header to close it.
+ *
+ * The directory solves ordinary streams from their successor. The very last
+ * DaiOuJou ending picture starts at the directory end, so its `$1CE0` display
+ * record is the only available bound: 14 mask blocks by 224 rows. This helper
+ * keeps that exception explicit and still derives its colour consumption from
+ * the cartridge mask bits.
+ *
+ * @param {Uint16Array} mask
+ * @param {number} colWordCount
+ * @param {number} offs
+ * @param {number} bodyWords  the producer's `wide * high`
+ */
+export function boundedStreamExtent(mask, colWordCount, offs, bodyWords) {
+  if (!Number.isSafeInteger(offs) || !Number.isSafeInteger(bodyWords)
+      || offs < 0 || bodyWords <= 0 || offs + bodyWords + 4 > mask.length) {
+    throw new SpriteDirError(`invalid bounded sprite extent at $${offs.toString(16)} `
+      + `with ${bodyWords} body words`);
+  }
+  const stride = bodyWords + 4;
+  const npix = clearBits(mask, offs + 2, offs + stride - 2);
+  return {
+    maskWords: stride - 2,
+    colStart: colourBase(mask, offs) & (colWordCount - 1),
+    colWords: npix === 0 ? 0 : Math.floor((npix - 1) / 3) + 1,
+    stride,
+    pixels: npix,
+  };
+}
+
+/**
  * Walk the whole ROM from `$000000` and return every stream start.
  *
  * This is the INVENTORY in `docs/knowledge/09`'s sense: the complete list of

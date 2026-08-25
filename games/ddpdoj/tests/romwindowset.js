@@ -593,10 +593,18 @@
 // widenings cover exactly the live structures. Measured: 908 -> 911 windows,
 // 453,851 -> 454,759 bytes, 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 911;
+// ---------------------------------------------------------------------------
+// W598 ADDED TWENTY-FIVE DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// Six exact windows cover slot [7]'s complete list-C script family
+// `$291BAE..$291DC6`; nineteen sparse four-byte windows expose only the new
+// spawn-table longwords those scripts read. Measured: 911 -> 936 windows,
+// 454,759 -> 455,371 bytes, 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 936;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 454759;
+export const ROM_WINDOW_BYTES = 455371;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -629,6 +637,43 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W598_WINDOWS = Object.freeze([
+  Object.freeze(['$291BAE', 0x005e]), Object.freeze(['$291C0C', 0x0064]),
+  Object.freeze(['$291C70', 0x0034]), Object.freeze(['$291CA4', 0x006a]),
+  Object.freeze(['$291D0E', 0x0046]), Object.freeze(['$291D54', 0x0072]),
+  Object.freeze(['$290536', 0x0004]), Object.freeze(['$290552', 0x0004]),
+  Object.freeze(['$290562', 0x0004]), Object.freeze(['$2905A6', 0x0004]),
+  Object.freeze(['$2905EA', 0x0004]), Object.freeze(['$29064A', 0x0004]),
+  Object.freeze(['$29064E', 0x0004]), Object.freeze(['$29065E', 0x0004]),
+  Object.freeze(['$290662', 0x0004]), Object.freeze(['$29066A', 0x0004]),
+  Object.freeze(['$29066E', 0x0004]), Object.freeze(['$29067A', 0x0004]),
+  Object.freeze(['$290686', 0x0004]), Object.freeze(['$29068E', 0x0004]),
+  Object.freeze(['$2906A6', 0x0004]), Object.freeze(['$2906D2', 0x0004]),
+  Object.freeze(['$2906DE', 0x0004]), Object.freeze(['$2906FA', 0x0004]),
+  Object.freeze(['$290702', 0x0004]),
+]);
+
+/** Reconstruct the exact W597 table by removing only W598's additive windows. */
+export function tableBeforeW598(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const found = copy.rom.windows.filter((window) =>
+    W598_WINDOWS.some(([base]) => window.base === base));
+  if (found.length === 0) return copy;
+  if (found.length !== W598_WINDOWS.length) {
+    throw new Error('the W598 slot [7] windows are only partially present');
+  }
+  for (const [base, len] of W598_WINDOWS) {
+    const matches = found.filter((window) => window.base === base);
+    if (matches.length !== 1 || matches[0].len !== len
+        || matches[0].hex.length !== len * 2 || !matches[0].why.startsWith('W598:')) {
+      throw new Error(`${base} is not the exact W598 additive shape`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((window) =>
+    !W598_WINDOWS.some(([base]) => window.base === base));
+  return copy;
+}
+
 const W597_WIDENINGS = Object.freeze([
   Object.freeze({ base: '$251526', beforeLen: 0x0082, afterLen: 0x00be,
     beforeWhy: 'W188 option hyper-shot 0 normal table and structs',
@@ -659,7 +704,7 @@ const W597_ADDITIONS = Object.freeze([
 /** Reconstruct the exact W596 table by undoing W597's five strict widenings
  *  and removing its three additive windows. */
 export function tableBeforeW597(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW598(tables);
   const widened = W597_WIDENINGS.map((shape) => ({
     shape,
     matches: copy.rom.windows.filter((w) => w.base === shape.base),

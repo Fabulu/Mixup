@@ -83,7 +83,7 @@ test('W212 exact type-$9B closure, five occurrences, and two live streams',
   // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
   // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
   // shard 9 at 313/166,218.
-  assert.equal(manifest.spr.streamCount, 5091);
+  assert.equal(manifest.spr.streamCount, 5274);
 });
 
 test('W212 real clock-$19 spawn draws both parts, then hides and retires them',

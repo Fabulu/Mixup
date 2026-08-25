@@ -107,7 +107,9 @@ import {
   SPRMASK_LAYOUT, SPRMASK_SIZE, assemble, assertLittleEndianHost,
 } from '../src/render/regions.js';
 import { bgTile, txTile, BG_W, BG_H, TX_W, TX_H } from '../src/render/tiles.js';
-import { streamExtent, walkDirectory } from '../src/render/spritedir.js';
+import {
+  boundedStreamExtent, streamExtent, walkDirectory,
+} from '../src/render/spritedir.js';
 // W86: the art harvest for the background elements is derived from the PORT's
 // own handler table, not from a second copy of it. See (1g) below.
 import { BGELEM_HANDLERS } from '../src/background.js';
@@ -4040,6 +4042,250 @@ const B13_MEASURED = Object.freeze([
   console.log(`  slot [7] list-B presentation: ${pictureOccurrences} picture occurrences, `
     + `${pictureStreams.size} pool streams, selectors {${selectors.join(',')}} and `
     + `${listBStreams.size} total streams in deferred shard 17`);
+}
+
+// W598: complete the other two authentic post-boss presentation families. List A
+// was already executable but had never been harvested as a family. List C's six
+// scripts and nineteen sparse picture pointers arrived together in W598. Decode
+// both with the cartridge bytecode, retain all prior stream ownership, and put
+// only the 79 newly reachable streams in the existing deferred shard 17.
+{
+  const spawnTable = 0x2902c2;
+  const bannerTable = 0x290c72;
+  const opcodeWidths = Object.freeze({
+    0x8000: 4, 0x8001: 6, 0x8002: 4, 0x8003: 4, 0x8005: 6,
+  });
+  // Selector 2 is the mask ROM's terminal stream. It has no successor header,
+  // but the cartridge's fixed banner record `$1CE0` supplies the exact 14x224
+  // mask-word body and the five preceding banners establish the same $C44 stride.
+  const terminalBanner = 0x33a6e4;
+  const precedingBanner = romBe32(bannerTable + 1 * 4) & 0x7fffff;
+  const bannerShape = 0x1ce0;
+  const bannerWide = (bannerShape & 0x7e00) >>> 9;
+  const bannerHigh = bannerShape & 0x01ff;
+  const bannerBodyWords = bannerWide * bannerHigh;
+  const precedingExtent = romExtent(precedingBanner);
+  if (precedingBanner + precedingExtent.stride !== terminalBanner
+      || precedingExtent.stride !== bannerBodyWords + 4
+      || (romBe32(bannerTable + 2 * 4) & 0x7fffff) !== terminalBanner) {
+    throw new Error('W598 terminal banner no longer follows the five-picture $C44 family '
+      + 'or selector 2 no longer names it');
+  }
+  const endingExtent = (offs) => offs === terminalBanner
+    ? boundedStreamExtent(sprmask, COLW, offs, bannerBodyWords)
+    : romExtent(offs);
+  const families = Object.freeze([
+    Object.freeze({
+      name: 'A', listBase: 0x2914c8, occurrences: 217, pictures: 92,
+      selectors: Object.freeze([1, 2]), total: 94, added: 51, already: 43,
+      scripts: Object.freeze([
+        Object.freeze([0x2914f0, 0x29154a]), Object.freeze([0x29154a, 0x2915a0]),
+        Object.freeze([0x2915a0, 0x291604]), Object.freeze([0x291604, 0x29166c]),
+        Object.freeze([0x29166c, 0x291692]), Object.freeze([0x291692, 0x2916da]),
+        Object.freeze([0x2916da, 0x291700]), Object.freeze([0x291700, 0x29177c]),
+        Object.freeze([0x29177c, 0x2917be]),
+      ]),
+    }),
+    Object.freeze({
+      name: 'C', listBase: 0x291b92, occurrences: 157, pictures: 75,
+      selectors: Object.freeze([5, 6]), total: 77, added: 28, already: 49,
+      scripts: Object.freeze([
+        Object.freeze([0x291bae, 0x291c0c]), Object.freeze([0x291c0c, 0x291c70]),
+        Object.freeze([0x291c70, 0x291ca4]), Object.freeze([0x291ca4, 0x291d0e]),
+        Object.freeze([0x291d0e, 0x291d54]), Object.freeze([0x291d54, 0x291dc6]),
+      ]),
+    }),
+  ]);
+
+  let familyAdded = 0;
+  for (const family of families) {
+    const pictureStreams = new Set();
+    const bannerSelectors = new Set();
+    let pictureOccurrences = 0;
+    for (let i = 0; i < family.scripts.length; i++) {
+      const [expectedStart, expectedEnd] = family.scripts[i];
+      const script = romBe32(family.listBase + i * 4);
+      if (script !== expectedStart) {
+        throw new Error(`W598 list-${family.name} pointer ${i} is $${
+          script.toString(16)}, expected $${expectedStart.toString(16)}`);
+      }
+      let at = script;
+      for (;;) {
+        const word = romBe16(at);
+        if (word === 0xffff) {
+          at += 2;
+          break;
+        }
+        if ((word & 0x8000) === 0) {
+          pictureStreams.add(romBe32(spawnTable + word * 4) & 0x7fffff);
+          pictureOccurrences++;
+          at += 2;
+          continue;
+        }
+        const width = opcodeWidths[word];
+        if (width === undefined) {
+          throw new Error(`W598 list-${family.name} script ${i} has unknown opcode $${
+            word.toString(16)} at $${at.toString(16)}`);
+        }
+        if (word === 0x8005) {
+          const selector = romBe16(at + 2);
+          if (selector !== 0) bannerSelectors.add(selector);
+        }
+        at += width;
+      }
+      if (at !== expectedEnd) {
+        throw new Error(`W598 list-${family.name} script ${i} ends at $${
+          at.toString(16)}, expected $${expectedEnd.toString(16)}`);
+      }
+    }
+    if (romBe32(family.listBase + family.scripts.length * 4) !== 0xffffffff) {
+      throw new Error(`W598 list-${family.name} lost its $FFFFFFFF terminator`);
+    }
+    const selectors = [...bannerSelectors].sort((a, b) => a - b);
+    if (pictureOccurrences !== family.occurrences
+        || pictureStreams.size !== family.pictures
+        || selectors.length !== family.selectors.length
+        || selectors.some((selector, index) => selector !== family.selectors[index])) {
+      throw new Error(`W598 list-${family.name} art walk drifted: ${pictureOccurrences} `
+        + `picture occurrences, ${pictureStreams.size} distinct pool streams, banner `
+        + `selectors {${selectors.join(',')}}; expected ${family.occurrences}, `
+        + `${family.pictures}, and {${family.selectors.join(',')}}`);
+    }
+
+    const familyStreams = new Set(pictureStreams);
+    for (const selector of selectors) {
+      familyStreams.add(romBe32(bannerTable + selector * 4) & 0x7fffff);
+    }
+    if (familyStreams.size !== family.total) {
+      throw new Error(`W598 list-${family.name} resolves ${familyStreams.size} distinct `
+        + `streams, expected ${family.total}`);
+    }
+    let added = 0, already = 0;
+    for (const offs of familyStreams) {
+      if (streams.has(offs)) {
+        already++;
+        continue;
+      }
+      streams.set(offs, endingExtent(offs));
+      shardOfStream.set(offs, 17);
+      added++;
+    }
+    if (added !== family.added || already !== family.already) {
+      throw new Error(`W598 list-${family.name} art added ${added} streams and found `
+        + `${already} already harvested; expected ${family.added} and ${family.already}`);
+    }
+    familyAdded += added;
+    harvested += added;
+    harvestAlready += already;
+    harvestReport.push({ shard: 17, base: family.listBase,
+      entries: pictureOccurrences, stride: 0, runsTo: family.scripts.length,
+      endsAt: family.scripts.at(-1)[1], distinct: familyStreams.size, added, already,
+      why: `W598 slot [7] complete list-${family.name} scripts and banners ${
+        selectors.join('/')}` });
+    console.log(`  slot [7] list-${family.name} presentation: ${pictureOccurrences} `
+      + `picture occurrences, ${pictureStreams.size} pool streams, selectors `
+      + `{${selectors.join(',')}} and ${familyStreams.size} total streams`);
+  }
+  if (familyAdded !== 79) {
+    throw new Error(`W598 list-A/list-C union added ${familyAdded} streams, expected 79`);
+  }
+
+  // Every variant first runs one of these five-script intro lists through inner
+  // state 0. They share 79 picture streams; 57 were already reachable elsewhere,
+  // while the remaining 22 are the ending text that the browser had been dropping.
+  const introLists = Object.freeze([
+    Object.freeze({
+      base: 0x290f1e, total: 73,
+      scripts: Object.freeze([
+        Object.freeze([0x290f66, 0x290f8e]), Object.freeze([0x290f8e, 0x290fe2]),
+        Object.freeze([0x290fe2, 0x291040]), Object.freeze([0x2910f6, 0x291172]),
+        Object.freeze([0x291172, 0x2911b0]),
+      ]),
+    }),
+    Object.freeze({
+      base: 0x290f36, total: 71,
+      scripts: Object.freeze([
+        Object.freeze([0x290f66, 0x290f8e]), Object.freeze([0x290f8e, 0x290fe2]),
+        Object.freeze([0x291040, 0x29109c]), Object.freeze([0x2910f6, 0x291172]),
+        Object.freeze([0x291172, 0x2911b0]),
+      ]),
+    }),
+    Object.freeze({
+      base: 0x290f4e, total: 71,
+      scripts: Object.freeze([
+        Object.freeze([0x290f66, 0x290f8e]), Object.freeze([0x290f8e, 0x290fe2]),
+        Object.freeze([0x29109c, 0x2910f6]), Object.freeze([0x2910f6, 0x291172]),
+        Object.freeze([0x291172, 0x2911b0]),
+      ]),
+    }),
+  ]);
+  const introStreams = new Set();
+  for (let variant = 0; variant < introLists.length; variant++) {
+    const intro = introLists[variant];
+    const variantStreams = new Set();
+    for (let i = 0; i < intro.scripts.length; i++) {
+      const [expectedStart, expectedEnd] = intro.scripts[i];
+      const script = romBe32(intro.base + i * 4);
+      if (script !== expectedStart) {
+        throw new Error(`W598 intro variant ${variant} pointer ${i} is $${
+          script.toString(16)}, expected $${expectedStart.toString(16)}`);
+      }
+      let at = script;
+      for (;;) {
+        const word = romBe16(at);
+        if (word === 0xffff) {
+          at += 2;
+          break;
+        }
+        if ((word & 0x8000) === 0) {
+          variantStreams.add(romBe32(spawnTable + word * 4) & 0x7fffff);
+          at += 2;
+          continue;
+        }
+        const width = opcodeWidths[word];
+        if (width === undefined) {
+          throw new Error(`W598 intro variant ${variant} script ${i} has unknown opcode $${
+            word.toString(16)} at $${at.toString(16)}`);
+        }
+        at += width;
+      }
+      if (at !== expectedEnd) {
+        throw new Error(`W598 intro variant ${variant} script ${i} ends at $${
+          at.toString(16)}, expected $${expectedEnd.toString(16)}`);
+      }
+    }
+    if (romBe32(intro.base + intro.scripts.length * 4) !== 0xffffffff
+        || variantStreams.size !== intro.total) {
+      throw new Error(`W598 intro variant ${variant} resolves ${variantStreams.size} streams, `
+        + `expected ${intro.total}, or lost its $FFFFFFFF terminator`);
+    }
+    for (const offs of variantStreams) introStreams.add(offs);
+  }
+  if (introStreams.size !== 79) {
+    throw new Error(`W598 intro-list union resolves ${introStreams.size} streams, expected 79`);
+  }
+  let introAdded = 0, introAlready = 0;
+  for (const offs of introStreams) {
+    if (streams.has(offs)) {
+      introAlready++;
+      continue;
+    }
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, 17);
+    introAdded++;
+  }
+  if (introAdded !== 22 || introAlready !== 57) {
+    throw new Error(`W598 intro-list art added ${introAdded} streams and found ${introAlready} `
+      + 'already harvested; expected 22 and 57');
+  }
+  harvested += introAdded;
+  harvestAlready += introAlready;
+  harvestReport.push({ shard: 17, base: introLists[0].base, entries: 79,
+    stride: 0, runsTo: introLists.length, endsAt: 0x2911b0,
+    distinct: introStreams.size, added: introAdded, already: introAlready,
+    why: 'W598 slot [7] complete three-variant intro-list union' });
+  console.log(`  slot [7] shared intro presentation: ${introStreams.size} streams, `
+    + `${introAdded} newly packed in deferred shard 17`);
 }
 
 const bgList = [...bgUsed].sort((a, b) => a - b);

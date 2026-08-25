@@ -17,9 +17,9 @@
     "sha256": "6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb"
   },
   "tables": {
-    "sha256": "048ae8ac06bcbef9a8fc7648acb2fd6eaaebb091b26545986f1753f79f2c8d6e",
-    "windows": 911,
-    "bytes": 454759,
+    "sha256": "46ba8b0d7905479b87eb586fc966323fcae7523e77fe66bc38ba7265b6f6b5f6",
+    "windows": 936,
+    "bytes": 455371,
     "overlapPairs": 77
   },
   "preW595Tables": {

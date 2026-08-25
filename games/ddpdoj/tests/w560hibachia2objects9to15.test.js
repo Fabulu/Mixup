@@ -199,19 +199,19 @@ test('W560 ships all six table streams and object 13 fixed stream in the boss sh
       rows.set(offs, { base, maskWords: flat[manifest.spr.streamCount * 2 + i] });
     }
     assert.deepEqual(TABLE_STREAMS.map((at) => rows.get(at)), [
-      { base: 2227176, maskWords: 1442 }, { base: 2228618, maskWords: 1442 },
-      { base: 2230060, maskWords: 1442 }, { base: 2231502, maskWords: 1442 },
-      { base: 2232944, maskWords: 1442 }, { base: 2234386, maskWords: 1442 },
+      { base: 2230796, maskWords: 1442 }, { base: 2232238, maskWords: 1442 },
+      { base: 2233680, maskWords: 1442 }, { base: 2235122, maskWords: 1442 },
+      { base: 2236564, maskWords: 1442 }, { base: 2238006, maskWords: 1442 },
     ]);
-    assert.deepEqual(rows.get(OBJECT13_STREAM), { base: 2284148, maskWords: 674 });
+    assert.deepEqual(rows.get(OBJECT13_STREAM), { base: 2287768, maskWords: 674 });
 
     const shard = manifest.spr.shards[17];
-    assert.equal(manifest.spr.streamCount, 5091);
-    assert.equal(shard.streams, 1415);
-    assert.equal(shard.maskLen, 835382);
-    assert.equal(shard.colLen, 2066159);
-    assert.equal(manifest.spr.maskUsed, 2675382);
-    assert.equal(manifest.spr.colUsed, 6549050);
+    assert.equal(manifest.spr.streamCount, 5274);
+    assert.equal(shard.streams, 1516);
+    assert.equal(shard.maskLen, 851232);
+    assert.equal(shard.colLen, 2149650);
+    assert.equal(manifest.spr.maskUsed, 2694852);
+    assert.equal(manifest.spr.colUsed, 6637085);
   });
 
 test('W560 all five implemented ids emit exact requests and remain running',
