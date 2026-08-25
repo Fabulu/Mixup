@@ -25,7 +25,7 @@ import {
 import { round2Input } from '../tools/progression-probe.mjs';
 import {
   ROM_OVERLAP_PAIRS, ROM_WINDOW_BYTES, ROM_WINDOW_COUNT,
-  overlappingPairs, tableBeforeW596,
+  overlappingPairs, tableBeforeW596, tableBeforeW598,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -45,6 +45,7 @@ const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const EXPECTED = JSON.parse(readFileSync(WITNESS, 'utf8'));
 const PRIOR_TABLE = SKIP ? null : tableBeforeW596(TABLE_JSON);
+const W597_TABLE = SKIP ? null : tableBeforeW598(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const PRIOR_ROM = SKIP ? null : new RomWindows(PRIOR_TABLE.rom);
 
@@ -52,6 +53,7 @@ const SCRIPT = 0x29109c;
 const SCRIPT_END = 0x2910f6;
 const VARIANT_2_LIST = 0x290f4e;
 const TABLE_HASH = '46ba8b0d7905479b87eb586fc966323fcae7523e77fe66bc38ba7265b6f6b5f6';
+const W597_TABLE_HASH = '048ae8ac06bcbef9a8fc7648acb2fd6eaaebb091b26545986f1753f79f2c8d6e';
 const PRIOR_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8';
 const SCRIPT_HASH = '16c0eea9d901d6fd6bc9a7fcaf19673282402c73fc70ef21e843a568f5597163';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
@@ -394,11 +396,19 @@ test('W596 fresh ship-0/style-6 route pins every cadence identity and stops at t
       if (attempted === 151365) {
         const beforeIdentity = identity(game, exact, inputWord, attempted - 1);
         assert.deepEqual(beforeIdentity, EXPECTED.nextFrontier.beforeIdentity);
-        const error = captureFault(() => game.step(inputWord), 0x291bae);
+        const currentDocument = checkpointDocument(game, exact, {
+          ...PAIR, inputWord, invulnerable: true,
+        });
+        const w597Bundle = { ...exact, tables: W597_TABLE };
+        const w597Document = { ...currentDocument, tablesSha256: W597_TABLE_HASH };
+        assert.equal(currentDocument.tablesSha256, TABLE_HASH);
+        const reconstructed = restoreCheckpoint(w597Document, w597Bundle, PAIR);
+        const error = captureFault(() => reconstructed.game.step(inputWord), 0x291bae);
         nextFrontier = {
           attempted, successful: attempted - 1,
-          logicFrame: game.logicFrame, videoFrame: game.videoFrame,
-          raw: rawPosition(game), inputWord, address: error.romAddress,
+          logicFrame: reconstructed.game.logicFrame,
+          videoFrame: reconstructed.game.videoFrame,
+          raw: rawPosition(reconstructed.game), inputWord, address: error.romAddress,
           beforeIdentity,
         };
         break;

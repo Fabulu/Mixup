@@ -27,7 +27,7 @@ import {
   HIBACHI_GUN_A4_SCRIPTS, altGun3Init2A9E84, altGun3Step2A9EB6,
 } from '../src/hibachiguns.js';
 import {
-  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569,
+  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, overlappingPairs, tableBeforeW569,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -134,7 +134,7 @@ test('W565 is a strict two-window additive superset with no self-pointers or pad
   { skip: SKIP }, () => {
     assert.deepEqual(W565_TABLE, FUTURE_TABLE,
       'removing the later W566 and W568 windows reconstructs the strict W565 additive result');
-    assert.equal(TABLE_JSON.rom.windows.length, 906);
+    assert.equal(TABLE_JSON.rom.windows.length, ROM_WINDOW_COUNT);
     assert.equal(PRIOR_TABLE.rom.windows.length, 822);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
     assert.equal(W565_TABLE.rom.windows.length, 824);
