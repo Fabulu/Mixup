@@ -566,7 +566,19 @@
 // spawn-table longwords those scripts read. Measured: 854 -> 906 windows,
 // 452,789 -> 453,741 bytes, 77 -> 77 overlapping pairs.
 
+// ---------------------------------------------------------------------------
+// W595 WIDENED ONE EXISTING DISJOINT WINDOW BY FOUR LONGWORDS.
+// ---------------------------------------------------------------------------
+// Type $9C's family-$11 offscreen satellite retains A0=$060006C0 and advances
+// its dead-animation cursor through $052C, whose 24-bit sum is $000BEC. The
+// exact BIOS window is therefore widened from `$000BF0 + $14` to
+// `$000BE0 + $24`, covering all nine contiguous reads through $000C00.
+// Measured: 906 windows, 453,741 -> 453,757 bytes, 77 overlapping pairs.
+
 export const ROM_WINDOW_COUNT = 906;
+
+/** Total declared bytes over the current window set, with overlaps counted. */
+export const ROM_WINDOW_BYTES = 453757;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -599,6 +611,39 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W534_BIOS_WHY = "W534 type-$9C offscreen satellite's five 24-bit-wrapped "
+  + 'BIOS animation longwords';
+const W595_BIOS_WHY = "W595 type-$9C offscreen family-$11 satellite's nine "
+  + '24-bit-wrapped BIOS animation longwords';
+
+/** Reconstruct the exact pre-W595 table by undoing only W595's BIOS widening. */
+export function tableBeforeW595(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const old = copy.rom.windows.filter((w) => w.base === '$000BF0');
+  const current = copy.rom.windows.filter((w) => w.base === '$000BE0');
+  if (old.length === 1 && current.length === 0) {
+    if (old[0].len !== 0x0014 || old[0].hex.length !== 0x0014 * 2
+        || old[0].why !== W534_BIOS_WHY) {
+      throw new Error('$000BF0 is not the exact pre-W595 BIOS window');
+    }
+    return copy;
+  }
+  if (old.length !== 0 || current.length !== 1) {
+    throw new Error('the W595 BIOS widening is absent, duplicated, or partially present');
+  }
+  const window = current[0];
+  if (window.len !== 0x0024 || window.hex.length !== 0x0024 * 2
+      || window.why !== W595_BIOS_WHY) {
+    throw new Error('$000BE0 is not the exact W595 BIOS widening');
+  }
+  const index = copy.rom.windows.indexOf(window);
+  copy.rom.windows[index] = {
+    base: '$000BF0', len: 0x0014, why: W534_BIOS_WHY,
+    hex: window.hex.slice(0x10 * 2),
+  };
+  return copy;
+}
+
 const W589_WINDOWS = Object.freeze([
   Object.freeze(['$291836', 0x0078]), Object.freeze(['$2918AE', 0x0064]),
   Object.freeze(['$291912', 0x0046]), Object.freeze(['$291958', 0x0082]),
@@ -629,9 +674,9 @@ const W589_WINDOWS = Object.freeze([
   Object.freeze(['$2906E6', 0x0004]),
 ]);
 
-/** Reconstruct the exact W588 table by removing W589's additive windows. */
+/** Reconstruct the exact W588 table by undoing W595, then removing W589's windows. */
 export function tableBeforeW589(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW595(tables);
   const found = copy.rom.windows.filter((w) =>
     W589_WINDOWS.some(([base]) => w.base === base));
   if (found.length === 0) return copy;
@@ -909,4 +954,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "disjoint $291040+$5C variant-1 third script and sparse $2904E2/$290506 spawn "
   + "pointers and moved no pair. W589 added seven disjoint list-B scripts from "
   + "$291836 through $291B3A plus forty-five sparse spawn pointers and moved no "
-  + "pair. See tests/romwindowset.js.";
+  + "pair. W595 widened the disjoint $000BF0+$14 BIOS window to $000BE0+$24, "
+  + "adding sixteen bytes while moving neither the window count nor overlap count. "
+  + "See tests/romwindowset.js.";

@@ -35,7 +35,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W588_TABLE = SKIP ? null : tableBeforeW589(TABLE_JSON);
 const CHECKPOINT_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 
-const LIVE_TABLE_HASH = 'b062e45b4c4ca0488a0c4660a83a9d868feaf8b6d00b670d1de9948481f3f7c3';
+const LIVE_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8';
 const W588_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
 const CHECKPOINT_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 
@@ -193,7 +193,7 @@ test('W590 exact checkpoint reaches P1 name entry, resets round 2, and hands to 
       canonicalHash(CHECKPOINT_TABLE), CHECKPOINT_TABLE.rom.windows.length,
       CHECKPOINT_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
     ], [
-      LIVE_TABLE_HASH, 906, 453741,
+      LIVE_TABLE_HASH, 906, 453757,
       W588_TABLE_HASH, 854, 452789,
       CHECKPOINT_TABLE_HASH, 851, 452689,
     ]);
@@ -221,7 +221,7 @@ test('W590 exact checkpoint reaches P1 name entry, resets round 2, and hands to 
 
     const liveBundle = await bundle();
     assert.deepEqual(liveBundle.tables, TABLE_JSON,
-      'the existing web table payload is already W589-current');
+      'the regenerated web table payload is already W595-current');
     const currentAssets = { ...liveBundle, tables: TABLE_JSON };
     const checkpointAssets = { ...liveBundle, tables: CHECKPOINT_TABLE };
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));

@@ -133,7 +133,7 @@ function latestCheckpoint(dir, ship, style) {
   return matches.length ? path.join(dir, matches[matches.length - 1]) : null;
 }
 
-function round2Input(game, previous) {
+export function round2Input(game, previous) {
   const ram = game.ram;
   if (ram.u16(MENU.work + MENU.innerAt) !== 4) return DOWN_SHOT;
   const state = ram.u16(MENU.work + MENU.substateAt);

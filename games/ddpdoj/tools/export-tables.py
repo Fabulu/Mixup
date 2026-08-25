@@ -90,13 +90,13 @@ SHOT_WINDOWS = [
     # body from `lea $809274,A0` through `rts`, disjoint from W255's later
     # register-convention routine at $23F7C6.
     (0x23F746, 0x003C, "W535 type-$9E negative-velocity bucket-22 record enqueue stub"),
-    # W534: Type $9C's family-$11 satellites mark themselves dead when their
+    # W595: Type $9C's family-$11 satellites mark themselves dead when their
     # signed X crosses $7000, then the cartridge's next pass enters $27DD00
     # without installing the ordinary death-animation list. Their retained
-    # fields are A0=$060006C0 and D0.w=$0540..$0530. The 68000's 24-bit bus
-    # therefore reads exactly five BIOS longwords at $000BF0..$000C03.
-    (0x000BF0, 0x0014, "W534 type-$9C offscreen satellite's five 24-bit-wrapped "
-                       "BIOS animation longwords"),
+    # fields are A0=$060006C0 and D0.w=$0540..$0520. The 68000's 24-bit bus
+    # therefore reads exactly nine BIOS longwords at $000BE0..$000C03.
+    (0x000BE0, 0x0024, "W595 type-$9C offscreen family-$11 satellite's nine "
+                       "24-bit-wrapped BIOS animation longwords"),
     (0x25321E, 0x0040, "W164 player-death partial palette row tables, P1/P2"),
     (0x2551FA, 0x0006, "W164 death-reset formation cap bytes for formations 2/4/6"),
     (0x255B7C, 0x009C, "W164 death animation pointer list through its FFFFFFFF terminator"),

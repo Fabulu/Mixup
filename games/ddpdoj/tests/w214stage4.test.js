@@ -16,6 +16,7 @@ import { resetAndInstallStage26331E, runSpawnWalker, SPAWN } from '../src/spawn.
 import { ENEMY } from '../src/enemies.js';
 import { BUCKETS } from '../src/spritequeue.js';
 import { POOL_B } from '../src/effects.js';
+import { tableBeforeW595 } from './romwindowset.js';
 
 const tablesPath = new URL('../rip/port/player.tables.json', import.meta.url);
 const manifestPath = new URL('../assets/manifest.json', import.meta.url);
@@ -23,6 +24,8 @@ const HAVE = existsSync(tablesPath) && existsSync(manifestPath);
 const json = HAVE ? JSON.parse(readFileSync(tablesPath, 'utf8')) : null;
 const manifest = HAVE ? JSON.parse(readFileSync(manifestPath, 'utf8')) : null;
 const ROM = HAVE ? new RomWindows(json.rom) : null;
+const PRE_W595 = HAVE ? tableBeforeW595(json) : null;
+const PRE_W595_ROM = HAVE ? new RomWindows(PRE_W595.rom) : null;
 const MT = HAVE ? new MoveTables(json, ROM) : null;
 const SKIP = HAVE ? false : 'generated ROM tables/assets absent; skip, not pass';
 
@@ -165,7 +168,27 @@ test('W530 type-$9C offscreen satellite wraps its RAM-backed animation read',
     assert.equal(ram.u16(child + 0x16), 0x043c);
   });
 
-test('W534 type-$9C offscreen satellite reads its five wrapped BIOS longwords',
+test('W595 exact registry extends W534 from five to nine wrapped BIOS longwords',
+  { skip: SKIP }, () => {
+    const addresses = [0x0c00, 0x0bfc, 0x0bf8, 0x0bf4, 0x0bf0,
+      0x0bec, 0x0be8, 0x0be4, 0x0be0];
+    const live = json.rom.windows.filter(({ base }) => base === '$000BE0');
+    const before = PRE_W595.rom.windows.filter(({ base }) => base === '$000BF0');
+    assert.deepEqual(live.map(({ len, why }) => [len, why]), [[0x24,
+      "W595 type-$9C offscreen family-$11 satellite's nine 24-bit-wrapped "
+        + 'BIOS animation longwords']]);
+    assert.deepEqual(before.map(({ len, why }) => [len, why]), [[0x14,
+      "W534 type-$9C offscreen satellite's five 24-bit-wrapped BIOS animation longwords"]]);
+    for (const at of addresses.slice(0, 5)) {
+      assert.equal(PRE_W595_ROM.u32(at), ROM.u32(at),
+        `pre-W595 registry still serves W534's longword at $${at.toString(16).toUpperCase()}`);
+    }
+    assert.throws(() => PRE_W595_ROM.u32(0x0bec), /longword at \$BEC is outside every ROM window/,
+      'pre-W595 registry reproduces the fresh ship-0/style-2 fault at $000BEC');
+    for (const at of addresses) assert.doesNotThrow(() => ROM.u32(at));
+  });
+
+test('W534/W595 type-$9C offscreen satellite reads all nine wrapped BIOS longwords',
   { skip: SKIP }, () => {
     const ram = new Ram();
     const log = new UnportedLog();
@@ -188,11 +211,12 @@ test('W534 type-$9C offscreen satellite reads its five wrapped BIOS longwords',
     ram.setU8(child + 0x15, 0x40);
     ram.setU16(child + 0x16, 0x0540);
 
-    for (const at of [0x0c00, 0x0bfc, 0x0bf8, 0x0bf4, 0x0bf0]) {
+    for (const at of [0x0c00, 0x0bfc, 0x0bf8, 0x0bf4, 0x0bf0,
+      0x0bec, 0x0be8, 0x0be4, 0x0be0]) {
       ram.setU8(child + 0x14, 0);
       assert.doesNotThrow(() => runHandler(0x27aee0, ram, ROM, a5,
         { tables: MT, unported: log, soundPost() {} }));
       assert.equal(ram.u32(child + 0x0a), ROM.u32(at));
     }
-    assert.equal(ram.u16(child + 0x16), 0x052c);
+    assert.equal(ram.u16(child + 0x16), 0x051c);
   });

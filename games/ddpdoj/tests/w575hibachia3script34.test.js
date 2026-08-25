@@ -44,7 +44,7 @@ const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = 'b062e45b4c4ca0488a0c4660a83a9d868feaf8b6d00b670d1de9948481f3f7c3';
+const LIVE_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8';
 const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const REC = 0x810c00;
@@ -77,7 +77,7 @@ test('W575 pins both raw A3 pairs, exclusive boundaries, registrations, and no R
   { skip: SKIP }, () => {
     assert.equal(ROM_WINDOW_COUNT, 906);
     assert.equal(TABLE_JSON.rom.windows.length, 906);
-    assert.equal(TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0), 453741);
+    assert.equal(TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0), 453757);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(canonicalHash(W575_TABLE), TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W575:')), []);
