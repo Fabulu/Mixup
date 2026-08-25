@@ -77,7 +77,7 @@ test('W497 launch query preserves ./index.html exactly for default and names bot
     }
   });
 
-test('W497 all six cartridge pairs have distinct power, speed, and ramp indexes', () => {
+test('W497 selectors use two body rows and six power, speed, and ramp rows', () => {
   const got = [];
   for (const style of AUTHENTIC_STYLES) {
     for (const ship of AUTHENTIC_SHIPS) {
@@ -93,11 +93,15 @@ test('W497 all six cartridge pairs have distinct power, speed, and ramp indexes'
     [0, 6, 0x2551ea, 0x20, 0x08, 0x10],
     [2, 6, 0x2551f2, 0x28, 0x0a, 0x14],
   ]);
+  assert.equal(new Set(got.map((row) => row[2])).size, 2,
+    'fighter selection has two body and hitbox families, not six');
+  assert.equal(new Set(got.map((row) => `${row[4]}:${row[5]}`)).size, 6,
+    'each fighter/style pair retains its cartridge speed and ramp row');
   assert.equal(authenticSelectionIndices(4, 2), null);
   assert.equal(authenticSelectionIndices(0, 8), null);
 });
 
-test('W497 explicit selections derive every live P1 field from the cartridge indexes', () => {
+test('W497 explicit selections derive the translated launch fields from cartridge indexes', () => {
   for (const pair of NON_DEFAULT) {
     const ram = new Ram(null);
     const rom = tracingRom();

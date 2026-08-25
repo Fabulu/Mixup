@@ -905,6 +905,10 @@ export class Demo {
       coinTick: () => this.coinTick(),
     });
     if (authentic) applyAuthenticSelection(this.game, authentic);
+    // A non-default selector patch changes live RAM before frame 1, but the seed's
+    // hardware list still contains the default ship. Keep the production port
+    // source blank until the first ordinary step builds the selected list.
+    this.authenticLaunchPending = !!authentic;
     this.prevTilt = this.game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevShipSel = this.game.ram.u16(RAM.player1 + P.shipSel);
     this.prevPos = [this.game.ram.u16(RAM.player1 + P.posY),
@@ -942,6 +946,18 @@ export class Demo {
     this.listBuf = new Uint16Array(PORT_LIST_WORDS);
     this.listOpts.out = this.listBuf;
     this.portList = portSpriteList(this.game.ram, this.romToPacked, this.listOpts);
+    if (this.authenticLaunchPending) {
+      // Do not pair the selected palette with the captured default hardware list.
+      // Capture source is still the explicitly labelled recording diagnostic; it
+      // is not changed or claimed to reflect the browser selection.
+      this.portList.words.fill(0);
+      this.portList.records = 0;
+      this.portList.drawn = 0;
+      this.portList.skipped = 0;
+      this.portList.blank = 0;
+      this.portList.missing.clear();
+      this.portList.pending.clear();
+    }
 
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
@@ -1064,6 +1080,13 @@ export class Demo {
     // `COIN.idle` the recorded run is bit-identical whatever the keyboard does.
     g.coinPort = inPlayback ? COIN.idle : currentCoinWord();
     g.step(pw);
+    if (this.authenticLaunchPending) {
+      // The first selected list did not exist before this step. Snapshot it now,
+      // without a second simulation step, then return to the ordinary pre-step
+      // snapshot schedule on every later frame.
+      this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
+      this.authenticLaunchPending = false;
+    }
     applyPostFrameMods(this.mods, g.ram);
     if (this.recorder) this.recorder.feed();
     // WAVE 132 -- THE PLAYBACK DIGEST FEED.  After the step hashes the state the
@@ -1239,6 +1262,9 @@ export class Demo {
     this.prevShipSel = game.ram.u16(RAM.player1 + P.shipSel);
     this.prevPos = [game.ram.u16(RAM.player1 + P.posY),
       game.ram.u16(RAM.player1 + P.posX)];
+    // PLAY owns an exact replay seed and must never inherit an unfinished
+    // ordinary-launch selector seam from the Game it replaces.
+    this.authenticLaunchPending = false;
     this.portList = portSpriteList(game.ram, this.romToPacked, this.listOpts);
     this.dirty = true;                  // repaint with the new Game's picture
     this.recorder = null;

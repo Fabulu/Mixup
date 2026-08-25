@@ -5,6 +5,7 @@
 // the initialized player record and option template stale.
 
 import { P, RAM, OPT } from './machine.js';
+import { materializeSpriteTextPalette, paletteSet241688 } from './palette.js';
 
 export const AUTHENTIC_SHIPS = Object.freeze([0, 2]);
 export const AUTHENTIC_STYLES = Object.freeze([2, 4, 6]);
@@ -68,8 +69,14 @@ export function applyAuthenticSelection(game, value) {
 
   ram.setU16(0x813084, ship);                              // $2491FC source
   ram.setU16(0x813088, style);                             // $249204 source
+  ram.setU8(0x813008, ship / 2);                           // saved ship cursor
+  ram.setU8(0x813009, (style - 2) / 2);                    // saved style cursor
   ram.setU16(rec + P.shipSel, ship);
   ram.setU16(rec + P.optFormation, style);
+
+  const styleValue = rom.u8(0x2551fa + (style - 2));       // $24932E..$24935E
+  ram.setU8(rec + 0x24, styleValue);
+  ram.setU8(rec + 0x25, styleValue);
 
   ram.setU32(rec + P.animA, rom.u32(initial));             // $249432
   ram.setU32(rec + P.hitYPlus, rom.u32(initial + 4));
@@ -88,6 +95,15 @@ export function applyAuthenticSelection(game, value) {
     ram.setU16(RAM.p1Options + word * 2, 0);
   }
   ram.setU16(RAM.p1Options + OPT.state, 0x8000);           // $2492C8
+
+  // `$25CDB0` calls `$241688` with D0 = 0 for P1. Its D1 gate selects
+  // fighter 0's arm at zero and fighter 2's arm at nonzero. Copy only the
+  // resulting sprite and text regions: entering `$24133C` here would also run
+  // the unrelated `$241404` background fade one extra time.
+  if (game.palette) {
+    paletteSet241688(ram, game.palette, rom, 0, ship / 2);
+    materializeSpriteTextPalette(ram, game.palette);
+  }
 
   return selected;
 }

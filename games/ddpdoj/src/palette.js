@@ -522,9 +522,8 @@ const u16neg = (v) => (-v) & 0xffff;
  * Returns which regions were copied, so a caller can tell "nothing was dirty"
  * from "the flush never ran".
  */
-export function flush24133C(ram, pal) {
-  const did = { spr: false, bg: false, tx: false };
-  for (const key of ['spr', 'bg', 'tx']) {
+function copyDirtyPaletteRegions(ram, pal, keys, did) {
+  for (const key of keys) {
     const r = PALSTAGE[key];
     if (ram.u16(r.dirty) === 0) continue;                  // $24133C/$241384/$2413CC
     for (let i = 0; i < r.words; i++) {
@@ -535,6 +534,21 @@ export function flush24133C(ram, pal) {
     did[key] = true;
     pal.copies[key]++;
   }
+  return did;
+}
+
+/**
+ * Materialize selector-time P1 sprite and text installs without entering
+ * `$24133C`'s unconditional `$241404` background-fade tail. This is a browser
+ * seed catch-up seam, not another cartridge call site.
+ */
+export function materializeSpriteTextPalette(ram, pal) {
+  return copyDirtyPaletteRegions(ram, pal, ['spr', 'tx'], { spr: false, tx: false });
+}
+
+export function flush24133C(ram, pal) {
+  const did = copyDirtyPaletteRegions(ram, pal, ['spr', 'bg', 'tx'],
+    { spr: false, bg: false, tx: false });
   // $2413CC's `beq` and $241400's `jsr $24132A(pc)` BOTH fall into $241404, so
   // the fade runs whether or not any region was dirty.  It is inside this
   // function rather than beside it because it is inside $24133C in the ROM:
