@@ -1661,7 +1661,11 @@ export class Demo {
     if (!this.last) this.last = now;
     let dt = now - this.last;
     this.last = now;
-    const period = transformModTiming(this.mods, this.periodMs);
+    // W599: `armedVblanks` is the cartridge frame-sync governor's delay for
+    // the NEXT complete main-loop iteration.  The simulation already consumes
+    // every modeled vblank; presentation must give those vblanks real time too.
+    // Recompute after every step because that step can change the next arm.
+    let period = transformModTiming(this.mods, this.periodMs * this.game.armedVblanks);
     // A tab that was in the background must not run a thousand frames at once.
     // Presentation is dropped; the SIMULATION is never altered.
     if (dt > 200) dt = period;
@@ -1671,6 +1675,7 @@ export class Demo {
       this.acc -= period;
       this.step();
       n++;
+      period = transformModTiming(this.mods, this.periodMs * this.game.armedVblanks);
     }
     // WAVE 132 -- PLAYBACK LIVE BOUNDARY CHECK.  After the step batch, if a
     // period window closed, hash it fresh and surface the first divergence now
