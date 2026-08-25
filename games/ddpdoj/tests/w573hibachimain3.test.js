@@ -696,7 +696,7 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
     ], [
       7667, 153797, 164459, 0x291040,
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      'ad99045f00e36a8a2343880bd4a7e14c3aaac1e7bbecc6f104603f6f7044d85a',
+      '5cd13dcbdcbb8a69a59dbac2244a4a6daeafd8b48ff4c38a6d2ae50e0a55b507',
     ]);
     assert.match(error?.message ?? '', /word at \$291040 is outside every ROM window/);
   });

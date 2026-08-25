@@ -23,6 +23,16 @@
       { "ship": 2, "style": 6, "tail": "1460=R;1470=;1500=A;1510=;1520=R;1530=;1540=R;1550=;1560=A;1570=;1700=A;1710=" }
     ]
   },
+  "paireffects": {
+    "schema": "ddpdoj-pair-effects-scenarios-v1",
+    "why": "W593 applies one common post-LF2000 suffix to all six VERSION-B pairs and measures movement, two shot taps, laser startup, focused movement and release. Producer buckets are sampled before the display-list drain; palette and pixels are sampled on the following video phase.",
+    "frames": 2372,
+    "fromLogicFrame": 1999,
+    "suffix": "2001=R;2033=;2050=A;2051=;2070=A;2071=;2100=A;2240=AR;2300=A;2360=",
+    "rawDump": "p1=8103E6:62,opt=8104AA:64,shots=810572:6C0,segments=8112F2:600,beamctl=811EF2:A0,beamstate=812900:A0,display=800000:A00",
+    "buckets": "5,14,15,16,19",
+    "gfxAt": "2000,2032,2033,2049,2050,2051,2052,2069,2070,2071,2072,2099,2100,2101,2102,2103,2104,2105,2106,2107,2108,2109,2110,2111,2112,2113,2114,2115,2116,2117,2118,2119,2120,2121,2122,2123,2124,2125,2126,2127,2128,2129,2130,2131,2239,2240,2241,2299,2300,2301,2359,2360,2361,2362,2363,2364,2365,2366,2367,2368,2369,2370"
+  },
   "scenarios": [
     {
       "name": "chooser",

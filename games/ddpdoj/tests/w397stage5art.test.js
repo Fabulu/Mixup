@@ -188,6 +188,11 @@ const W556 = Object.freeze({ streams: 1, maskWords: 4610 });
 const W557 = Object.freeze({ streams: 1, maskWords: 338 });
 const W558 = Object.freeze({ streams: 64, maskWords: 35968 });
 const W560 = Object.freeze({ streams: 7, maskWords: 9326 });
+const W589 = Object.freeze({
+  streams: 105,
+  maskWords: 9778,
+  colWords: 51065,
+});
 
 // -------------------------------------------------------------------------- the bundle, decoded
 
@@ -501,9 +506,10 @@ test('W397 SECTION 4: the bundle grew by exactly these four and by nothing else'
     assert.equal(manifest.spr.streamCount,
       BEFORE.streamCount + 4 + W414.streams + W417.streams + W419.streams
         + W422.streams + W443.streams + W497.streams + W498.streams + W555.streams
-        + W556.streams + W557.streams + W558.streams + W560.streams,
+        + W556.streams + W557.streams + W558.streams + W560.streams + W589.streams,
       'W555 adds six Hibachi frames, W556/W557 add one fixed stream each, W558 adds 64, and '
-      + 'W560 adds six selector streams and one fixed stream. The current 4,986-stream bundle '
+      + 'W560 adds six selector streams and one fixed stream; W589 adds 105 slot-7 list-B streams. '
+      + 'The current 5,091-stream bundle '
       + 'total is exact, never a floor');
     assert.equal(shard.streams,
       BEFORE.shard11Streams + 4 + W414.streams + W417.streams + W422.streams,
@@ -520,9 +526,9 @@ test('W397 SECTION 4: the bundle grew by exactly these four and by nothing else'
       BEFORE.maskUsed + DISTINCT_WORDS + W414.maskWords + W417.maskWords
         + W419.maskWords + W422.maskWords + W443.maskWords
         + W497.maskWords + W498.maskWords + W555.maskWords + W556.maskWords
-        + W557.maskWords + W558.maskWords + W560.maskWords,
-      'W555 adds 7,404 mask words, W556 adds 4,610, W557 adds 338, W558 adds 35,968, and '
-      + 'W560 adds 9,326');
+        + W557.maskWords + W558.maskWords + W560.maskWords + W589.maskWords,
+      'W555 adds 7,404 mask words, W556 adds 4,610, W557 adds 338, W558 adds 35,968, '
+      + 'W560 adds 9,326, and W589 adds 9,778');
 
     // W397 through W443 establish the historical structure and laser additions. W497 then
     // expands shards 0, 6, 10, and 13, W498 adds nine Game Over streams to shard 0, and
@@ -530,7 +536,7 @@ test('W397 SECTION 4: the bundle grew by exactly these four and by nothing else'
     // the shared 64-frame part table, and W560 adds six selectors and one fixed stream to shard 17.
     // Keep every current shard exact so the global total cannot hide a misplaced stream.
     const SIZES = [277, 67, 32, 54, 17, 70, 313, 298, 72, 313, 451, 870, 139, 412, 90, 4, 37,
-      1310, 160];
+      1415, 160];
     assert.deepEqual(manifest.spr.shards.map((s) => s.streams), SIZES,
       'the exact current stream membership of every shard');
     assert.equal(SIZES.reduce((a, b) => a + b, 0), manifest.spr.streamCount,

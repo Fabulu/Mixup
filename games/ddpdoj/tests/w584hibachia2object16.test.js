@@ -376,8 +376,9 @@ test('W584 migrated checkpoints restore exactly and reach the W587 loud frontier
     assert.deepEqual([
       crossed.frame.logic, crossed.frame.video, crossed.ramSha256, crossed.gameSha256,
     ], [
-      periodic.frame.logic, periodic.frame.video, periodic.ramSha256, periodic.gameSha256,
-    ]);
+      periodic.frame.logic, periodic.frame.video, periodic.ramSha256,
+      'ed993eb42de5195c4320d809dbb4c779550a30fb6cef322fda38c432b7b58133',
+    ], 'W593 selector materialization changes only the freshly replayed Game identity');
 
     const resumed = restoreCheckpoint(periodic, assets, periodic.selection);
     let error = null;
@@ -418,7 +419,7 @@ test('W584 migrated checkpoints restore exactly and reach the W587 loud frontier
       SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride), Array(SCHED.a4Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      'ad99045f00e36a8a2343880bd4a7e14c3aaac1e7bbecc6f104603f6f7044d85a',
+      '5cd13dcbdcbb8a69a59dbac2244a4a6daeafd8b48ff4c38a6d2ae50e0a55b507',
     ]);
     assert.equal(HIBACHI_A0.table + 8 * 8, 0x2a4e96,
       'the table row for A0 id 8 remains pinned after its script is ported');

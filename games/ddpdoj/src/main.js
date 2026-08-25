@@ -139,6 +139,7 @@ export const PRODUCED_BUCKETS = [
                            //       `tools/w67trailgate.mjs` is the check.
   NAMED_BUCKETS.shots,     // 14 -- wave 8
   NAMED_BUCKETS.options,   // 15 -- the two option pods
+  NAMED_BUCKETS.beam,      // 16 -- laser segments and the focused beam
   NAMED_BUCKETS.player,    // 19 -- the ship, its aura and its glow
 ];
 

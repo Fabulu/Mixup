@@ -108,6 +108,7 @@ export const NAMED_BUCKETS = Object.freeze({
                  // seven are inside the option object $24C096 -- $24C8B4,
                  // $24CCC6, $24CDB6, $24CFB0, $24D17E, $24D1F8, $24D27A
                  // (`xref.py callers 23F2CA`, re-run this wave)
+  beam: 16,      // laser segments and the focused beam, produced by $24C180
   player: 19,    // fed only from $24A5xx/$24A6xx inside the player's own block.
                  // WAVE 12: the feeder census is $24A532 and $24A632 (the
                  // register stub $23F1FA), $24A538 and $24A6C4 (the record stub

@@ -10,6 +10,7 @@ import test from 'node:test';
 import assert from 'node:assert';
 
 import { Ram } from '../src/ram.js';
+import { P } from '../src/machine.js';
 import { RomWindows } from '../src/rom.js';
 import { Unreached } from '../src/unported.js';
 import { SPRQ, enqueueShotSprite } from '../src/spritequeue.js';
@@ -18,7 +19,7 @@ import { SPRQ, enqueueShotSprite } from '../src/spritequeue.js';
 import { resetSpriteQueueCounters } from '../src/displaylist.js';
 import { RNG, draw } from '../src/rng.js';
 import { S, PS, PLAYER_SLOTS, shotHandlers, handler253BDA,
-  handler253D52, handler253FE8 } from '../src/shots.js';
+  handler253D52, handler253FE8, spawnShotTypeB } from '../src/shots.js';
 import { SHOT, SHOT_HANDLERS, runShotDriver } from '../src/weapons.js';
 import { TYPE5 } from '../src/type5.js';
 import { RAWDUMP_SPEC, EXEC_SPEC, REPORTED_COLUMNS, CLAIMED } from '../src/state.js';
@@ -122,6 +123,42 @@ test('the ten compared slots are the two bases $249C5C/$249C60 name', () => {
   const [, a2, l2] = RAWDUMP_SPEC.find((x) => x[0] === 'shot2');
   assert.equal(a1, 0x810812); assert.equal(l1, 5 * SHOT.stride);
   assert.equal(a2, 0x810962); assert.equal(l2, 5 * SHOT.stride);
+});
+
+test('Type-B paired spawn advances A1 to the adjacent 38-byte muzzle template', () => {
+  const template = (x) => {
+    const b = Buffer.alloc(0x26);
+    b.writeUInt16BE(0x8001, 0x00);
+    b.writeUInt16BE(x, 0x04);
+    b.writeUInt32BE(0x240400, 0x0a);
+    return [...b];
+  };
+  const r = new Ram();
+  const prec = SHOT.p1Rec;
+  r.setU32(0x8127e4, 0x240100);
+  r.setU16(0x81308c, 1);
+  r.setU16(prec + P.posY, 0x2000);
+  r.setU16(prec + P.posX, 0x1000);
+  r.setU16(prec + PS.formation, 2);
+  r.setU16(prec + PS.power, 0);
+  r.setU16(prec + PS.animPhase, 0);
+  r.setU16(prec + PS.animIdx, 4);
+  const rom = romWindows([
+    [0x240100, [0, 0]],
+    [0x240200, [0, 0x24, 0x03, 0]],
+    [0x240300, [...template(0x0100), ...template(0x0200)]],
+    [0x240400, Array(12).fill(0)],
+    [0x25551a, [0, 0x24, 0x02, 0]],
+  ]);
+
+  spawnShotTypeB(r, rom, prec, {});
+
+  const first = SHOT.p1Table + 0x2a0;
+  const second = first + SHOT.stride;
+  assert.equal(r.u16(first + S.posX), 0x1200,
+    '$249DEE receives A1 after the first 38-byte filler advances it');
+  assert.equal(r.u16(second + S.posX), 0x1100,
+    '$249DE8 uses the first Type-B muzzle template');
 });
 
 test('all sixteen cartridge shot dispatch entries are registered', () => {

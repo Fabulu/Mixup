@@ -376,8 +376,10 @@ export function spawnShotTypeB(ram, rom, prec, ctx, { player = 0 } = {}) {
     return;
   }
 
+  // `$24A222` advances A1 by 38 bytes. The following `$24A2D6` receives that
+  // advanced cursor, so the paired Type-B muzzles use adjacent templates.
   fillShotRecord(ram, rom, second, template, prec);                 // $249DE8
-  fillShotRecord(ram, rom, first, template, prec, true);            // $249DEE
+  fillShotRecord(ram, rom, first, template + 0x26, prec, true);     // $249DEE
   ctx?.shotSpawn?.('type-b-pair', first, second);
   postPlayerShotSound(ram, prec, ctx, 0x28c3d4, hyper);             // $249E2C..$249E4C
 }

@@ -509,19 +509,7 @@ export function bgFade241404(ram, pal) {
 
 const u16neg = (v) => (-v) & 0xffff;
 
-/**
- * `$24133C` -- the once-a-frame upload, called from `$23C454`.
- *
- * THE GATE AT THE CALL SITE IS NOT MODELLED AND THAT IS DELIBERATE.  `$23C44C
- * tst.b $803940 / beq $23C472` runs this block only while the vblank semaphore
- * is still armed, i.e. once per LOOP ITERATION that reached the spin.  The port
- * runs one iteration per `step()`, so calling this once at the end of `step()`
- * is the same schedule.  If the port ever models a dropped frame, this is the
- * line that has to learn about it, which is why it says so here.
- *
- * Returns which regions were copied, so a caller can tell "nothing was dirty"
- * from "the flush never ran".
- */
+/** Copy selected dirty palette regions without running the background-fade tail. */
 function copyDirtyPaletteRegions(ram, pal, keys, did) {
   for (const key of keys) {
     const r = PALSTAGE[key];
@@ -538,14 +526,27 @@ function copyDirtyPaletteRegions(ram, pal, keys, did) {
 }
 
 /**
- * Materialize selector-time P1 sprite and text installs without entering
- * `$24133C`'s unconditional `$241404` background-fade tail. This is a browser
- * seed catch-up seam, not another cartridge call site.
+ * Materialize selector-time P1 sprite and text installs without entering the
+ * canonical flush's unconditional background-fade tail. This is a browser seed
+ * catch-up seam, not another cartridge call site.
  */
 export function materializeSpriteTextPalette(ram, pal) {
   return copyDirtyPaletteRegions(ram, pal, ['spr', 'tx'], { spr: false, tx: false });
 }
 
+/**
+ * `$24133C` -- the once-a-frame upload, called from `$23C454`.
+ *
+ * THE GATE AT THE CALL SITE IS NOT MODELLED AND THAT IS DELIBERATE. `$23C44C
+ * tst.b $803940 / beq $23C472` runs this block only while the vblank semaphore
+ * is still armed, i.e. once per LOOP ITERATION that reached the spin. The port
+ * runs one iteration per `step()`, so calling this once at the end of `step()`
+ * is the same schedule. If the port ever models a dropped frame, this is the
+ * line that has to learn about it, which is why it says so here.
+ *
+ * Returns which regions were copied, so a caller can tell "nothing was dirty"
+ * from "the flush never ran".
+ */
 export function flush24133C(ram, pal) {
   const did = copyDirtyPaletteRegions(ram, pal, ['spr', 'bg', 'tx'],
     { spr: false, bg: false, tx: false });

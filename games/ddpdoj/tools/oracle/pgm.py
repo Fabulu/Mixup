@@ -3184,6 +3184,7 @@ def _cmd_ckpt(argv: list[str]) -> int:
 # --------------------------------------------------------------------------- wave 592
 PAIRGATE_WITNESS = HERE / "w592selectorpairgate.board.json"
 PAIRGATE_TOOL = HERE.parent.parent / "tools" / "pairgate.mjs"
+EFFECTGATE_TOOL = HERE.parent.parent / "tools" / "effectgate.mjs"
 PAIRGATE_MAME = "0.288 (mame0288)"
 PAIRGATE_MACHINE = ("MACHINE romname=ddpdojblk maincpu_size=6291456 "
                     "maincpu_fnv64=D4C25CA9C91B9D47")
@@ -3194,6 +3195,14 @@ def _pairgate_node(args: list[str]) -> int:
     if not node:
         raise SystemExit("node not on PATH -- pairgate verification is JavaScript")
     res = subprocess.run([node, str(PAIRGATE_TOOL), *args], text=True)
+    return res.returncode
+
+
+def _effectgate_node(args: list[str]) -> int:
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node not on PATH -- effectgate verification is JavaScript")
+    res = subprocess.run([node, str(EFFECTGATE_TOOL), *args], text=True)
     return res.returncode
 
 
@@ -3229,16 +3238,79 @@ def _pairgate_selection(spec: dict, argv: list[str]) -> list[dict]:
     return selected
 
 
+def _pairgate_effects(defs: dict, rest: list[str]) -> int:
+    """W593 bounded effect trace. Bulk state remains under oracle/out."""
+    smoke = "--smoke" in rest
+    if rest.count("--smoke") > 1:
+        raise SystemExit("pairgate effects: --smoke may appear once")
+    selected = _pairgate_selection(defs["pairgate"],
+                                   [arg for arg in rest if arg != "--smoke"])
+    if smoke and len(selected) != 1:
+        raise SystemExit("pairgate effects: --smoke requires one --ship/--style pair")
+    spec = defs.get("paireffects")
+    if not spec:
+        raise SystemExit("scenarios.json has no paireffects definition")
+
+    version = subprocess.run([str(mame_exe()), "-version"], capture_output=True,
+                             text=True, timeout=30).stdout.strip()
+    if version != PAIRGATE_MAME:
+        raise SystemExit(f"pairgate: MAME PIN CHANGED: {version!r} != "
+                         f"{PAIRGATE_MAME!r}")
+
+    root = OUT / "w593-paireffects"
+    root.mkdir(parents=True, exist_ok=True)
+    rc = 0
+    for pair in selected:
+        ship, style = pair["ship"], pair["style"]
+        stem = f"pair-{ship}-{style}-{os.getpid()}"
+        out = root / stem
+        out.mkdir(parents=True, exist_ok=True)
+        tsv = out / "effects.tsv"
+        buttons = (f"{defs['pairgate']['chooserPrefix']};{pair['tail']};"
+                   f"{spec['suffix']}")
+        env = {
+            "PROBE_PORTIN": "1",
+            "PROBE_RAWDUMP": spec["rawDump"],
+            "PROBE_RAWDUMP_FROM": spec["fromLogicFrame"],
+            "PROBE_BUCKETS": spec["buckets"],
+        }
+        if not smoke:
+            gfx = out / "gfx"
+            gfx.mkdir(parents=True, exist_ok=True)
+            env.update({"PROBE_GFX": str(gfx), "PROBE_GFXAT": spec["gfxAt"]})
+        print(f"=== pair ({ship},{style}): W593 {'smoke' if smoke else 'effects'}")
+        r = trace(tsv, frames=spec["frames"], buttons=buttons,
+                  build="B", meter=False, extra_env=env)
+        check(r, f"pairgate effects ({ship},{style})")
+        pins = r.find("MACHINE ")
+        if pins != [PAIRGATE_MACHINE]:
+            print(f"PAIRGATE FAIL: pair {ship},{style} machine lines {pins!r}",
+                  file=sys.stderr)
+            rc = 1
+        elif _effectgate_node(["--capture", str(tsv), "--pair",
+                               f"{ship}/{style}"]) != 0:
+            print(f"PAIRGATE FAIL: pair {ship},{style} trace differs from W593",
+                  file=sys.stderr)
+            rc = 1
+        else:
+            print(f"  ignored effect trace: {tsv}")
+            if not smoke:
+                print(f"  ignored palette and pixel pairs: {out / 'gfx'}")
+    return rc
+
+
 def _cmd_pairgate(argv: list[str]) -> int:
     """W592. Cold-boot selector capture plus deterministic offline verification.
 
       pgm.py pairgate selector --all
       pgm.py pairgate selector --ship 2 --style 6
+      pgm.py pairgate effects --ship 0 --style 4 --smoke
+      pgm.py pairgate effects --all
       pgm.py pairgate verify --all
 
     `verify` launches neither MAME nor a capture reducer. It reads only the
-    tracked compact witness and scenarios.json. W592 deliberately covers the
-    selector path only. Effects, producer buckets and pixel crops move to W593.
+    tracked compact W592 witness and scenarios.json. `effects` is W593's bounded
+    movement, shot, laser, producer-bucket, palette and pixel capture.
     """
     if not argv:
         raise SystemExit(_cmd_pairgate.__doc__)
@@ -3250,16 +3322,17 @@ def _cmd_pairgate(argv: list[str]) -> int:
             raise SystemExit("pairgate verify: only --all is accepted; verification "
                              "is always the complete six-pair matrix")
         return _pairgate_node(verify_args)
-    if mode == "effects":
-        raise SystemExit("pairgate effects is not part of W592; effects, sprite "
-                         "buckets and pixel crops move to W593")
-    if mode != "selector":
-        raise SystemExit(f"pairgate: unknown mode {mode!r}; use selector or verify")
+    if mode not in ("selector", "effects"):
+        raise SystemExit(f"pairgate: unknown mode {mode!r}; use selector, effects or verify")
 
     # Validate the tracked contract before paying for any emulator run.
     if _pairgate_node(verify_args) != 0:
         return 1
     defs = scenarios()
+    if mode == "effects":
+        if _effectgate_node([]) != 0:
+            return 1
+        return _pairgate_effects(defs, rest)
     spec = defs.get("pairgate")
     if not spec:
         raise SystemExit("scenarios.json has no pairgate definition")

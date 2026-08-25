@@ -231,8 +231,11 @@ test('W525 Type-B normal shots cross entry 1 for every authentic style',
 
       const slots = liveShotSlots(ram);
       const records = slots.map((slot) => SHOT.p1Table + slot * SHOT.stride);
-      assert.equal(ram.u16(records[0] + S.tableIdx), firstTableIndexes.get(style),
-        `style ${style} selects its cartridge table arm`);
+      const tableIndexes = records.map((rec) => ram.u16(rec + S.tableIdx));
+      assert.deepEqual(tableIndexes, style === 4
+        ? [firstTableIndexes.get(style)]
+        : [firstTableIndexes.get(style) + 4, firstTableIndexes.get(style)],
+        `style ${style} selects both adjacent cartridge table arms`);
       const expected = records.map((rec) => {
         const descriptor = rom.u32(0x24e512 + ram.u16(rec + S.tableIdx));
         return { drawOff: rom.u32(descriptor), dlWord4: rom.u16(descriptor + 4) };

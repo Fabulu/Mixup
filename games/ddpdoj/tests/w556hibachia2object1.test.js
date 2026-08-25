@@ -128,10 +128,10 @@ test('W556 ships the one fixed lower-body stream in the boss shard',
     const shard = manifest.spr.shards[17];
     assert.deepEqual(row, { base: 2279538, maskWords: 4610 });
     assert.ok(row.base >= shard.maskFrom && row.base + row.maskWords <= shard.maskFrom + shard.maskLen);
-    assert.equal(manifest.spr.streamCount, 4986);
-    assert.equal(shard.streams, 1310);
-    assert.equal(shard.maskLen, 825604);
-    assert.equal(shard.colLen, 2015094);
-    assert.equal(manifest.spr.maskUsed, 2665604);
-    assert.equal(manifest.spr.colUsed, 6497985);
+    assert.equal(manifest.spr.streamCount, 5091);
+    assert.equal(shard.streams, 1415);
+    assert.equal(shard.maskLen, 835382);
+    assert.equal(shard.colLen, 2066159);
+    assert.equal(manifest.spr.maskUsed, 2675382);
+    assert.equal(manifest.spr.colUsed, 6549050);
   });

@@ -221,10 +221,10 @@ test('W558 ships all 64 shared part frames in the boss shard', { skip: SKIP_ASSE
     assert.equal(rows.get(beU32(HIBACHI_A2.object3Art + i * 4))?.maskWords, 562);
   }
   const shard = manifest.spr.shards[17];
-  assert.equal(manifest.spr.streamCount, 4986);
-  assert.equal(shard.streams, 1310);
-  assert.equal(shard.maskLen, 825604);
-  assert.equal(shard.colLen, 2015094);
-  assert.equal(manifest.spr.maskUsed, 2665604);
-  assert.equal(manifest.spr.colUsed, 6497985);
+  assert.equal(manifest.spr.streamCount, 5091);
+  assert.equal(shard.streams, 1415);
+  assert.equal(shard.maskLen, 835382);
+  assert.equal(shard.colLen, 2066159);
+  assert.equal(manifest.spr.maskUsed, 2675382);
+  assert.equal(manifest.spr.colUsed, 6549050);
 });

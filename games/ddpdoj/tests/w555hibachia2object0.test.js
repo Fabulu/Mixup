@@ -188,10 +188,10 @@ test('W555 exports exactly six new authentic frames into the boss shard',
       added: 6,
       already: 0,
     });
-    assert.equal(manifest.spr.streamCount, 4986);
-    assert.equal(manifest.spr.shards[17].streams, 1310);
-    assert.equal(manifest.spr.shards[17].maskLen, 825604);
-    assert.equal(manifest.spr.shards[17].colLen, 2015094);
-    assert.equal(manifest.spr.maskUsed, 2665604);
-    assert.equal(manifest.spr.colUsed, 6497985);
+    assert.equal(manifest.spr.streamCount, 5091);
+    assert.equal(manifest.spr.shards[17].streams, 1415);
+    assert.equal(manifest.spr.shards[17].maskLen, 835382);
+    assert.equal(manifest.spr.shards[17].colLen, 2066159);
+    assert.equal(manifest.spr.maskUsed, 2675382);
+    assert.equal(manifest.spr.colUsed, 6549050);
   });

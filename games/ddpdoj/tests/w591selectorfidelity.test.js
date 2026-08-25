@@ -30,7 +30,11 @@ const SKIP = HAVE ? false : 'exact local selector bundle absent; this is a skip,
 const PAIRS = AUTHENTIC_SHIPS.flatMap((ship) =>
   AUTHENTIC_STYLES.map((style) => Object.freeze({ ship, style })));
 const STYLE_VALUE = new Map([[2, 3], [4, 2], [6, 1]]);
-const POD_ART = new Map([[2, 0x38c8], [4, 0x4108], [6, 0x4648]]);
+const POD_ART = new Map([
+  [2, { offset: 0x3b08, count: 2 }],
+  [4, { offset: 0x41bc, count: 1 }],
+  [6, { offset: 0x4648, count: 2 }],
+]);
 
 let bundlePromise;
 function bundle() {
@@ -157,10 +161,10 @@ test('W591 all six pairs coherently patch immediate P1 state and palette only',
         `${pair.ship}/${pair.style} cadence B`);
 
       if (pair.ship !== 0 || pair.style !== 2) {
-        assert.equal(ram.u16(RAM.p1Options + OPT.state), 0x8000,
-          `${pair.ship}/${pair.style} P1 option state`);
-        assert.deepEqual(bytes(ram, RAM.p1Options + 2, OPT.stride - 2),
-          new Uint8Array(OPT.stride - 2), `${pair.ship}/${pair.style} exact P1 option clear`);
+        assert.equal(ram.u16(RAM.p1Options + OPT.state), 0x8003,
+          `${pair.ship}/${pair.style} warmed P1 option state`);
+        assert.ok(bytes(ram, RAM.p1Options + 2, OPT.stride - 2).some(Boolean),
+          `${pair.ship}/${pair.style} missing pre-seed option history`);
       }
       assert.deepEqual(bytes(ram, RAM.player2, P.stride), p2Before,
         `${pair.ship}/${pair.style} P2 player record changed`);
@@ -175,6 +179,9 @@ test('W591 all six pairs coherently patch immediate P1 state and palette only',
         assertRomWords(paletteWords, bank * 32, rom, arm.spr[i], 32,
           `${pair.ship}/${pair.style} sprite palette bank ${bank}`);
       }
+      const styleRow = 0x25f868 + (pair.style - 2) * 4;
+      assertRomWords(paletteWords, 23 * 32, rom, rom.u32(styleRow + 4), 32,
+        `${pair.ship}/${pair.style} sprite palette bank 23`);
       assertRomWords(paletteWords, PALSTAGE.tx.dst + 9 * 16, rom, arm.tx, 16,
         `${pair.ship}/${pair.style} text palette bank 9`);
 
@@ -246,9 +253,9 @@ test('W591 first production list is selected for all pairs and then returns to l
 
       if (selected) {
         const pod = POD_ART.get(pair.style);
-        freshPodFamilies.set(pair.style, pod);
-        assert.equal(offsets.filter((offset) => offset === pod).length, 2,
-          `${pair.ship}/${pair.style} did not draw both selected pods`);
+        freshPodFamilies.set(pair.style, pod.offset);
+        assert.equal(offsets.filter((offset) => offset === pod.offset).length, pod.count,
+          `${pair.ship}/${pair.style} did not draw the measured selected pods`);
         assert.ok(offsets.includes(pair.ship === 0 ? 0x650bc : 0x65210),
           `${pair.ship}/${pair.style} missing selected fighter attached art`);
         assert.ok(!offsets.includes(0x22cc),
@@ -276,8 +283,8 @@ test('W591 first production list is selected for all pairs and then returns to l
     assert.deepEqual([...bodyFamilies], [0x1520, 0x1bc4],
       'the selector has exactly two body families');
     assert.deepEqual([...freshPodFamilies.entries()].sort((a, b) => a[0] - b[0]),
-      [[2, 0x38c8], [4, 0x4108], [6, 0x4648]],
-      'fresh option reset has exactly three style families');
+      [[2, 0x3b08], [4, 0x41bc], [6, 0x4648]],
+      'warmed option history has exactly three style families');
   });
 
 test('W591 style values drive ordinary bomb stock and capped death respawns',

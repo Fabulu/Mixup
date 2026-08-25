@@ -206,12 +206,12 @@ test('W560 ships all six table streams and object 13 fixed stream in the boss sh
     assert.deepEqual(rows.get(OBJECT13_STREAM), { base: 2284148, maskWords: 674 });
 
     const shard = manifest.spr.shards[17];
-    assert.equal(manifest.spr.streamCount, 4986);
-    assert.equal(shard.streams, 1310);
-    assert.equal(shard.maskLen, 825604);
-    assert.equal(shard.colLen, 2015094);
-    assert.equal(manifest.spr.maskUsed, 2665604);
-    assert.equal(manifest.spr.colUsed, 6497985);
+    assert.equal(manifest.spr.streamCount, 5091);
+    assert.equal(shard.streams, 1415);
+    assert.equal(shard.maskLen, 835382);
+    assert.equal(shard.colLen, 2066159);
+    assert.equal(manifest.spr.maskUsed, 2675382);
+    assert.equal(manifest.spr.colUsed, 6549050);
   });
 
 test('W560 all five implemented ids emit exact requests and remain running',

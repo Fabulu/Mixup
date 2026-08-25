@@ -1,0 +1,2726 @@
+{
+  "schema": "ddpdoj-w593-selector-effects-v1",
+  "oracle": {
+    "emulator": "MAME 0.288",
+    "set": "ddpdojblk",
+    "version": "B",
+    "decryptedMainCpu": {
+      "size": 6291456,
+      "fnv64": "D4C25CA9C91B9D47"
+    }
+  },
+  "scenario": {
+    "logicFrames": [
+      2000,
+      2371
+    ],
+    "suffix": "2001=R;2033=;2050=A;2051=;2070=A;2071=;2100=A;2240=AR;2300=A;2360=",
+    "targetBuckets": [
+      5,
+      14,
+      15,
+      16,
+      19
+    ],
+    "boardStateUsesPaletteAndPixelsFromNextVideoFrame": true
+  },
+  "bounds": {
+    "allPairTargetBucketsExact": [
+      2001,
+      2143
+    ],
+    "allPairOptionsExact": [
+      2001,
+      2371
+    ],
+    "allPairShotAllocationsExact": [
+      2051,
+      2071
+    ],
+    "fullTargetRangeExactPairs": [
+      "0/4",
+      "0/6",
+      "2/4",
+      "2/6"
+    ],
+    "deferred": "Enemy-hit attribution beyond the common target window belongs to W594."
+  },
+  "pixelGate": {
+    "verdict": "PASS",
+    "pairs": 372,
+    "exact": 37330944,
+    "total": 37330944,
+    "percent": 100,
+    "densestRun": 33,
+    "busiestSprites": 109,
+    "largestPaletteDeltaWords": 10
+  },
+  "pairs": [
+    {
+      "key": "0/2",
+      "ship": 0,
+      "style": 2,
+      "initial": {
+        "optionSha256": "0277d565dfd5c76566a4c692b43aa879751d4dd1610c1dcc0abc7077628344c5",
+        "palette23Sha256": "1703e92eb275f6450797646675f3e606f437155bad95c7604114304185a0fc84",
+        "p1Invulnerability": 208
+      },
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "rows": 2372,
+        "sha256": "e4cc3df52b6714f403433dff61db3035458fafedf45517ed0cb31859475731a7"
+      },
+      "coverage": {
+        "commonTarget": {
+          "logicFrames": [
+            2001,
+            2143
+          ],
+          "frames": 143,
+          "sha256": "50602f16c060c76385a8017033ddd84b0cb3a52776472a65305a0ddf5f164572"
+        },
+        "fullOptions": {
+          "logicFrames": [
+            2001,
+            2371
+          ],
+          "frames": 371,
+          "sha256": "37686e6b322f8125a10af62f69929c6663f5d4f4d389d8ce898570ab50409162"
+        }
+      },
+      "events": {
+        "2002": {
+          "portWord": 65519,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 5475,
+            "velLong": 0,
+            "velShort": 163,
+            "speedIndex": 22,
+            "laserFloor": 12,
+            "tilt": 4,
+            "image": "0x00001584",
+            "p1WithoutInvulnerabilitySha256": "6b17c41ac1d700a1ac03b105b9c6d60a62ae56f65d37e1f68957292fb7cd385d"
+          },
+          "optionSha256": "15feb8ab4eb696dc9f62419fd895018b1db01ce8b99918bfe63cd923a80a7192",
+          "targetInputSha256": "cead5b557833bf207035fa47e30dfd22f8fbefc059720c7ff7a61e3e049ab4a1",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "d808ed290241058da0f1d0796c4ff99d32e702f92e5f6f885e18d7a436dae120"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "35b22fa095552adff856becd847403925e6b2327874cc3b10f8beb87ac603c75"
+            }
+          },
+          "boardDisplay": {
+            "records": 16,
+            "sha256": "b9f5710da28760b702be5a6de132b84279efc436350598e29ccc93079e171094",
+            "hybridSha256": "b9f5710da28760b702be5a6de132b84279efc436350598e29ccc93079e171094"
+          }
+        },
+        "2051": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 22,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "883bb0ae65ca21bf3738e0e54b2db5e64d03d5351434d77b61729a08a85b62c6"
+          },
+          "optionSha256": "e1de68db7016ce00a9226cf16ae6f07ea7e3114b00c248bd1960671adb3cf2a1",
+          "targetInputSha256": "a6c85087ebfc48f44d4e8d46fa50bc33ea568a11817963f8a3136df2123fd300",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "b9f2025d720560da91b0d3c8b64246e363b694c3d4f956d50f315d50d15d2295"
+            },
+            "14": {
+              "bytes": 24,
+              "sha256": "673f5ea9ba458e012e2433a01511dd5347888e41baf7b6d996b09aa50c00c566"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "c0990fbca31f8c832e56f5d012a32fa40be682163727ae009e622515ea4529f9"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "89498a922ffcad2fe6fe971096bfd34cfe65c2cf4bc2a389660a3b625c48407f"
+            }
+          },
+          "shots": {
+            "active": 4,
+            "sha256": "9ebe4b0af4ae10f50c7b1b2ff5c790eb5e340b3b81f9379cf6ebfc9b4023f3d7"
+          },
+          "boardDisplay": {
+            "records": 63,
+            "sha256": "1a16b117c1ac0ac1b7339ddc3ea69afbfc65fc561a9264c39f31d8dd5b952b5e",
+            "hybridSha256": "1a16b117c1ac0ac1b7339ddc3ea69afbfc65fc561a9264c39f31d8dd5b952b5e"
+          },
+          "pixels": {
+            "videoFrame": 2088,
+            "fullRgb24Sha256": "1c9e57b99787b7130505091ea056e9f99ee83be0904b33263ec08c70a6d1c6bb",
+            "fighterCropRgb24Sha256": "57eb93d82e4d97f59733eb6298f898b5d37dba35d52216ba0c86800b73c19a20",
+            "beamStripRgb24Sha256": "befa165b0ad97ae9809cf04cd30a05e7f19d6432551cd2bddb8ffa45bf2da143"
+          }
+        },
+        "2071": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 22,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "b8be555dd28c9390e46f749c9ea87021a16563b261fda29a402d3341180f9150"
+          },
+          "optionSha256": "7ef1bbbb02aee10fab20e0020b68f7299dcee5cbb2dcffb5897bfb63d04a7576",
+          "targetInputSha256": "c580adb11cb110b7ae7391b389eae26f649886f6a12b98dd471fa4f1c3a2db05",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "682eb243414e57905cb19d80d94783bab3566b79f74f5db8746af9c25c47bff8"
+            },
+            "14": {
+              "bytes": 168,
+              "sha256": "37d1142b5ea231d0ea1c50dc9ceeb46ea5fecf25d2f003936f8411b67f0584e3"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "c156740a0b02456ed199e28f73f7c086d3a09c25aa288512e51a6bd3b80be565"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "89498a922ffcad2fe6fe971096bfd34cfe65c2cf4bc2a389660a3b625c48407f"
+            }
+          },
+          "shots": {
+            "active": 16,
+            "sha256": "01bae61c858c04c31b5be324fdaa821e1602600e6061ddc9bdd00179f9caac4d"
+          },
+          "boardDisplay": {
+            "records": 36,
+            "sha256": "97456b46eaf1f98567f76eb700bdac2f99a65b03d1ffafda0c4a9a8a97e58acb",
+            "hybridSha256": "97456b46eaf1f98567f76eb700bdac2f99a65b03d1ffafda0c4a9a8a97e58acb"
+          },
+          "pixels": {
+            "videoFrame": 2108,
+            "fullRgb24Sha256": "606e2e2a4ecd66d3d5b7e35d0a90cf3ec5b15aaf99d41343313570624ee9a2f8",
+            "fighterCropRgb24Sha256": "1d79c7ee0dba1779d66b6dc66bb3a2e8a48d65f23794a3f847758ddccc216316",
+            "beamStripRgb24Sha256": "358afcf03bc050dec5712f535439856ce300abd2a81a213207f7b7fcc96b3def"
+          }
+        },
+        "2116": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 22,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "152d81f997fd1bc802bd80ee2c8e79b6d3d4291435e4df9eed48a07f704616a8"
+          },
+          "optionSha256": "233fa9070ddd071c3cec93bdd3da8255ac4dc1f333df8df6387408281faa8f85",
+          "targetInputSha256": "50ec4c2d0ee7bf5128b80495eb808f438ad110188a4b6fac26123bd3bcf1a920",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 144,
+              "sha256": "dab6519e2199424dda2c52a9039450e0a6f7d31ef22718ccbcd1f26193f8cb1c"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "e69f9fe1282a60c84f016588df2ee3289bbd710ca8bdcf4b31b31603e615ebae"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "f4713704b06712b76ffa873d28e47da4e1a788b7ae4dcfd557f79ab4e24bac45"
+            }
+          },
+          "segments": {
+            "active": 0,
+            "sha256": "80422bc3d307b4a25bdafcc84ac7fb01cb55a09810e8b0f37bb12e0edb5c48ca"
+          },
+          "boardDisplay": {
+            "records": 49,
+            "sha256": "9aa515a078a3c8ba7d95f87e5b4dd98bb657c5a66c0705a96af1cf984a225a4d",
+            "hybridSha256": "9aa515a078a3c8ba7d95f87e5b4dd98bb657c5a66c0705a96af1cf984a225a4d"
+          },
+          "pixels": {
+            "videoFrame": 2153,
+            "fullRgb24Sha256": "40d27f74aabe359b5cc54659f1fca492c91d55c3d2abe5ca355a2359fa78154e",
+            "fighterCropRgb24Sha256": "1a858b06930db82bdf29323e1727ab7da50515d00098c69dc9ff0b4f1c5a6c8b",
+            "beamStripRgb24Sha256": "8e39382c9a2a056a8ee6162cacec3cf10d05568d9f302536ba3a606af28e8373"
+          }
+        },
+        "2129": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "1af95e543d7c43a3b6f66464d8f5f3c9e8a4281653d46c83753650ff83a5a93b"
+          },
+          "optionSha256": "8fe1ef025a20492a27862fd3815239626d5d83586243afe4de0dc0c176faf5c2",
+          "targetInputSha256": "31ddb78432c9786c5315654d5b2c57bdf551ca3cc6254e425dd575bd0010817c",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "51baf59a0bf28b1a02d04739622f1bb23dc7f8cef0c510991fef73342472b3f1"
+            },
+            "14": {
+              "bytes": 120,
+              "sha256": "ffd54d4288d9222a2c8a9e8b2ab8a9322f4c9bc8d1653012da54efb04ccc5b49"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "98676bbb5ba8f5dcf09f237930c434e60973aee5308beaaaf73398bdaa5bf1d6"
+            },
+            "16": {
+              "bytes": 120,
+              "sha256": "df4a4a88e412e8d874f881175e9a5e1159acbca0984362daac8c19acde82a675"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "89498a922ffcad2fe6fe971096bfd34cfe65c2cf4bc2a389660a3b625c48407f"
+            }
+          },
+          "segments": {
+            "active": 10,
+            "sha256": "bc33633587211d51f05ff8d394f8c94755a2af15bd63982bc6c24446fabc6f50"
+          },
+          "boardDisplay": {
+            "records": 51,
+            "sha256": "0babbac7924c8583a013add3f2031222acc78f48308bfb4eb64dc68dc3e3f141",
+            "hybridSha256": "0babbac7924c8583a013add3f2031222acc78f48308bfb4eb64dc68dc3e3f141"
+          },
+          "pixels": {
+            "videoFrame": 2166,
+            "fullRgb24Sha256": "d1eacd527c143dda712198cedec839bf5c58771712d0fc4ebe7ca8a130b4c8e4",
+            "fighterCropRgb24Sha256": "27c712c70cd56c683af034f5bf11489a9702a1e7a4b09e49abca9bb2c830ac4c",
+            "beamStripRgb24Sha256": "a3b569cffe70b69f1dad05c8aee961a1949d1f125b9da63ea1e59762a361bdba"
+          }
+        },
+        "2241": {
+          "portWord": 65487,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10617,
+            "velLong": 0,
+            "velShort": 89,
+            "speedIndex": 12,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "528178d1c9b70d35e4be90b71798d066b66f0bfe51b7755fc3cfb2eac11f82f9"
+          },
+          "optionSha256": "b6f605a9ca85bde7cd8d3520dc4c025bab6eb991ecabe7707e9bc3d1d13102e3",
+          "targetInputSha256": "9f979698fd8d1e6305b8cddc5efa67ab65b34e3026375d929ab60e5c32a04204",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "51baf59a0bf28b1a02d04739622f1bb23dc7f8cef0c510991fef73342472b3f1"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "e99b4a23e9e4ca42e8994ce1f7781f3e38ed15c2e2c9ac20ab79e0a8b7d56e18"
+            },
+            "16": {
+              "bytes": 132,
+              "sha256": "b120612690df0f36b44fe4bbb607129f32d0fa68d0321fd31118edde6385edfb"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "0f19250928f731fa00da8e383fa9e982273341b71bb985389c99b597bc4a430d"
+            }
+          },
+          "boardDisplay": {
+            "records": 46,
+            "sha256": "d4593bc4a9cd92d7292b6c8472d5c9a7a3c6a5da6622db836c3757bd64959572"
+          },
+          "pixels": {
+            "videoFrame": 2278,
+            "fullRgb24Sha256": "d15686aed80e5cc46dc9fe42e516badfd521db5bd926e8ec491def915c06f950",
+            "fighterCropRgb24Sha256": "3c594fc4fc26b9284dfaaa2d0fd01fa04d7c3e6bc7a0cd59596a57c8a3d31a4e",
+            "beamStripRgb24Sha256": "e7ea269376839d83ec31e6e8c55168bc6f815f96de089bc1b93791082858a25e"
+          }
+        },
+        "2301": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 12,
+            "laserFloor": 12,
+            "tilt": 28,
+            "image": "0x000017dc",
+            "p1WithoutInvulnerabilitySha256": "40bcf87960b97c8decc6e0c796ad4e1d69fe467da4682f71c1a29bd88ad95695"
+          },
+          "optionSha256": "f3b9d82e7a10aa2159c7ee5f1eb9723d0010bb9acf6aeb2a03527d053b2ce3e3",
+          "targetInputSha256": "da28e1596b81c1df5b1c3989113686760bdc8c7f7b7d78f051f298b26d4a673c",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "a34d08e39f0896e2c6ae8ace34c7527818d68b429f7c8746887d340818659ec6"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "695188cf1ef6c751158b9ff0cb73d542cda2a584943f8e3db872444386db1107"
+            },
+            "16": {
+              "bytes": 96,
+              "sha256": "e54733915742dcb80cd9818a26b5918c2346fb060ba70fa3f030804467a89009"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "98dfc194244c17f5fe4d534de5bc00063103ec3ceb9ab3490e308442a556e51c"
+            }
+          },
+          "boardDisplay": {
+            "records": 64,
+            "sha256": "f33ad7d2789c23f4331e075e6fd5daff556e71e5b1d15f18c23b5eda02e13251"
+          },
+          "pixels": {
+            "videoFrame": 2338,
+            "fullRgb24Sha256": "2cf1718b75cbeac5b4a88e587815a85ed15dba61a1f8cc9f18b78b9abcefd3e6",
+            "fighterCropRgb24Sha256": "b339206caa17e7646e285c7cd9527bbda5ff30db02dc63b4e4d20b9baef883b5",
+            "beamStripRgb24Sha256": "c02d985f9574097ada4d643ec18b7402ffcc336e1a74330f8572603f6978f205"
+          }
+        },
+        "2361": {
+          "portWord": 65535,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 13,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "21c4f442123dd307b074285677f9a74d0b5f5500e1c9a3398f30a93fb9b9077d"
+          },
+          "optionSha256": "93761d0edd10c03f812ec9cdc64703e6df7c370f81082054cd61731af5c47b29",
+          "targetInputSha256": "302fe379becf484e1ee2c0e857f2381ee0f124c7e4db1067689ac5d93408a038",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "9ef0805164abdc77b4b3a04841a63d48aff48fb66908f8c3853007fb73f5ef9f"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "35a512e6b24c6f74ddf60c3e0b93b569a62dc354557116e70986a33cceb4e67e"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "d2316a60df659a2fff317933ff2d1314813cc88b5c2b0dc4523bebcdf4276498"
+            }
+          },
+          "boardDisplay": {
+            "records": 53,
+            "sha256": "15a371156c79af18d62563a06d0452137c290b383c8341d87d979e5b5bf103ed"
+          },
+          "pixels": {
+            "videoFrame": 2398,
+            "fullRgb24Sha256": "b2823c2826b981166f2a09a362e8c4e8ab6ce174b7ba84a01d51218d99ba21e7",
+            "fighterCropRgb24Sha256": "d9c6c6f30cc1804fd94f9991ae62bf5655314f47b5b32c393e84c3c8df164cf5",
+            "beamStripRgb24Sha256": "63ebcb8ff90b44fb109fbac0c0e9e4be4b084707ceed44b110be231d3ba6d49a"
+          }
+        }
+      }
+    },
+    {
+      "key": "0/4",
+      "ship": 0,
+      "style": 4,
+      "initial": {
+        "optionSha256": "c27f430dd750e0e6a2cdce23d774ad55826e75c96dec3144ad0123c7c541bda5",
+        "palette23Sha256": "491798a139c04a0658edc60b44cb5b8c3ec7c93cb224298b1acf9aab8b801c47",
+        "p1Invulnerability": 208
+      },
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "rows": 2372,
+        "sha256": "7e4954bd137b3e7ed7a3430d333def726e738169643c402d1efe98f3b23d6b50"
+      },
+      "coverage": {
+        "commonTarget": {
+          "logicFrames": [
+            2001,
+            2143
+          ],
+          "frames": 143,
+          "sha256": "8a3dc8b24fd8f9f4e02f176b0ff30e57f1430bb81fcc574b0a4c173aef75a5e9"
+        },
+        "fullOptions": {
+          "logicFrames": [
+            2001,
+            2371
+          ],
+          "frames": 371,
+          "sha256": "e1a40b6bf77456d721013fda1ddb67d93a49f51dfe93719e65bd7d4e786e34e2"
+        },
+        "fullTarget": {
+          "logicFrames": [
+            2001,
+            2371
+          ],
+          "frames": 371,
+          "sha256": "3576b85f913281ea4848bec02a211dd4434672883271e9653398b8449bb81314"
+        }
+      },
+      "events": {
+        "2002": {
+          "portWord": 65519,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 5475,
+            "velLong": 0,
+            "velShort": 163,
+            "speedIndex": 22,
+            "laserFloor": 16,
+            "tilt": 4,
+            "image": "0x00001584",
+            "p1WithoutInvulnerabilitySha256": "80c1bd3d5b44cbd9fd59fadbeea6dbd30c2f7c0ca05d3605b997c5dcf77f8e0e"
+          },
+          "optionSha256": "5ecdb4c03ea1e7ae23201a69bded7b0c60f269e476f5043be610276ab1bd2c7f",
+          "targetInputSha256": "eae2a5d7ad50c199b1e4f4de66d2126688b2e1f7aafa9fd25392711544b5f731",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "fa6a4b897efd09168e11519d4b05a90c1d00660c5b027c5173f4c04856c65b10"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "35b22fa095552adff856becd847403925e6b2327874cc3b10f8beb87ac603c75"
+            }
+          },
+          "boardDisplay": {
+            "records": 16,
+            "sha256": "c01362c5f01d6c370d63c1bbb91d115c4338a5b74107fa8602237a72fbce2b0d",
+            "hybridSha256": "c01362c5f01d6c370d63c1bbb91d115c4338a5b74107fa8602237a72fbce2b0d"
+          }
+        },
+        "2051": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 22,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "65de24b0771507f410167832f415660610f64115a1db6f68b8a928d0dbbd0aba"
+          },
+          "optionSha256": "76cee5f9c4ee5fda6ae3073cbdbe39218f28fec302e884229b0c13d9b84439d9",
+          "targetInputSha256": "bc1da14fa1260e94ad76da1a12c5c81bc819fb7cebd8117a70bca93bcc2337d0",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "d6e4954c983ce7b8df62d91fbd6954269596b0181f81007a9cca6931a58d4f13"
+            },
+            "14": {
+              "bytes": 12,
+              "sha256": "8dc79bb6e1d3809e2963f466f92cb44c4fed7a0c4fd3082a23e9fc35609626fe"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "405f4f343a44e6f2782ecd89188ab90e6e33587156def5b01c800a7aac0ecbee"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "89498a922ffcad2fe6fe971096bfd34cfe65c2cf4bc2a389660a3b625c48407f"
+            }
+          },
+          "shots": {
+            "active": 3,
+            "sha256": "e2fe4c0d13f671c35ced7609f28eeeb6ce3fbec11e38a1bdc9b970b31558b4a4"
+          },
+          "boardDisplay": {
+            "records": 25,
+            "sha256": "6a3300862fe9c3363ea43e668d2fc99c43cb4ec931824b196fa57edb6162aac5",
+            "hybridSha256": "6a3300862fe9c3363ea43e668d2fc99c43cb4ec931824b196fa57edb6162aac5"
+          },
+          "pixels": {
+            "videoFrame": 2088,
+            "fullRgb24Sha256": "0d50805256483506430d620a64990e8ab7d132199ea332fed3b53f2377e89c81",
+            "fighterCropRgb24Sha256": "3b58c8caab2130b0254a8fd6c799d0efe22dde108f807ab22a58a9933504569a",
+            "beamStripRgb24Sha256": "a0f9b0d7dbb4626ebcdd35dac5d8b8c6b4fee29d452e55b8aff1a032ff19abd2"
+          }
+        },
+        "2071": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 22,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "2caaf3065da5d5a32a4727de9e51c35f9905136febb39a4f3c0e2b67450f0709"
+          },
+          "optionSha256": "65067b65b777a0fa0c8f490baae92aa4d3d6667ef5bc532d40b254ef5a8f4ceb",
+          "targetInputSha256": "b661fb115373e05148e9459f85f2930fd09e67a0de6fafa67878c546f134f231",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "da6cc7fb0d918da86385ec20fde1565d1b02c02f6eb654bbacbae39432ddfd59"
+            },
+            "14": {
+              "bytes": 84,
+              "sha256": "bde6ca6887b8338626d317d5b59dcfbb7ed5c9c307a6ace4ecbb11696d3702e1"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "7ca4804e021be9d60834d41c63006fc5dfe252f3fb3cfd96f0f835721776256e"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "89498a922ffcad2fe6fe971096bfd34cfe65c2cf4bc2a389660a3b625c48407f"
+            }
+          },
+          "shots": {
+            "active": 9,
+            "sha256": "bbe15ace216f73fe330aa98668edce8bb12cfb8ebccc861cec20425122d8fc98"
+          },
+          "boardDisplay": {
+            "records": 31,
+            "sha256": "3e8ae31720f3adc8f716c8df2ab73151f8e946c2ce88c3e9ece31f7e126a9814",
+            "hybridSha256": "3e8ae31720f3adc8f716c8df2ab73151f8e946c2ce88c3e9ece31f7e126a9814"
+          },
+          "pixels": {
+            "videoFrame": 2108,
+            "fullRgb24Sha256": "d0a219d7a35cd71ed04d8d1f545d0e39206515ba86c84cecf548a42ad44f3c8f",
+            "fighterCropRgb24Sha256": "2e8019af5ed3668579e16bb1aa07ac5b51c1787b6263efba335aefd1148edeb4",
+            "beamStripRgb24Sha256": "c7dd774e5dc6195afab2a2d652090960a0b928eb9b643dca7215405a83e4ba8b"
+          }
+        },
+        "2116": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 22,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "1c2a8ade328593b569856834653dfd0ba5b1d15c1156536a9204d27b7a45a09b"
+          },
+          "optionSha256": "44f299236f5ef916a91b315d680734634937f887a61b9360ffa86516060461e4",
+          "targetInputSha256": "6713cb0a87b9ee7fc1a978439de2e81195f35840923d6e518324320868d749fd",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 72,
+              "sha256": "55938272cf7bee9170e26d86c4264ed82745e4d3f545dd9c1ec9f14efbe91c61"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "1f06a3c6e13f58a52a95835f5cacc971095b5080d7a605dd25b0dd44d439b902"
+            },
+            "16": {
+              "bytes": 12,
+              "sha256": "33a196a1e6c9d3d43b09e8b0cb127c62dfb7a7fd690562923ef09e74ee9e63bf"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "f4713704b06712b76ffa873d28e47da4e1a788b7ae4dcfd557f79ab4e24bac45"
+            }
+          },
+          "segments": {
+            "active": 1,
+            "sha256": "24d6e48b99062f31c3f73455c41b2128b50ab87bb711fe0f3a4da8ad6e2e78f7"
+          },
+          "boardDisplay": {
+            "records": 44,
+            "sha256": "34fd1311858f3af2cfa644a52343de886d98437827f21ffcce61b7f91c8df998",
+            "hybridSha256": "34fd1311858f3af2cfa644a52343de886d98437827f21ffcce61b7f91c8df998"
+          },
+          "pixels": {
+            "videoFrame": 2153,
+            "fullRgb24Sha256": "35a62bff678b4a4a5e4f3cd5cab29a3879e377737e99375e6d146ee94df895f9",
+            "fighterCropRgb24Sha256": "e2ce1bc68b4dd51b55cc4d67b6822761f135457b758b4b40aaf81bc9ae271fd8",
+            "beamStripRgb24Sha256": "308f5dc2077f5d6d192e7dc3f93d66fa999af58f1223564bb82da870f7375255"
+          }
+        },
+        "2129": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "1453b1b98507ebcfc81f8d463d5a5896bc423cdcbcd5a3988c6db3345a453983"
+          },
+          "optionSha256": "a645507dbc8f2c4e1edfcc9ef7eb8cd9146c8007598572f41f9136fea797503b",
+          "targetInputSha256": "f7610a1c62ba8e70afe1cd2ae2cc5d34e21718f34890d8abff6daf5770dff567",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "53286f07dd83746c5a9d3203c3d8ad65c886da731fd6318b25699b2389762081"
+            },
+            "14": {
+              "bytes": 60,
+              "sha256": "c14fec5355b0cff50475929c24d57e873efb579e6f507f21cefd4d7032288e8d"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "1f06a3c6e13f58a52a95835f5cacc971095b5080d7a605dd25b0dd44d439b902"
+            },
+            "16": {
+              "bytes": 156,
+              "sha256": "3ed49c8dc2217a394b57ea4e09dfa670bd1117f388ecdb78b3fc7ee1694fa082"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "89498a922ffcad2fe6fe971096bfd34cfe65c2cf4bc2a389660a3b625c48407f"
+            }
+          },
+          "segments": {
+            "active": 13,
+            "sha256": "12d0ffec00ca6b3012797fff0ad26645327979e6419b7d2636dbbcfe4b281c1f"
+          },
+          "boardDisplay": {
+            "records": 63,
+            "sha256": "94a154bf911a41f0a51b4e5c4c31c0b2992748b9f58020e2363674d20bf453c4",
+            "hybridSha256": "94a154bf911a41f0a51b4e5c4c31c0b2992748b9f58020e2363674d20bf453c4"
+          },
+          "pixels": {
+            "videoFrame": 2166,
+            "fullRgb24Sha256": "a5e3b983641dabf848e58027db462dc342b8a71633d44e2d4ed75211bef333a7",
+            "fighterCropRgb24Sha256": "f4fe2a4e06ce8ffa6751cb5e4e91b7ea2232bccb32ece254bb73269ff024b466",
+            "beamStripRgb24Sha256": "da0ff3e6aaeba96d063830f7371c9c58532c739b0af8eb910d314fd69f855167"
+          }
+        },
+        "2241": {
+          "portWord": 65487,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10647,
+            "velLong": 0,
+            "velShort": 119,
+            "speedIndex": 16,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "9f2ba7d0d9fdb64a350404c93a5c502c745cbbd4171aa609f977ec90ab16392d"
+          },
+          "optionSha256": "f415ba7ceefee8c2b98ca08cd6f491e2cf10993f50939c7f967c5fdbcef48645",
+          "targetInputSha256": "4e17243c3d61d3cfeae1d61969f652cd5ab335d14374814df216f956d8fe6ad1",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "a0b607976ad1c7558e8b962f5ec51c617a5c8140c3c001d856aa4106044670b8"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "fde4064bb9d61fa56ee7c2bc184bd197e6821c113ff5fdc5961263d3c0289f4f"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "96a58ce17a6b652a2b32298c5c8d7fa1e9380d761b72ab49451a9e2321ab8687"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "204463fcfb426bc634cfcc20cc14e6305507fecce257e6a24fd383a46495c8b8"
+            }
+          },
+          "boardDisplay": {
+            "records": 19,
+            "sha256": "78f08725ea85f0700d4bf72503221e251675874dea2070690ed8291606c18280",
+            "hybridSha256": "78f08725ea85f0700d4bf72503221e251675874dea2070690ed8291606c18280"
+          },
+          "pixels": {
+            "videoFrame": 2278,
+            "fullRgb24Sha256": "1a3d2a360cd65f5d635fb87e4d9772adb9ea02462bbce94e01fe5d37413b1905",
+            "fighterCropRgb24Sha256": "3d61e1a10b96162e25d5d719d5c791cbc32f16eeda4404523f58d4c2d51bceb3",
+            "beamStripRgb24Sha256": "ea6d0c03b11a771ab6a030259eb70f6dfc7c6cd73c8d16fae8393f558bf827ab"
+          }
+        },
+        "2301": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 16,
+            "laserFloor": 16,
+            "tilt": 28,
+            "image": "0x000017dc",
+            "p1WithoutInvulnerabilitySha256": "00e2575a460045952420fa867e39544d0f4b227521cfe18056beb378e77fc60f"
+          },
+          "optionSha256": "03f046f530fb8b3e9394fb530e2066844151e6f0334bef7d6dcc84c7f32fa059",
+          "targetInputSha256": "126cdd3599c6641d88c67010d8dca704e0df82883271bc43445f17d788ffcb54",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "5e0223c568753e8a45ca20af58a1fd122ad92a4aa534fb160efe03f1d3a73608"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "b5e40b5304762621158d12a1599c613d0c7e3be81f99798aa3e2729be6501a74"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "5441a1c29463bdc0800dd01165565c0349e5b18065509f444eebf3b9a133b422"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "98dfc194244c17f5fe4d534de5bc00063103ec3ceb9ab3490e308442a556e51c"
+            }
+          },
+          "boardDisplay": {
+            "records": 63,
+            "sha256": "b7cbb9a7e66b754bc09df0d515dc32628c6459e1d58f8fe40eebd761ad7fe765",
+            "hybridSha256": "b7cbb9a7e66b754bc09df0d515dc32628c6459e1d58f8fe40eebd761ad7fe765"
+          },
+          "pixels": {
+            "videoFrame": 2338,
+            "fullRgb24Sha256": "c94b50d473a9a3f51e2000fd7f14d443f188e23aaca436c47df1d99393b19868",
+            "fighterCropRgb24Sha256": "b477942cfb6567b641b510767aa00106d741d5e487647cc828a47dfbdc26d518",
+            "beamStripRgb24Sha256": "e16617d28f29a0443a3fb99941f44b7ade8bb264b4c375cf1597e075bd72f827"
+          }
+        },
+        "2361": {
+          "portWord": 65535,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 17,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "de61abf04f95f8f83bc094c76cb6f8df6e04049772062304ec10fbc4d2dac2fe"
+          },
+          "optionSha256": "e3d13dac7f10cc3d6ade21c851f06d2cff132a5e4d40b16a23e8641ecca2a6d8",
+          "targetInputSha256": "86c5e765040c83878c70e58f8c233a7de7ebf39e960fb6f962c1e394f9652919",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "3c5f12daa6eae61906279a477b9f4502e7bce02573ad0b65ff434d9807128751"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "db6442a14f8c0ecaf0bca8888f4e3455db8ced1ae211f220f0484704e372ce02"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "d2316a60df659a2fff317933ff2d1314813cc88b5c2b0dc4523bebcdf4276498"
+            }
+          },
+          "boardDisplay": {
+            "records": 36,
+            "sha256": "601af330dcc684bb8cdf41ad17d7a23b4a9c3f50e2edb5837d6b7d3b1fd5255e",
+            "hybridSha256": "601af330dcc684bb8cdf41ad17d7a23b4a9c3f50e2edb5837d6b7d3b1fd5255e"
+          },
+          "pixels": {
+            "videoFrame": 2398,
+            "fullRgb24Sha256": "6c9f6195a650629896f64b5d48a4c6800e9cf6f378ceaf05a5e73626fa63ef1a",
+            "fighterCropRgb24Sha256": "3c47dea0d990b730f9ae1d7266b865a7c6df33bcaa0add304fda523ddec5efcb",
+            "beamStripRgb24Sha256": "2625464fb5a0e5f5ac83770346d17c900d968d5b2d16d02e91abe00937cdb622"
+          }
+        }
+      }
+    },
+    {
+      "key": "0/6",
+      "ship": 0,
+      "style": 6,
+      "initial": {
+        "optionSha256": "dea7c69d95a7f381a43d4e39d6a064d4a677b7ff3d3a937529d8291e2744a5e3",
+        "palette23Sha256": "6dd4f2b2f60afcdee9ef874e6a9a3ac0ffc044abb76c56eb264784c39c144d5b",
+        "p1Invulnerability": 208
+      },
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "rows": 2372,
+        "sha256": "3ccd60224a9d1ce559177f2a6d6bebbd7c0246cefee4f1321ceb4e7d3346f8a1"
+      },
+      "coverage": {
+        "commonTarget": {
+          "logicFrames": [
+            2001,
+            2143
+          ],
+          "frames": 143,
+          "sha256": "a089c584694a72c4df46c0cc95d5b86e9d4869c5782881649a04ebedfe57e1b9"
+        },
+        "fullOptions": {
+          "logicFrames": [
+            2001,
+            2371
+          ],
+          "frames": 371,
+          "sha256": "3ba737340b9bc580fabfd169ce40c003c67ca0afc0ae817b24edaf887f3e8d6f"
+        },
+        "fullTarget": {
+          "logicFrames": [
+            2001,
+            2371
+          ],
+          "frames": 371,
+          "sha256": "2cd1aceb33fe29250977e07765d453a45ac5da4de944411257afb16c9a42777d"
+        }
+      },
+      "events": {
+        "2002": {
+          "portWord": 65519,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 5475,
+            "velLong": 0,
+            "velShort": 163,
+            "speedIndex": 22,
+            "laserFloor": 16,
+            "tilt": 4,
+            "image": "0x00001584",
+            "p1WithoutInvulnerabilitySha256": "8945cf18aa1c70c0c3a1f3e90cad24749eac51c15e999f2602d2818c86c62b39"
+          },
+          "optionSha256": "d91fff6e47c779b994a38c37c9d1e98285c07c4d8c4ff61802d98e7889bc536e",
+          "targetInputSha256": "db143ef69c3d546ece0000eccd381fa826f0537ba7aabfc04d4f105139c36215",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "7068054ebb4244a396bb57e9e5fd7ab66be052777d29dee9b7b202d9263335b7"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "35b22fa095552adff856becd847403925e6b2327874cc3b10f8beb87ac603c75"
+            }
+          },
+          "boardDisplay": {
+            "records": 16,
+            "sha256": "245d8c2db63ff51902fc14a6174e862e006836dfc32dde688ce131c04ee06af5",
+            "hybridSha256": "245d8c2db63ff51902fc14a6174e862e006836dfc32dde688ce131c04ee06af5"
+          }
+        },
+        "2051": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 22,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "bf32f03cb2fc32f4ed5bbe6f21dcd0925155e42b81e9a51a1b00fa58949d689f"
+          },
+          "optionSha256": "3012e0b7cc4b24391a961e4655c80cb6055be290fd4be1f5d8542a564066a18a",
+          "targetInputSha256": "a9eec6b6a7327b146a54bb7f0646940ad8e5f35ea3fe9ff681f43c418d6008df",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "9107534c2f4326dae2ef5b9699823b0d75a5adb75e5e1d3ac5db0876893d8597"
+            },
+            "14": {
+              "bytes": 24,
+              "sha256": "84c707f7e95d5f966880223695583e99283c1837b0e37cdb17680520a60f5497"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "2e8070b4206a05e1de60478c440a41e90752f5109501fcd813a0a8cb26770e05"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "89498a922ffcad2fe6fe971096bfd34cfe65c2cf4bc2a389660a3b625c48407f"
+            }
+          },
+          "shots": {
+            "active": 4,
+            "sha256": "42d65e343d23817fe2b932622cca4b362f09041851bd4f1bcde2c57ba896f1c1"
+          },
+          "boardDisplay": {
+            "records": 63,
+            "sha256": "bea75847b15b5e4b93c4f60a14bd8b53350c6a7d4649ba03c60fd7785fdf4706",
+            "hybridSha256": "bea75847b15b5e4b93c4f60a14bd8b53350c6a7d4649ba03c60fd7785fdf4706"
+          },
+          "pixels": {
+            "videoFrame": 2088,
+            "fullRgb24Sha256": "c04adc10bce639a5c125d5dc29a9c7e625de77fc2e99c89351a4fad898309187",
+            "fighterCropRgb24Sha256": "4d69249efce7f453409a938360e1b88d26da50abe9ee254db5c2e679669853e5",
+            "beamStripRgb24Sha256": "2c298745e2460e99e33a88a37d7817e30dbb00c99830f3dedb9e70355cdc62b2"
+          }
+        },
+        "2071": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 22,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "edc60bf1942679d51a44192fec6825aa20e218f80c416332ecec557faf9fe0bc"
+          },
+          "optionSha256": "9c8a8ab12dae09fc5d8d09bf98d8599fe2ce5d92344caafec76b3f1ed1e4d18f",
+          "targetInputSha256": "4edeb5dcec6fb5c23137dd7923c0a42bcd1037fc221bfb72ca3dcca5d8e26671",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "110924a47742f62af9135f51a12362b370a19f949f912591e2a27bb715fc883d"
+            },
+            "14": {
+              "bytes": 120,
+              "sha256": "d6a5d4ddfc633fff88f61b160dcc199684c4d6a30e8278ebe77df22ff170a315"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "b648968454b410385c6334e69fa1c5843d7aeb1d245cf8823ad1d71c4f330b86"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "89498a922ffcad2fe6fe971096bfd34cfe65c2cf4bc2a389660a3b625c48407f"
+            }
+          },
+          "shots": {
+            "active": 12,
+            "sha256": "5f32dc7248fabd164b72cc5ea236e1b63998baed8d8d36696b708675c6e46fe1"
+          },
+          "boardDisplay": {
+            "records": 35,
+            "sha256": "59337d37ef10b8c23bf6859a4d90ddc5f6dfd2ed0252aa8013d7ddffea5b24cb",
+            "hybridSha256": "59337d37ef10b8c23bf6859a4d90ddc5f6dfd2ed0252aa8013d7ddffea5b24cb"
+          },
+          "pixels": {
+            "videoFrame": 2108,
+            "fullRgb24Sha256": "ab19ceea6126eba9fcc85f88d8b4260c4c8823ff1a9afceb22d716c7f5727cd7",
+            "fighterCropRgb24Sha256": "86a578b7786f53e59abc13c07dca9017e686c0c4b8af5783169e3a9b79b37bd0",
+            "beamStripRgb24Sha256": "812c77d04283dd098173b1531271512d22174ad87e56c04121d9bfb0a75f50ca"
+          }
+        },
+        "2116": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 21,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "7968245a1e51dd29c4998e121d3e8c378043e7d6f82b140930adfa75d48b306b"
+          },
+          "optionSha256": "b12c9b1aa1a4279397dc963ff69a5ed77b9a46671630329b955cd81e4c3d978d",
+          "targetInputSha256": "c4429612e68709288e9b73c2ba4346fb38d859581fd11abc225e931cce45bfcc",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 96,
+              "sha256": "8b444affe14f2606e1a427c12658ed683f4d867e7ee6eeae47d4d3c44a940cb3"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "8db95b578f4b738c680041c274d6aed3fe04f57da2b7b7610c2bbd408cb856ef"
+            },
+            "16": {
+              "bytes": 36,
+              "sha256": "67315583ccdd862e01a485e18856774168f76ac835011cb7a6c4a1e385574204"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "f4713704b06712b76ffa873d28e47da4e1a788b7ae4dcfd557f79ab4e24bac45"
+            }
+          },
+          "segments": {
+            "active": 4,
+            "sha256": "7a727b00dd366537e5f37c01521875d321bf8a3da18e127e98696b43a7db9783"
+          },
+          "boardDisplay": {
+            "records": 48,
+            "sha256": "9020c5093e4b48fc08537b02a59bafc0f1000709d906ba8be0255a0d350601e0",
+            "hybridSha256": "9020c5093e4b48fc08537b02a59bafc0f1000709d906ba8be0255a0d350601e0"
+          },
+          "pixels": {
+            "videoFrame": 2153,
+            "fullRgb24Sha256": "9e48417de6c079c4e065ef9faa7d0d31f16b95462e7335b3305835667a1df2ff",
+            "fighterCropRgb24Sha256": "b036864537d2f1bf903bb986e68d88fdf13e4be8e5004a6695562ee6466c2b58",
+            "beamStripRgb24Sha256": "0cfde16e9f0064db16abc9ba0ee40faf061f26cc8201f8a6b3c5f2e925758fa5"
+          }
+        },
+        "2129": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10528,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "da349df6c5304700b09adb92626ac82eae63806a308af0226aa9e19d1698cb18"
+          },
+          "optionSha256": "9f4ccdd26c3ed6380e919ce236a06198a3fe139d445739173aee7c1049e86005",
+          "targetInputSha256": "5918edcc08129bbeb69584739a5cbef6132586736577a806dbe4339412b657fc",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "7413f6688febbe7b09dd8de3f1b46e8f4a34a56d7d0e78701f44fd47821fbc49"
+            },
+            "14": {
+              "bytes": 72,
+              "sha256": "88e971289c64d3747b2c28e094c748c20c018b54839e3f2713a1e8e86d9dbc9d"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "8db95b578f4b738c680041c274d6aed3fe04f57da2b7b7610c2bbd408cb856ef"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "434028837892e1e8b97cac69540ca771238dcf0964f1291bfd17cc2660816ffe"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "89498a922ffcad2fe6fe971096bfd34cfe65c2cf4bc2a389660a3b625c48407f"
+            }
+          },
+          "segments": {
+            "active": 14,
+            "sha256": "95967ea2dfd9d2f1644ece351ec275dcee73902fbe78ddce1dddf8bde676b7e8"
+          },
+          "boardDisplay": {
+            "records": 63,
+            "sha256": "0bf04fc5083856933fcb9c5b73527c094bd02d48ab74490a9b5b2ebc8886608d",
+            "hybridSha256": "0bf04fc5083856933fcb9c5b73527c094bd02d48ab74490a9b5b2ebc8886608d"
+          },
+          "pixels": {
+            "videoFrame": 2166,
+            "fullRgb24Sha256": "da43bb805bf1598486e1fee5f8ba2998daabe7a38c56e9241b78c69bf1250f9e",
+            "fighterCropRgb24Sha256": "2b57a1b8853dbd1a2f4a6480b0a2453372819e67caec0d608d4adc697be41370",
+            "beamStripRgb24Sha256": "c6dddad8b44a7be894dd001d20c20bf1e88a0f84e6b5067229a2b28a89f5b7ca"
+          }
+        },
+        "2241": {
+          "portWord": 65487,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 10647,
+            "velLong": 0,
+            "velShort": 119,
+            "speedIndex": 16,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "cdca5004bbdc02eab4dce3247911d0a66c42860bb35c0b5ef57636c72933dc31"
+          },
+          "optionSha256": "eec40df44dd3df05426db262eedf563f36ce5f54f5fbfb66ff59281db1cbae81",
+          "targetInputSha256": "b4044d5b6e771ef4c6f9d037b0379fe98e9a469cf075dccff32223df95038c7f",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "1efa0009e062f934556c1690e24979a78233304e1c6b865c9b60f07ef283cc96"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "0b035c054f0f2921443fabebf76d3b3ee5e2852421bc32067fdf41e01b54a66a"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "b9186cbd7217856efab67a09b07f52f3abf7e5a7c1b3c304c8ba2eb2e9fa2d77"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "204463fcfb426bc634cfcc20cc14e6305507fecce257e6a24fd383a46495c8b8"
+            }
+          },
+          "boardDisplay": {
+            "records": 57,
+            "sha256": "4f779ecf51f92e06edd64d5a0fbab7c1024fcac2b32f56e442251e615f8c6b01",
+            "hybridSha256": "4f779ecf51f92e06edd64d5a0fbab7c1024fcac2b32f56e442251e615f8c6b01"
+          },
+          "pixels": {
+            "videoFrame": 2278,
+            "fullRgb24Sha256": "aafc93bb910dd44dc590fe96f298c50bf2311e5a53f62558312bbe3f684e8c55",
+            "fighterCropRgb24Sha256": "3dff0c8f11ce5736ce64695317ccb29e7eb6f3d83b120505a70408e5107adc63",
+            "beamStripRgb24Sha256": "acee76ba0de737acdb8024f7272308a66daffce8aca5fb106465fa3900187904"
+          }
+        },
+        "2301": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 16,
+            "laserFloor": 16,
+            "tilt": 28,
+            "image": "0x000017dc",
+            "p1WithoutInvulnerabilitySha256": "cca0879c23deef2d595b10aa7ab4b66eaf5fc9d5d367920401b5547a01f0b953"
+          },
+          "optionSha256": "2e0ecade3b2718c7ae11dad1ed81f0e0fff26c67b54358119d4b19b224906f3c",
+          "targetInputSha256": "df5ce567b9b2788925728ed84e6659c388320ec8ea49770d9eba60d2a83eed82",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "3737732d47d48d8fe9b56e0124b97da8c37d86ac322a3e66e1a1572a84b37a0c"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "f8d00d171512fd64d267a531f399da23756558aca588d6853267440f55d0f2d7"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "80788bbdefa8981305099142a505a1419b940ad695340d1db1706f2f8d7c5cd2"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "98dfc194244c17f5fe4d534de5bc00063103ec3ceb9ab3490e308442a556e51c"
+            }
+          },
+          "boardDisplay": {
+            "records": 58,
+            "sha256": "b4322b2107cfe60556d031ccb6e9ee0496a895280872451817c2316de05a6e6c",
+            "hybridSha256": "b4322b2107cfe60556d031ccb6e9ee0496a895280872451817c2316de05a6e6c"
+          },
+          "pixels": {
+            "videoFrame": 2338,
+            "fullRgb24Sha256": "7754faff8cee0758df13be03ed69e6fdc06aa903c91e0649f96a775f6f524244",
+            "fighterCropRgb24Sha256": "e62d0e5a7e796cb01df17c44d183748c549c4505f0981a61bdb79b700029cf56",
+            "beamStripRgb24Sha256": "d8542e578e1cdb73a7c9a7a88ea4cf7a50010c7ac77d39c66980a5b4cb27ef2f"
+          }
+        },
+        "2361": {
+          "portWord": 65535,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 17,
+            "laserFloor": 16,
+            "tilt": 0,
+            "image": "0x00001520",
+            "p1WithoutInvulnerabilitySha256": "c8df6c1b124bd115aa6cfe4f8e222671aa4825ad3f39b85778c29bac4af89296"
+          },
+          "optionSha256": "3ace486f2c21d9deb8340c573e1d3c4fa55c989634b36642a55fa8cef2d4040e",
+          "targetInputSha256": "7ba4148e78f86d1e6aad72293bd10b6d1eb6039e8e212e68baa5b196d8fb3109",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "38ca781c4c892169f4d3fc80fad3f415f0be372cab228d791796d7cb199cd38e"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "f70ba7b9d34c1eb1563a7ad54a4d899a83fae37d33b6012a921fed4e5dfd00d7"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "d2316a60df659a2fff317933ff2d1314813cc88b5c2b0dc4523bebcdf4276498"
+            }
+          },
+          "boardDisplay": {
+            "records": 49,
+            "sha256": "2e06991838409a61e0f1890a9251ec0d7df11a2ec6e4352e64271ab1d5b22f5f",
+            "hybridSha256": "2e06991838409a61e0f1890a9251ec0d7df11a2ec6e4352e64271ab1d5b22f5f"
+          },
+          "pixels": {
+            "videoFrame": 2398,
+            "fullRgb24Sha256": "e50843d68bfd90a3329bafba5f911fb0f84947f79d456b8a5de9b64315925efe",
+            "fighterCropRgb24Sha256": "2856ecbdbe629e60a7da29026acf590d01074d3121d1ddb8fb1a8437d446c38e",
+            "beamStripRgb24Sha256": "41c0b26ddae529d0666285e4accd27fb2c3cb34357b2ce63c9377f59e29b1031"
+          }
+        }
+      }
+    },
+    {
+      "key": "2/2",
+      "ship": 2,
+      "style": 2,
+      "initial": {
+        "optionSha256": "c0e122f6e40ab8dee6a54c8496a0beb7230560fdbdc11861a041057afe52ad42",
+        "palette23Sha256": "1703e92eb275f6450797646675f3e606f437155bad95c7604114304185a0fc84",
+        "p1Invulnerability": 208
+      },
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "rows": 2372,
+        "sha256": "3c926851f9f6d0b29b385d12118fe32a976fce96c94cad8e009824d5c7b3b8d0"
+      },
+      "coverage": {
+        "commonTarget": {
+          "logicFrames": [
+            2001,
+            2143
+          ],
+          "frames": 143,
+          "sha256": "62290e7f758ab150a96b1767b04b388d647008c69123bdf2a3879be331d0fb8a"
+        },
+        "fullOptions": {
+          "logicFrames": [
+            2001,
+            2371
+          ],
+          "frames": 371,
+          "sha256": "f3f74bbbaf501f39e64717ab3d044379006cda30ade2a708d4aa65bb22ba7cac"
+        }
+      },
+      "events": {
+        "2002": {
+          "portWord": 65519,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 5453,
+            "velLong": 0,
+            "velShort": 141,
+            "speedIndex": 19,
+            "laserFloor": 12,
+            "tilt": 4,
+            "image": "0x00001c28",
+            "p1WithoutInvulnerabilitySha256": "c2c0f47bd92840483cad17d5568721d03c0e87187bfba847d6704467e77f33f6"
+          },
+          "optionSha256": "0c7adcf5818f6fe7121cc27364dafefc9ea50aea44b117de5c5a6639b9f6e960",
+          "targetInputSha256": "8e5f5c1663ffe93ac0c9a26a0f6f6aa23213cd27ffc7c5743f51bceaf5d616af",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "37c2c77508ea0272236233a1f6003851abcc9aa6e75688f76d1bb2f640da6f83"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "247d238fd4b14f3bf171254863803490b958048d63087e7724c50939c78b549a"
+            }
+          },
+          "boardDisplay": {
+            "records": 16,
+            "sha256": "62bf2fe25352af9ca8ccad6f623f8e5590e66c2a414c799bafc9a2001317856a",
+            "hybridSha256": "62bf2fe25352af9ca8ccad6f623f8e5590e66c2a414c799bafc9a2001317856a"
+          }
+        },
+        "2051": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "9e8e13cbc158a00ad0fb29eaf033e66945086a59527f8546a5915dae215bdba8"
+          },
+          "optionSha256": "1a7a89ca286c46b957ce87eb9b2d709ddb3b8fb287e6d1ae7005805bc9dacc9f",
+          "targetInputSha256": "e4717cf0826797fcd2115751fbe1cfcc2ddb0c99909c78f67578c1f58e6c0f0c",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "0f5dafbb82ed4c626671c6339d97ec985ca22e227e8811d20d6dca76d105570f"
+            },
+            "14": {
+              "bytes": 24,
+              "sha256": "719aa90962046c19560b4205c63ce4f10e6484eb5140cdc611dcefb9c0af564f"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "1c33b719afdc96b43eb255590bf91b0b1da4d6024b4a36d0aa5a00292d4177ee"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "b22c7a0d0c7369f269481aff4e787b847b57123b796e6ddc6026e007a53bcbd3"
+            }
+          },
+          "shots": {
+            "active": 4,
+            "sha256": "d6d7abe0a67355fc2373581692dd502b0f1dd51e9ca885baabbdb813b439a4dc"
+          },
+          "boardDisplay": {
+            "records": 63,
+            "sha256": "ea209e6679b700dc48d149d5399c77563621069c455c73be7de73da70f01fa42",
+            "hybridSha256": "ea209e6679b700dc48d149d5399c77563621069c455c73be7de73da70f01fa42"
+          },
+          "pixels": {
+            "videoFrame": 2088,
+            "fullRgb24Sha256": "beb53850f01047190c0238a93ad15418347047844d4cec6f1f7bb97a20c044d4",
+            "fighterCropRgb24Sha256": "cd1234af91d69c34b2bc73f0de3c7e7339f5ef144ce6576e6b12ece766ae5bd0",
+            "beamStripRgb24Sha256": "86970c649de0405a9a1f4bd10deac62af38734a5cb0358844571c6841986dd0d"
+          }
+        },
+        "2071": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "20ff64284e0d2efaba5615d6fe729a0ccbfc6436689539a195d5be81a9a12ac0"
+          },
+          "optionSha256": "1f5ef9bb721819587d3d4b7ba5ba43687e4ec073bac75a0836264c8a10720866",
+          "targetInputSha256": "a03b6613036ff8d0dbbc8fbf9a299fa59f15fce53f33a349aa4c845eca7a4c2d",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "1af097af44b03d456752f0d566a1c8dd1525e41a57a611828560295bb98fe596"
+            },
+            "14": {
+              "bytes": 168,
+              "sha256": "bad3f52b138610eb383c79e99660eb5a8053f5a4b6e378a7154d7bbb1d918de4"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "a9d85d661d4607a7276bcb9c74e3a320b78bce3edac97c1ee7764bdc2d0b2002"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "b22c7a0d0c7369f269481aff4e787b847b57123b796e6ddc6026e007a53bcbd3"
+            }
+          },
+          "shots": {
+            "active": 16,
+            "sha256": "eb6837782608199fe5b0cd1b9d7653c5779d743bc155f1044ab284ab564d3939"
+          },
+          "boardDisplay": {
+            "records": 36,
+            "sha256": "75ab4e0180cfdfed7ace168061d48ac359fea37c55bf85fb31948182aca52a1b",
+            "hybridSha256": "75ab4e0180cfdfed7ace168061d48ac359fea37c55bf85fb31948182aca52a1b"
+          },
+          "pixels": {
+            "videoFrame": 2108,
+            "fullRgb24Sha256": "8a4f6c557c95c48ba1c47531e90f4c35f6f78dcb6eeceef1edcd9d518ed15bec",
+            "fighterCropRgb24Sha256": "3c0e80a3d4c53947196fcdfd1fce8fab92cf40dfa08fcd1c9ecda591428ec615",
+            "beamStripRgb24Sha256": "d8447e476bb4a1b1360166eaf1011dca96657e5c8ab2be9ac770c8184a618837"
+          }
+        },
+        "2116": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "d142fba9f2e041e5f7f3fd575b0f88c12aa885cd348ca64d89a69e3fc5a897ca"
+          },
+          "optionSha256": "badf6d32b9019491b2a80ed809a2f6b0280a1506be40e3f766fc970b3e48016a",
+          "targetInputSha256": "365be116e750cdf14fe26ab90eb53a214d5cae44edc48e2b04468fae38a22a45",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 144,
+              "sha256": "434c74d35ea3309dd3eeef943ae7d27d8e17fe8deb8d6adce9dec77367481d3a"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "c2bf1f843dd3a74d8e4f1cdefcec0356fc4dca3417f7a5787a621a45bd4aaac2"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "49f86ae7e9c1317d103437cf814b4b7103631c48efee72f51a27b79fbcca8254"
+            }
+          },
+          "segments": {
+            "active": 0,
+            "sha256": "80422bc3d307b4a25bdafcc84ac7fb01cb55a09810e8b0f37bb12e0edb5c48ca"
+          },
+          "boardDisplay": {
+            "records": 49,
+            "sha256": "a68098ce70b987eaac4ef32ddc28bfca28a818b4c24cb4f45708fe12388a66c3",
+            "hybridSha256": "a68098ce70b987eaac4ef32ddc28bfca28a818b4c24cb4f45708fe12388a66c3"
+          },
+          "pixels": {
+            "videoFrame": 2153,
+            "fullRgb24Sha256": "a2e5dfbd0e3baafcda37c8e9aae44d8102c5a393de33903c16eaa87a6bca2bdd",
+            "fighterCropRgb24Sha256": "76ec96ae55213171ec60fb1aa604dc208d18ca38a5aba9bbf4948af3a4e2b48a",
+            "beamStripRgb24Sha256": "8c139158cb74c7486723e587d5a4c4e54839654de0d334fd806bb7853faeb454"
+          }
+        },
+        "2129": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 16,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "9d5837043ae1d706bb2169e2a7bd29dd6c4023c3eef3ced138d4245ca05519f0"
+          },
+          "optionSha256": "17ff9014f02be88a4a97992109ce95a85e44cbb26088a53900cd9ece0201c13a",
+          "targetInputSha256": "701756b4121f6edabb69a9a11c2c4a176882235fe2c10802827ccf23dbafd664",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "4666cfd724a75a1fe6098eabe784800560871e115aea90c50c655afc49a04e11"
+            },
+            "14": {
+              "bytes": 108,
+              "sha256": "467527f0c258026a087aae94ef5ecf7bd986b9739a6cf4608845608a6fa3f0bf"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "5e3f7f2a173c8fe16ac98d8745aca583772b650c8bff05db983a8d4dd2915297"
+            },
+            "16": {
+              "bytes": 84,
+              "sha256": "42c150b09687dc64da401c623c02673919eb0092156e3fc1909654e4f1de2c06"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "b22c7a0d0c7369f269481aff4e787b847b57123b796e6ddc6026e007a53bcbd3"
+            }
+          },
+          "segments": {
+            "active": 7,
+            "sha256": "3e4d7a806f2d73b1bdc0f204cd7165ff31bfdcff8648363cb5c30cb43b8e7c71"
+          },
+          "boardDisplay": {
+            "records": 63,
+            "sha256": "4269093e7ef3aa3636d296bfc3a4d39477d0ef5a49a17ed5325004e2023e10f9",
+            "hybridSha256": "4269093e7ef3aa3636d296bfc3a4d39477d0ef5a49a17ed5325004e2023e10f9"
+          },
+          "pixels": {
+            "videoFrame": 2166,
+            "fullRgb24Sha256": "9472c5c440379c3d24eb7ce94f2706b558cbb68d46e074a7453170cd5ba03940",
+            "fighterCropRgb24Sha256": "f7dfa1fb965a229e5c1a09a6ac2bcac3b2b2d6d3f9d2f46ef5830142d3511c17",
+            "beamStripRgb24Sha256": "d8f71fa6383ee99ec95c91693287bfdac882a47bcdfdabca9d13779c7e5cbe20"
+          }
+        },
+        "2241": {
+          "portWord": 65487,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9913,
+            "velLong": 0,
+            "velShort": 89,
+            "speedIndex": 12,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "1822da03ff611c822f2522ef92f7cdeb386b7d3a8755051c27a11a634a658d0d"
+          },
+          "optionSha256": "b688b400fedc3cc832f0c319a272e028d2cc324d0714fc70f0fb7166781f63a5",
+          "targetInputSha256": "2a812a8f25a26d63c787f4b5dedde6122ed23179ee350bcb33486131e0587383",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "8a36c9d8278afa97b4014cb6eaaf0845650def0e321b3b9e5c1b8cf353f225c7"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "bb711b26d9762ccb66bc9acae08da332eea845a9f79dfc0eb7b8ebb7b524243b"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "c163a6d0df0e23523dba50ca620bb979babcbcd0a21f4f107925146618f2b3da"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "820e23a29bc07c5175e94d0eb12ca1c557010a7b34d670f672c954457e7d2ce3"
+            }
+          },
+          "boardDisplay": {
+            "records": 63,
+            "sha256": "5512d3abd85b0b75e08d7888ebd26f1913464c76a73852cbaf7650ba17c8d33d"
+          },
+          "pixels": {
+            "videoFrame": 2278,
+            "fullRgb24Sha256": "3c2dad8e750bd9315b42b0e6335c916419992c1cce300383e64ee41a69e03c96",
+            "fighterCropRgb24Sha256": "4c14d570d36283ee7d5d018582f1d0eff90242e9920669ddbd50b31f2ebaf992",
+            "beamStripRgb24Sha256": "c2f84a8ddbb383b853b2e181f383aefe7a897454c0035cc160ea3e4fa669c555"
+          }
+        },
+        "2301": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 12,
+            "laserFloor": 12,
+            "tilt": 28,
+            "image": "0x00001e80",
+            "p1WithoutInvulnerabilitySha256": "e87d02c99553d353234ad6b1b46dd229714b953eaa39839e4f93cad60b3e64da"
+          },
+          "optionSha256": "f92a5da5512027e9c3d33a51e75f8a1f4add91c8ae7d8a488fc159022bbd523a",
+          "targetInputSha256": "55a82562615fac333896ee8ab1339d1b549396ed42435808b02a507c38f010c3",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "06d07fa2e980e3ffb26a09995ffa43a8832816264e503ed2e8f0393230bc963d"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "235e65fcb43be7ba732190ad0f1e69d1b795de28ebcce114b843cf41008c320e"
+            },
+            "16": {
+              "bytes": 96,
+              "sha256": "9c9168d965e2dca591617aec73a8f67c41b7fec2d50c1eed5effce1c25f96dfb"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "70e9ca00db93110bef0150de5c0e1033c84196c59d9418d924346460baf0a0d5"
+            }
+          },
+          "boardDisplay": {
+            "records": 68,
+            "sha256": "7273aa549af4090c4977d443210ebf81b05e3ffb04cabed99da336f5fa009db7"
+          },
+          "pixels": {
+            "videoFrame": 2338,
+            "fullRgb24Sha256": "5b1dbc2ca96cd881a00180d2110323637830199c9c6800759c7c791f688f4d05",
+            "fighterCropRgb24Sha256": "beb8343c64a81d076d0fd8ad61091d25debb817c9fc96695fff92abdfcfa0d2f",
+            "beamStripRgb24Sha256": "226a10485ab22f292937aaa64754df886284661eb69fa8d94610a95276b6475d"
+          }
+        },
+        "2361": {
+          "portWord": 65535,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 13,
+            "laserFloor": 12,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "0bf31cf7757cfd25a5f4b5110acaf5a1cd733c437c76bdda54bf2e4e7e33cd33"
+          },
+          "optionSha256": "5d2fad561506a42847a9d132659439bbdf562fb11f24e2fbd0da3149a693ef51",
+          "targetInputSha256": "bd340ec9244bfa9c1f717e1c42db117bb32b229998796f56cb53be44ae7c83f4",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "5eaf0b75eb0cc2bce3c32e113118f2fd56cb090509e5f23cd404ebcd8042cac3"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "c443bf77547b5eb68116acd441a03f16502db49f8aaef5a4db705d804efa6709"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "ad7a15c50b7bcdcccab4663450ad2b9109c32994fd7357af8f232795415265ea"
+            }
+          },
+          "boardDisplay": {
+            "records": 42,
+            "sha256": "51aa88bcbcada770807025b89972012c09c27cb7a5502096e73ac119d68f07d6"
+          },
+          "pixels": {
+            "videoFrame": 2398,
+            "fullRgb24Sha256": "ca67417dd085ef3aeae5ca99610b04fca8008799b3eefa743bea6460e3782649",
+            "fighterCropRgb24Sha256": "239cbbce904e4bd0b7ed1d07cb2d74bbefb8dfc3f9bc697ec61b37186193a8ba",
+            "beamStripRgb24Sha256": "9c2dfea06865b9a361175147bf3a49fd6831d99ef989c3ccde94bb6a8cb3d1d8"
+          }
+        }
+      }
+    },
+    {
+      "key": "2/4",
+      "ship": 2,
+      "style": 4,
+      "initial": {
+        "optionSha256": "e0bda44200a5a70f72e31f54c7f0ab2d5609e6b59e7472a0dd73435d71d06285",
+        "palette23Sha256": "491798a139c04a0658edc60b44cb5b8c3ec7c93cb224298b1acf9aab8b801c47",
+        "p1Invulnerability": 208
+      },
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "rows": 2372,
+        "sha256": "75ec4b0252d73089191a190fde22445176756bae78d7716a607de89c611af92e"
+      },
+      "coverage": {
+        "commonTarget": {
+          "logicFrames": [
+            2001,
+            2143
+          ],
+          "frames": 143,
+          "sha256": "a74814731925affae2194bbfbdc1a512c0413f155ca942ee5c8c0533c9a1b68d"
+        },
+        "fullOptions": {
+          "logicFrames": [
+            2001,
+            2371
+          ],
+          "frames": 371,
+          "sha256": "de96429a0ccd4bec918d199a733d34752bad10d05ef0668026df4104d8ab5fba"
+        },
+        "fullTarget": {
+          "logicFrames": [
+            2001,
+            2371
+          ],
+          "frames": 371,
+          "sha256": "b09f42a0d12ff8d088715a7d5c68ad0db9c28b908785808fbfc278856eee4f06"
+        }
+      },
+      "events": {
+        "2002": {
+          "portWord": 65519,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 5453,
+            "velLong": 0,
+            "velShort": 141,
+            "speedIndex": 19,
+            "laserFloor": 15,
+            "tilt": 4,
+            "image": "0x00001c28",
+            "p1WithoutInvulnerabilitySha256": "9984fd189900d6e22a4b1331867f9a977aa6f2f4232875b664672dc78472f8d0"
+          },
+          "optionSha256": "d9423c81cbbdc390ca222e471a0ae3d703b121565b7c83d36b175917cc6021a5",
+          "targetInputSha256": "7c6b3b0b2715062919b76157fa5daddd202a2d35ae436761d7dc41c3611c5a11",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "f77243bc72db45f1dd3051199083b56f5988708eb9d185ab34762ae313617796"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "247d238fd4b14f3bf171254863803490b958048d63087e7724c50939c78b549a"
+            }
+          },
+          "boardDisplay": {
+            "records": 16,
+            "sha256": "50c0915768f751570ade09ec985d081bcd0578b2dbd68bd49222e0e05340723a",
+            "hybridSha256": "50c0915768f751570ade09ec985d081bcd0578b2dbd68bd49222e0e05340723a"
+          }
+        },
+        "2051": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "599b59a10f689a965847195fae587a97723dc840e1d501b27c35e0d33b3d6906"
+          },
+          "optionSha256": "438d3daf4ee2d90b746e4d961065de374191624a1bf2023f28f7a5c506f0c56e",
+          "targetInputSha256": "6a946782ce56fd9c19685bd957c9b4718388e3c16b82a6f13ff2394918e72824",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "4f1e3e2b2670a65b8b02f9c6fd700d09ea0c0b5cb3a45df4ec38eac372ce4d3d"
+            },
+            "14": {
+              "bytes": 12,
+              "sha256": "e56b968f7cee5a97fc412df3b86bca3ae6f36570161c27abcb215fd0cb8d66ac"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "d30e1b2c5478070af666ebe7951d1e452463de1fa9a3a774ccc7e6482b372544"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "b22c7a0d0c7369f269481aff4e787b847b57123b796e6ddc6026e007a53bcbd3"
+            }
+          },
+          "shots": {
+            "active": 3,
+            "sha256": "3cb588e9199e9ae79f2fe8bf8038025c4e955ba81b0d4495c6def23101e15c10"
+          },
+          "boardDisplay": {
+            "records": 25,
+            "sha256": "ab7851cbc5aa863dddb030eca07cbb7f7d3ee89422d9d91222d4792f75fe69af",
+            "hybridSha256": "ab7851cbc5aa863dddb030eca07cbb7f7d3ee89422d9d91222d4792f75fe69af"
+          },
+          "pixels": {
+            "videoFrame": 2088,
+            "fullRgb24Sha256": "ce52f2a838cadf81f2a600f8ce9b6820ccf05926473263fba97a84b58a2b2d03",
+            "fighterCropRgb24Sha256": "2a3c854ffc85385259ef54a39da8ebf958d4896d5dd773a0801f5b2f8d2c7045",
+            "beamStripRgb24Sha256": "99464c2ffe5c8a98015bf136c1179d510f48ba8672e4c5c766cbd8880b26d62f"
+          }
+        },
+        "2071": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "7109852963ce666ed3732bf8f30e758980cb66fd2a8af62aa621ef11d76e0e93"
+          },
+          "optionSha256": "085a07d25d330b3d6fc57aaf5fef2d826a31761b0426af6bf736b9d41d7fb7c1",
+          "targetInputSha256": "fbfe5966d833f7b7c8d04f87e015b006bb023b2268c12676c54d9dfbc14821e7",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "f3715c2ebba7f27ec64e95af1b82eb827045357b385e16ff7a835a808b16dbbc"
+            },
+            "14": {
+              "bytes": 84,
+              "sha256": "39be57e9d5558138f64987725a478140399dd97ab2c844a959dafb7aafbc7f2a"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "10b2d1c7dfe17b46125367ddf7fd2e27c8283fc235ddc7becc21dfca2f06d02b"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "b22c7a0d0c7369f269481aff4e787b847b57123b796e6ddc6026e007a53bcbd3"
+            }
+          },
+          "shots": {
+            "active": 9,
+            "sha256": "773573ae132cee5c1e820ac323d0b77191ed77c9b63523889b44f19a7597d8b8"
+          },
+          "boardDisplay": {
+            "records": 31,
+            "sha256": "e3a7229b2abf8e0b2233d8c8939251937f675229a6121d1800eb95704c5021e8",
+            "hybridSha256": "e3a7229b2abf8e0b2233d8c8939251937f675229a6121d1800eb95704c5021e8"
+          },
+          "pixels": {
+            "videoFrame": 2108,
+            "fullRgb24Sha256": "21f1bdb011c31cc3ac672d51b7eb6a77506cc69d62c03a3def54fe7d40681f5e",
+            "fighterCropRgb24Sha256": "64a5e1a82dfed0179895582b71bf79fd2b689b23564322291e3acf745b1be5a2",
+            "beamStripRgb24Sha256": "bb6485888194a3040696c568dcc9e4b0922a87f7215b2a89107a5015356025ff"
+          }
+        },
+        "2116": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "4cf05d9e7829e490f362aaa0d0522311c5e3df92911a93081e3b735b213c8a16"
+          },
+          "optionSha256": "aad5d6c181a49e955e9e2c944726e4e4c5ef6a8ed4c16094d159090bdff85f4f",
+          "targetInputSha256": "44c77d88c0d2f9318397551d8d2d2a231a92ff7b37f6c37a65e4d792824548f6",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 72,
+              "sha256": "11189644038575eb32c3b6d3b157fbb61589db83e788787f516c0e5e2858bb8e"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "42825b4a66244b25ffab9a053755ab6ee7230196378240dc54af4d33a7675625"
+            },
+            "16": {
+              "bytes": 12,
+              "sha256": "3356e15fc24f1882586ac2aeb9f9f9e2f1491ede0af828610eeb9941e0b901d4"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "49f86ae7e9c1317d103437cf814b4b7103631c48efee72f51a27b79fbcca8254"
+            }
+          },
+          "segments": {
+            "active": 1,
+            "sha256": "23337a3342572d4a2791bfa34a103183b7a98c0f7ce44c4c29308c21c1c3f2ed"
+          },
+          "boardDisplay": {
+            "records": 44,
+            "sha256": "43f31ef7c7248a6aa75230a51dfbdf21b694f5f0894d0fab13dc48457cd0aee3",
+            "hybridSha256": "43f31ef7c7248a6aa75230a51dfbdf21b694f5f0894d0fab13dc48457cd0aee3"
+          },
+          "pixels": {
+            "videoFrame": 2153,
+            "fullRgb24Sha256": "c6b7b95342590fc6ab70c74fb8d10ed0e9111d242412f01efa84eb301ffda82e",
+            "fighterCropRgb24Sha256": "50dd9e8ab5894f27d4821d1b99af07c82d429ecc077a179ab9543382d87c1998",
+            "beamStripRgb24Sha256": "e23effcac3598188ee3fe9a1db846882c05bf60af2530635fbf4410c212dceef"
+          }
+        },
+        "2129": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 16,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "e41cc1e9b9fd3460e710f6eddb01acec3ffda5227318f1529770332f69cbf195"
+          },
+          "optionSha256": "1166eb9dc883029f19f7737c70b48a092eafeb042fd89fb39a91d2937874d055",
+          "targetInputSha256": "bf6617914686693a52204a07eb7003daa2a22be061b836efd44a0f1546047f3f",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "db67874a0c3f510c804943ad21a58a49ba8cd06b06cc45f8bf40803ccdb9e6db"
+            },
+            "14": {
+              "bytes": 60,
+              "sha256": "c21421348df23f4c4f95dbb43c5616c2641f76d04d73c5d7baefbfd0f3b8335e"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "42825b4a66244b25ffab9a053755ab6ee7230196378240dc54af4d33a7675625"
+            },
+            "16": {
+              "bytes": 156,
+              "sha256": "47c038f939b27cdd221987266f0a1cf48316cc85b00de40f00770c9b153aaad6"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "b22c7a0d0c7369f269481aff4e787b847b57123b796e6ddc6026e007a53bcbd3"
+            }
+          },
+          "segments": {
+            "active": 13,
+            "sha256": "86403467c16bf9eb342f9ef0c3404c94a8be4c695712a9acfc0d14012d204403"
+          },
+          "boardDisplay": {
+            "records": 57,
+            "sha256": "3992bdfab692cbe524915548ec060ab8011f02e7306ef08fe81d0d5c42f63e54",
+            "hybridSha256": "3992bdfab692cbe524915548ec060ab8011f02e7306ef08fe81d0d5c42f63e54"
+          },
+          "pixels": {
+            "videoFrame": 2166,
+            "fullRgb24Sha256": "f8411a0f30266f4ab25c26bba30ad1ff56471f0ce7f6cf55398e86d01265fe6d",
+            "fighterCropRgb24Sha256": "d24d8f1ebe72e63147d6f7bb4f82e22dcf06600990a2745040c7066810e0a851",
+            "beamStripRgb24Sha256": "fc5792fa34af6e534954e257e5a43023adfb0688f6abab2dd55721a5cc4658f9"
+          }
+        },
+        "2241": {
+          "portWord": 65487,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9935,
+            "velLong": 0,
+            "velShort": 111,
+            "speedIndex": 15,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "d5494865543a4507788806c4aa1ea5bfb8d44efecfe7009dfe7a08611aa617c3"
+          },
+          "optionSha256": "8852659104d8b89c088439e14338ca6346ff44723a22b4b2651135f57d69a24e",
+          "targetInputSha256": "093fc4fd1ca0fcae39dc39be9d667be8b85076b803a511d74add2b2547c1d0e4",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "8de5baafc61bff34fcf06fc1d3a9a9a589e9cdf8ad4aeddd088201b66a7d4eff"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "e18d23a6dd01f83887c643097df99da2ebf2d8508f289c910a5be2f3106c5259"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "82d1388dd8b5f528a7fef06caaee0a62fcfff310ee87815d140c429440001f0d"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "a3abc7d90b1e185620d7110aa44641f6df85d8323f966c59ab324713890b727b"
+            }
+          },
+          "boardDisplay": {
+            "records": 59,
+            "sha256": "b6bc66a2fade995eaaa141158555ff0b233069d74d715ac47bb73ef1f46c42cc",
+            "hybridSha256": "b6bc66a2fade995eaaa141158555ff0b233069d74d715ac47bb73ef1f46c42cc"
+          },
+          "pixels": {
+            "videoFrame": 2278,
+            "fullRgb24Sha256": "098a30e81d95a33813d38a8648cc22c5d89104d94924351b50eedd3503a47600",
+            "fighterCropRgb24Sha256": "1fca853f5685f44d0ba765cf6b4def21d786ea77482d8fa4c1a2a128fffe9da0",
+            "beamStripRgb24Sha256": "e8cd73a7f600d579ea8bea8d9c0dd04edb614af71bf02855fa95194b293de11c"
+          }
+        },
+        "2301": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 15,
+            "laserFloor": 15,
+            "tilt": 28,
+            "image": "0x00001e80",
+            "p1WithoutInvulnerabilitySha256": "2c57b23cdc31ad83f639f62ccc572e481688bfe8dd76b77e56d961f481c9898c"
+          },
+          "optionSha256": "af57af27c2c597526f3a7dbef83501e4e13ed67624bdc3d2a9e8673799968be4",
+          "targetInputSha256": "b32973a7be9cf672315af7630d56107fcc4627c33c328df7ae46f1812afb1f75",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "08281ac4914ff3620d6b503a4b1396c82e8f027eeaec5c6eb0b26cff887c54b3"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "743ddccd23e44e6353dd896732c642be7947ba963336b997b25a9834585efcf9"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "19ee4a942d8c6c7192f58b8b92cf8d1de217b9cfe2650e8d37695e49ca8a7216"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "70e9ca00db93110bef0150de5c0e1033c84196c59d9418d924346460baf0a0d5"
+            }
+          },
+          "boardDisplay": {
+            "records": 63,
+            "sha256": "9f78a103b712203e381e7c26017a1a058356ef20aac0f35dba7c270d9461f5e6",
+            "hybridSha256": "9f78a103b712203e381e7c26017a1a058356ef20aac0f35dba7c270d9461f5e6"
+          },
+          "pixels": {
+            "videoFrame": 2338,
+            "fullRgb24Sha256": "c56133f1d205d34ed574801f36d0b8f48f96d7fa0374d1eeed8847fc00f09be3",
+            "fighterCropRgb24Sha256": "0787138ef74f9ae6d9b43f0d490b4e4d744582c42616f3c1639cde8dfb5901e3",
+            "beamStripRgb24Sha256": "4dd186af3d90ffab43df396409cc7e787083c5985390988878f513b9e4676ecb"
+          }
+        },
+        "2361": {
+          "portWord": 65535,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 16,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "0b6f5bdc46a7d50ce1b3b11d422f75feff76fd5800ad03273dfd15a4458a9e4b"
+          },
+          "optionSha256": "d72448fc3a057d61334515ff52f8d66b43feff65a1a147f317f77a6838d27386",
+          "targetInputSha256": "5a9a9480b759c0308b5963c725fd513c5c5d7ac1eaf8b0d8c1ff02450e300216",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "1abd3f18278ad9fbb54520ce7299f2e9857b84884672b81b5c8b9d7abf7daf72"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "4828ba63183eba143c134403015e50e3cd44b5948771cb91e7123c418edd18c5"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "ad7a15c50b7bcdcccab4663450ad2b9109c32994fd7357af8f232795415265ea"
+            }
+          },
+          "boardDisplay": {
+            "records": 41,
+            "sha256": "bbef4674490a5744feb3cea03ad65cec8ba2b6dad102a35661da09c11b6c31da",
+            "hybridSha256": "bbef4674490a5744feb3cea03ad65cec8ba2b6dad102a35661da09c11b6c31da"
+          },
+          "pixels": {
+            "videoFrame": 2398,
+            "fullRgb24Sha256": "464f4e91d0b4bc0c276b766305bd41b7049edae97d610a7618aaec5cb49f8d40",
+            "fighterCropRgb24Sha256": "83ffd5b5ff31cc6bde890201421b46a5f157eafd492fc267eded71f438317049",
+            "beamStripRgb24Sha256": "b52089ab37099c2755a39aaf7453b0675b6b48b288adbc40fda13677a4bd9397"
+          }
+        }
+      }
+    },
+    {
+      "key": "2/6",
+      "ship": 2,
+      "style": 6,
+      "initial": {
+        "optionSha256": "e27e9afd505251acca67a59375c08c5e2cd5152d59c068453764e51698ade087",
+        "palette23Sha256": "6dd4f2b2f60afcdee9ef874e6a9a3ac0ffc044abb76c56eb264784c39c144d5b",
+        "p1Invulnerability": 208
+      },
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "rows": 2372,
+        "sha256": "5d2f881b2c13331f90494ebfe72cae4cc41eea4434bb4cefa484bb24a1b1ffc7"
+      },
+      "coverage": {
+        "commonTarget": {
+          "logicFrames": [
+            2001,
+            2143
+          ],
+          "frames": 143,
+          "sha256": "d039a8ff1c99a9d17be1cda6d81889a2fa91ac58b79d4d52a1c80fdbffe943ef"
+        },
+        "fullOptions": {
+          "logicFrames": [
+            2001,
+            2371
+          ],
+          "frames": 371,
+          "sha256": "debffe7a31320e6a01a547b499c8964e953deaab9d49baa8c69e664596c02d5c"
+        },
+        "fullTarget": {
+          "logicFrames": [
+            2001,
+            2371
+          ],
+          "frames": 371,
+          "sha256": "772479beefb4a322e2b73c52174207e27d14e7c984a06bb01a082465588af084"
+        }
+      },
+      "events": {
+        "2002": {
+          "portWord": 65519,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 5453,
+            "velLong": 0,
+            "velShort": 141,
+            "speedIndex": 19,
+            "laserFloor": 15,
+            "tilt": 4,
+            "image": "0x00001c28",
+            "p1WithoutInvulnerabilitySha256": "bc65c7a6c2637cea32b3dfd10a4d3e814e9518db34cb285c8f68db25274a6328"
+          },
+          "optionSha256": "faa2940c35325689f23d0123f0e60ebb452a4496a7f6ea0af25555d92a4b7083",
+          "targetInputSha256": "7450853a6a089de99cead33f926cefb7b192a0d4f8e7493abc54e549dd0ff7f1",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "7d15d02988f2fc2fa54ce997253b2b736b7d17772de4166a1bcf9692c1647844"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "247d238fd4b14f3bf171254863803490b958048d63087e7724c50939c78b549a"
+            }
+          },
+          "boardDisplay": {
+            "records": 16,
+            "sha256": "406ef3177042adb4bad95469494019251b2f66449802d641d240dbecb719bbd9",
+            "hybridSha256": "406ef3177042adb4bad95469494019251b2f66449802d641d240dbecb719bbd9"
+          }
+        },
+        "2051": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "26d686674b951d1617e73781c36fe387e180d7f807ab2ce9fdbab1f1653c2319"
+          },
+          "optionSha256": "dc1936a887ab71c80af22d0224b47c39e94ae2f4f02a34dbdd6d635e88842477",
+          "targetInputSha256": "0ab475a89f6b5f5c9ae0a1eb4c3d3134413bf27deec905a54a36d26b0a33cd41",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "e4492c14ff706bd6f0b5685af5e994ae98270b4f6ad30d14662da48b81f84d7c"
+            },
+            "14": {
+              "bytes": 24,
+              "sha256": "719aa90962046c19560b4205c63ce4f10e6484eb5140cdc611dcefb9c0af564f"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "f3a1179fd887b4fd9cb9cb28307d63ea10c85e47f8704004843367f77f5752b7"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "b22c7a0d0c7369f269481aff4e787b847b57123b796e6ddc6026e007a53bcbd3"
+            }
+          },
+          "shots": {
+            "active": 4,
+            "sha256": "3d29f0681c9e5d5ab7d9b2d00e7431f095372b0b7d637b1fed6c3a39170834ad"
+          },
+          "boardDisplay": {
+            "records": 63,
+            "sha256": "e5d6aa5f6f57898c0082d57d4937779a354a8cafecfce18a6e427b3ce5d35c26",
+            "hybridSha256": "e5d6aa5f6f57898c0082d57d4937779a354a8cafecfce18a6e427b3ce5d35c26"
+          },
+          "pixels": {
+            "videoFrame": 2088,
+            "fullRgb24Sha256": "6ff4641d13bf08372044e2a38e906fa08e305e3b6d970ddeb1442b41c4bf976c",
+            "fighterCropRgb24Sha256": "42c6ff4a3616fd156013ef0f079522f735e03f362a097ffb3094c97d2a8470a6",
+            "beamStripRgb24Sha256": "e5daee947601bb02856a702cd23c36a37a9241b27e920a129726607fb00fb183"
+          }
+        },
+        "2071": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 19,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "f2af3ae4e815040a1432a75e9aa3b6db7d93e34ab6ea512cc00c6ec77b92a051"
+          },
+          "optionSha256": "2cb83f4733ba9106cba6f7bd2dc747eb5887c90b2f9f4413c9243f091a7a86fd",
+          "targetInputSha256": "cc6b920ea373896b370bd83726b1b6a68b24537221e6b7cc7d143f1c394cedae",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "3c1020bd4522838b496ea97bc01ec98ed0ad0894626b9acd68e98191b9bf1063"
+            },
+            "14": {
+              "bytes": 120,
+              "sha256": "1bb7bc726008ce8987cec7608ae7da108d7221ede6fb8949157c6119c5338f35"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "650acdaf6a49472d3b064709e4212552c3dcd13d4289e92c861569d2c188f5e4"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "b22c7a0d0c7369f269481aff4e787b847b57123b796e6ddc6026e007a53bcbd3"
+            }
+          },
+          "shots": {
+            "active": 12,
+            "sha256": "dbdd26c3dd041dc0bc7a5e521e1992185f915e7b6f82c5bb8ba2597d86bf8a04"
+          },
+          "boardDisplay": {
+            "records": 35,
+            "sha256": "05bfb0a234876692708d02c1dc5da1aec35f7342579619fe36ccf90199129686",
+            "hybridSha256": "05bfb0a234876692708d02c1dc5da1aec35f7342579619fe36ccf90199129686"
+          },
+          "pixels": {
+            "videoFrame": 2108,
+            "fullRgb24Sha256": "bb6de42a884d05e4e470ada276f3d5a9d89292a8d02494c749d705e31b16ffc6",
+            "fighterCropRgb24Sha256": "e3e4fee62becf6d5c627c9ccb030d0aedbf470a0c920c5be4c169811b47a9a36",
+            "beamStripRgb24Sha256": "797de0bdaf00e6b5b9c3592b7f5460e0ab72c4a430d2035bb40066bc250c79da"
+          }
+        },
+        "2116": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 18,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "da6952fdd0a58e7a31b9f36971c355aff6f421244103039f27713ebee6626aab"
+          },
+          "optionSha256": "860b188f31027b20c63e5c03bec906d5b7ffb1c155e0b1b28d14e33803260d3c",
+          "targetInputSha256": "af39ec74d81d951d8f91815afe7ebd11e609bb6851bb9a174e69792ba9c2e500",
+          "targetBuckets": {
+            "5": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "14": {
+              "bytes": 96,
+              "sha256": "7d0b65aadfbdbc5f221e27f98df2fc815bbdd73eac449582a6ea4450076beb41"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "b981ded53dc9a46f2f502fad1b4dc6e6e7192f81d93f586c9622118b33c67037"
+            },
+            "16": {
+              "bytes": 36,
+              "sha256": "610370c182c472a9cac2ea1ba8b217dafe512dc6614f651aa8a609cfd5e912dc"
+            },
+            "19": {
+              "bytes": 36,
+              "sha256": "49f86ae7e9c1317d103437cf814b4b7103631c48efee72f51a27b79fbcca8254"
+            }
+          },
+          "segments": {
+            "active": 4,
+            "sha256": "8c5c4f0d36fd3e3ebcb9224e1e4685a0305f7119f420233bbd6fc035e5f67fca"
+          },
+          "boardDisplay": {
+            "records": 47,
+            "sha256": "bc1bca8b4316770398ab7d62a12c9b8fbeb46f2cf89fc380ee6980886c94cfc8",
+            "hybridSha256": "bc1bca8b4316770398ab7d62a12c9b8fbeb46f2cf89fc380ee6980886c94cfc8"
+          },
+          "pixels": {
+            "videoFrame": 2153,
+            "fullRgb24Sha256": "2b646401941a26005b2c8baee938bffbdccc0b931643d0df4a6bc737bb4696d9",
+            "fighterCropRgb24Sha256": "1c0e0f09a81f4af6290c88a77181a64d22b7d715d520db52666f7d65af014596",
+            "beamStripRgb24Sha256": "616fb644c50ef1bc9109adcdb6002377abc7b091ebd57a5212395de0123d59a2"
+          }
+        },
+        "2129": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9824,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 16,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "9b7d396e2ea0154b3b1da25cc1e65dd1fb2f68f2855b7d4bb95bea33605f61e8"
+          },
+          "optionSha256": "7538d9f68627121f9f097c09d3c1dbe5797a6d228dea51e4cfb9f4a49cae2142",
+          "targetInputSha256": "af032fb90698bd38793ddfa7dba419bf99cdce36bdc4f6005d8d5de7085db498",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "f061cc86b369089e156dee86ceeda0198e0451a2f3cb7b75a444e1a1a4b67e0a"
+            },
+            "14": {
+              "bytes": 60,
+              "sha256": "a222278ecd8afee1149f71287fbb99cb197d8cfadd71b2038e6ee3c0a1d7d51e"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "b981ded53dc9a46f2f502fad1b4dc6e6e7192f81d93f586c9622118b33c67037"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "d5244edd4a7e4da3926d07fc71035b4c2e7ec62601c06b67253dd0ad4d7aa2dc"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "b22c7a0d0c7369f269481aff4e787b847b57123b796e6ddc6026e007a53bcbd3"
+            }
+          },
+          "segments": {
+            "active": 14,
+            "sha256": "a8a7a8971a098d0594dd683ca54b32f16ad90fefb732655f62888e78e737b87d"
+          },
+          "boardDisplay": {
+            "records": 61,
+            "sha256": "07ff4830c7a75111d6c549f968c0f00d09e5dfca08a59205fa6db96cd6b869af",
+            "hybridSha256": "07ff4830c7a75111d6c549f968c0f00d09e5dfca08a59205fa6db96cd6b869af"
+          },
+          "pixels": {
+            "videoFrame": 2166,
+            "fullRgb24Sha256": "9adb34d0c5e851171d575ad0f7d48f20ca98ce116a407b8706f3b4a42e010c97",
+            "fighterCropRgb24Sha256": "25d4b1da3663a6915d5863fc9a93b975793fe0b7288c6c9e1258615393cb5c0b",
+            "beamStripRgb24Sha256": "c26efafaad5eed86b3712e42db538537b68cb5e3c7cb7c32fc5bbbdd36a060b4"
+          }
+        },
+        "2241": {
+          "portWord": 65487,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 9935,
+            "velLong": 0,
+            "velShort": 111,
+            "speedIndex": 15,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "8d795f4a0116d945926fec3b788bd192137ac572676ebfbf25b1e046991364a2"
+          },
+          "optionSha256": "ac55d0b848e286d869f8962e4af5255f48e292f4b57a1ed65dddf58af1118194",
+          "targetInputSha256": "13c5b395301709f00c4a8ef8179eccd4edb7117141b4c33f7ea1386e22596caa",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "0d63a0028076040a56c2019528080c446544ea5c75346372177d84bc9bef51a8"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "a69e625703c747638c5bedf5fe80b9dbb87938eca021df38fb7983a8c23c0b2c"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "0ba0f4e4ce279768a790e705838589b668cee4c48b70c294dcc34d1056d216d2"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "a3abc7d90b1e185620d7110aa44641f6df85d8323f966c59ab324713890b727b"
+            }
+          },
+          "boardDisplay": {
+            "records": 57,
+            "sha256": "ca46118fcdea3d378ed1a0765445eb760e18aadaeb38ffaac41249490cf87891",
+            "hybridSha256": "ca46118fcdea3d378ed1a0765445eb760e18aadaeb38ffaac41249490cf87891"
+          },
+          "pixels": {
+            "videoFrame": 2278,
+            "fullRgb24Sha256": "39e50e588494f9f00201d532d3aefb241f5d99f54712f6785fea35e31709e7f2",
+            "fighterCropRgb24Sha256": "d0fe450faa205c1fb0f3e7da756af66dfdde537bae147c9629bc710952ea8d79",
+            "beamStripRgb24Sha256": "a404441fb79771492f2e94e343db58c27a8d2731f378da544d7629a6d31028ed"
+          }
+        },
+        "2301": {
+          "portWord": 65503,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 15,
+            "laserFloor": 15,
+            "tilt": 28,
+            "image": "0x00001e80",
+            "p1WithoutInvulnerabilitySha256": "0659133093f4fd46a909c1c46ab43accfed076c732219321ca26eaad634c8da2"
+          },
+          "optionSha256": "e844a887d2e272f58bf0e5ce2cd2ec14cf113e8e4b7bb1316a35d56316add75e",
+          "targetInputSha256": "43bb4251db4d96787f66e32391ef56b1fdde2576e7d6c70caed0f97179ed3fbf",
+          "targetBuckets": {
+            "5": {
+              "bytes": 24,
+              "sha256": "c4962ed51596e20a3a867778ce2b1ed5bd2cee911c14455f0fe1782301f78329"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "85ccd4ef6a3b3a2d506b921c36d9c0eca36bfcc68afb92c39ba7e2cf635f478f"
+            },
+            "16": {
+              "bytes": 168,
+              "sha256": "2cdf155ddbbcdf253fa187f816caf83a4c196e97ba34b73a34bca2c0187da09e"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "70e9ca00db93110bef0150de5c0e1033c84196c59d9418d924346460baf0a0d5"
+            }
+          },
+          "boardDisplay": {
+            "records": 51,
+            "sha256": "efe8f7ff9f6742a776b3b594f198e5b2ca58ddafb5d6388991fdf63ce3c248de",
+            "hybridSha256": "efe8f7ff9f6742a776b3b594f198e5b2ca58ddafb5d6388991fdf63ce3c248de"
+          },
+          "pixels": {
+            "videoFrame": 2338,
+            "fullRgb24Sha256": "22fb7abd36706b87facaa0207f67303b15361d74f076787eecfe5193061e60f5",
+            "fighterCropRgb24Sha256": "70222d9afb322d6f9d1785cadb381c5d1461939802469e795cdd3ca921bc15f0",
+            "beamStripRgb24Sha256": "a6b23f4ae3bcee9e71a4997ccff4c9ee70e8ec07e78a6ce863d1ca538c4b886d"
+          }
+        },
+        "2361": {
+          "portWord": 65535,
+          "movement": {
+            "posLong": 4473,
+            "posShort": 13568,
+            "velLong": 0,
+            "velShort": 0,
+            "speedIndex": 16,
+            "laserFloor": 15,
+            "tilt": 0,
+            "image": "0x00001bc4",
+            "p1WithoutInvulnerabilitySha256": "20b2d0c7525308836149cea36cccf5c2a4216e096b1b88e7a4849c0e29135f9e"
+          },
+          "optionSha256": "def770fa27faab6f52473a55d3cabcc455e3ec2c0ddad3721b51a1166a8360d4",
+          "targetInputSha256": "05576bc76c6bda322afe0f5cdc6c25d51ac8e1d21ebd9921e63c5090d3a00cc2",
+          "targetBuckets": {
+            "5": {
+              "bytes": 36,
+              "sha256": "29d1003ea3a483457c32166c8b804bd6c449e4c02ede9d67cafa8c099397f04a"
+            },
+            "14": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "15": {
+              "bytes": 24,
+              "sha256": "6e81ce2171bae11f2b8a0ed1b8b0bcdc7db466d69d1a7a619689595a4584d6cf"
+            },
+            "16": {
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "19": {
+              "bytes": 12,
+              "sha256": "ad7a15c50b7bcdcccab4663450ad2b9109c32994fd7357af8f232795415265ea"
+            }
+          },
+          "boardDisplay": {
+            "records": 52,
+            "sha256": "a74a249628d33440cdb4dd602285259389210b4edbb2c3483ca5b1f7dc0a1931",
+            "hybridSha256": "a74a249628d33440cdb4dd602285259389210b4edbb2c3483ca5b1f7dc0a1931"
+          },
+          "pixels": {
+            "videoFrame": 2398,
+            "fullRgb24Sha256": "9d76466d762ffe0e528be4d84f4fcae729f893c5727d94fc6b07e441abfb0d5f",
+            "fighterCropRgb24Sha256": "7783d8872a819df10d5738354a9fdfafb45ec4404ffd8519d124595fb470d9cd",
+            "beamStripRgb24Sha256": "f390b2e5254290bc5e0ee8b97504b0505d71a45e9ca9ec69694f2019120ce394"
+          }
+        }
+      }
+    }
+  ]
+}

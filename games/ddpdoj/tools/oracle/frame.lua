@@ -74,6 +74,10 @@
 --                  shot records the player's own spawn can reach and for the
 --                  sprite-request bucket at $808854, where the comparison is
 --                  byte-for-byte containment rather than a digest.  OPT-IN.
+--   PROBE_RAWDUMP_FROM  first LF whose RAWDUMP columns contain bytes; earlier
+--                  rows retain empty columns so bounded late probes stay small
+--   PROBE_BUCKETS  comma-separated VERSION-B bucket indexes captured at
+--                  $23D382 before call #4 drains and clears their counters
 --   PROBE_EXEC     "name=pc:lo:hi,..." -- EXTRA columns, each the per-LOGIC-
 --                  FRAME execution count of one instruction, hooked with a
 --                  WRITE tap over the range it writes.  OPT-IN.
@@ -285,6 +289,7 @@ end
 -- -- "every record the port emitted appears verbatim in the board's bucket" --
 -- and containment needs the bytes, not a digest of them.
 local RAWDUMPS = {}
+local RAWDUMP_FROM = tonumber(os.getenv("PROBE_RAWDUMP_FROM") or "0")
 for kv in (os.getenv("PROBE_RAWDUMP") or ""):gmatch("[^,]+") do
   local k, lo, len = kv:match("^([%w_]+)=(%x+):(%x+)$")
   if k then
@@ -294,6 +299,40 @@ for kv in (os.getenv("PROBE_RAWDUMP") or ""):gmatch("[^,]+") do
   else
     p("RAWDUMP_UNPARSED [%s]", kv)
   end
+end
+
+-- -------------------------------------------------------------- PROBE_BUCKETS
+-- `$23D382` is the measured instant when all producer counters are live and no
+-- request has been drained. The sample-point copy would see zeroed counters.
+-- The destination tap is also filtered by issuing PC, so another writer to the
+-- display-list head cannot silently replace the intended call-4 boundary.
+local BUCKET_SPEC = {
+  [5] = {0x862c, 0xafd0}, [14] = {0x8854, 0xafd6},
+  [15] = {0x8eb4, 0xafda}, [16] = {0x8bb4, 0xafd8},
+  [19] = {0x8ee4, 0xafdc},
+}
+local EFFECT_BUCKETS, bucket_pending = {}, {}
+local EFFECT_BUCKET_PC = 0x23d382
+for tok in (os.getenv("PROBE_BUCKETS") or ""):gmatch("[^,]+") do
+  local i, spec = tonumber(tok), BUCKET_SPEC[tonumber(tok)]
+  if spec then EFFECT_BUCKETS[#EFFECT_BUCKETS + 1] = {i, spec[1], spec[2]}
+  else p("BUCKET_UNPARSED [%s]", tok) end
+end
+local function bucket_hex(off, len)
+  local b = {}
+  for i = 0, len - 1 do b[#b + 1] = string.format("%02x", RAM:read_u8(off + i)) end
+  return table.concat(b)
+end
+if #EFFECT_BUCKETS > 0 then
+  TAPS[#TAPS + 1] = PROG:install_write_tap(0x80B000, 0x80B001, "effect-buckets",
+    function(offset, data, mask)
+      if (CPU.state["CURPC"].value & 0xffffff) ~= EFFECT_BUCKET_PC then return data end
+      for _, b in ipairs(EFFECT_BUCKETS) do
+        local n = RAM:read_u16(b[3])
+        bucket_pending[b[1]] = bucket_hex(b[2], n)
+      end
+      return data
+    end)
 end
 
 -- ---------------------------------------------------------------- PROBE_EXEC
@@ -1028,6 +1067,7 @@ if PORTIN then COLS[#COLS + 1] = "portin" end
 for _, w in ipairs(WATCH) do COLS[#COLS + 1] = w[1] end
 for _, w in ipairs(EXECS) do COLS[#COLS + 1] = w[1] end
 for _, w in ipairs(RAWDUMPS) do COLS[#COLS + 1] = w[1] end
+for _, b in ipairs(EFFECT_BUCKETS) do COLS[#COLS + 1] = "bucket" .. b[1] end
 
 -- THE MACHINE CLOCK, IN 68000 CYCLES, AND WHY IT IS NOT attoseconds.
 -- Wave 1 computed `t = M.time.attoseconds + M.time.seconds * 1e18`.  int64's
@@ -1116,9 +1156,17 @@ local function emit(armpc)
   end
   for _, w in ipairs(EXECS) do r[#r + 1] = w[5]; w[5] = 0 end
   for _, w in ipairs(RAWDUMPS) do
-    local b = {}
-    for i = 0, w[3] - 1 do b[#b + 1] = string.format("%02x", RAM:read_u8(w[2] + i)) end
-    r[#r + 1] = table.concat(b)
+    if lf < RAWDUMP_FROM then
+      r[#r + 1] = ""
+    else
+      local b = {}
+      for i = 0, w[3] - 1 do b[#b + 1] = string.format("%02x", RAM:read_u8(w[2] + i)) end
+      r[#r + 1] = table.concat(b)
+    end
+  end
+  for _, b in ipairs(EFFECT_BUCKETS) do
+    r[#r + 1] = bucket_pending[b[1]] or ""
+    bucket_pending[b[1]] = nil
   end
   local line = table.concat(r, "\t")
   if out then out:write(line, "\n") else p("ROW %s", line) end

@@ -4,8 +4,12 @@
 // mid-stage snapshot, so changing only the two selector mailboxes would leave
 // the initialized player record and option template stale.
 
-import { P, RAM, OPT } from './machine.js';
-import { materializeSpriteTextPalette, paletteSet241688 } from './palette.js';
+import { MACHINE, P, RAM, OPT } from './machine.js';
+import { runOptionObject } from './options.js';
+import {
+  install24150A, materializeSpriteTextPalette, paletteSet241688,
+} from './palette.js';
+import { BUCKETS } from './spritequeue.js';
 
 export const AUTHENTIC_SHIPS = Object.freeze([0, 2]);
 export const AUTHENTIC_STYLES = Object.freeze([2, 4, 6]);
@@ -51,11 +55,30 @@ export function authenticSelectionQuery(value) {
 }
 
 /**
+ * Recreate the 33 option passes between P1 creation at LF1968 and the LF2000
+ * browser seed. The replay runs on a RAM clone, so its temporary sprite queues,
+ * counters, and phase writes cannot advance the live mid-stage world.
+ * Only the cartridge-derived P1 option block returns to live RAM.
+ */
+function warmAuthenticOptions(game) {
+  if (!game.tables) return;
+
+  const replay = game.ram.clone();
+  for (let frame = 0; frame < 33; frame++) {
+    replay.setU8(RAM.altPhase, frame % 2 === 0 ? 1 : 0);
+    for (const bucket of BUCKETS) replay.setU16(bucket.counter, 0);
+    runOptionObject(replay, { rom: game.rom, tables: game.tables });
+  }
+  const begin = RAM.p1Options - MACHINE.ramBase;
+  game.ram.b.set(replay.b.subarray(begin, begin + OPT.stride), begin);
+}
+
+/**
  * Apply an explicit non-default P1 selection to an already constructed ordinary
- * browser Game.  Every derived value below is the direct read performed by the
- * cartridge's `$2491C0` initializer.  Clearing the option record leaves its
- * `$8000` live bit set and its one-time-init bit clear, so `$24C0C8` copies the
- * selected `$24BBAA` template on the first option pass.
+ * browser Game. Every derived value below is the direct read performed by the
+ * cartridge's `$2491C0` initializer. A full Game also replays the bounded option
+ * history that happened before the LF2000 seed; a small unit fixture without
+ * movement tables retains the initializer's `$8000` option state.
  */
 export function applyAuthenticSelection(game, value) {
   const selected = normalizeAuthenticSelection(value);
@@ -74,7 +97,7 @@ export function applyAuthenticSelection(game, value) {
   ram.setU16(rec + P.shipSel, ship);
   ram.setU16(rec + P.optFormation, style);
 
-  const styleValue = rom.u8(0x2551fa + (style - 2));       // $24932E..$24935E
+  const styleValue = rom.u8(0x2551fa + (style - 2));       // cartridge style lookup
   ram.setU8(rec + 0x24, styleValue);
   ram.setU8(rec + 0x25, styleValue);
 
@@ -88,6 +111,7 @@ export function applyAuthenticSelection(game, value) {
   ram.setU8(rec + P.speedIdx, speed);                      // $2494C0
   ram.setU8(rec + P.baseSpeed, speed);                     // $2494C4
   ram.setU8(rec + P.laserFloor, rom.u8(0x255201 + speedIndex));
+  ram.setU8(rec + P.invuln, 0xd0);                           // measured LF2000 timer
   ram.setU16(rec + 0x2c, rom.u16(0x2552c4 + rampIndex));  // $2494D4
   ram.setU16(rec + 0x36, rom.u16(0x2552c6 + rampIndex));  // $2494D8
 
@@ -95,12 +119,19 @@ export function applyAuthenticSelection(game, value) {
     ram.setU16(RAM.p1Options + word * 2, 0);
   }
   ram.setU16(RAM.p1Options + OPT.state, 0x8000);           // $2492C8
+  warmAuthenticOptions(game);
 
-  // `$25CDB0` calls `$241688` with D0 = 0 for P1. Its D1 gate selects
+  // `$25F456` indexes the three eight-byte style records at `$25F868`; each
+  // record's second longword is the 64-byte source installed as sprite bank 23.
+  // `$25CDB0` separately calls `$241688` with D0 = 0 for P1. Its D1 gate selects
   // fighter 0's arm at zero and fighter 2's arm at nonzero. Copy only the
   // resulting sprite and text regions: entering `$24133C` here would also run
   // the unrelated `$241404` background fade one extra time.
   if (game.palette) {
+    const styleRow = 0x25f868 + (style - 2) * 4;
+    const stylePalette = rom.u32(styleRow + 4);
+    install24150A(ram, game.palette, 0x17, rom.bytes(stylePalette, 64),
+      0x25f456, 'selected style presentation palette');
     paletteSet241688(ram, game.palette, rom, 0, ship / 2);
     materializeSpriteTextPalette(ram, game.palette);
   }
