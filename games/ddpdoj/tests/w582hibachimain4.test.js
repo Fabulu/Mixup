@@ -317,7 +317,7 @@ test('W582 freeze blocks only movement and persistence has no unrelated side eff
       Array(SCHED.a1Slots).fill(0));
   });
 
-test('W582 restores exact lf150131 and reaches the exact W586 $242748 frontier',
+test('W582 restores exact lf150131 and reaches the exact W587 $291040 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), TABLE_HASH);
@@ -347,7 +347,7 @@ test('W582 restores exact lf150131 and reaches the exact W586 $242748 frontier',
 
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 1900; attempted++) {
+    for (attempted = 1; attempted <= 3900; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -370,28 +370,20 @@ test('W582 restores exact lf150131 and reaches the exact W586 $242748 frontier',
       resumed.game.ram.u8(a6 + 0x1a), resumed.game.ram.u8(a6 + 0x1b),
       resumed.game.ram.u16(RNG_STATE),
     ], [
-      1711, 151841, 162479, 0x242748, 4, 8, 16, 1,
-      0x81378c, 0x81533c, 0x5dfe, 0x1bc9, 2, 0x25, 0x0089,
+      3667, 153797, 164459, 0x291040, 4, 8, 16, 1,
+      0x81378c, 0x81533c, 0x5418, 0x19ac, 2, 0x1b, 0x00fb,
     ]);
-    assert.match(error?.message ?? '', /kind 28's SPLIT arm:[\s\S]*\$242748/);
+    assert.match(error?.message ?? '', /word at \$291040 is outside every ROM window/);
     assert.deepEqual([
       resumed.game.ram.u16(SCHED.seqCursor), resumed.game.ram.u16(SCHED.seqSub),
       resumed.game.ram.u16(SCHED.seqPending), resumed.game.ram.u16(SCHED.seqRestart),
     ], [8, 4, 8, 0]);
-    assert.deepEqual(snapshot(resumed.game.ram, SCHED.seqDst, SCHED.seqDst + 0x20),
-      [0x1e, 1, ...Array(0x1e).fill(0)]);
     assert.deepEqual(slotWords(resumed.game.ram,
-      SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride), [0x8110, 0, 0, 0, 0]);
-    assert.equal(resumed.game.ram.u16(SCHED.a4Base + SCHED.a4Stride + 0x04), 0);
+      SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride), Array(SCHED.a4Slots).fill(0));
     assert.deepEqual(slotWords(resumed.game.ram,
-      SCHED.a3Base, SCHED.a3Slots, SCHED.a3Stride),
-    [0x8100, 0x8101, 0x8103, 0x8104, 0x8106, 0x8107, 0, 0, 0, 0]);
-    assert.equal(SCHED.a3Base + 4 * SCHED.a3Stride, 0x812af4);
-    assert.deepEqual(slotWords(resumed.game.ram,
-      SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride),
-    [0x810a, ...Array(SCHED.a1Slots - 1).fill(0)]);
+      SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride), Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'b06548c3009fe4dc10735cec92d13e6c8053f6fe5d7c1cc61df0ecc730cdaaa6',
-      '3ce4500007fede13e21206fae1902cf8f207f12332f5d105527034d8ee893eb6',
+      'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
+      'ad99045f00e36a8a2343880bd4a7e14c3aaac1e7bbecc6f104603f6f7044d85a',
     ]);
   });

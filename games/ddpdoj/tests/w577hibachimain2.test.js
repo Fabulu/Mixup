@@ -244,7 +244,7 @@ test('W577 persists without player, object, bullet, sound, or sequencer transiti
     assert.notEqual(b.ram.u16(a4), 0, 'the target state remains live without clearing the A0 slot');
   });
 
-test('W577 restores exact lf148131 and reaches the W586 $242748 frontier',
+test('W577 restores exact lf148131 and reaches the W587 $291040 frontier',
   { skip: SKIP_CHECKPOINT }, async () => {
     const live = await bundle();
     assert.equal(canonicalHash(live.tables), LIVE_TABLE_HASH);
@@ -270,7 +270,7 @@ test('W577 restores exact lf148131 and reaches the W586 $242748 frontier',
     const resumed = restoreCheckpoint(currentCheckpoint, exact, { ship: 0, style: 4 });
     let error = null;
     let attempted = 0;
-    for (attempted = 1; attempted <= 3900; attempted++) {
+    for (attempted = 1; attempted <= 5900; attempted++) {
       try {
         resumed.game.ram.setU8(RAM.player1 + P.invuln, 0xff);
         resumed.game.step(resumed.probe.inputWord);
@@ -289,10 +289,10 @@ test('W577 restores exact lf148131 and reaches the W586 $242748 frontier',
     assert.deepEqual([
       attempted, resumed.game.logicFrame, resumed.game.videoFrame, error?.romAddress,
       state.raw.stage, state.raw.loop, a6, resumed.game.ram.u8(a6 + 0x1a),
-    ], [3711, 151841, 162479, 0x242748, 4, 1, 0x81533c, 2]);
-    assert.match(error?.message ?? '', /kind 28's SPLIT arm:[\s\S]*\$242748/);
+    ], [5667, 153797, 164459, 0x291040, 4, 1, 0x81533c, 2]);
+    assert.match(error?.message ?? '', /word at \$291040 is outside every ROM window/);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'b06548c3009fe4dc10735cec92d13e6c8053f6fe5d7c1cc61df0ecc730cdaaa6',
-      '3ce4500007fede13e21206fae1902cf8f207f12332f5d105527034d8ee893eb6',
+      'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
+      'ad99045f00e36a8a2343880bd4a7e14c3aaac1e7bbecc6f104603f6f7044d85a',
     ]);
   });

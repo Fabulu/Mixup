@@ -53,11 +53,19 @@
 // the continuation as a per-slot function (whose net A6 move is +$40) is faithful
 // to this -- verified: every stage-1 continuation's net A6 delta is +$40.
 
-import { BUL, REC, TYPEBIT, behaviourFor } from './bullets.js';
+import { AimTables, aim256, targetSelectByA6_2A } from './aim.js';
+import { BUL, REC, TYPEBIT, WriteLog, behaviourFor, fire } from './bullets.js';
 import { velocity } from './bulletmath.js';
 import { allocPoolA27F8F0 } from './bee.js';
 import { unreached } from './unported.js';
 import { i16, u16 } from './ram.js';
+
+const AIM_TABLES = new WeakMap();
+function aimTables(rom) {
+  let tables = AIM_TABLES.get(rom);
+  if (!tables) { tables = new AimTables(rom); AIM_TABLES.set(rom, tables); }
+  return tables;
+}
 
 /** WAVE 437 falsification seam.  `'no-death-effect'` puts `freeSlot` back to
  *  what it was for 411 waves -- the `jsr $27F8F8` COUNTED and not run. */
@@ -1998,21 +2006,9 @@ CONTINUATIONS.set(0x283616, (ctx, base) => {
 // $1C1BF8, and its descriptor base $1C1B68 is the bouncers' too.  Three families
 // sharing one sprite ring.
 //
-// THE FIRE ARM IS A LOUD NAMED THROW, and this is the transcription of what it
-// would do, so the next wave does not have to re-read it:
-//
-//     $2832A0  jsr $242748       re-aim at the player; returns CARRY on failure
-//     $2832A6  bcs               carry -> no spawn, fall to the animation
-//     $2832AA  jsr $242296
-//     $2832B0  tst.w $8130DC / bne $2832C2   -- when that global is ZERO:
-//     $2832BA    D1 = dir (+$1B) + $B0
-//     $2832C2  D0 = the longword at +$2C, D2 = position (+$2), D3 = D4 = 0
-//     $2832CE  jsr $2817C2       the bank-B spawn core
-//
-// `$242748`/`$242296` are the player-track subsystem and are not ported.  The
-// spawn itself is wirable through `spawnCore`, but its direction argument comes
-// out of `$242748`, so wiring it without the aim would invent every bullet it
-// produces.  Throwing by address is the correct answer until the aim lands.
+// The fire arm selects a live player, computes the canonical 256-direction aim,
+// then conditionally replaces it with the parent direction plus $B0 before
+// entering the existing bank-B spawn core.
 
 INIT_BODIES.set(0x283260, (ctx, base) => {
   const { ram } = ctx;
@@ -2031,14 +2027,22 @@ CONTINUATIONS.set(0x283290, (ctx, base) => {
   if (n !== 0) {
     ram.setU8(base + 0x28, (n - 1) & 0xff);            // $283298 subq.b #1,$28
     if (((n - 1) & 0xff) === 0) {                      // $28329C bne -- fire at ZERO
-      unreached(0x242748,
-        `kind 28's SPLIT arm: the +$28 byte reached 0, so $2832A0 calls $242748 `
-        + `(re-aim at the player; carry means "no target, skip the spawn"), then `
-        + `$242296, then spawns through $2817C2 with D1 = the re-aimed direction `
-        + `(+$B0 when $8130DC is zero), D0 = the longword at +$2C and D2 = this `
-        + `bullet's position. The player-track subsystem is not ported, and the `
-        + `spawn's direction comes out of it, so every bullet it produced would `
-        + `be invented`);
+      const selected = targetSelectByA6_2A(ram, base); // $2832A0 jsr $242748
+      if (!selected.carry) {                           // $2832A6 bcs
+        let direction = aim256(                        // $2832AA jsr $242296
+          aimTables(ctx.rom),
+          ram.u16(base + REC.posA), ram.u16(base + REC.posB),
+          ram.u16(selected.addr + 0x02), ram.u16(selected.addr + 0x04));
+        if (ram.u16(0x8130dc) === 0) {                 // $2832B0 tst.w / bne
+          direction = (ram.u8(base + REC.dir) + 0xb0) & 0xff; // $2832BA..$2832C0
+        }
+        const result = fire({ ram, rom: ctx.rom, log: new WriteLog(ram), mut: ctx.mut },
+          0x2817c2, {
+            d0: ram.u32(base + 0x2c), d1: direction,
+            d2: ram.u32(base + REC.posA), d3: 0, d4: 0,
+          });                                          // $2832C2..$2832CE
+        ctx.bulletSpawn?.(0x2832ce, result);
+      }
     }
   }
   // $2832D2 the animation tail -- the wall bouncers' ($283064) with a fixed pair.

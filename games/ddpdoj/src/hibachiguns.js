@@ -2117,8 +2117,8 @@ export function gunAInit2A8B7C(ram, rom, a4, a6) {
  * frames and then runs `$2832A0 jsr $242748` (re-aim on that copied index)
  * followed by `$2832B0 tst.w $8130DC / bne`, taking `dir + $B0` only when the
  * word is ZERO.  So the gun writes the flag its own bullets consult twenty
- * frames later.  `src/mover.js` throws by address at that split, because
- * `$242748`'s subsystem is unported; nothing in this file invents it.
+ * frames later, and `src/mover.js` executes that split through the canonical
+ * target selector, aim core, and bank-B spawn core.
  *
  * **THE RING IS TWELVE SHOTS `$15` APART, WHICH IS `$FC` -- NOT `$100`.**
  * `$2A8C0A moveq #$B` + `dbra` is TWELVE (TRAP 2) and `$2A8C06 move.b #$15,D6`

@@ -261,8 +261,6 @@ const OVERLAP_DECLARED = Object.freeze({
   0x24200a: 'aim.js is ported; initbody defers because the SPAWN POSITION is W24-derived, so the '
     + 'aim input is what is missing, not the aim',
   0x24202c: 'aim.js is ported; same W24 spawn-position reason as $24200A',
-  0x242748: 'mover.js kind 28 SPLIT arm: an `unreached` naming the whole unported spawn chain '
-    + '($242296 + $2817C2), not just the re-aim',
   0x244074: 'bullets.js `fire` merely NAMES $244074 in its doc; midboss.js counts the bullet-'
     + 'cancel SCORE walk. Doc-convention false positive, kept declared so it stays looked at',
   // W445 DELETED THE $2878CC ROW, per this file's own rule two tests down: the two

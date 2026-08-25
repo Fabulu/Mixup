@@ -1112,43 +1112,100 @@ test('kind 35 starts at SPEED ZERO and winds up one step every fifth animating '
 
 // ================================== W27 FAMILY J: the SPLITTER (kind 28) =====
 
-test('kind 28 fires when its +$28 byte REACHES ZERO, not on underflow, and only '
-  + 'ONCE ($28329C bne, guarded by $283290 tst.b/beq)',
-  { skip: !HAVE_TABLES }, () => {
+test('kind 28 fires when +$28 reaches zero, replaces D1 with parent direction +$B0, '
+  + 'and never fires again', { skip: !HAVE_TABLES }, () => {
     const ram = new Ram(null);
     ram.setU16(0x81b41a, 1);
     ram.setU16(0x813176, 0);
-    const base = seedBullet(ram, 0, { type: 0x8100 | 28, speed: 0x14, dir: 0x40 });
-    const ctx = { ram, rom: ROM, notes: new UnportedLog() };
-    runMover(ctx);                                    // F1: the initialiser
+    const base = seedBullet(ram, 19,
+      { type: 0x8100 | 28, posA: 0x6aad, posB: 0x28dd, speed: 0x1e, dir: 0x23 });
+    runMover({ ram, rom: ROM, notes: new UnportedLog() }); // F1: initialiser
     assert.equal(ram.u16(base + 0x28), 0x1410,
       'F1: +$28 counter $14, +$29 $10 (nothing in this body reads +$29)');
     assert.equal(ram.u32(base + 0x0a), 0x1c1b68,
-      'F1: the WALL BOUNCERS\' descriptor base -- three families share this ring');
-    ram.setU32(base + REC.velA, 0);
-    // $14 = 20 frames. Every countdown in families C/D/F/H/I/K uses `bcc` and
-    // fires on UNDERFLOW, i.e. one frame LATER than this one. Nineteen quiet
-    // frames, then the twentieth throws.
+      'F1: the WALL BOUNCERS\' descriptor base');
+
+    ram.setU16(0x8103e6, 0x8000);                       // P1 alive
+    ram.setU32(0x8103e6 + 0x02, 0x08000e00);
+    ram.setU16(0x810448, 0);                            // P2 dead
+    ram.setU16(0x8130dc, 0);                            // replace raw aim with parent D1 + $B0
+    ram.setU32(base + 0x2c, 0x00030016);                // speed bias 3, kind 22
+    const spawned = [];
+    const ctx = { ram, rom: ROM, notes: new UnportedLog(),
+      bulletSpawn: (site, result) => spawned.push([site, result]) };
+    const cont = CONTINUATIONS.get(0x283290);
+
     for (let f = 1; f <= 19; f++) {
-      runMover(ctx);
-      ram.setU32(base + REC.velA, 0);
+      cont(ctx, base);
       assert.equal(ram.u8(base + 0x28), 0x14 - f, `frame ${f}: +$28 ticked`);
+      assert.equal(spawned.length, 0, `frame ${f}: no early split`);
     }
-    assert.throws(
-      () => runMover(ctx),
-      (e) => e instanceof Unreached && e.romAddress === 0x242748,
-      'frame 20: +$28 reached 0 and the split arm throws by address');
-    // The throw happened AFTER the decrement, so +$28 is now 0 and the
-    // `tst.b / beq` guard makes the arm a ONE-SHOT: it must never fire again,
-    // and in particular must NOT come back round after 256 more frames.
+    const parentDirection = ram.u8(base + REC.dir);
+    const parentPosition = ram.u32(base + REC.posA);
+    const beforeTail = ram.u32(base + 0x0a);
+    cont(ctx, base);                                    // frame 20: 1 -> 0, split
+
     assert.equal(ram.u8(base + 0x28), 0x00, '+$28 is spent');
-    for (let f = 0; f < 300; f++) {
-      runMover(ctx);                                  // must not throw
-      ram.setU32(base + REC.velA, 0);
-    }
+    assert.equal(ram.u8(base + 0x29), 0x10, '+$29 is untouched');
+    assert.equal(ram.u8(base + REC.dir), parentDirection,
+      'the replacement direction belongs to the child, not the parent');
+    assert.equal(beforeTail, 0x1c1e14, 'frame 19 parks one step below the ring limit');
+    assert.equal(ram.u32(base + 0x0a), 0x1c1bf8,
+      'the normal animation tail still runs and wraps on the split frame');
+    assert.equal(spawned.length, 1);
+    assert.equal(spawned[0][0], 0x2832ce, 'callback reports the canonical JSR site');
+    assert.deepEqual(spawned[0][1],
+      [{ carry: false, slot: 0, addr: BUL.pool, declined: false }]);
+    assert.deepEqual([
+      ram.u16(BUL.pool + REC.typeWord), ram.u32(BUL.pool + REC.posA),
+      ram.u8(BUL.pool + REC.speed), ram.u8(BUL.pool + REC.dir),
+      ram.u8(BUL.pool + REC.origSpeed), ram.u8(BUL.pool + REC.origDir),
+    ], [0x8316, parentPosition, 0x17, 0xd3, 0x17, 0xd3]);
+
+    for (let f = 0; f < 300; f++) cont(ctx, base);
     assert.equal(ram.u8(base + 0x28), 0x00,
-      'the guard skips the whole arm, so +$28 is never decremented again -- an '
-      + 'underflow reading would wrap to $FF and re-fire every 256 frames');
+      'the spent guard never decrements the byte to $FF');
+    assert.equal(spawned.length, 1, 'the splitter is one-shot');
+  });
+
+test('kind 28 skips on carry, uses raw aim behind the nonzero gate, and falls '
+  + 'back from dead P2 to live P1', { skip: !HAVE_TABLES }, () => {
+    const run = ({ p1Alive, p2Alive, selector, gate }) => {
+      const ram = new Ram(null);
+      ram.setU16(0x81b41a, 1);
+      const base = seedBullet(ram, 19,
+        { type: 0x821c, posA: 0x6b86, posB: 0x2983, speed: 0x1e, dir: 0x23,
+          cont: 0x283290 });
+      ram.setU8(base + 0x28, 1);
+      ram.setU8(base + 0x29, 0x10);
+      ram.setU8(base + 0x2a, selector);
+      ram.setU32(base + 0x2c, 0x00030016);
+      ram.setU32(base + 0x0a, 0x1c1bf8);
+      ram.setU16(0x8103e6, p1Alive ? 0x8000 : 0);
+      ram.setU32(0x8103e6 + 0x02, 0x08000e00);
+      ram.setU16(0x810448, p2Alive ? 0x8000 : 0);
+      ram.setU32(0x810448 + 0x02, 0x54002d00);
+      ram.setU16(0x8130dc, gate);
+      const spawned = [];
+      CONTINUATIONS.get(0x283290)({ ram, rom: ROM,
+        bulletSpawn: (site, result) => spawned.push([site, result]) }, base);
+      return { ram, base, spawned };
+    };
+
+    const carry = run({ p1Alive: false, p2Alive: false, selector: 0, gate: 1 });
+    assert.equal(carry.spawned.length, 0, 'both players dead: carry skips the spawn');
+    assert.equal(carry.ram.u16(BUL.pool), 0, 'carry leaves the first free slot untouched');
+    assert.equal(carry.ram.u8(carry.base + 0x28), 0, 'the one-shot is spent on carry');
+    assert.equal(carry.ram.u32(carry.base + 0x0a), 0x1c1c1c,
+      'carry still falls through to the animation tail');
+
+    const raw = run({ p1Alive: true, p2Alive: false, selector: 0, gate: 1 });
+    assert.equal(raw.ram.u8(BUL.pool + REC.dir), 0x90,
+      'nonzero $8130DC keeps the exact raw P1 aim');
+
+    const fallback = run({ p1Alive: true, p2Alive: false, selector: 1, gate: 1 });
+    assert.equal(fallback.ram.u8(BUL.pool + REC.dir), 0x90,
+      'a dead nominated P2 falls back to live P1 before aiming');
   });
 
 test('kind 28 keeps animating on the frames its split arm is idle ($2832D2)',
@@ -1236,9 +1293,8 @@ test('the ported-body inventory is exactly 37 initialisers + 36 continuations', 
   // family I kinds 30/31, family J kind 28, family K kind 33, and kind 35.
   // Kind 10's $282840 is also the target for kinds 14 and 15, which alias it in
   // the $282030 table.  So 37 distinct bodies cover ALL 39 kind indices: no
-  // behaviour kind reaches the initialiser throw any more.  (Kind 28's SPLIT
-  // ARM still throws by address at $242748 -- the body is ported, the player-
-  // track subsystem it calls is not.)
+  // behaviour kind reaches the initialiser throw any more. W587 also ports kind
+  // 28's SPLIT arm through its player target, aim, and bank-B spawn path.
   assert.deepEqual([...INIT_BODIES.keys()].sort((a, b) => a - b),
     [0x282104, 0x282162, 0x2821c2, 0x2823ec, 0x2824a8, 0x282564, 0x282620,
      0x2826dc, 0x282772, 0x2827e0, 0x282840, 0x2828a0, 0x282908, 0x282962,

@@ -121,6 +121,9 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
       object14ArtFrames: 3,
       object15: 0x2a4af6,
       object16: 0x2a4cfc,
+      object16CodeEnd: 0x2a4d3c,
+      object16Art: 0x2a4d3e,
+      object16ArtFrames: 8,
       object17: 0x2a4d5e,
       object18: 0x2a4de0,
     });
