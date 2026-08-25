@@ -5,12 +5,14 @@
 // below. A vanilla launch never creates a mod state, so every hook returns before
 // touching RAM, input, timing, or pixels.
 
-import { fireBomb2498E2 } from './bomb.js';
+import { BOMBRAM, fireBomb2498E2 } from './bomb.js';
 import { spawnCore, WriteLog } from './bullets.js';
 import { AimTables, aim64FromCaller } from './aim.js';
 import { abcd, bcdAdd, LEDGER } from './score.js';
 import { spawnConvertedShot } from './shots.js';
 import { SPAWN } from './spawn.js';
+import { DMG, bulletWindowSlots } from './damage.js';
+import { i16 } from './ram.js';
 
 export const CATEGORIES = Object.freeze(['survival', 'arsenal', 'challenge', 'presentation']);
 
@@ -173,6 +175,16 @@ export const MODS = Object.freeze({
     blurb: 'Blend every frame with the prior displayed result.',
     effects: ['post-RGB transform: per-channel mean with one-frame history'],
   }),
+  'drop-sprite-hold': mod({
+    name: 'Drop the Sprite Hold', category: 'presentation', replaySafe: true,
+    blurb: 'Display the sprite list just built instead of the cabinet\'s one-frame-old DMA list.',
+    effects: ['presentation list snapshot moves from before Game.step() to after it'],
+  }),
+  'show-hitboxes': mod({
+    name: 'Show Hitboxes', category: 'presentation', replaySafe: true,
+    blurb: 'Overlay every live damaging and collectible collision region.',
+    effects: ['post-RGB overlay: cartridge collision records projected at 1/64 pixel'],
+  }),
 });
 
 export const MOD_IDS = Object.freeze(Object.keys(MODS));
@@ -255,6 +267,7 @@ export function resolveLoadout(ids = []) {
   });
   const presentation = Object.freeze({
     invert: has('invert-colors'), monochrome: has('monochrome'), ghost: has('ghost-trail'),
+    dropSpriteHold: has('drop-sprite-hold'), hitboxes: has('show-hitboxes'),
   });
   const replayBlocking = Object.freeze(kept.filter((id) => !MODS[id].replaySafe));
 
@@ -665,6 +678,204 @@ export function applyPresentationMods(state, rgb) {
     for (let i = 0; i < rgb.length; i++) {
       rgb[i] = (rgb[i] + prior[i]) >> 1;
       prior[i] = rgb[i];
+    }
+  }
+  return rgb;
+}
+
+const HITBOX_W = 448;
+const HITBOX_H = 224;
+
+export const HITBOX_COLORS = Object.freeze({
+  enemy: Object.freeze([255, 224, 0]),
+  shot: Object.freeze([64, 160, 255]),
+  bullet: Object.freeze([255, 32, 32]),
+  collectible: Object.freeze([255, 64, 255]),
+  weapon: Object.freeze([255, 128, 32]),
+  p1: Object.freeze([64, 255, 64]),
+  p2: Object.freeze([32, 255, 255]),
+});
+
+function hitboxPixel(rgb, longAxis, shortAxis, color) {
+  if (longAxis < 0 || longAxis >= HITBOX_W || shortAxis < 0 || shortAxis >= HITBOX_H) return;
+  const at = (shortAxis * HITBOX_W + longAxis) * 3;
+  rgb[at] = color[0]; rgb[at + 1] = color[1]; rgb[at + 2] = color[2];
+}
+
+function hitboxOutline(rgb, bounds, color) {
+  let minLong = i16(bounds.minLong) >> 6;
+  let maxLong = i16(bounds.maxLong) >> 6;
+  let minShort = i16(bounds.minShort) >> 6;
+  let maxShort = i16(bounds.maxShort) >> 6;
+  if (minLong > maxLong || minShort > maxShort
+      || maxLong < 0 || minLong >= HITBOX_W || maxShort < 0 || minShort >= HITBOX_H) return;
+  minLong = Math.max(0, minLong); maxLong = Math.min(HITBOX_W - 1, maxLong);
+  minShort = Math.max(0, minShort); maxShort = Math.min(HITBOX_H - 1, maxShort);
+  for (let x = minLong; x <= maxLong; x++) {
+    hitboxPixel(rgb, x, minShort, color);
+    hitboxPixel(rgb, x, maxShort, color);
+  }
+  for (let y = minShort + 1; y < maxShort; y++) {
+    hitboxPixel(rgb, minLong, y, color);
+    hitboxPixel(rgb, maxLong, y, color);
+  }
+}
+
+function ordinaryBounds(ram, rec) {
+  const long = ram.u16(rec + 0x02), short = ram.u16(rec + 0x04);
+  return {
+    maxLong: (long + ram.u16(rec + 0x10)) & 0xffff,
+    minLong: (long - ram.u16(rec + 0x12)) & 0xffff,
+    maxShort: (short + ram.u16(rec + 0x14)) & 0xffff,
+    minShort: (short - ram.u16(rec + 0x16)) & 0xffff,
+  };
+}
+
+function shotBounds(ram, rec) {
+  const maxLong = (ram.u16(rec + 0x02) + ram.u16(rec + 0x10)) & 0xffff;
+  const maxShort = (ram.u16(rec + 0x04) + ram.u16(rec + 0x14)) & 0xffff;
+  return {
+    maxLong,
+    minLong: (maxLong - ram.u16(rec + 0x12)) & 0xffff,
+    maxShort,
+    minShort: (maxShort - 2 * ram.u16(rec + 0x16)) & 0xffff,
+  };
+}
+
+function itemBounds(ram, rec) {
+  const long = ram.u16(rec + 0x02), short = ram.u16(rec + 0x04);
+  const longExtent = ram.u16(rec + 0x10), shortExtent = ram.u16(rec + 0x12);
+  return {
+    maxLong: (long + longExtent) & 0xffff,
+    minLong: (long - longExtent) & 0xffff,
+    maxShort: (short + shortExtent) & 0xffff,
+    minShort: (short - shortExtent) & 0xffff,
+  };
+}
+
+function continuousBeamBounds(ram, rec) {
+  const minLong = ram.u16(rec + 0x02);
+  const rawMaxLong = (minLong + 0x0400 + ram.u16(rec + 0x06)) & 0xffff;
+  const reach = ram.u16(rec + 0x10);
+  return {
+    minLong,
+    maxLong: reach < rawMaxLong ? reach : rawMaxLong,
+    minShort: (ram.u16(rec + 0x04) - ram.u16(rec + 0x0a)) & 0xffff,
+    maxShort: (ram.u16(rec + 0x04) + ram.u16(rec + 0x08)) & 0xffff,
+  };
+}
+
+function itemHitboxes(ram, rgb) {
+  const count = ram.u16(DMG.itemCount);
+  let slot = 0;
+  for (let n = 0; n < count; n++) {
+    let rec = null;
+    while (slot < 25) {
+      const candidate = DMG.itemPool + slot++ * DMG.itemStride;
+      if (ram.u16(candidate + 0x02) !== 0) { rec = candidate; break; }
+    }
+    if (rec == null) break;
+    if ((ram.u16(rec) & 0x00c0) === 0) {
+      hitboxOutline(rgb, itemBounds(ram, rec), HITBOX_COLORS.collectible);
+    }
+  }
+}
+
+function impactHitboxes(ram, rgb) {
+  const count = ram.u16(DMG.impactCount);
+  let slot = 0;
+  for (let n = 0; n < count; n++) {
+    let rec = null;
+    while (slot < 80) {
+      const candidate = DMG.impactPool + slot++ * DMG.impactStride;
+      if ((ram.u16(candidate) & 0x8000) !== 0) { rec = candidate; break; }
+    }
+    if (rec == null) break;
+    if (ram.u16(rec + 0x02) !== 0 && (ram.u8(rec + 0x01) & 0x80) === 0) {
+      hitboxOutline(rgb, ordinaryBounds(ram, rec), HITBOX_COLORS.collectible);
+    }
+  }
+}
+
+function beamTailActive(ram, player) {
+  const status = ram.u16(player);
+  return (status & 0x8000) !== 0 && (status & 0x0080) === 0
+    && ram.u8(player + DMG.laserByte) !== 0;
+}
+
+function beamHitboxes(ram, rgb) {
+  for (const [player, slot27, slot30, control] of [
+    [DMG.p1rec, DMG.laserSlot27, DMG.laserSlot30, DMG.beamRecP1],
+    [DMG.p2rec, DMG.laserSlot27P2, DMG.laserSlot30P2, DMG.beamRecP2],
+  ]) {
+    if (!beamTailActive(ram, player)) continue;
+    if ((ram.u16(slot27) & 0x8000) !== 0 && ram.u16(slot27 + 0x02) < 0x7000) {
+      hitboxOutline(rgb, ordinaryBounds(ram, slot27), HITBOX_COLORS.weapon);
+    }
+    if ((ram.u16(slot30) & 0x8000) !== 0) {
+      hitboxOutline(rgb, ordinaryBounds(ram, slot30), HITBOX_COLORS.weapon);
+    }
+    if ((ram.u16(control) & 0x8200) === 0x8200) {
+      hitboxOutline(rgb, continuousBeamBounds(ram, control), HITBOX_COLORS.weapon);
+    }
+  }
+}
+
+function laserBombHitboxes(ram, rgb) {
+  const bomb = ram.u16(BOMBRAM.rec);
+  if ((bomb & 0x8001) !== 0x8001) return;
+  const player = (ram.u8(BOMBRAM.rec + 0x01) & 0x80) !== 0 ? DMG.p2rec : DMG.p1rec;
+  if ((ram.u16(player) & 0x8000) === 0 || (ram.u8(player + 0x01) & 0x40) === 0) return;
+  for (let i = 0; i < BOMBRAM.slots; i++) {
+    const rec = BOMBRAM.rec + i * BOMBRAM.stride;
+    const statusHigh = ram.u8(rec);
+    if ((statusHigh & 0x80) !== 0 && (statusHigh & 0x02) === 0) {
+      hitboxOutline(rgb, ordinaryBounds(ram, rec), HITBOX_COLORS.weapon);
+    }
+  }
+}
+
+/** Overlay the collision pass's board-coordinate geometry before TATE rotation. */
+export function applyHitboxOverlay(state, ram, rgb) {
+  if (!state?.loadout.presentation.hitboxes) return rgb;
+  if (!ram || rgb.length !== HITBOX_W * HITBOX_H * 3) return rgb;
+
+  for (let i = 0; i < 150; i++) {
+    const rec = DMG.poolA + i * DMG.enemyStride;
+    const type = ram.u16(rec);
+    if ((type & 0x8000) !== 0 && (type & 0x2101) !== 0) {
+      hitboxOutline(rgb, ordinaryBounds(ram, rec), HITBOX_COLORS.enemy);
+    }
+  }
+  itemHitboxes(ram, rgb);
+  impactHitboxes(ram, rgb);
+  for (const table of [DMG.p1shots, DMG.p2shots]) {
+    for (let i = 0; i < DMG.shotSlots; i++) {
+      const rec = table + i * DMG.shotStride;
+      if ((ram.u16(rec) & 0x8000) !== 0) {
+        hitboxOutline(rgb, shotBounds(ram, rec), HITBOX_COLORS.shot);
+      }
+    }
+  }
+  beamHitboxes(ram, rgb);
+  laserBombHitboxes(ram, rgb);
+  const bulletSlots = bulletWindowSlots(ram);
+  for (let i = 0; i < bulletSlots; i++) {
+    const rec = DMG.bulletPool + i * DMG.bulletStride;
+    // `$2459D0` does not test the live bit. A cleared slot with stale, mask-clear
+    // coordinates can still hit, so the diagnostic must not hide that point.
+    if ((ram.u8(rec) & 0x51) !== 0) continue;
+    const longAxis = i16(ram.u16(rec + 0x02)) >> 6;
+    const shortAxis = i16(ram.u16(rec + 0x04)) >> 6;
+    hitboxPixel(rgb, longAxis, shortAxis, HITBOX_COLORS.bullet);
+    hitboxPixel(rgb, longAxis - 1, shortAxis, HITBOX_COLORS.bullet);
+    hitboxPixel(rgb, longAxis + 1, shortAxis, HITBOX_COLORS.bullet);
+    hitboxPixel(rgb, longAxis, shortAxis - 1, HITBOX_COLORS.bullet);
+    hitboxPixel(rgb, longAxis, shortAxis + 1, HITBOX_COLORS.bullet);
+  }
+  for (const [rec, color] of [[DMG.p1rec, HITBOX_COLORS.p1], [DMG.p2rec, HITBOX_COLORS.p2]]) {
+    if ((ram.u16(rec) & 0x8000) !== 0) {
+      hitboxOutline(rgb, ordinaryBounds(ram, rec), color);
     }
   }
   return rgb;

@@ -2623,9 +2623,9 @@ cartridge-visible behaviour belongs here, no matter how small the win.
 
 Candidates to evaluate once D38's measurement exists (each is a separate toggle, not a bundle):
 
-**W372 MADE THESE CONCRETE**, because D38's measurement says where the frames actually are. The port samples input
-immediately before `g.step()` and holds the sprite list one frame to match hardware DMA. **So there are exactly three
-places a frame can be taken, and each is a separate toggle:**
+**W372 MADE THE CANDIDATES CONCRETE**, because D38's measurement says where the frames actually are. The port samples
+input immediately before `g.step()` and holds the sprite list one frame to match hardware DMA. The three candidates
+below were evaluated independently; the 2026-08-26 correction under MOD 3 records why one is not a latency mod:
 
     MOD 1  DROP THE SPRITE HOLD.  app.js's step() snapshots $800000 BEFORE stepping, deliberately, to match
            render/capture.js's MEASURED hardware lag of 1. Snapshotting AFTER shows the frame the game just
@@ -2638,13 +2638,13 @@ places a frame can be taken, and each is a separate toggle:**
            re-read input between calls so a press made during the frame is seen by the object driver in the
            SAME frame. Faithful ordering says no; it is worth roughly one frame.
 
-    MOD 3  SKIP THE EDGE DELAY. $13CFBA-style edge detection (D35) means a press is seen the frame AFTER it
-           lands, because the edge needs a previous-frame word to compare against. Acting on the LEVEL for
-           menu inputs removes that frame -- and would break auto-repeat behaviour, which is exactly why it
-           is a mod and not a fix.
+    MOD 3  SKIP THE EDGE DELAY. INVALIDATED 2026-08-26. The IRQ6 path writes raw input, derives the edge, and then
+           runs the object/menu driver in the same `Game.step()`. A new press is therefore visible to both raw and
+           edge consumers in the same logic frame. Replacing edge with level does not remove latency; it merely
+           repeats a held menu action every frame. Do not ship that behavior under a false latency claim.
 
-**None is a "low latency mode".** Each is one toggle, off by default, and MOD 1 is the only one that does not change
-game logic -- which makes it the right first one to build and the easiest to reason about.
+**None is a "low latency mode".** Each valid effect is an independent toggle, off by default. MOD 1 is the only one
+that does not change game logic, which makes it the right first one to build and the easiest to reason about.
 
 **The original candidate list, kept because it is what the owner asked for:**
 
@@ -7429,10 +7429,13 @@ unlocked all three cards, and launched Batman, Gradius, and DaiOuJou from the li
 60, 25, and 106 source-module GET requests respectively, with no asset, ROM, table, capture, seed, shard, archive,
 cartridge-extension, upload, or other non-GET request.
 
-### D110: FUTURE DAIOUJOU MOD - SHOW HITBOXES
+### D110: COMPLETE - DAIOUJOU MOD - SHOW HITBOXES
 
-**OPEN, FUTURE MOD; DO NOT IMPLEMENT DURING D109.** Add a `Show Hitboxes` switch to the DaiOuJou mod menu,
-default off. When enabled during play, it visibly outlines every relevant collision region the runtime supports:
-players, enemies, player attacks, enemy bullets, items, and any other damaging or collectible regions that
-participate in collision checks. The overlay is diagnostic presentation only. It must read the live collision shapes
-without changing collision behavior, timing, damage, collection, replay state, or the default-off cartridge path.
+**COMPLETE, 2026-08-26 (W600).** `Show Hitboxes` is a default-off, replay-safe presentation mod. It reads the
+collision RAM snapshot paired with the displayed sprite list and outlines players, the contiguous enemy hitbox pool,
+ordinary player shots, enemy-bullet points, count-driven item and bee collectibles, the four fixed damaging beam
+objects, armed continuous-beam controls with their live reach, and armed laser-bomb records. It deliberately excludes
+broad-phase scratch boxes, visual-only beam segments, ordinary-bomb sprites, beam draw requests, sparks, and boss
+controllers because those are not independent collision regions. The overlay is applied to finished RGB before TATE
+rotation, is suppressed for unrelated capture diagnostics, and neither writes RAM nor changes simulation timing,
+damage, collection, replay state, or the default-off cartridge path.

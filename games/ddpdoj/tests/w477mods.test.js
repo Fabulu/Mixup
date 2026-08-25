@@ -35,8 +35,8 @@ function policyRam(id) {
   return { ram, state };
 }
 
-test('W477 catalogue ships thirty functional mods after W496 additions', () => {
-  assert.equal(MOD_IDS.length, 30);
+test('W477 catalogue ships thirty-two functional mods after W600 additions', () => {
+  assert.equal(MOD_IDS.length, 32);
   assert.deepEqual(new Set(Object.values(MODS).map((m) => m.category)),
     new Set(['survival', 'arsenal', 'challenge', 'presentation']));
   for (const [id, entry] of Object.entries(MODS)) {

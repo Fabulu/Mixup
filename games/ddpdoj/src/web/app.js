@@ -217,7 +217,7 @@ import {
 import { CLAIMED } from '../state.js';
 import {
   MODS, MOD_RAM, createModState, applyPreFrameMods, applyPostFrameMods,
-  transformModInput, transformModTiming, applyPresentationMods,
+  transformModInput, transformModTiming, applyPresentationMods, applyHitboxOverlay,
   assertReplayCompatible, modGameOptions,
 } from '../mods.js';
 
@@ -905,6 +905,8 @@ export class Demo {
       coinTick: () => this.coinTick(),
     });
     if (authentic) applyAuthenticSelection(this.game, authentic);
+    this.hitboxRam = modState?.loadout.presentation.hitboxes
+      ? this.game.ram.clone() : null;
     // A non-default selector patch changes live RAM before frame 1, but the seed's
     // hardware list still contains the default ship. Keep the production port
     // source blank until the first ordinary step builds the selected list.
@@ -1043,6 +1045,10 @@ export class Demo {
     // makes it independent of how often `draw()` runs: a mode change repaints
     // without stepping, and that must not shift the list by a frame.
     this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
+    if (this.mods?.loadout.presentation.hitboxes) {
+      if (!this.hitboxRam) this.hitboxRam = g.ram.clone();
+      else this.hitboxRam.b.set(g.ram.b);
+    }
     // Replay v1 carries its own poke list. Live play applies only an explicit
     // ladder/replay intervention, then the selected mod policy. Ordinary play
     // has neither and performs no host RAM write here.
@@ -1080,11 +1086,12 @@ export class Demo {
     // `COIN.idle` the recorded run is bit-identical whatever the keyboard does.
     g.coinPort = inPlayback ? COIN.idle : currentCoinWord();
     g.step(pw);
-    if (this.authenticLaunchPending) {
-      // The first selected list did not exist before this step. Snapshot it now,
-      // without a second simulation step, then return to the ordinary pre-step
-      // snapshot schedule on every later frame.
+    if (this.authenticLaunchPending
+        || this.mods?.loadout.presentation.dropSpriteHold) {
+      // A selected response mod deliberately displays the list this step just
+      // built. Ordinary play keeps the measured one-frame hardware DMA hold.
       this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
+      if (this.hitboxRam) this.hitboxRam.b.set(g.ram.b);
       this.authenticLaunchPending = false;
     }
     applyPostFrameMods(this.mods, g.ram);
@@ -1251,6 +1258,7 @@ export class Demo {
     // Swap in the fresh Game and re-init the game-derived state.  `recorder` is
     // dropped (mutually exclusive); `onPlaybackUpdate` is left to the page.
     this.game = game;
+    this.hitboxRam = this.mods?.loadout.presentation.hitboxes ? game.ram.clone() : null;
     this.seedLf = seed.lf;
     // The replay seed replaces any local ladder seed. Keep the file's explicit
     // intervention for live continuation after end-of-portin.
@@ -1512,6 +1520,7 @@ export class Demo {
     paletteRgb(this.palMerged, this.pal);
     resolveRgb(idx, this.pal, this.rgb);
     applyPresentationMods(this.mods, this.rgb);
+    if (usedPort) applyHitboxOverlay(this.mods, this.hitboxRam ?? this.game.ram, this.rgb);
     // TATE rotates the BUFFER; yoko blits the board's own 448x224 buffer.
     // Either way the canvas backing store already matches (`setMode`).
     if (PICTURES[this.mode].rotate) {
