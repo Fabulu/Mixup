@@ -20,7 +20,7 @@ import {
 import { round2Input } from '../tools/progression-probe.mjs';
 import {
   ROM_OVERLAP_PAIRS, ROM_WINDOW_BYTES, ROM_WINDOW_COUNT,
-  overlappingPairs, tableBeforeW595,
+  overlappingPairs, tableBeforeW595, tableBeforeW596,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -45,7 +45,8 @@ const word = (...names) => portWordFromBits(names.map((name) => CONTROLS[name]))
 const DOWN_SHOT = word('DOWN', 'SHOT');
 const TOTAL_STEPS = 173697;
 const CADENCE = 500;
-const CURRENT_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8';
+const CURRENT_TABLE_HASH = '8854b7ebbc400795e7bcc7cf401e4f4d762220333ccbc6df9e1cf0c4b5ca5f5f';
+const W595_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8';
 const PRE_W595_TABLE_HASH = 'b062e45b4c4ca0488a0c4660a83a9d868feaf8b6d00b670d1de9948481f3f7c3';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
 const TERMINAL_RAM_HASH = 'e98132ee41b1603089104c7734032b64fbf389cafc543ed8b473f01ad94df297';
@@ -87,6 +88,7 @@ async function bundle() {
 
 test('W595 is one exact BIOS-window widening and reconstructs the $000BEC fault',
   { skip: SKIP }, () => {
+    const w595 = tableBeforeW596(TABLE_JSON);
     const before = tableBeforeW595(TABLE_JSON);
     assert.deepEqual([
       canonicalHash(TABLE_JSON), TABLE_JSON.rom.windows.length,
@@ -94,19 +96,24 @@ test('W595 is one exact BIOS-window widening and reconstructs the $000BEC fault'
       overlappingPairs(windowShape(TABLE_JSON)),
     ], [CURRENT_TABLE_HASH, ROM_WINDOW_COUNT, ROM_WINDOW_BYTES, ROM_OVERLAP_PAIRS]);
     assert.deepEqual([
+      canonicalHash(w595), w595.rom.windows.length,
+      w595.rom.windows.reduce((sum, window) => sum + window.len, 0),
+      overlappingPairs(windowShape(w595)),
+    ], [W595_TABLE_HASH, 906, 453757, 77]);
+    assert.deepEqual([
       canonicalHash(before), before.rom.windows.length,
       before.rom.windows.reduce((sum, window) => sum + window.len, 0),
       overlappingPairs(windowShape(before)),
     ], [PRE_W595_TABLE_HASH, 906, 453741, 77]);
     assert.deepEqual(EXPECTED.tables, {
-      sha256: CURRENT_TABLE_HASH, windows: 906, bytes: 453757, overlapPairs: 77,
+      sha256: CURRENT_TABLE_HASH, windows: 908, bytes: 453851, overlapPairs: 77,
     });
     assert.deepEqual(EXPECTED.preW595Tables, {
       sha256: PRE_W595_TABLE_HASH, windows: 906, bytes: 453741,
       overlapPairs: 77, faultAddress: 0x000bec,
     });
 
-    const liveWindow = TABLE_JSON.rom.windows.filter(({ base }) => base === '$000BE0');
+    const liveWindow = w595.rom.windows.filter(({ base }) => base === '$000BE0');
     const oldWindow = before.rom.windows.filter(({ base }) => base === '$000BF0');
     assert.deepEqual(liveWindow.map(({ len, why }) => [len, why]), [[0x24,
       "W595 type-$9C offscreen family-$11 satellite's nine 24-bit-wrapped "
@@ -114,11 +121,11 @@ test('W595 is one exact BIOS-window widening and reconstructs the $000BEC fault'
     assert.deepEqual(oldWindow.map(({ len, why }) => [len, why]), [[0x14,
       "W534 type-$9C offscreen satellite's five 24-bit-wrapped BIOS animation longwords"]]);
     assert.deepEqual(
-      TABLE_JSON.rom.windows.filter(({ base }) => base !== '$000BE0'),
+      w595.rom.windows.filter(({ base }) => base !== '$000BE0'),
       before.rom.windows.filter(({ base }) => base !== '$000BF0'),
       'W595 changes no other cartridge window');
 
-    const currentRom = new RomWindows(TABLE_JSON.rom);
+    const currentRom = new RomWindows(w595.rom);
     const oldRom = new RomWindows(before.rom);
     const addresses = [0x0c00, 0x0bfc, 0x0bf8, 0x0bf4, 0x0bf0,
       0x0bec, 0x0be8, 0x0be4, 0x0be0];
@@ -154,7 +161,7 @@ test('W595 fresh ship-0/style-2 route pins both loops through terminal reset',
 
     const exact = await bundle();
     assert.deepEqual(exact.tables, TABLE_JSON,
-      'the regenerated web bundle carries the exact W595 production table');
+      'the regenerated web bundle carries the exact W596 production table');
     assert.deepEqual([
       exact.seed.byteLength, byteHash(exact.seed), canonicalHash(exact.tables),
     ], [131072, SEED_HASH, CURRENT_TABLE_HASH]);

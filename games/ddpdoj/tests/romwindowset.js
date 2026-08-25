@@ -575,10 +575,20 @@
 // `$000BE0 + $24`, covering all nine contiguous reads through $000C00.
 // Measured: 906 windows, 453,741 -> 453,757 bytes, 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 906;
+// ---------------------------------------------------------------------------
+// W596 ADDED TWO DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// `$29109C + $5A` is slot [7] variant 2's exact third script through its
+// `$FFFF` terminator. `$2904AE + $04` exposes only its previously absent
+// spawn-table longword for index $7B. The script abuts W588 below and W507
+// above; the sparse longword lies between existing index-$7A and index-$7C
+// windows. Measured: 906 -> 908 windows, 453,757 -> 453,851 bytes,
+// 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 908;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 453757;
+export const ROM_WINDOW_BYTES = 453851;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -611,6 +621,31 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W596_WINDOWS = Object.freeze([
+  Object.freeze(['$29109C', 0x005a]), Object.freeze(['$2904AE', 0x0004]),
+]);
+
+/** Reconstruct the exact W595 table by removing only W596's additive windows. */
+export function tableBeforeW596(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const found = copy.rom.windows.filter((w) =>
+    W596_WINDOWS.some(([base]) => w.base === base));
+  if (found.length === 0) return copy;
+  if (found.length !== W596_WINDOWS.length) {
+    throw new Error('the W596 slot [7] windows are only partially present');
+  }
+  for (const [base, len] of W596_WINDOWS) {
+    const matches = found.filter((w) => w.base === base);
+    if (matches.length !== 1 || matches[0].len !== len
+        || matches[0].hex.length !== len * 2 || !matches[0].why.startsWith('W596:')) {
+      throw new Error(`${base} is not the exact W596 additive shape`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((w) =>
+    !W596_WINDOWS.some(([base]) => w.base === base));
+  return copy;
+}
+
 const W534_BIOS_WHY = "W534 type-$9C offscreen satellite's five 24-bit-wrapped "
   + 'BIOS animation longwords';
 const W595_BIOS_WHY = "W595 type-$9C offscreen family-$11 satellite's nine "
@@ -618,7 +653,7 @@ const W595_BIOS_WHY = "W595 type-$9C offscreen family-$11 satellite's nine "
 
 /** Reconstruct the exact pre-W595 table by undoing only W595's BIOS widening. */
 export function tableBeforeW595(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW596(tables);
   const old = copy.rom.windows.filter((w) => w.base === '$000BF0');
   const current = copy.rom.windows.filter((w) => w.base === '$000BE0');
   if (old.length === 1 && current.length === 0) {
@@ -956,4 +991,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "$291836 through $291B3A plus forty-five sparse spawn pointers and moved no "
   + "pair. W595 widened the disjoint $000BF0+$14 BIOS window to $000BE0+$24, "
   + "adding sixteen bytes while moving neither the window count nor overlap count. "
+  + "W596 added the abutting $29109C+$5A variant-2 third script and the sparse "
+  + "$2904AE spawn pointer, adding 94 bytes and no overlap pair. "
   + "See tests/romwindowset.js.";

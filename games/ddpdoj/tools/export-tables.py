@@ -3274,6 +3274,12 @@ SHOT_WINDOWS.extend([
                        "$29109A..$29109B, stopping exactly at variant 2's third script $29109C"),
     (0x2904E2, 0x0004, "W588: slot [7] variant-1 third-script spawn-table longword for concrete index $88"),
     (0x290506, 0x0004, "W588: slot [7] variant-1 third-script spawn-table longword for concrete index $91"),
+    (0x29109C, 0x005A, "W596: slot [7] variant-2 third script, $29109C..$2910F5 -- three $8001 groups "
+                       "with 9/12/8 picture words, followed by $8002, $8003, and $FFFF. It begins "
+                       "where W588's variant-1 script ends, includes the terminator at "
+                       "$2910F4..$2910F5, and stops exactly at the next script $2910F6"),
+    (0x2904AE, 0x0004, "W596: slot [7] variant-2 third-script spawn-table longword for concrete index $7B; "
+                       "the interpreter stores this cartridge-owned art longword directly"),
     (0x2910F6, 0x007C, "W507: slot [7] variant-0 fourth script, $2910F6..$291171 -- four $8001 groups "
                        "with 43 picture words total, followed by $8002, $8003, and $FFFF. It exports "
                        "only the runtime-selected script and stops exactly at variant 0's fifth script, "
