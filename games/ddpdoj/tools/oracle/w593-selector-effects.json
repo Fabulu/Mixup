@@ -45,6 +45,38 @@
     ],
     "deferred": "Enemy-hit attribution beyond the common target window belongs to W594."
   },
+  "gfxCorpus": {
+    "triggerLogicFrames": [
+      2000, 2032, 2033, 2049, 2050, 2051, 2052, 2069, 2070, 2071, 2072,
+      2099, 2100, 2101, 2102, 2103, 2104, 2105, 2106, 2107, 2108, 2109,
+      2110, 2111, 2112, 2113, 2114, 2115, 2116, 2117, 2118, 2119, 2120,
+      2121, 2122, 2123, 2124, 2125, 2126, 2127, 2128, 2129, 2130, 2131,
+      2239, 2240, 2241, 2299, 2300, 2301, 2359, 2360, 2361, 2362, 2363,
+      2364, 2365, 2366, 2367, 2368, 2369, 2370
+    ],
+    "videoFrames": [
+      2036, 2037, 2068, 2069, 2070, 2085, 2086, 2087, 2088, 2089,
+      2105, 2106, 2107, 2108, 2109, 2135, 2136, 2137, 2138, 2139,
+      2140, 2141, 2142, 2143, 2144, 2145, 2146, 2147, 2148, 2149,
+      2150, 2151, 2152, 2153, 2154, 2155, 2156, 2157, 2158, 2159,
+      2160, 2161, 2162, 2163, 2164, 2165, 2166, 2167, 2168, 2275,
+      2276, 2277, 2278, 2335, 2336, 2337, 2338, 2395, 2396, 2397,
+      2398, 2399, 2400, 2401, 2402, 2403, 2404, 2405, 2406, 2407
+    ],
+    "filesPerFrame": 9,
+    "fileSizes": {
+      "bg_videoram.bin": 4096,
+      "palette.bin": 5120,
+      "pixels.bin": 401408,
+      "regs.txt": 88,
+      "rowscroll.bin": 4096,
+      "spritebuffer.bin": 4096,
+      "spriteram.bin": 2560,
+      "tx_videoram.bin": 8192,
+      "zoomram.bin": 64
+    },
+    "consecutivePairs": 62
+  },
   "pixelGate": {
     "verdict": "PASS",
     "pairs": 372,
@@ -71,7 +103,16 @@
           2372
         ],
         "rows": 2372,
-        "sha256": "e4cc3df52b6714f403433dff61db3035458fafedf45517ed0cb31859475731a7"
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "8731296e3c10876eb3313972a3716c30f5f5254308d9e82d25d24a2d6c90ac01"
+      },
+      "gfx": {
+        "files": 630,
+        "bytes": 30080400,
+        "allSha256": "4e90ffb6deeb10f20a24a073c544ac4b4284a3f915aa44efbf7c8e7896b17d78",
+        "paletteSha256": "afbe973e1190025e38e9ebc48940d1b0d9c16183f5a723a323fe51da19bc34e7",
+        "displayStateSha256": "40c985da55e8bef2b6a51465f931244ac0f1f8b6bea85ce761f638442fe7b40c",
+        "rgb24Sha256": "b1a4b3ea94cef050eee4ba8981b00938433a1d3a0b60336d044f635c1c33d7ba"
       },
       "coverage": {
         "commonTarget": {
@@ -508,7 +549,16 @@
           2372
         ],
         "rows": 2372,
-        "sha256": "7e4954bd137b3e7ed7a3430d333def726e738169643c402d1efe98f3b23d6b50"
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "89c3a2e2f79accf93aac0813287dd50f2871d138816780e7233eede011386fb9"
+      },
+      "gfx": {
+        "files": 630,
+        "bytes": 30080400,
+        "allSha256": "68923cbbb98bcab0f63348f0357aad7124067be3fe8675ca94d9f318fc4e02f2",
+        "paletteSha256": "44481ce317f30944a531b20c1d098875a92c5f23e0eeda4a46eaad22f9a10718",
+        "displayStateSha256": "71d8392c3e001cd0732d55e428747948f4d9a8a8d598d3ce780a57f0c5bd764a",
+        "rgb24Sha256": "b01d6991d9a6e70a334c18a9c4aee3fa6aed0d9ffe367a04b7417d8d9af23246"
       },
       "coverage": {
         "commonTarget": {
@@ -956,7 +1006,16 @@
           2372
         ],
         "rows": 2372,
-        "sha256": "3ccd60224a9d1ce559177f2a6d6bebbd7c0246cefee4f1321ceb4e7d3346f8a1"
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "f5f6b6499d9f4f4a1902992084f21582808c9954f906e80a6870f5d6042058e4"
+      },
+      "gfx": {
+        "files": 630,
+        "bytes": 30080400,
+        "allSha256": "4528dbf56a68b7f7c5c28ef4d0fc780ee8eb9b18b8c1588df4b88acc21daa5ce",
+        "paletteSha256": "41a01ee2d710c01f42c8995d6da5b135b20cacee809c0e34d6752f7c82587975",
+        "displayStateSha256": "c7104d0c9a93d92bf719c08602a273233442330d3e9b3d6c42e04a65fc24824a",
+        "rgb24Sha256": "102c08c848504d9a1d759d0333bdcf322660b7738f8d74bb68e670c70b3d8c10"
       },
       "coverage": {
         "commonTarget": {
@@ -1404,7 +1463,16 @@
           2372
         ],
         "rows": 2372,
-        "sha256": "3c926851f9f6d0b29b385d12118fe32a976fce96c94cad8e009824d5c7b3b8d0"
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "30a9a8b34c469c3ff67a18d6980765907abdd4b11ecfb7826a1c818d5d51e29f"
+      },
+      "gfx": {
+        "files": 630,
+        "bytes": 30080400,
+        "allSha256": "79514c29d2df5dc97b96bbcb53ab5f199e3d4976da5006148972ca0deecafe18",
+        "paletteSha256": "c1ab5d92b5ac02223f41b3ae739aae315c6ae552b14cef0a735e6da9e61c7d46",
+        "displayStateSha256": "c77e09be1a76e9411f87e974eceb208e868666277bd16bd1b767eb7e2b6faaba",
+        "rgb24Sha256": "512f3512bc4758e8dd6df5df82df5a9dda59984709c3a760259fa3d8ae2c4de8"
       },
       "coverage": {
         "commonTarget": {
@@ -1841,7 +1909,16 @@
           2372
         ],
         "rows": 2372,
-        "sha256": "75ec4b0252d73089191a190fde22445176756bae78d7716a607de89c611af92e"
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "7201e701b06ec950ae740df8bcbe69753b2f19c2f99dfa704e2e6feea259d994"
+      },
+      "gfx": {
+        "files": 630,
+        "bytes": 30080400,
+        "allSha256": "ffa742c1983c391460d162ad5a51ee5ae95f3af2550cabf3bd1246124a936875",
+        "paletteSha256": "df38b5cf881e87ebac89c23d95fecc9c74563aec8676d064677e706dd596da8b",
+        "displayStateSha256": "1ec0f3f17b8c4bab45c20b62649f22c8daeb37bb520d68f8d6ef81b5fcd53994",
+        "rgb24Sha256": "b5c8def60a9200733f98fd7bce5da42c1ff31fa3c0cd2a9d6c6e7ce40b439b9e"
       },
       "coverage": {
         "commonTarget": {
@@ -2289,7 +2366,16 @@
           2372
         ],
         "rows": 2372,
-        "sha256": "5d2f881b2c13331f90494ebfe72cae4cc41eea4434bb4cefa484bb24a1b1ffc7"
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "b8804775f4516f88e4528468ab6c7cdd6b4d9b9626959e1974f63185ced9698d"
+      },
+      "gfx": {
+        "files": 630,
+        "bytes": 30080400,
+        "allSha256": "684170663e9b92720aa870481faff00cf45a0db1faf73266489deacb14538b93",
+        "paletteSha256": "d40f97f6e6464ac22b91845a11ee3c7c08f5bb227107cbf5f9a128c68b49298b",
+        "displayStateSha256": "20cc6b6b8f2edb8fdb55b925336aeb0070fa0101aa9cc46271369bf7414abb4f",
+        "rgb24Sha256": "5301abfa83ffd72ba1b7444d2f611043cfe8202993762376163f0b4f285386bc"
       },
       "coverage": {
         "commonTarget": {

@@ -33,6 +33,19 @@
     "buckets": "5,14,15,16,19",
     "gfxAt": "2000,2032,2033,2049,2050,2051,2052,2069,2070,2071,2072,2099,2100,2101,2102,2103,2104,2105,2106,2107,2108,2109,2110,2111,2112,2113,2114,2115,2116,2117,2118,2119,2120,2121,2122,2123,2124,2125,2126,2127,2128,2129,2130,2131,2239,2240,2241,2299,2300,2301,2359,2360,2361,2362,2363,2364,2365,2366,2367,2368,2369,2370"
   },
+  "paircausality": {
+    "schema": "ddpdoj-pair-causality-scenarios-v1",
+    "why": "W594 runs the unchanged W593 natural suffix and separates direct enemy selector reads from earlier player-position, hit, RNG, rank, and damage causes.",
+    "frames": 2372,
+    "fromLogicFrame": 2000,
+    "toLogicFrame": 2371,
+    "suffix": "2001=R;2033=;2050=A;2051=;2070=A;2071=;2100=A;2240=AR;2300=A;2360=",
+    "selectorRanges": "813084-81308B,81043E-810441,8104A0-8104A3",
+    "ancestryReturns": "2634FA,2634FE,26353A,263652",
+    "eventPcs": "24505E,245A44,281568,28187A,263538,263650,2636D6",
+    "intervention": "ancestry-classified-reads-only-to-0/2",
+    "baselineWords": "813084=0000,813086=00FF,813088=0002,81308A=00FF,81043E=0000,810440=0002,8104A0=0000,8104A2=0000"
+  },
   "scenarios": [
     {
       "name": "chooser",

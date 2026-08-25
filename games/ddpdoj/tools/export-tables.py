@@ -1307,9 +1307,9 @@ SHOT_WINDOWS.extend(ENEMY_INIT_STUBS)
 #            already a byte offset.  The bytes are `0014 0012` = 20 and 18.
 #
 # ONE 8-BYTE WINDOW, NOT MORE.  `$287DF8` onward reads `0118 2223 0084 6001 ...`
-# which are not plausible refill amounts, and every RAM dump this project holds
-# has `$81043E` = 0, so a third entry would be a guess about a table nobody has
-# indexed.  A read past the end is a LOUD NAMED THROW out of `src/rom.js`, which
+# which are not plausible refill amounts. W594 observed both authentic live P1
+# selectors: `$81043E = 0` indexes 20 and `$81043E = 2` indexes 18. A third
+# entry would still be a guess. A read past the end is a LOUD NAMED THROW out
 # is the correct answer to an unproven extent -- and is how W31 found that speed
 # level $70 was missing rather than silently reading a zero.
 SHOT_WINDOWS.append(

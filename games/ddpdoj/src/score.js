@@ -302,8 +302,9 @@ export const SCORE = {
    *  selector, which is ALREADY a byte offset (`move.w $81043E,D2` then
    *  `(A0,D2.w)`, no scaling).  `$0014 $0012` = 20 and 18.  The window is FOUR
    *  BYTES on purpose: `$287DF8` onward does not read as refill amounts
-   *  ($0118, $2223, ...) and no run has ever had `$81043E` non-zero, so a
-   *  third entry would be a guess.  Indexing past it is a LOUD NAMED THROW out
+   *  ($0118, $2223, ...). W594 observed both authentic live selectors here:
+   *  `$81043E = 0` selects 20 and `$81043E = 2` selects 18. A third entry would
+   *  still be a guess. Indexing past the proven table is a LOUD NAMED THROW out
    *  of `src/rom.js`, which is the correct answer to an unproven extent. */
   refillTable: 0x287df4,
 };

@@ -1,0 +1,3373 @@
+{
+  "schema": "ddpdoj-w594-selector-causality-v1",
+  "oracle": {
+    "emulator": "MAME 0.288",
+    "set": "ddpdojblk",
+    "version": "B",
+    "decryptedMainCpu": {
+      "size": 6291456,
+      "fnv64": "D4C25CA9C91B9D47"
+    }
+  },
+  "scenario": {
+    "frames": 2372,
+    "logicFrames": [
+      2000,
+      2371
+    ],
+    "suffix": "2001=R;2033=;2050=A;2051=;2070=A;2071=;2100=A;2240=AR;2300=A;2360=",
+    "selectorRanges": [
+      [
+        "813084",
+        "81308B"
+      ],
+      [
+        "81043E",
+        "810441"
+      ],
+      [
+        "8104A0",
+        "8104A3"
+      ]
+    ],
+    "ancestryReturns": [
+      "2634FA",
+      "2634FE",
+      "26353A",
+      "263652"
+    ],
+    "ancestryCallSites": [
+      "2634F6",
+      "2634FA",
+      "263538",
+      "263650"
+    ],
+    "eventPcs": [
+      "24505E",
+      "245A44",
+      "281568",
+      "28187A",
+      "263538",
+      "263650",
+      "2636D6"
+    ],
+    "baselineWords": {
+      "81043E": "0000",
+      "810440": "0002",
+      "8104A0": "0000",
+      "8104A2": "0000",
+      "813084": "0000",
+      "813086": "00FF",
+      "813088": "0002",
+      "81308A": "00FF"
+    },
+    "intervention": "ancestry-classified-reads-only-to-0/2"
+  },
+  "verdict": {
+    "directEnemyAncestryReadObserved": true,
+    "firstEnemyAndBulletDivergencesAreIndirect": true,
+    "directWaveSchedulingObserved": false,
+    "directObservedEffect": "per-hit-chain-meter-refill-and-score-display-only",
+    "sourceStatus": "src/score.js chainHit already performs the exact lookup",
+    "interventionStatus": "0/2 control unchanged; no enemy, collision, bullet, damage, rank, or RNG state changed"
+  },
+  "reader": {
+    "pc": "2862C8",
+    "address": "81043E",
+    "mask": "FFFF",
+    "instruction": "move.w $81043E.l,D2",
+    "continuation": [
+      "2862CE lea $287DF4.l,A0",
+      "2862D4 move.w (A0,D2.w),$81B5E0.l"
+    ],
+    "table": {
+      "address": "287DF4",
+      "indexScaling": "none-selector-is-byte-offset",
+      "entries": [
+        {
+          "selector": 0,
+          "refill": 20
+        },
+        {
+          "selector": 2,
+          "refill": 18
+        }
+      ]
+    },
+    "ancestry": [
+      "2634FE",
+      "26353A"
+    ],
+    "classification": "enemy-hit-chain-refill-not-wave-scheduling"
+  },
+  "causalColumns": [
+    "c_enemy",
+    "c_collision",
+    "c_bullets",
+    "c_player",
+    "c_options",
+    "c_shots",
+    "c_segments",
+    "c_beamctl",
+    "c_beamstate",
+    "c_display",
+    "c_pstate",
+    "c_py",
+    "c_px",
+    "c_p24",
+    "c_p25",
+    "c_speed",
+    "c_laser",
+    "c_enemy_n0",
+    "c_enemy_n1",
+    "c_enemy_n2",
+    "c_bullet_n",
+    "c_rankclock0",
+    "c_rankclock1",
+    "c_rank",
+    "c_rng",
+    "c_hyper0",
+    "c_hyper1",
+    "c_power0",
+    "c_power1",
+    "c_prod5",
+    "c_prod14",
+    "c_prod15",
+    "c_prod16",
+    "c_prod19"
+  ],
+  "pairs": [
+    {
+      "key": "0/2",
+      "ship": 0,
+      "style": 2,
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "causalLogicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 2372,
+        "normalizedBytes": 787844,
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "7f1458cb8aba4a9c90b83045d4c22aff809c22f24d71aff40613500cae2d06c5"
+      },
+      "events": {
+        "logicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 9790,
+        "bytes": 1408028,
+        "sha256": "7b9d752e41c87abd91cc87665449f34b34529c75fb1ae62a5b09d5729b1c52d8",
+        "census": {
+          "bullet-spawn": 15,
+          "enemy-allocator": 35,
+          "enemy-handler": 7566,
+          "enemy-hp": 46,
+          "enemy-init": 35,
+          "selector": 2093
+        },
+        "orderSha256": "e69bfacbe762698f643568e3d005328fea197e152884da0dd9a39231371d1c4b"
+      },
+      "selectorReads": [
+        {
+          "pc": "249BCE",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "249BE2",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "249C28",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "249C52",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "249E54",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 372,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "249EC8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 186,
+          "firstLogicFrame": 2001,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24A25A",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24A262",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24A30E",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24A316",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24A552",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 186,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2370,
+          "ancestry": []
+        },
+        {
+          "pc": "24C1BA",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2118,
+          "lastLogicFrame": 2118,
+          "ancestry": []
+        },
+        {
+          "pc": "24C34C",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 128,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24C8D2",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 10,
+          "firstLogicFrame": 2121,
+          "lastLogicFrame": 2157,
+          "ancestry": []
+        },
+        {
+          "pc": "24CABE",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 1,
+          "firstLogicFrame": 2118,
+          "lastLogicFrame": 2118,
+          "ancestry": []
+        },
+        {
+          "pc": "24CC02",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0002",
+          "count": 238,
+          "firstLogicFrame": 2123,
+          "lastLogicFrame": 2360,
+          "ancestry": []
+        },
+        {
+          "pc": "24CC0A",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 238,
+          "firstLogicFrame": 2123,
+          "lastLogicFrame": 2360,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCD6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 8,
+          "firstLogicFrame": 2122,
+          "lastLogicFrame": 2340,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCE2",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2122,
+          "lastLogicFrame": 2340,
+          "ancestry": []
+        },
+        {
+          "pc": "24D158",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 500,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24D4A4",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24D4B4",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24D562",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24D5C0",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "252718",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 9,
+          "firstLogicFrame": 2361,
+          "lastLogicFrame": 2369,
+          "ancestry": []
+        },
+        {
+          "pc": "254C96",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2121,
+          "lastLogicFrame": 2121,
+          "ancestry": []
+        },
+        {
+          "pc": "254CA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 1,
+          "firstLogicFrame": 2121,
+          "lastLogicFrame": 2121,
+          "ancestry": []
+        },
+        {
+          "pc": "25500E",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2138,
+          "lastLogicFrame": 2318,
+          "ancestry": []
+        },
+        {
+          "pc": "25501C",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 8,
+          "firstLogicFrame": 2138,
+          "lastLogicFrame": 2318,
+          "ancestry": []
+        },
+        {
+          "pc": "284D80",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 49,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2048,
+          "ancestry": []
+        },
+        {
+          "pc": "284EA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 1,
+          "firstLogicFrame": 2049,
+          "lastLogicFrame": 2049,
+          "ancestry": []
+        },
+        {
+          "pc": "2862C8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 38,
+          "firstLogicFrame": 2076,
+          "lastLogicFrame": 2330,
+          "ancestry": [
+            "2634FE",
+            "26353A"
+          ]
+        }
+      ],
+      "intervention": {
+        "target": "0/2",
+        "trace": {
+          "logicFrames": [
+            1,
+            2372
+          ],
+          "causalLogicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 2372,
+          "normalizedBytes": 787844,
+          "normalization": "omit-d_date-only-v1",
+          "sha256": "7f1458cb8aba4a9c90b83045d4c22aff809c22f24d71aff40613500cae2d06c5"
+        },
+        "events": {
+          "logicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 9828,
+          "bytes": 1413918,
+          "sha256": "b1162dfe42bf988cbdbce2af25ee305809c79223fecafe7f5d5405dc5e046d47",
+          "census": {
+            "bullet-spawn": 15,
+            "enemy-allocator": 35,
+            "enemy-handler": 7566,
+            "enemy-hp": 46,
+            "enemy-init": 35,
+            "selector": 2093,
+            "selector-substitute": 38
+          },
+          "orderSha256": "e69bfacbe762698f643568e3d005328fea197e152884da0dd9a39231371d1c4b",
+          "filteredSha256": "7b9d752e41c87abd91cc87665449f34b34529c75fb1ae62a5b09d5729b1c52d8"
+        },
+        "substitutions": [
+          {
+            "pc": "2862C8",
+            "address": "81043E",
+            "mask": "FFFF",
+            "value": "0000",
+            "count": 38,
+            "firstLogicFrame": 2076,
+            "lastLogicFrame": 2330,
+            "ancestry": [
+              "2634FE",
+              "26353A"
+            ],
+            "returned": "0000"
+          }
+        ],
+        "changedTraceColumns": {},
+        "changedCausalColumns": []
+      }
+    },
+    {
+      "key": "0/4",
+      "ship": 0,
+      "style": 4,
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "causalLogicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 2372,
+        "normalizedBytes": 788079,
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "27ec0691a4eb3b6ad3571dedb889a32bed742ad11380406419a82eb7e600edfe"
+      },
+      "events": {
+        "logicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 9690,
+        "bytes": 1396303,
+        "sha256": "2ee875a0224c7d650db2e314178e67ae5cdcc00ff2353ce330e54caff90d8006",
+        "census": {
+          "bullet-spawn": 20,
+          "enemy-allocator": 35,
+          "enemy-handler": 8033,
+          "enemy-hp": 21,
+          "enemy-init": 35,
+          "selector": 1546
+        },
+        "orderSha256": "b3b2f3da3ad9fb00e1e5e23946500cfc82d364b204279318afb399f85baa33f1"
+      },
+      "selectorReads": [
+        {
+          "pc": "249BCE",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249BE2",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249C28",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249C52",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249E54",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 372,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "249EC8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 186,
+          "firstLogicFrame": 2001,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24A30E",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A316",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0004",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A552",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 186,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2370,
+          "ancestry": []
+        },
+        {
+          "pc": "24C1BA",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0004",
+          "count": 1,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2116,
+          "ancestry": []
+        },
+        {
+          "pc": "24C1D0",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 1,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2116,
+          "ancestry": []
+        },
+        {
+          "pc": "24C34C",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 126,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24C8D2",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 6,
+          "firstLogicFrame": 2119,
+          "lastLogicFrame": 2144,
+          "ancestry": []
+        },
+        {
+          "pc": "24CC02",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0004",
+          "count": 241,
+          "firstLogicFrame": 2120,
+          "lastLogicFrame": 2360,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCD6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 3,
+          "firstLogicFrame": 2119,
+          "lastLogicFrame": 2266,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCE2",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0004",
+          "count": 3,
+          "firstLogicFrame": 2119,
+          "lastLogicFrame": 2266,
+          "ancestry": []
+        },
+        {
+          "pc": "24D158",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 258,
+          "firstLogicFrame": 2114,
+          "lastLogicFrame": 2365,
+          "ancestry": []
+        },
+        {
+          "pc": "24D5FE",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24D624",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24D732",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 12,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "252718",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 6,
+          "firstLogicFrame": 2361,
+          "lastLogicFrame": 2366,
+          "ancestry": []
+        },
+        {
+          "pc": "254998",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 9,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2124,
+          "ancestry": []
+        },
+        {
+          "pc": "254C96",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 1,
+          "firstLogicFrame": 2118,
+          "lastLogicFrame": 2118,
+          "ancestry": []
+        },
+        {
+          "pc": "254CA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 1,
+          "firstLogicFrame": 2118,
+          "lastLogicFrame": 2118,
+          "ancestry": []
+        },
+        {
+          "pc": "25500E",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 2,
+          "firstLogicFrame": 2168,
+          "lastLogicFrame": 2254,
+          "ancestry": []
+        },
+        {
+          "pc": "284D80",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 49,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2048,
+          "ancestry": []
+        },
+        {
+          "pc": "284EA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 1,
+          "firstLogicFrame": 2049,
+          "lastLogicFrame": 2049,
+          "ancestry": []
+        },
+        {
+          "pc": "2862C8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 34,
+          "firstLogicFrame": 2078,
+          "lastLogicFrame": 2330,
+          "ancestry": [
+            "2634FE",
+            "26353A"
+          ]
+        }
+      ],
+      "intervention": {
+        "target": "0/2",
+        "trace": {
+          "logicFrames": [
+            1,
+            2372
+          ],
+          "causalLogicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 2372,
+          "normalizedBytes": 788079,
+          "normalization": "omit-d_date-only-v1",
+          "sha256": "27ec0691a4eb3b6ad3571dedb889a32bed742ad11380406419a82eb7e600edfe"
+        },
+        "events": {
+          "logicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 9724,
+          "bytes": 1401573,
+          "sha256": "b1a8ea67575e24bfed268d264c1faf98e877432e2c961334452a502f9179da0c",
+          "census": {
+            "bullet-spawn": 20,
+            "enemy-allocator": 35,
+            "enemy-handler": 8033,
+            "enemy-hp": 21,
+            "enemy-init": 35,
+            "selector": 1546,
+            "selector-substitute": 34
+          },
+          "orderSha256": "b3b2f3da3ad9fb00e1e5e23946500cfc82d364b204279318afb399f85baa33f1",
+          "filteredSha256": "2ee875a0224c7d650db2e314178e67ae5cdcc00ff2353ce330e54caff90d8006"
+        },
+        "substitutions": [
+          {
+            "pc": "2862C8",
+            "address": "81043E",
+            "mask": "FFFF",
+            "value": "0000",
+            "count": 34,
+            "firstLogicFrame": 2078,
+            "lastLogicFrame": 2330,
+            "ancestry": [
+              "2634FE",
+              "26353A"
+            ],
+            "returned": "0000"
+          }
+        ],
+        "changedTraceColumns": {},
+        "changedCausalColumns": []
+      }
+    },
+    {
+      "key": "0/6",
+      "ship": 0,
+      "style": 6,
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "causalLogicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 2372,
+        "normalizedBytes": 787973,
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "2e651a10e0c5ea222c786d2b944d3aca295607ea44442c758bc21b5e3280b69e"
+      },
+      "events": {
+        "logicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 9492,
+        "bytes": 1366274,
+        "sha256": "30e5a423e2c3d4300f8849ecf47d6712c34019130c95cd44c20d1f43089c7ac6",
+        "census": {
+          "bullet-spawn": 15,
+          "enemy-allocator": 35,
+          "enemy-handler": 7564,
+          "enemy-hp": 40,
+          "enemy-init": 35,
+          "selector": 1803
+        },
+        "orderSha256": "287a1c72cca20d64d50fed7a6967ff933f774267da5d6dfb8f64592838fd60b6"
+      },
+      "selectorReads": [
+        {
+          "pc": "249BCE",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249BE2",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249C28",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249C52",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249E54",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 372,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "249EC8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 186,
+          "firstLogicFrame": 2001,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24A25A",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A262",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A30E",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A316",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A552",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 186,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2370,
+          "ancestry": []
+        },
+        {
+          "pc": "24C1BA",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0006",
+          "count": 1,
+          "firstLogicFrame": 2113,
+          "lastLogicFrame": 2113,
+          "ancestry": []
+        },
+        {
+          "pc": "24C1D0",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 1,
+          "firstLogicFrame": 2113,
+          "lastLogicFrame": 2113,
+          "ancestry": []
+        },
+        {
+          "pc": "24C34C",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 123,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24C8D2",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2146,
+          "ancestry": []
+        },
+        {
+          "pc": "24CC02",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0006",
+          "count": 244,
+          "firstLogicFrame": 2117,
+          "lastLogicFrame": 2360,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCD6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 3,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2266,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCE2",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0006",
+          "count": 3,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2266,
+          "ancestry": []
+        },
+        {
+          "pc": "24D158",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 495,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24D780",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24D78C",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24D844",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24D892",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "252718",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 11,
+          "firstLogicFrame": 2361,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "254998",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 9,
+          "firstLogicFrame": 2113,
+          "lastLogicFrame": 2121,
+          "ancestry": []
+        },
+        {
+          "pc": "254C96",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 1,
+          "firstLogicFrame": 2115,
+          "lastLogicFrame": 2115,
+          "ancestry": []
+        },
+        {
+          "pc": "254CA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 1,
+          "firstLogicFrame": 2115,
+          "lastLogicFrame": 2115,
+          "ancestry": []
+        },
+        {
+          "pc": "25500E",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 2,
+          "firstLogicFrame": 2168,
+          "lastLogicFrame": 2254,
+          "ancestry": []
+        },
+        {
+          "pc": "284D80",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 49,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2048,
+          "ancestry": []
+        },
+        {
+          "pc": "284EA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 1,
+          "firstLogicFrame": 2049,
+          "lastLogicFrame": 2049,
+          "ancestry": []
+        },
+        {
+          "pc": "2862C8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0000",
+          "count": 37,
+          "firstLogicFrame": 2076,
+          "lastLogicFrame": 2330,
+          "ancestry": [
+            "2634FE",
+            "26353A"
+          ]
+        }
+      ],
+      "intervention": {
+        "target": "0/2",
+        "trace": {
+          "logicFrames": [
+            1,
+            2372
+          ],
+          "causalLogicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 2372,
+          "normalizedBytes": 787973,
+          "normalization": "omit-d_date-only-v1",
+          "sha256": "2e651a10e0c5ea222c786d2b944d3aca295607ea44442c758bc21b5e3280b69e"
+        },
+        "events": {
+          "logicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 9529,
+          "bytes": 1372009,
+          "sha256": "71eeb462b61d60a22dabae10a4843a0b3f94cdeefe20b5b5384c1cce0c6fef97",
+          "census": {
+            "bullet-spawn": 15,
+            "enemy-allocator": 35,
+            "enemy-handler": 7564,
+            "enemy-hp": 40,
+            "enemy-init": 35,
+            "selector": 1803,
+            "selector-substitute": 37
+          },
+          "orderSha256": "287a1c72cca20d64d50fed7a6967ff933f774267da5d6dfb8f64592838fd60b6",
+          "filteredSha256": "30e5a423e2c3d4300f8849ecf47d6712c34019130c95cd44c20d1f43089c7ac6"
+        },
+        "substitutions": [
+          {
+            "pc": "2862C8",
+            "address": "81043E",
+            "mask": "FFFF",
+            "value": "0000",
+            "count": 37,
+            "firstLogicFrame": 2076,
+            "lastLogicFrame": 2330,
+            "ancestry": [
+              "2634FE",
+              "26353A"
+            ],
+            "returned": "0000"
+          }
+        ],
+        "changedTraceColumns": {},
+        "changedCausalColumns": []
+      }
+    },
+    {
+      "key": "2/2",
+      "ship": 2,
+      "style": 2,
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "causalLogicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 2372,
+        "normalizedBytes": 787784,
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "d2e348b4639a6936e706e5611c1d84125c4fc9c8d92e48f0b133dcaac4751046"
+      },
+      "events": {
+        "logicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 9984,
+        "bytes": 1436175,
+        "sha256": "cf60abd1fe43ee3736c44ca323372c526eb2b782ca07523d8f2a01472a5f8c39",
+        "census": {
+          "bullet-spawn": 14,
+          "enemy-allocator": 35,
+          "enemy-handler": 7777,
+          "enemy-hp": 31,
+          "enemy-init": 35,
+          "selector": 2092
+        },
+        "orderSha256": "0c8b4793aba7cd7b648b798edcbc94de83102c7e7e76fb691a70842ec207e13c"
+      },
+      "selectorReads": [
+        {
+          "pc": "249BCE",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "249BE2",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "249D58",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "249D80",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "249E54",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 372,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "249EC8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 186,
+          "firstLogicFrame": 2001,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24A2B4",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24A2BC",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24A374",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24A37C",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24A552",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 186,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2370,
+          "ancestry": []
+        },
+        {
+          "pc": "24C1BA",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2118,
+          "lastLogicFrame": 2118,
+          "ancestry": []
+        },
+        {
+          "pc": "24C34C",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 128,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24C8D2",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 7,
+          "firstLogicFrame": 2121,
+          "lastLogicFrame": 2145,
+          "ancestry": []
+        },
+        {
+          "pc": "24CABE",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2118,
+          "lastLogicFrame": 2118,
+          "ancestry": []
+        },
+        {
+          "pc": "24CC02",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0002",
+          "count": 235,
+          "firstLogicFrame": 2126,
+          "lastLogicFrame": 2360,
+          "ancestry": []
+        },
+        {
+          "pc": "24CC0A",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 235,
+          "firstLogicFrame": 2126,
+          "lastLogicFrame": 2360,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCD6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 10,
+          "firstLogicFrame": 2125,
+          "lastLogicFrame": 2340,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCE2",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0002",
+          "count": 10,
+          "firstLogicFrame": 2125,
+          "lastLogicFrame": 2340,
+          "ancestry": []
+        },
+        {
+          "pc": "24D158",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 500,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24D4A4",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24D4B4",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24D562",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 8,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "24D5C0",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 7,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2107,
+          "ancestry": []
+        },
+        {
+          "pc": "252718",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2361,
+          "lastLogicFrame": 2369,
+          "ancestry": []
+        },
+        {
+          "pc": "254C96",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2124,
+          "lastLogicFrame": 2124,
+          "ancestry": []
+        },
+        {
+          "pc": "254CA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2124,
+          "lastLogicFrame": 2124,
+          "ancestry": []
+        },
+        {
+          "pc": "25500E",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2138,
+          "lastLogicFrame": 2318,
+          "ancestry": []
+        },
+        {
+          "pc": "25501C",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2138,
+          "lastLogicFrame": 2318,
+          "ancestry": []
+        },
+        {
+          "pc": "284D80",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 49,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2048,
+          "ancestry": []
+        },
+        {
+          "pc": "284EA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2049,
+          "lastLogicFrame": 2049,
+          "ancestry": []
+        },
+        {
+          "pc": "2862C8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 41,
+          "firstLogicFrame": 2080,
+          "lastLogicFrame": 2330,
+          "ancestry": [
+            "2634FE",
+            "26353A"
+          ]
+        }
+      ],
+      "intervention": {
+        "target": "0/2",
+        "trace": {
+          "logicFrames": [
+            1,
+            2372
+          ],
+          "causalLogicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 2372,
+          "normalizedBytes": 787803,
+          "normalization": "omit-d_date-only-v1",
+          "sha256": "f68a91d062045c338d87d58a931462208df0b40fce3776630ffabab8c236811e"
+        },
+        "events": {
+          "logicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 10025,
+          "bytes": 1442556,
+          "sha256": "189988d2b6f43edf8b5704e66700dfcebdd051b7ef207dd4c16fec0d528a36b5",
+          "census": {
+            "bullet-spawn": 14,
+            "enemy-allocator": 35,
+            "enemy-handler": 7777,
+            "enemy-hp": 31,
+            "enemy-init": 35,
+            "selector": 2092,
+            "selector-substitute": 41
+          },
+          "orderSha256": "0c8b4793aba7cd7b648b798edcbc94de83102c7e7e76fb691a70842ec207e13c",
+          "filteredSha256": "e68fd292ebafebaff25c7bea3e04b5919637750aae366ec8071fec809c4cd2a7"
+        },
+        "substitutions": [
+          {
+            "pc": "2862C8",
+            "address": "81043E",
+            "mask": "FFFF",
+            "value": "0002",
+            "count": 41,
+            "firstLogicFrame": 2080,
+            "lastLogicFrame": 2330,
+            "ancestry": [
+              "2634FE",
+              "26353A"
+            ],
+            "returned": "0000"
+          }
+        ],
+        "changedTraceColumns": {
+          "cyc": 2082,
+          "work": 2082,
+          "sprites": 2082,
+          "d_spr": 2080,
+          "d_ram": 2080,
+          "d_top": 2082,
+          "d_spb": 2081,
+          "c_display": 2080
+        },
+        "changedCausalColumns": [
+          "c_display"
+        ]
+      }
+    },
+    {
+      "key": "2/4",
+      "ship": 2,
+      "style": 4,
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "causalLogicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 2372,
+        "normalizedBytes": 787841,
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "d1359d4133c55199f5bfa6b1250c38e5c14e44b9335c481c31efd71300b80497"
+      },
+      "events": {
+        "logicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 9665,
+        "bytes": 1392666,
+        "sha256": "81aedd0321ddd61873c172c38317d3705ad407eff2cc1c1f9a1a0768f3c06993",
+        "census": {
+          "bullet-spawn": 18,
+          "enemy-allocator": 35,
+          "enemy-handler": 8008,
+          "enemy-hp": 22,
+          "enemy-init": 35,
+          "selector": 1547
+        },
+        "orderSha256": "502811b3ddb9cb1b3f18a43545a4597d130fc52875adf14bec61f8baf5b6eb26"
+      },
+      "selectorReads": [
+        {
+          "pc": "249BCE",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249BE2",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249D58",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249D80",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249E54",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 372,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "249EC8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 186,
+          "firstLogicFrame": 2001,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24A374",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A37C",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0004",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A552",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 186,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2370,
+          "ancestry": []
+        },
+        {
+          "pc": "24C1BA",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0004",
+          "count": 1,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2116,
+          "ancestry": []
+        },
+        {
+          "pc": "24C1D0",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2116,
+          "ancestry": []
+        },
+        {
+          "pc": "24C34C",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 126,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24C8D2",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 4,
+          "firstLogicFrame": 2119,
+          "lastLogicFrame": 2134,
+          "ancestry": []
+        },
+        {
+          "pc": "24CC02",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0004",
+          "count": 241,
+          "firstLogicFrame": 2120,
+          "lastLogicFrame": 2360,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCD6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 3,
+          "firstLogicFrame": 2119,
+          "lastLogicFrame": 2272,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCE2",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0004",
+          "count": 3,
+          "firstLogicFrame": 2119,
+          "lastLogicFrame": 2272,
+          "ancestry": []
+        },
+        {
+          "pc": "24D158",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 258,
+          "firstLogicFrame": 2114,
+          "lastLogicFrame": 2365,
+          "ancestry": []
+        },
+        {
+          "pc": "24D5FE",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2105,
+          "ancestry": []
+        },
+        {
+          "pc": "24D624",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2105,
+          "ancestry": []
+        },
+        {
+          "pc": "24D732",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 12,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2105,
+          "ancestry": []
+        },
+        {
+          "pc": "252718",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 6,
+          "firstLogicFrame": 2361,
+          "lastLogicFrame": 2366,
+          "ancestry": []
+        },
+        {
+          "pc": "254998",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2124,
+          "ancestry": []
+        },
+        {
+          "pc": "254C96",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 1,
+          "firstLogicFrame": 2118,
+          "lastLogicFrame": 2118,
+          "ancestry": []
+        },
+        {
+          "pc": "254CA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2118,
+          "lastLogicFrame": 2118,
+          "ancestry": []
+        },
+        {
+          "pc": "25500E",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0004",
+          "count": 2,
+          "firstLogicFrame": 2168,
+          "lastLogicFrame": 2260,
+          "ancestry": []
+        },
+        {
+          "pc": "284D80",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 49,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2048,
+          "ancestry": []
+        },
+        {
+          "pc": "284EA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2049,
+          "lastLogicFrame": 2049,
+          "ancestry": []
+        },
+        {
+          "pc": "2862C8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 37,
+          "firstLogicFrame": 2076,
+          "lastLogicFrame": 2330,
+          "ancestry": [
+            "2634FE",
+            "26353A"
+          ]
+        }
+      ],
+      "intervention": {
+        "target": "0/2",
+        "trace": {
+          "logicFrames": [
+            1,
+            2372
+          ],
+          "causalLogicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 2372,
+          "normalizedBytes": 787851,
+          "normalization": "omit-d_date-only-v1",
+          "sha256": "21873b4b9999ad73123faff38685365591f6de5b2c7721bcf20a0373fce24a49"
+        },
+        "events": {
+          "logicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 9702,
+          "bytes": 1398401,
+          "sha256": "b9e7fdf729faab8380e5c8ca7ae1d58430b6483fcdd5ada9c942470d40885045",
+          "census": {
+            "bullet-spawn": 18,
+            "enemy-allocator": 35,
+            "enemy-handler": 8008,
+            "enemy-hp": 22,
+            "enemy-init": 35,
+            "selector": 1547,
+            "selector-substitute": 37
+          },
+          "orderSha256": "502811b3ddb9cb1b3f18a43545a4597d130fc52875adf14bec61f8baf5b6eb26",
+          "filteredSha256": "9e141fc589b05c1f871e6c30d9945de863b432834793840e506857ef6e3188b4"
+        },
+        "substitutions": [
+          {
+            "pc": "2862C8",
+            "address": "81043E",
+            "mask": "FFFF",
+            "value": "0002",
+            "count": 37,
+            "firstLogicFrame": 2076,
+            "lastLogicFrame": 2330,
+            "ancestry": [
+              "2634FE",
+              "26353A"
+            ],
+            "returned": "0000"
+          }
+        ],
+        "changedTraceColumns": {
+          "cyc": 2096,
+          "work": 2096,
+          "sprites": 2096,
+          "d_spr": 2076,
+          "d_ram": 2076,
+          "d_top": 2096,
+          "d_spb": 2077,
+          "c_display": 2076
+        },
+        "changedCausalColumns": [
+          "c_display"
+        ]
+      }
+    },
+    {
+      "key": "2/6",
+      "ship": 2,
+      "style": 6,
+      "trace": {
+        "logicFrames": [
+          1,
+          2372
+        ],
+        "causalLogicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 2372,
+        "normalizedBytes": 787911,
+        "normalization": "omit-d_date-only-v1",
+        "sha256": "a6b5e83fd6863b70a91764804be934b758c69021f60ae0177f3e7d63860189fb"
+      },
+      "events": {
+        "logicFrames": [
+          2000,
+          2371
+        ],
+        "rows": 9523,
+        "bytes": 1370795,
+        "sha256": "d3f8c23609af819742a99a0c91c04b212bde1e5a8c211b9020fa2ebfca252dbb",
+        "census": {
+          "bullet-spawn": 19,
+          "enemy-allocator": 35,
+          "enemy-handler": 7605,
+          "enemy-hp": 26,
+          "enemy-init": 35,
+          "selector": 1803
+        },
+        "orderSha256": "88c43e11925762ad05b6b2ba6ee445cccf4ed942f0ede9edd972a0b98d512272"
+      },
+      "selectorReads": [
+        {
+          "pc": "249BCE",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249BE2",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249D58",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249D80",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "249E54",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 372,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "249EC8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 186,
+          "firstLogicFrame": 2001,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24A2B4",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A2BC",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A374",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A37C",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24A552",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 186,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2370,
+          "ancestry": []
+        },
+        {
+          "pc": "24C1BA",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0006",
+          "count": 1,
+          "firstLogicFrame": 2113,
+          "lastLogicFrame": 2113,
+          "ancestry": []
+        },
+        {
+          "pc": "24C1D0",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2113,
+          "lastLogicFrame": 2113,
+          "ancestry": []
+        },
+        {
+          "pc": "24C34C",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 123,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24C8D2",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 4,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2134,
+          "ancestry": []
+        },
+        {
+          "pc": "24CC02",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0006",
+          "count": 244,
+          "firstLogicFrame": 2117,
+          "lastLogicFrame": 2360,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCD6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 3,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2272,
+          "ancestry": []
+        },
+        {
+          "pc": "24CCE2",
+          "address": "810440",
+          "mask": "00FF",
+          "value": "0006",
+          "count": 3,
+          "firstLogicFrame": 2116,
+          "lastLogicFrame": 2272,
+          "ancestry": []
+        },
+        {
+          "pc": "24D158",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 495,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "24D780",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24D78C",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24D844",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "24D892",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 6,
+          "firstLogicFrame": 2051,
+          "lastLogicFrame": 2104,
+          "ancestry": []
+        },
+        {
+          "pc": "252718",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 11,
+          "firstLogicFrame": 2361,
+          "lastLogicFrame": 2371,
+          "ancestry": []
+        },
+        {
+          "pc": "254998",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 9,
+          "firstLogicFrame": 2113,
+          "lastLogicFrame": 2121,
+          "ancestry": []
+        },
+        {
+          "pc": "254C96",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 1,
+          "firstLogicFrame": 2115,
+          "lastLogicFrame": 2115,
+          "ancestry": []
+        },
+        {
+          "pc": "254CA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2115,
+          "lastLogicFrame": 2115,
+          "ancestry": []
+        },
+        {
+          "pc": "25500E",
+          "address": "810440",
+          "mask": "FFFF",
+          "value": "0006",
+          "count": 2,
+          "firstLogicFrame": 2168,
+          "lastLogicFrame": 2260,
+          "ancestry": []
+        },
+        {
+          "pc": "284D80",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 49,
+          "firstLogicFrame": 2000,
+          "lastLogicFrame": 2048,
+          "ancestry": []
+        },
+        {
+          "pc": "284EA6",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 1,
+          "firstLogicFrame": 2049,
+          "lastLogicFrame": 2049,
+          "ancestry": []
+        },
+        {
+          "pc": "2862C8",
+          "address": "81043E",
+          "mask": "FFFF",
+          "value": "0002",
+          "count": 39,
+          "firstLogicFrame": 2080,
+          "lastLogicFrame": 2330,
+          "ancestry": [
+            "2634FE",
+            "26353A"
+          ]
+        }
+      ],
+      "intervention": {
+        "target": "0/2",
+        "trace": {
+          "logicFrames": [
+            1,
+            2372
+          ],
+          "causalLogicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 2372,
+          "normalizedBytes": 787932,
+          "normalization": "omit-d_date-only-v1",
+          "sha256": "16ef5f8dfeb091ef77b1212d7f1903a265a2ea97797ae151ec331896fd02947e"
+        },
+        "events": {
+          "logicFrames": [
+            2000,
+            2371
+          ],
+          "rows": 9562,
+          "bytes": 1376840,
+          "sha256": "e1598ba3badfecc1e476a97e6f8c4b38e4791c05c392c613c55ca29d2e85998f",
+          "census": {
+            "bullet-spawn": 19,
+            "enemy-allocator": 35,
+            "enemy-handler": 7605,
+            "enemy-hp": 26,
+            "enemy-init": 35,
+            "selector": 1803,
+            "selector-substitute": 39
+          },
+          "orderSha256": "88c43e11925762ad05b6b2ba6ee445cccf4ed942f0ede9edd972a0b98d512272",
+          "filteredSha256": "df36581d4b6f321b7d4e92834ffee8ea340eda08e2c9ade79dd875a8205d73d0"
+        },
+        "substitutions": [
+          {
+            "pc": "2862C8",
+            "address": "81043E",
+            "mask": "FFFF",
+            "value": "0002",
+            "count": 39,
+            "firstLogicFrame": 2080,
+            "lastLogicFrame": 2330,
+            "ancestry": [
+              "2634FE",
+              "26353A"
+            ],
+            "returned": "0000"
+          }
+        ],
+        "changedTraceColumns": {
+          "cyc": 2080,
+          "work": 2080,
+          "sprites": 2080,
+          "d_spr": 2080,
+          "d_ram": 2080,
+          "d_top": 2080,
+          "d_spb": 2081,
+          "c_display": 2080
+        },
+        "changedCausalColumns": [
+          "c_display"
+        ]
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "key": "0/2|0/4",
+      "left": "0/2",
+      "right": "0/4",
+      "sameShip": true,
+      "firstDivergence": {
+        "c_enemy": 2076,
+        "c_collision": 2073,
+        "c_bullets": 2087,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2116,
+        "c_beamctl": 2118,
+        "c_beamstate": 2051,
+        "c_display": 2000,
+        "c_pstate": 2057,
+        "c_py": null,
+        "c_px": 2241,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2119,
+        "c_laser": 2000,
+        "c_enemy_n0": 2080,
+        "c_enemy_n1": 2080,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2087,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2074,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2116,
+        "c_prod19": 2241
+      },
+      "enemyCause": {
+        "field": "c_rng",
+        "logicFrame": 2074,
+        "targetLogicFrame": 2076
+      },
+      "bulletCause": {
+        "field": "c_rng",
+        "logicFrame": 2074,
+        "targetLogicFrame": 2087
+      },
+      "directReadExplanation": "same-ship-selector-value-is-identical"
+    },
+    {
+      "key": "0/2|0/6",
+      "left": "0/2",
+      "right": "0/6",
+      "sameShip": true,
+      "firstDivergence": {
+        "c_enemy": 2076,
+        "c_collision": 2071,
+        "c_bullets": 2131,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2113,
+        "c_beamctl": 2115,
+        "c_beamstate": 2057,
+        "c_display": 2000,
+        "c_pstate": 2057,
+        "c_py": null,
+        "c_px": 2241,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2116,
+        "c_laser": 2000,
+        "c_enemy_n0": 2080,
+        "c_enemy_n1": 2080,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2131,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2072,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2113,
+        "c_prod19": 2241
+      },
+      "enemyCause": {
+        "field": "c_rng",
+        "logicFrame": 2072,
+        "targetLogicFrame": 2076
+      },
+      "bulletCause": {
+        "field": "c_rng",
+        "logicFrame": 2072,
+        "targetLogicFrame": 2131
+      },
+      "directReadExplanation": "same-ship-selector-value-is-identical"
+    },
+    {
+      "key": "0/2|2/2",
+      "left": "0/2",
+      "right": "2/2",
+      "sameShip": false,
+      "firstDivergence": {
+        "c_enemy": 2012,
+        "c_collision": 2007,
+        "c_bullets": 2041,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2118,
+        "c_beamctl": 2121,
+        "c_beamstate": 2075,
+        "c_display": 2000,
+        "c_pstate": null,
+        "c_py": null,
+        "c_px": 2002,
+        "c_p24": null,
+        "c_p25": null,
+        "c_speed": 2000,
+        "c_laser": null,
+        "c_enemy_n0": 2080,
+        "c_enemy_n1": 2080,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2080,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2074,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2118,
+        "c_prod19": 2000
+      },
+      "enemyCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2012
+      },
+      "bulletCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2041
+      },
+      "directReadExplanation": "first-direct-read-occurs-after-both-targets"
+    },
+    {
+      "key": "0/2|2/4",
+      "left": "0/2",
+      "right": "2/4",
+      "sameShip": false,
+      "firstDivergence": {
+        "c_enemy": 2012,
+        "c_collision": 2007,
+        "c_bullets": 2041,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2116,
+        "c_beamctl": 2118,
+        "c_beamstate": 2051,
+        "c_display": 2000,
+        "c_pstate": 2057,
+        "c_py": null,
+        "c_px": 2002,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2000,
+        "c_laser": 2000,
+        "c_enemy_n0": 2080,
+        "c_enemy_n1": 2080,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2080,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2074,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2116,
+        "c_prod19": 2000
+      },
+      "enemyCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2012
+      },
+      "bulletCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2041
+      },
+      "directReadExplanation": "first-direct-read-occurs-after-both-targets"
+    },
+    {
+      "key": "0/2|2/6",
+      "left": "0/2",
+      "right": "2/6",
+      "sameShip": false,
+      "firstDivergence": {
+        "c_enemy": 2012,
+        "c_collision": 2007,
+        "c_bullets": 2041,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2113,
+        "c_beamctl": 2115,
+        "c_beamstate": 2057,
+        "c_display": 2000,
+        "c_pstate": 2057,
+        "c_py": null,
+        "c_px": 2002,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2000,
+        "c_laser": 2000,
+        "c_enemy_n0": 2080,
+        "c_enemy_n1": 2080,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2080,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2074,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2113,
+        "c_prod19": 2000
+      },
+      "enemyCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2012
+      },
+      "bulletCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2041
+      },
+      "directReadExplanation": "first-direct-read-occurs-after-both-targets"
+    },
+    {
+      "key": "0/4|0/6",
+      "left": "0/4",
+      "right": "0/6",
+      "sameShip": true,
+      "firstDivergence": {
+        "c_enemy": 2076,
+        "c_collision": 2071,
+        "c_bullets": 2087,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2113,
+        "c_beamctl": 2115,
+        "c_beamstate": 2051,
+        "c_display": 2000,
+        "c_pstate": null,
+        "c_py": null,
+        "c_px": null,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2116,
+        "c_laser": null,
+        "c_enemy_n0": 2092,
+        "c_enemy_n1": 2092,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2087,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2072,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2113,
+        "c_prod19": null
+      },
+      "enemyCause": {
+        "field": "c_rng",
+        "logicFrame": 2072,
+        "targetLogicFrame": 2076
+      },
+      "bulletCause": {
+        "field": "c_rng",
+        "logicFrame": 2072,
+        "targetLogicFrame": 2087
+      },
+      "directReadExplanation": "same-ship-selector-value-is-identical"
+    },
+    {
+      "key": "0/4|2/2",
+      "left": "0/4",
+      "right": "2/2",
+      "sameShip": false,
+      "firstDivergence": {
+        "c_enemy": 2012,
+        "c_collision": 2007,
+        "c_bullets": 2041,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2116,
+        "c_beamctl": 2118,
+        "c_beamstate": 2051,
+        "c_display": 2000,
+        "c_pstate": 2057,
+        "c_py": null,
+        "c_px": 2002,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2000,
+        "c_laser": 2000,
+        "c_enemy_n0": 2082,
+        "c_enemy_n1": 2082,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2080,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2076,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2116,
+        "c_prod19": 2000
+      },
+      "enemyCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2012
+      },
+      "bulletCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2041
+      },
+      "directReadExplanation": "first-direct-read-occurs-after-both-targets"
+    },
+    {
+      "key": "0/4|2/4",
+      "left": "0/4",
+      "right": "2/4",
+      "sameShip": false,
+      "firstDivergence": {
+        "c_enemy": 2012,
+        "c_collision": 2007,
+        "c_bullets": 2041,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2116,
+        "c_beamctl": 2118,
+        "c_beamstate": 2055,
+        "c_display": 2000,
+        "c_pstate": null,
+        "c_py": null,
+        "c_px": 2002,
+        "c_p24": null,
+        "c_p25": null,
+        "c_speed": 2000,
+        "c_laser": 2000,
+        "c_enemy_n0": 2082,
+        "c_enemy_n1": 2082,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2080,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2074,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2116,
+        "c_prod19": 2000
+      },
+      "enemyCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2012
+      },
+      "bulletCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2041
+      },
+      "directReadExplanation": "first-direct-read-occurs-after-both-targets"
+    },
+    {
+      "key": "0/4|2/6",
+      "left": "0/4",
+      "right": "2/6",
+      "sameShip": false,
+      "firstDivergence": {
+        "c_enemy": 2012,
+        "c_collision": 2007,
+        "c_bullets": 2041,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2113,
+        "c_beamctl": 2115,
+        "c_beamstate": 2051,
+        "c_display": 2000,
+        "c_pstate": null,
+        "c_py": null,
+        "c_px": 2002,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2000,
+        "c_laser": 2000,
+        "c_enemy_n0": 2082,
+        "c_enemy_n1": 2082,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2080,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2076,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2113,
+        "c_prod19": 2000
+      },
+      "enemyCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2012
+      },
+      "bulletCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2041
+      },
+      "directReadExplanation": "first-direct-read-occurs-after-both-targets"
+    },
+    {
+      "key": "0/6|2/2",
+      "left": "0/6",
+      "right": "2/2",
+      "sameShip": false,
+      "firstDivergence": {
+        "c_enemy": 2012,
+        "c_collision": 2007,
+        "c_bullets": 2041,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2113,
+        "c_beamctl": 2115,
+        "c_beamstate": 2057,
+        "c_display": 2000,
+        "c_pstate": 2057,
+        "c_py": null,
+        "c_px": 2002,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2000,
+        "c_laser": 2000,
+        "c_enemy_n0": 2082,
+        "c_enemy_n1": 2082,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2080,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2072,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2113,
+        "c_prod19": 2000
+      },
+      "enemyCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2012
+      },
+      "bulletCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2041
+      },
+      "directReadExplanation": "first-direct-read-occurs-after-both-targets"
+    },
+    {
+      "key": "0/6|2/4",
+      "left": "0/6",
+      "right": "2/4",
+      "sameShip": false,
+      "firstDivergence": {
+        "c_enemy": 2012,
+        "c_collision": 2007,
+        "c_bullets": 2041,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2113,
+        "c_beamctl": 2115,
+        "c_beamstate": 2051,
+        "c_display": 2000,
+        "c_pstate": null,
+        "c_py": null,
+        "c_px": 2002,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2000,
+        "c_laser": 2000,
+        "c_enemy_n0": 2082,
+        "c_enemy_n1": 2082,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2080,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2072,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2113,
+        "c_prod19": 2000
+      },
+      "enemyCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2012
+      },
+      "bulletCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2041
+      },
+      "directReadExplanation": "first-direct-read-occurs-after-both-targets"
+    },
+    {
+      "key": "0/6|2/6",
+      "left": "0/6",
+      "right": "2/6",
+      "sameShip": false,
+      "firstDivergence": {
+        "c_enemy": 2012,
+        "c_collision": 2007,
+        "c_bullets": 2041,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2113,
+        "c_beamctl": 2115,
+        "c_beamstate": 2077,
+        "c_display": 2000,
+        "c_pstate": null,
+        "c_py": null,
+        "c_px": 2002,
+        "c_p24": null,
+        "c_p25": null,
+        "c_speed": 2000,
+        "c_laser": 2000,
+        "c_enemy_n0": 2082,
+        "c_enemy_n1": 2082,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2080,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2072,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2113,
+        "c_prod19": 2000
+      },
+      "enemyCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2012
+      },
+      "bulletCause": {
+        "field": "c_px",
+        "logicFrame": 2002,
+        "targetLogicFrame": 2041
+      },
+      "directReadExplanation": "first-direct-read-occurs-after-both-targets"
+    },
+    {
+      "key": "2/2|2/4",
+      "left": "2/2",
+      "right": "2/4",
+      "sameShip": true,
+      "firstDivergence": {
+        "c_enemy": 2076,
+        "c_collision": 2073,
+        "c_bullets": 2087,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2116,
+        "c_beamctl": 2118,
+        "c_beamstate": 2051,
+        "c_display": 2000,
+        "c_pstate": 2057,
+        "c_py": null,
+        "c_px": 2241,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2119,
+        "c_laser": 2000,
+        "c_enemy_n0": 2096,
+        "c_enemy_n1": 2096,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2087,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2074,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2116,
+        "c_prod19": 2241
+      },
+      "enemyCause": {
+        "field": "c_rng",
+        "logicFrame": 2074,
+        "targetLogicFrame": 2076
+      },
+      "bulletCause": {
+        "field": "c_rng",
+        "logicFrame": 2074,
+        "targetLogicFrame": 2087
+      },
+      "directReadExplanation": "same-ship-selector-value-is-identical"
+    },
+    {
+      "key": "2/2|2/6",
+      "left": "2/2",
+      "right": "2/6",
+      "sameShip": true,
+      "firstDivergence": {
+        "c_enemy": 2080,
+        "c_collision": 2075,
+        "c_bullets": 2131,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2113,
+        "c_beamctl": 2115,
+        "c_beamstate": 2057,
+        "c_display": 2000,
+        "c_pstate": 2057,
+        "c_py": null,
+        "c_px": 2241,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2116,
+        "c_laser": 2000,
+        "c_enemy_n0": 2098,
+        "c_enemy_n1": 2098,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2131,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2078,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2052,
+        "c_prod15": 2000,
+        "c_prod16": 2113,
+        "c_prod19": 2241
+      },
+      "enemyCause": {
+        "field": "c_rng",
+        "logicFrame": 2078,
+        "targetLogicFrame": 2080
+      },
+      "bulletCause": {
+        "field": "c_rng",
+        "logicFrame": 2078,
+        "targetLogicFrame": 2131
+      },
+      "directReadExplanation": "same-ship-selector-value-is-identical"
+    },
+    {
+      "key": "2/4|2/6",
+      "left": "2/4",
+      "right": "2/6",
+      "sameShip": true,
+      "firstDivergence": {
+        "c_enemy": 2076,
+        "c_collision": 2073,
+        "c_bullets": 2087,
+        "c_player": 2000,
+        "c_options": 2000,
+        "c_shots": 2051,
+        "c_segments": 2113,
+        "c_beamctl": 2115,
+        "c_beamstate": 2051,
+        "c_display": 2000,
+        "c_pstate": null,
+        "c_py": null,
+        "c_px": null,
+        "c_p24": 2000,
+        "c_p25": 2000,
+        "c_speed": 2116,
+        "c_laser": null,
+        "c_enemy_n0": 2096,
+        "c_enemy_n1": 2096,
+        "c_enemy_n2": null,
+        "c_bullet_n": 2087,
+        "c_rankclock0": null,
+        "c_rankclock1": null,
+        "c_rank": null,
+        "c_rng": 2074,
+        "c_hyper0": null,
+        "c_hyper1": null,
+        "c_power0": null,
+        "c_power1": null,
+        "c_prod5": 2001,
+        "c_prod14": 2051,
+        "c_prod15": 2000,
+        "c_prod16": 2113,
+        "c_prod19": null
+      },
+      "enemyCause": {
+        "field": "c_rng",
+        "logicFrame": 2074,
+        "targetLogicFrame": 2076
+      },
+      "bulletCause": {
+        "field": "c_rng",
+        "logicFrame": 2074,
+        "targetLogicFrame": 2087
+      },
+      "directReadExplanation": "same-ship-selector-value-is-identical"
+    }
+  ]
+}

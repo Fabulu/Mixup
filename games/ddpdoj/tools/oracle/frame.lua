@@ -87,6 +87,15 @@
 --                  consumes it and derives $803970/72/74 itself, so the input
 --                  mirrors stay a genuinely compared field instead of being
 --                  fed in from the answer.  (NOTES-replay.md constraint 3.)
+--   PROBE_CAUSAL   path for W594's bounded selector-read and causal-event TSV.
+--                  It also appends fixed causal state digests and exact scalars
+--                  to the frame TSV. Unset means no taps, files, or columns.
+--   PROBE_CAUSAL_FROM / PROBE_CAUSAL_TO  resulting LF bounds (default 2000/2371).
+--   PROBE_CAUSAL_SUBSTITUTE  optional intervention target. The only accepted
+--                  value is `0/2`: the exact $2862C8 full-word read from
+--                  $81043E is returned the authentic 0/2 value only when one
+--                  live stack snapshot contains both direct ancestry returns.
+--                  All other reads and stored selector bytes remain untouched.
 local TAG = "PROBE "
 local function p(...) print(TAG .. string.format(...)) end
 
@@ -110,6 +119,24 @@ local METER   = os.getenv("PROBE_METER") == "1"
 local RTCWATCH = os.getenv("PROBE_RTC") == "1"
 local SNAPTAG = os.getenv("PROBE_SNAPTAG") or "f"
 local WANT_BUILD = os.getenv("PROBE_REQUIRE_BUILD")
+local CAUSAL_PATH = os.getenv("PROBE_CAUSAL")
+local CAUSAL_FROM = tonumber(os.getenv("PROBE_CAUSAL_FROM") or "2000")
+local CAUSAL_TO = tonumber(os.getenv("PROBE_CAUSAL_TO") or "2371")
+local CAUSAL_SUBSTITUTE = os.getenv("PROBE_CAUSAL_SUBSTITUTE")
+local CAUSAL = CAUSAL_PATH ~= nil and CAUSAL_PATH ~= ""
+if CAUSAL_SUBSTITUTE == "" then CAUSAL_SUBSTITUTE = nil end
+if CAUSAL_SUBSTITUTE and CAUSAL_SUBSTITUTE ~= "0/2" then
+  p("FAIL causal substitute target [%s] is not 0/2", tostring(CAUSAL_SUBSTITUTE))
+  CAUSAL_SUBSTITUTE = nil
+end
+if CAUSAL_SUBSTITUTE and not CAUSAL then
+  p("FAIL causal substitution requires PROBE_CAUSAL")
+  CAUSAL_SUBSTITUTE = nil
+end
+if CAUSAL and (not CAUSAL_FROM or not CAUSAL_TO or CAUSAL_FROM > CAUSAL_TO) then
+  p("CAUSAL_BOUNDS_BAD from=%s to=%s", tostring(CAUSAL_FROM), tostring(CAUSAL_TO))
+  CAUSAL = false
+end
 
 -- ============================================================================
 -- THE OBJECT DRIVER  (wave 2 item 1 -- docs/knowledge/06's (C) detector)
@@ -311,23 +338,36 @@ local BUCKET_SPEC = {
   [15] = {0x8eb4, 0xafda}, [16] = {0x8bb4, 0xafd8},
   [19] = {0x8ee4, 0xafdc},
 }
-local EFFECT_BUCKETS, bucket_pending = {}, {}
+local EFFECT_BUCKETS, CAPTURE_BUCKETS, bucket_pending = {}, {}, {}
 local EFFECT_BUCKET_PC = 0x23d382
+local captured_bucket = {}
 for tok in (os.getenv("PROBE_BUCKETS") or ""):gmatch("[^,]+") do
   local i, spec = tonumber(tok), BUCKET_SPEC[tonumber(tok)]
-  if spec then EFFECT_BUCKETS[#EFFECT_BUCKETS + 1] = {i, spec[1], spec[2]}
+  if spec then
+    local b = {i, spec[1], spec[2]}
+    EFFECT_BUCKETS[#EFFECT_BUCKETS + 1] = b
+    CAPTURE_BUCKETS[#CAPTURE_BUCKETS + 1] = b
+    captured_bucket[i] = true
   else p("BUCKET_UNPARSED [%s]", tok) end
+end
+if CAUSAL then
+  for _, i in ipairs({5, 14, 15, 16, 19}) do
+    if not captured_bucket[i] then
+      local spec = BUCKET_SPEC[i]
+      CAPTURE_BUCKETS[#CAPTURE_BUCKETS + 1] = {i, spec[1], spec[2]}
+    end
+  end
 end
 local function bucket_hex(off, len)
   local b = {}
   for i = 0, len - 1 do b[#b + 1] = string.format("%02x", RAM:read_u8(off + i)) end
   return table.concat(b)
 end
-if #EFFECT_BUCKETS > 0 then
+if #CAPTURE_BUCKETS > 0 then
   TAPS[#TAPS + 1] = PROG:install_write_tap(0x80B000, 0x80B001, "effect-buckets",
     function(offset, data, mask)
       if (CPU.state["CURPC"].value & 0xffffff) ~= EFFECT_BUCKET_PC then return data end
-      for _, b in ipairs(EFFECT_BUCKETS) do
+      for _, b in ipairs(CAPTURE_BUCKETS) do
         local n = RAM:read_u16(b[3])
         bucket_pending[b[1]] = bucket_hex(b[2], n)
       end
@@ -406,6 +446,49 @@ local function digest(share, off, len)
     h = (h ~ share:read_i64(a)) * 0x100000001b3
   end
   return h & 0x7fffffffffffffff       -- keep it printable as a positive integer
+end
+
+-- W594 fixed causal ranges. Each digest folds every aligned 16-bit word in the
+-- declared interval. All ranges are even-addressed and even-sized, including
+-- the $62-byte player record, so no byte is skipped and no padding is invented.
+local CAUSAL_RANGES = {
+  {"c_enemy",     0x1332c, 0x1220}, -- 58 x $50 enemy controls
+  {"c_collision", 0x1459c, 0x12c0}, -- 150 x $20 collision records
+  {"c_bullets",   0x17f8c, 0x3480}, -- 210 x $40 enemy bullets
+  {"c_player",    0x103e6, 0x62},
+  {"c_options",   0x104aa, 0x64},
+  {"c_shots",     0x10572, 0x6c0},
+  {"c_segments",  0x112f2, 0x600},
+  {"c_beamctl",   0x11ef2, 0xa0},
+  {"c_beamstate", 0x12900, 0xa0},
+  {"c_display",   0x00000, 0xa00},
+}
+local CAUSAL_SCALARS = {
+  {"c_pstate", 0x103e6, "w"}, {"c_py", 0x103e8, "w"},
+  {"c_px", 0x103ea, "w"}, {"c_p24", 0x1040a, "b"},
+  {"c_p25", 0x1040b, "b"}, {"c_speed", 0x10400, "b"},
+  {"c_laser", 0x1041e, "b"},
+  {"c_enemy_n0", 0x15e9c, "w"}, {"c_enemy_n1", 0x15e9e, "w"},
+  {"c_enemy_n2", 0x15ea0, "w"}, {"c_bullet_n", 0x1b40c, "w"},
+  {"c_rankclock0", 0x130c6, "w"}, {"c_rankclock1", 0x130c8, "w"},
+  {"c_rank", 0x1309e, "w"}, {"c_rng", 0x03916, "w"},
+  {"c_hyper0", 0x1b63e, "w"}, {"c_hyper1", 0x1b640, "w"},
+  {"c_power0", 0x1b646, "w"}, {"c_power1", 0x1b648, "w"},
+}
+local CAUSAL_PRODUCERS = {5, 14, 15, 16, 19}
+local function digest_words(share, off, len)
+  local h = 0xcbf29ce484222325
+  for a = off, off + len - 2, 2 do
+    h = (h ~ share:read_u16(a)) * 0x100000001b3
+  end
+  return h & 0x7fffffffffffffff
+end
+local function digest_hex(s)
+  local h = 0xcbf29ce484222325
+  for b in (s or ""):gmatch("%x%x") do
+    h = (h ~ tonumber(b, 16)) * 0x100000001b3
+  end
+  return h & 0x7fffffffffffffff
 end
 
 -- ---------------------------------------------------------------- the DATE
@@ -619,6 +702,7 @@ for tok in (os.getenv("PROBE_SNAP") or ""):gmatch("[^,]+") do snapat[tonumber(to
 local lf, vf = 0, 0                     -- declared here: gfx_dump() logs lf
 local GFXDIR   = os.getenv("PROBE_GFX")
 local gfxat, gfx_pending, gfx_n = {}, 0, 0
+local gfx_failed_dumps, gfx_failures = 0, 0
 for tok in (os.getenv("PROBE_GFXAT") or ""):gmatch("[^,]+") do gfxat[tonumber(tok)] = true end
 
 local ROWS = M.memory.shares[":igs023:rowscrollram"]
@@ -633,29 +717,55 @@ local function share_bytes(sh)
   return table.concat(t)
 end
 
+local function gfx_failure(kind, path, detail)
+  gfx_failures = gfx_failures + 1
+  p("FAIL GFX_%s_FAILED path=[%s] detail=[%s]", kind, path, tostring(detail or "unknown"))
+end
+
 local function wr(name, bytes)
-  local fh = io.open(GFXDIR .. "/" .. name, "wb")
-  if not fh then p("GFX_OPEN_FAILED [%s]", GFXDIR .. "/" .. name); return 0 end
-  fh:write(bytes); fh:close()
-  return #bytes
+  local path = GFXDIR .. "/" .. name
+  local fh, open_err = io.open(path, "wb")
+  if not fh then
+    gfx_failure("OPEN", path, open_err)
+    return false
+  end
+  local write_call, write_result, write_err = pcall(fh.write, fh, bytes)
+  if not write_call or not write_result then
+    gfx_failure("WRITE", path, write_call and write_err or write_result)
+    local close_call, close_result, close_err = pcall(fh.close, fh)
+    if not close_call or not close_result then
+      gfx_failure("CLOSE", path, close_call and close_err or close_result)
+    end
+    return false
+  end
+  local close_call, close_result, close_err = pcall(fh.close, fh)
+  if not close_call or not close_result then
+    gfx_failure("CLOSE", path, close_call and close_err or close_result)
+    return false
+  end
+  return true
 end
 
 local function gfx_dump()
   local v = SCR:frame_number()
   local pre = string.format("f%06d.", v)
-  wr(pre .. "palette.bin",      share_bytes(PAL))
-  wr(pre .. "spritebuffer.bin", share_bytes(SPB))
-  wr(pre .. "bg_videoram.bin",  share_bytes(BG))
-  wr(pre .. "tx_videoram.bin",  share_bytes(TX))
-  wr(pre .. "rowscroll.bin",    share_bytes(ROWS))
-  wr(pre .. "zoomram.bin",      share_bytes(ZOOM))
+  local complete = true
+  local function put(name, bytes)
+    if not wr(name, bytes) then complete = false end
+  end
+  put(pre .. "palette.bin",      share_bytes(PAL))
+  put(pre .. "spritebuffer.bin", share_bytes(SPB))
+  put(pre .. "bg_videoram.bin",  share_bytes(BG))
+  put(pre .. "tx_videoram.bin",  share_bytes(TX))
+  put(pre .. "rowscroll.bin",    share_bytes(ROWS))
+  put(pre .. "zoomram.bin",      share_bytes(ZOOM))
   -- the game's OWN sprite list (pre-DMA), first 0xa00 bytes of main RAM
   local t = {}
   for a = 0, 0x9ff, 2 do
     local w = RAM:read_u16(a)
     t[#t + 1] = string.char((w >> 8) & 0xff, w & 0xff)
   end
-  wr(pre .. "spriteram.bin", table.concat(t))
+  put(pre .. "spriteram.bin", table.concat(t))
   local regs = {
     bg_yscroll = PROG:read_u16(0xb02000), bg_xscroll = PROG:read_u16(0xb03000),
     bg_scale   = PROG:read_u16(0xb04000),
@@ -665,10 +775,15 @@ local function gfx_dump()
   local rl = {}
   for k, val in pairs(regs) do rl[#rl + 1] = string.format("%s=%04x", k, val) end
   table.sort(rl)
-  wr(pre .. "regs.txt", table.concat(rl, "\n") .. "\n")
-  wr(pre .. "pixels.bin", SCR:pixels())
-  gfx_n = gfx_n + 1
-  p("GFXDUMP vf=%d lf=%d %s", v, lf, table.concat(rl, " "))
+  put(pre .. "regs.txt", table.concat(rl, "\n") .. "\n")
+  put(pre .. "pixels.bin", SCR:pixels())
+  if complete then
+    gfx_n = gfx_n + 1
+    p("GFXDUMP vf=%d lf=%d %s", v, lf, table.concat(rl, " "))
+  else
+    gfx_failed_dumps = gfx_failed_dumps + 1
+    p("FAIL GFXDUMP_INCOMPLETE vf=%d lf=%d", v, lf)
+  end
 end
 
 -- ---------------------------------------------------------------- checkpoints
@@ -1047,7 +1162,9 @@ end
 -- ---------------------------------------------------------------- state
 local irq4, irq6, rel, spin = 0, 0, 0, 0
 local prev_t, rel_t = 0, 0
-local out, done = nil, false
+local out, causal_out, done = nil, nil, false
+local causal_seq, causal_hits = 0, {}
+local causal_errors, causal_last_error = 0, ""
 -- census (the lag census the plan requires in EVERY scenario's output)
 local cen = { irq6hist = {}, relhist = {}, spinhist = {}, buildhist = {},
               armhist = {}, semhist = {}, maxspr = 0, halted = 0, rtcreads = 0,
@@ -1068,6 +1185,11 @@ for _, w in ipairs(WATCH) do COLS[#COLS + 1] = w[1] end
 for _, w in ipairs(EXECS) do COLS[#COLS + 1] = w[1] end
 for _, w in ipairs(RAWDUMPS) do COLS[#COLS + 1] = w[1] end
 for _, b in ipairs(EFFECT_BUCKETS) do COLS[#COLS + 1] = "bucket" .. b[1] end
+if CAUSAL then
+  for _, w in ipairs(CAUSAL_RANGES) do COLS[#COLS + 1] = w[1] end
+  for _, w in ipairs(CAUSAL_SCALARS) do COLS[#COLS + 1] = w[1] end
+  for _, i in ipairs(CAUSAL_PRODUCERS) do COLS[#COLS + 1] = "c_prod" .. i end
+end
 
 -- THE MACHINE CLOCK, IN 68000 CYCLES, AND WHY IT IS NOT attoseconds.
 -- Wave 1 computed `t = M.time.attoseconds + M.time.seconds * 1e18`.  int64's
@@ -1166,8 +1288,22 @@ local function emit(armpc)
   end
   for _, b in ipairs(EFFECT_BUCKETS) do
     r[#r + 1] = bucket_pending[b[1]] or ""
-    bucket_pending[b[1]] = nil
   end
+  if CAUSAL then
+    local in_window = lf >= CAUSAL_FROM and lf <= CAUSAL_TO
+    for _, w in ipairs(CAUSAL_RANGES) do
+      r[#r + 1] = in_window and digest_words(RAM, w[2], w[3]) or ""
+    end
+    for _, w in ipairs(CAUSAL_SCALARS) do
+      if not in_window then r[#r + 1] = ""
+      elseif w[3] == "b" then r[#r + 1] = RAM:read_u8(w[2])
+      else r[#r + 1] = RAM:read_u16(w[2]) end
+    end
+    for _, i in ipairs(CAUSAL_PRODUCERS) do
+      r[#r + 1] = in_window and digest_hex(bucket_pending[i]) or ""
+    end
+  end
+  for _, b in ipairs(CAPTURE_BUCKETS) do bucket_pending[b[1]] = nil end
   local line = table.concat(r, "\t")
   if out then out:write(line, "\n") else p("ROW %s", line) end
   if PORTIN then bump(cen.portinhist, portin_reads); portin_reads = 0 end
@@ -1276,6 +1412,135 @@ TAPS[#TAPS + 1] = PROG:install_write_tap(0x803940, 0x803941, "sem", function(off
   end
   return data
 end)
+
+-- (2b) W594 selector causality. A read tap is valid on these three SRAM data
+-- ranges because the 68000 cannot fetch instructions from them. `lf` names the
+-- last completed frame, so an in-flight access belongs exactly to resulting
+-- logic frame `lf + 1`. Events outside the requested result-frame window are
+-- never written. The separate file keeps the standard TSV unchanged unless the
+-- experiment is explicitly enabled.
+if CAUSAL then
+  local SPNAME = CPU.state["A7"] and "A7" or (CPU.state["SP"] and "SP" or nil)
+  if not SPNAME then p("FAIL causal taps cannot resolve the 68000 stack pointer") end
+  local BASELINE_02_DIRECT_WORD = 0x0000
+  local function causal_stack_base(a7)
+    local base = a7 & 0xfffffc
+    if base > 0x81ffe0 then base = 0x81ffe0 end
+    if base < 0x800000 then base = 0x800000 end
+    return base
+  end
+  local function selector_has_both_direct_returns()
+    if not SPNAME then return false end
+    local a7 = CPU.state[SPNAME].value & 0xffffff
+    local base = causal_stack_base(a7)
+    local has_2634fe, has_26353a = false, false
+    for i = 0, 7 do
+      local word = PROG:read_u32(base + i * 4) & 0xffffff
+      if word == 0x2634fe then has_2634fe = true end
+      if word == 0x26353a then has_26353a = true end
+    end
+    return has_2634fe and has_26353a
+  end
+  local function causal_event(kind, offset, data, mask, prior)
+    bump(causal_hits, kind)
+    local result_lf = lf + 1
+    if result_lf < CAUSAL_FROM or result_lf > CAUSAL_TO then return end
+    bump(causal_hits, "in-window")
+    local ok, err = pcall(function()
+      if not causal_out then error("causal event file is not open") end
+      if not SPNAME then error("68000 stack pointer is unavailable") end
+      local pc = CPU.state["CURPC"].value & 0xffffff
+      local a7 = CPU.state[SPNAME].value & 0xffffff
+      -- Keep eight aligned longwords inside the 128 KiB SRAM while retaining A7
+      -- in the window. At the normal $81FFE4 top-of-stack position, starting at
+      -- A7 would run four bytes past $81FFFF, so the aligned base clamps to
+      -- $81FFE0. The exact chosen base is recorded beside A7.
+      local base = causal_stack_base(a7)
+      if a7 < base or a7 > base + 31 then
+        error(string.format("A7 $%06X is outside stack window $%06X..$%06X",
+          a7, base, base + 31))
+      end
+      local stack = {}
+      for i = 0, 7 do
+        stack[#stack + 1] = string.format("%08X", PROG:read_u32(base + i * 4))
+      end
+      causal_seq = causal_seq + 1
+      causal_out:write(string.format(
+        "%d\t%s\t%d\t%d\t%06X\t%06X\t%04X\t%04X\t%s\t%06X\t%06X\t%s\n",
+        causal_seq, kind, result_lf, cycnow(), pc, offset & 0xffffff,
+        (data or 0) & 0xffff, (mask or 0xffff) & 0xffff,
+        prior == nil and "" or string.format("%04X", prior & 0xffff),
+        a7, base, table.concat(stack, "\t")))
+    end)
+    if not ok then
+      causal_errors = causal_errors + 1
+      causal_last_error = tostring(err)
+      if causal_errors <= 5 then p("CAUSAL_ERROR %s", causal_last_error) end
+    end
+  end
+
+  local selector_ranges = {
+    {0x813084, 0x81308b, "selector-mailbox"},
+    {0x81043e, 0x810441, "selector-p1-cache"},
+    {0x8104a0, 0x8104a3, "selector-p2-cache"},
+  }
+  for _, s in ipairs(selector_ranges) do
+    TAPS[#TAPS + 1] = PROG:install_read_tap(s[1], s[2], s[3],
+      function(offset, data, mask)
+        causal_event("selector", offset, data, mask, nil)
+        local result_lf = lf + 1
+        local lanes = (mask or 0xffff) & 0xffff
+        local pc = CPU.state["CURPC"].value & 0xffffff
+        if CAUSAL_SUBSTITUTE
+            and result_lf >= CAUSAL_FROM and result_lf <= CAUSAL_TO
+            and (offset & 0xffffff) == 0x81043e
+            and pc == 0x2862c8
+            and lanes == 0xffff
+            and selector_has_both_direct_returns() then
+          local returned = BASELINE_02_DIRECT_WORD
+          causal_event("selector-substitute", offset, returned, lanes, data)
+          return returned
+        end
+        return data
+      end)
+  end
+
+  TAPS[#TAPS + 1] = PROG:install_write_tap(0x81459c, 0x81585b, "causal-enemy-hp",
+    function(offset, data, mask)
+      if (CPU.state["CURPC"].value & 0xffffff) == 0x24505e then
+        causal_event("enemy-hp", offset, data, mask, PROG:read_u16(offset & ~1))
+      end
+      return data
+    end)
+  TAPS[#TAPS + 1] = PROG:install_write_tap(0x8103e6, 0x8104a9, "causal-player-hit",
+    function(offset, data, mask)
+      if (CPU.state["CURPC"].value & 0xffffff) == 0x245a44 then
+        causal_event("player-hit", offset, data, mask, PROG:read_u16(offset & ~1))
+      end
+      return data
+    end)
+  TAPS[#TAPS + 1] = PROG:install_write_tap(0x817f8c, 0x81b40b, "causal-bullet-spawn",
+    function(offset, data, mask)
+      local pc = CPU.state["CURPC"].value & 0xffffff
+      if pc == 0x281568 or pc == 0x28187a then
+        causal_event("bullet-spawn", offset, data, mask, PROG:read_u16(offset & ~1))
+      end
+      return data
+    end)
+  TAPS[#TAPS + 1] = PROG:install_write_tap(0x81f000, 0x81ffff, "causal-stack-calls",
+    function(offset, data, mask)
+      local pc = CPU.state["CURPC"].value & 0xffffff
+      local a7 = CPU.state[SPNAME].value & 0xffffff
+      if pc == 0x263538 and offset == (a7 & 0xfffffe) then
+        causal_event("enemy-handler", offset, data, mask, nil)
+      elseif pc == 0x263650 and offset == (a7 & 0xfffffe) then
+        causal_event("enemy-init", offset, data, mask, nil)
+      elseif pc == 0x2636d6 and offset == ((a7 - 12) & 0xfffffe) then
+        causal_event("enemy-allocator", offset, data, mask, nil)
+      end
+      return data
+    end)
+end
 
 -- (3) THE LOAD METER, opt-in.  A read tap on the wait loop's `tst.b` counts
 --     spin iterations per frame: ~10,000-12,000 on a quiet frame, under 1,000
@@ -1616,6 +1881,15 @@ if OUTPATH then
   if not out then p("OUT_OPEN_FAILED path=[%s]", tostring(OUTPATH)) end
   out:write(table.concat(COLS, "\t"), "\n")
 end
+if CAUSAL then
+  causal_out = io.open(CAUSAL_PATH, "wb")
+  if not causal_out then
+    p("FAIL causal event output cannot open path=[%s]", tostring(CAUSAL_PATH))
+  else
+    causal_out:write("seq\tkind\tresultlf\tcyc\tpc\taddress\tdata\tmask\tprior\ta7\tstackbase"
+      .. "\ts0\ts1\ts2\ts3\ts4\ts5\ts6\ts7\n")
+  end
+end
 p("cols=%s", table.concat(COLS, ","))
 p("refresh_hz=%.9f frame_attos=%d cycles_per_frame=%d",
   1e18 / SCR.refresh_attoseconds, SCR.refresh_attoseconds,
@@ -1646,6 +1920,7 @@ end
 
 local function finish()
   if out then out:close() end
+  if causal_out then causal_out:close() end
   -- ------------------------------------------------------------------------
   -- THE LAG CENSUS -- standard output of every run, never optional.  A frame
   -- with irq6 > 1 spanned more than one video frame (case B dilation); a frame
@@ -1654,6 +1929,13 @@ local function finish()
   -- 29.6/19.7 Hz cadence, not slowdown).
   -- ------------------------------------------------------------------------
   p("CENSUS logicframes=%d videoframes=%d", lf, SCR:frame_number())
+  if CAUSAL then
+    p("CENSUS causal_events=%d resulting_lf=%d..%d hits[%s]", causal_seq,
+      CAUSAL_FROM, CAUSAL_TO, hist(causal_hits))
+    if causal_errors > 0 then
+      p("FAIL causal tap errors=%d last=[%s]", causal_errors, causal_last_error)
+    end
+  end
   p("CENSUS irq6_per_logicframe %s", hist(cen.irq6hist))
   p("CENSUS releases_per_logicframe %s", hist(cen.relhist))
   p("CENSUS armed_vblanks %s", hist(cen.semhist))
@@ -1702,7 +1984,10 @@ local function finish()
   p("CENSUS bg_scale writes=%d non_0210=%d values_written[%s] values_seen_per_frame[%s]",
     bgscale.writes, bgscale.bad, hist(bgscale.vals), hist(bgscale.seen))
   if bgscale.bad > 0 then p("CENSUS bg_scale_bad_pcs %s", hist(bgscale.pcs)) end
-  if GFXDIR then p("CENSUS gfx_dumps=%d dir=%s", gfx_n, GFXDIR) end
+  if GFXDIR then
+    p("CENSUS gfx_dumps_complete=%d gfx_dumps_failed=%d gfx_file_failures=%d dir=%s",
+      gfx_n, gfx_failed_dumps, gfx_failures, GFXDIR)
+  end
   if CKPT_DIR then
     -- REQUESTED vs TAKEN, not just taken.  A ladder that silently has holes in
     -- it produces "the segment could not be compared" reports that look like
@@ -1900,9 +2185,14 @@ local function finish()
       snd.doors, snd.keyons)
   end
   if GFXDIR and gfx_n == 0 then
-    fails[#fails + 1] = "PROBE_GFX was set but NOT ONE frame was dumped: the "
+    fails[#fails + 1] = "PROBE_GFX was set but NOT ONE complete frame was dumped: the "
       .. "logic frames in PROBE_GFXAT were never reached, or the directory is "
       .. "not writable"
+  end
+  if GFXDIR and (gfx_failed_dumps > 0 or gfx_failures > 0) then
+    fails[#fails + 1] = string.format(
+      "PROBE_GFX produced %d incomplete dump(s) and %d file failure(s); only %d "
+      .. "complete dump(s) count", gfx_failed_dumps, gfx_failures, gfx_n)
   end
   if ZC_START and zc.nbatch > 0 and zc.batch < zc.nbatch then
     fails[#fails + 1] = string.format(
@@ -2018,7 +2308,11 @@ SUBS[#SUBS + 1] = emu.add_machine_frame_notifier(function()
   if GFXDIR and gfx_pending > 0 then
     gfx_pending = gfx_pending - 1
     local ok, e = pcall(gfx_dump)
-    if not ok then p("LUA_ERROR gfx_dump %s", tostring(e)) end
+    if not ok then
+      gfx_failed_dumps = gfx_failed_dumps + 1
+      p("FAIL GFXDUMP_ERROR vf=%d lf=%d detail=[%s]", SCR:frame_number(), lf,
+        tostring(e))
+    end
   end
   if lf >= RUN and not done then done = true; finish() end
 end)

@@ -6,14 +6,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import {
+  existsSync, mkdtempSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { applyAuthenticSelection } from '../src/authentic.js';
 import {
-  effectWitnessSha256, EFFECT_WITNESS_SHA256, verifyEffectScenarios,
-  verifyEffectTrace, verifyEffectWitness,
+  effectGfxIdentity, effectWitnessSha256, EFFECT_GFX_AT, EFFECT_GFX_FILE_SIZES,
+  EFFECT_GFX_FRAMES, EFFECT_WITNESS_SHA256, normalizeEffectTrace, verifyEffectGfx,
+  verifyEffectScenarios, verifyEffectTrace, verifyEffectWitness,
 } from '../tools/effectgate.mjs';
 import { Game, PRODUCED_BUCKETS } from '../src/main.js';
 import { P, RAM } from '../src/machine.js';
@@ -156,6 +159,24 @@ function activeShots(ram) {
   return count;
 }
 
+function syntheticGfxName(frame, suffix) {
+  return `f${String(frame).padStart(6, '0')}.${suffix}`;
+}
+function syntheticGfxPayload(name) {
+  const suffix = name.slice(8);
+  const payload = Buffer.alloc(EFFECT_GFX_FILE_SIZES[suffix]);
+  const marker = createHash('sha256').update(name).digest();
+  marker.copy(payload, 0);
+  marker.copy(payload, payload.length - marker.length);
+  return payload;
+}
+function swapFilePayloads(directory, left, right) {
+  const leftPayload = readFileSync(path.join(directory, left));
+  const rightPayload = readFileSync(path.join(directory, right));
+  writeFileSync(path.join(directory, left), rightPayload);
+  writeFileSync(path.join(directory, right), leftPayload);
+}
+
 test('W593 tracked witness pins all-six target lists and rendered pixels', () => {
   assert.equal(verifyEffectScenarios(SCENARIOS), true);
   assert.equal(verifyEffectWitness(WITNESS), true);
@@ -167,6 +188,11 @@ test('W593 tracked witness pins all-six target lists and rendered pixels', () =>
   });
   assert.deepEqual(WITNESS.scenario.targetBuckets, [5, 14, 15, 16, 19]);
   assert.deepEqual(WITNESS.bounds.allPairTargetBucketsExact, [2001, 2143]);
+  assert.deepEqual(WITNESS.gfxCorpus.triggerLogicFrames, EFFECT_GFX_AT.split(',').map(Number));
+  assert.deepEqual(WITNESS.gfxCorpus.videoFrames, [...EFFECT_GFX_FRAMES]);
+  assert.deepEqual([
+    WITNESS.gfxCorpus.filesPerFrame, WITNESS.gfxCorpus.consecutivePairs,
+  ], [9, 62]);
   assert.deepEqual(WITNESS.pixelGate, {
     verdict: 'PASS', pairs: 372, exact: 37330944, total: 37330944,
     percent: 100, densestRun: 33, busiestSprites: 109,
@@ -243,6 +269,9 @@ test('W593 tracked witness pins all-six target lists and rendered pixels', () =>
 });
 
 test('W593 verifier rejects partial, stale, mislabeled, and overclaimed witnesses', () => {
+  const changedScenarios = structuredClone(SCENARIOS);
+  changedScenarios.paireffects.gfxAt = changedScenarios.paireffects.gfxAt.replace('2370', '2371');
+  assert.throws(() => verifyEffectScenarios(changedScenarios), /GFX trigger corpus changed/);
   const rejects = (mutate, pattern) => {
     const copy = structuredClone(WITNESS);
     mutate(copy);
@@ -265,6 +294,11 @@ test('W593 verifier rejects partial, stale, mislabeled, and overclaimed witnesse
   rejects((w) => { w.pairs[0].initial.p1Invulnerability = 0xcf; },
     /LF2000 P1 invulnerability is not 0xd0/);
   rejects((w) => { w.pixelGate.exact--; }, /pixel gate is not exact/);
+  rejects((w) => { w.gfxCorpus.videoFrames[0]++; }, /GFX video-frame corpus changed/);
+  rejects((w) => { w.pairs[0].gfx.rgb24Sha256 = '0'.repeat(64); },
+    /canonical digest changed/);
+  rejects((w) => { w.pairs[0].trace.normalization = 'raw-tsv'; },
+    /trace normalization changed/);
   rejects((w) => { w.pairs[0].events[2129].pixels.fullRgb24Sha256 = '0'.repeat(64); },
     /canonical digest changed/);
   rejects((w) => { w.pairs[0].events[2129].targetBuckets[5].bytes = 84; },
@@ -273,19 +307,146 @@ test('W593 verifier rejects partial, stale, mislabeled, and overclaimed witnesse
     /framebuffer is not SHA-256/);
 });
 
-test('W593 trace verifier accepts exact bytes and rejects stale captures', () => {
-  const exact = Buffer.from('lf\tvalue\n1\ta\n2\tb\n');
+test('W593 GFX identity rejects every filesystem framing and payload mutation', (t) => {
+  const directory = mkdtempSync(path.join(HERE, '.w593-gfx-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const suffixes = Object.keys(EFFECT_GFX_FILE_SIZES);
+  for (const frame of EFFECT_GFX_FRAMES) {
+    for (const suffix of suffixes) {
+      const name = syntheticGfxName(frame, suffix);
+      writeFileSync(path.join(directory, name), syntheticGfxPayload(name));
+    }
+  }
+
+  const baseline = effectGfxIdentity(directory);
+  const witness = { pairs: [{ key: '0/2', gfx: baseline }] };
+  assert.deepEqual([baseline.files, baseline.bytes], [630,
+    EFFECT_GFX_FRAMES.length
+      * Object.values(EFFECT_GFX_FILE_SIZES).reduce((sum, size) => sum + size, 0)]);
+  assert.equal(verifyEffectGfx(witness, '0/2', directory), true);
+
+  const firstFrame = EFFECT_GFX_FRAMES[0];
+  const firstName = syntheticGfxName(firstFrame, suffixes[0]);
+  const firstPath = path.join(directory, firstName);
+  const renamedName = firstName.replace(/\.bin$/, '.stale.bin');
+  const renamedPath = path.join(directory, renamedName);
+  renameSync(firstPath, renamedPath);
+  try {
+    assert.throws(() => verifyEffectGfx(witness, '0/2', directory),
+      /GFX capture file set or order changed/, 'wrong filename stayed green');
+  } finally {
+    renameSync(renamedPath, firstPath);
+  }
+
+  unlinkSync(firstPath);
+  try {
+    assert.throws(() => effectGfxIdentity(directory),
+      /GFX capture file set or order changed/, 'missing file stayed green');
+  } finally {
+    writeFileSync(firstPath, syntheticGfxPayload(firstName));
+  }
+
+  const extraPath = path.join(directory, 'f999999.extra.bin');
+  writeFileSync(extraPath, Buffer.from([1]));
+  try {
+    assert.throws(() => verifyEffectGfx(witness, '0/2', directory),
+      /GFX capture file set or order changed/, 'extra file stayed green');
+  } finally {
+    unlinkSync(extraPath);
+  }
+
+  for (const suffix of suffixes) {
+    const name = syntheticGfxName(firstFrame, suffix);
+    const file = path.join(directory, name);
+    const exact = syntheticGfxPayload(name);
+    writeFileSync(file, exact.subarray(1));
+    try {
+      assert.throws(() => effectGfxIdentity(directory), /GFX .* size .* changed/,
+        `${suffix} wrong size stayed green`);
+    } finally {
+      writeFileSync(file, exact);
+    }
+  }
+
+  for (const [suffix, changedField] of [
+    ['palette.bin', 'paletteSha256'],
+    ['regs.txt', 'displayStateSha256'],
+    ['pixels.bin', 'rgb24Sha256'],
+  ]) {
+    const name = syntheticGfxName(firstFrame, suffix);
+    const file = path.join(directory, name);
+    const exact = syntheticGfxPayload(name);
+    const changedPayload = Buffer.from(exact);
+    changedPayload[0] ^= 1;
+    writeFileSync(file, changedPayload);
+    try {
+      const changed = effectGfxIdentity(directory);
+      assert.notEqual(changed.allSha256, baseline.allSha256, `${suffix} aggregate mutation`);
+      for (const field of ['paletteSha256', 'displayStateSha256', 'rgb24Sha256']) {
+        assert.equal(changed[field] === baseline[field], field !== changedField,
+          `${suffix} ${field} classification`);
+      }
+      assert.throws(() => verifyEffectGfx(witness, '0/2', directory),
+        /GFX aggregate identity changed/, `${suffix} payload mutation stayed green`);
+    } finally {
+      writeFileSync(file, exact);
+    }
+  }
+
+  const sameSizeLeft = syntheticGfxName(firstFrame, 'bg_videoram.bin');
+  const sameSizeRight = syntheticGfxName(firstFrame, 'rowscroll.bin');
+  swapFilePayloads(directory, sameSizeLeft, sameSizeRight);
+  try {
+    assert.throws(() => verifyEffectGfx(witness, '0/2', directory),
+      /GFX aggregate identity changed/, 'same-size name association swap stayed green');
+  } finally {
+    swapFilePayloads(directory, sameSizeLeft, sameSizeRight);
+  }
+
+  const crossFrameLeft = syntheticGfxName(EFFECT_GFX_FRAMES[0], 'regs.txt');
+  const crossFrameRight = syntheticGfxName(EFFECT_GFX_FRAMES[1], 'regs.txt');
+  swapFilePayloads(directory, crossFrameLeft, crossFrameRight);
+  try {
+    assert.throws(() => verifyEffectGfx(witness, '0/2', directory),
+      /GFX aggregate identity changed/, 'cross-frame payload association swap stayed green');
+  } finally {
+    swapFilePayloads(directory, crossFrameLeft, crossFrameRight);
+  }
+
+  assert.equal(verifyEffectGfx(witness, '0/2', directory), true,
+    'synthetic corpus did not return to its exact identity');
+});
+
+test('W593 trace verifier omits only the host-calendar column', () => {
+  const exact = Buffer.from('lf\td_date\tleft\tright\n1\tcalendar-a\ta\tb\n2\tcalendar-b\tc\td\n');
+  const normalized = Buffer.from('lf\tleft\tright\n1\ta\tb\n2\tc\td\n');
+  assert.deepEqual(normalizeEffectTrace(exact), normalized);
   const tiny = { pairs: [{
     key: '0/2',
     trace: {
-      logicFrames: [1, 2], rows: 2,
-      sha256: createHash('sha256').update(exact).digest('hex'),
+      logicFrames: [1, 2], rows: 2, normalization: 'omit-d_date-only-v1',
+      sha256: createHash('sha256').update(normalized).digest('hex'),
     },
   }] };
   assert.equal(verifyEffectTrace(tiny, '0/2', exact), true);
-  const stale = Buffer.from(exact);
-  stale[stale.length - 2] ^= 1;
-  assert.throws(() => verifyEffectTrace(tiny, '0/2', stale), /capture SHA-256 changed/);
+  const anotherCalendar = Buffer.from(exact.toString().replaceAll('calendar-a', 'host-date-x')
+    .replaceAll('calendar-b', 'host-date-y'));
+  assert.equal(verifyEffectTrace(tiny, '0/2', anotherCalendar), true);
+
+  for (const [from, to] of [
+    ['left', 'stale-header'], ['right', 'other-header'], ['\ta\t', '\tx\t'],
+    ['\tb\n', '\ty\n'], ['\tc\t', '\tz\t'], ['\td\n', '\tw\n'],
+  ]) {
+    const stale = Buffer.from(exact.toString().replace(from, to));
+    assert.throws(() => verifyEffectTrace(tiny, '0/2', stale),
+      /normalized capture SHA-256 changed/);
+  }
+  assert.throws(() => verifyEffectTrace(tiny, '0/2',
+    Buffer.from(exact.toString().replace('2\tcalendar-b', '3\tcalendar-b'))),
+  /logic frame 2 changed/);
+  assert.throws(() => verifyEffectTrace(tiny, '0/2',
+    Buffer.from(exact.toString().replace('left\tright', 'left\textra\tright'))),
+  /column count changed|row 1 width changed/);
   assert.throws(() => verifyEffectTrace(tiny, '2/6', exact), /is not authentic/);
 });
 

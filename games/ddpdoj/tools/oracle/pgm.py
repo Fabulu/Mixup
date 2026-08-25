@@ -73,7 +73,7 @@ Commands
                 every 250 logic frames), and a manifest.  Every later
                 comparison re-seeds the port from a rung and needs no emulator.
                 `--verify` proves the new dumper byte-identical to wave 4's.
-  pairgate      W592: capture or offline-verify all six VERSION-B selectors
+  pairgate      W592-W594: six VERSION-B selectors, effects and causality
 
  7. THE OBJECT DRIVER IS MAIN-LOOP CALL #2, $2410BC (build A: $1413FE): 20 slots
     of $50 bytes at $80E240, dispatched through a 20-entry table at $240F62,
@@ -286,11 +286,14 @@ def check(r: Run, what: str, *, quiet: bool = False) -> None:
             raise SystemExit(f"{what}: MACHINE PIN CHANGED: {got} != "
                              f"{PINNED_MAINCPU_FNV64}. The ROM directory is not "
                              f"what it was; no cross-session number is trustworthy.")
-    if r.fails:
-        for f in r.fails:
+    gfx_fails = r.find("GFX_OPEN_FAILED ")
+    if r.fails or gfx_fails:
+        for f in [*r.fails, *gfx_fails]:
             print("  " + f, file=sys.stderr)
         print(r.stdout[-2500:], file=sys.stderr)
-        raise SystemExit(f"{what}: the probe FAILED its own boot assertions")
+        reason = ("GFX output failed" if gfx_fails else
+                  "the probe FAILED its own boot assertions")
+        raise SystemExit(f"{what}: {reason}")
     if r.returncode != 0 or not r.lines:
         print(r.stdout[-2500:], file=sys.stderr)
         print(r.stderr[-1500:], file=sys.stderr)
@@ -3185,6 +3188,7 @@ def _cmd_ckpt(argv: list[str]) -> int:
 PAIRGATE_WITNESS = HERE / "w592selectorpairgate.board.json"
 PAIRGATE_TOOL = HERE.parent.parent / "tools" / "pairgate.mjs"
 EFFECTGATE_TOOL = HERE.parent.parent / "tools" / "effectgate.mjs"
+CAUSALITYGATE_TOOL = HERE.parent.parent / "tools" / "causalitygate.mjs"
 PAIRGATE_MAME = "0.288 (mame0288)"
 PAIRGATE_MACHINE = ("MACHINE romname=ddpdojblk maincpu_size=6291456 "
                     "maincpu_fnv64=D4C25CA9C91B9D47")
@@ -3203,6 +3207,14 @@ def _effectgate_node(args: list[str]) -> int:
     if not node:
         raise SystemExit("node not on PATH -- effectgate verification is JavaScript")
     res = subprocess.run([node, str(EFFECTGATE_TOOL), *args], text=True)
+    return res.returncode
+
+
+def _causalitygate_node(args: list[str]) -> int:
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node not on PATH -- causality verification is JavaScript")
+    res = subprocess.run([node, str(CAUSALITYGATE_TOOL), *args], text=True)
     return res.returncode
 
 
@@ -3264,7 +3276,12 @@ def _pairgate_effects(defs: dict, rest: list[str]) -> int:
         ship, style = pair["ship"], pair["style"]
         stem = f"pair-{ship}-{style}-{os.getpid()}"
         out = root / stem
-        out.mkdir(parents=True, exist_ok=True)
+        try:
+            out.mkdir()
+        except FileExistsError:
+            raise SystemExit(f"pairgate effects: refusing pre-existing generated "
+                             f"output directory {out}; PID reuse must not admit "
+                             "stale W593 capture files") from None
         tsv = out / "effects.tsv"
         buttons = (f"{defs['pairgate']['chooserPrefix']};{pair['tail']};"
                    f"{spec['suffix']}")
@@ -3276,7 +3293,11 @@ def _pairgate_effects(defs: dict, rest: list[str]) -> int:
         }
         if not smoke:
             gfx = out / "gfx"
-            gfx.mkdir(parents=True, exist_ok=True)
+            try:
+                gfx.mkdir()
+            except FileExistsError:
+                raise SystemExit(f"pairgate effects: refusing pre-existing GFX "
+                                 f"directory {gfx}") from None
             env.update({"PROBE_GFX": str(gfx), "PROBE_GFXAT": spec["gfxAt"]})
         print(f"=== pair ({ship},{style}): W593 {'smoke' if smoke else 'effects'}")
         r = trace(tsv, frames=spec["frames"], buttons=buttons,
@@ -3292,25 +3313,128 @@ def _pairgate_effects(defs: dict, rest: list[str]) -> int:
             print(f"PAIRGATE FAIL: pair {ship},{style} trace differs from W593",
                   file=sys.stderr)
             rc = 1
-        else:
+        elif smoke:
             print(f"  ignored effect trace: {tsv}")
-            if not smoke:
-                print(f"  ignored palette and pixel pairs: {out / 'gfx'}")
+            print("  smoke mode: palette, display-state and RGB24 capture skipped")
+        elif _effectgate_node(["--gfx", str(gfx), "--pair",
+                               f"{ship}/{style}"]) != 0:
+            print(f"PAIRGATE FAIL: pair {ship},{style} GFX corpus differs from W593",
+                  file=sys.stderr)
+            rc = 1
+        else:
+            node = shutil.which("node")
+            if not node or not ROMDIR.exists():
+                print("PAIRGATE FAIL: node or extracted ROM directory missing for "
+                      "fresh pixel verification", file=sys.stderr)
+                rc = 1
+            else:
+                pix = subprocess.run([
+                    node, str(TOOLS / "pixgate.mjs"), "--rom", str(ROMDIR),
+                    "--dump", str(gfx), "--min-pairs", "62", "--quiet",
+                ]).returncode
+                if pix:
+                    print(f"PAIRGATE FAIL: pair {ship},{style} fresh pixels differ "
+                          "from MAME", file=sys.stderr)
+                    rc = 1
+                else:
+                    print(f"  ignored effect trace: {tsv}")
+                    print(f"  verified ignored palette, display state and pixels: {gfx}")
+    return rc
+
+
+def _pairgate_causality(defs: dict, rest: list[str]) -> int:
+    """W594 natural selector evidence plus the ancestry-only 0/2 intervention."""
+    selected = _pairgate_selection(defs["pairgate"], rest)
+    spec = defs.get("paircausality")
+    if not spec:
+        raise SystemExit("scenarios.json has no paircausality definition")
+
+    version = subprocess.run([str(mame_exe()), "-version"], capture_output=True,
+                             text=True, timeout=30).stdout.strip()
+    if version != PAIRGATE_MAME:
+        raise SystemExit(f"pairgate: MAME PIN CHANGED: {version!r} != "
+                         f"{PAIRGATE_MAME!r}")
+
+    root = OUT / "w594-causality"
+    root.mkdir(parents=True, exist_ok=True)
+    rc = 0
+    for pair in selected:
+        ship, style = pair["ship"], pair["style"]
+        pair_root = root / f"pair-{ship}-{style}-{os.getpid()}"
+        pair_root.mkdir(parents=True, exist_ok=True)
+        buttons = (f"{defs['pairgate']['chooserPrefix']};{pair['tail']};"
+                   f"{spec['suffix']}")
+        captures: dict[str, tuple[Path, Path]] = {}
+        pair_ok = True
+        for arm in ("natural", "intervention"):
+            arm_root = pair_root / arm
+            arm_root.mkdir(parents=True, exist_ok=True)
+            tsv = arm_root / "causality.tsv"
+            events = arm_root / "events.tsv"
+            env = {
+                "PROBE_PORTIN": "1",
+                "PROBE_CAUSAL": str(events),
+                "PROBE_CAUSAL_FROM": spec["fromLogicFrame"],
+                "PROBE_CAUSAL_TO": spec["toLogicFrame"],
+            }
+            if arm == "intervention":
+                env["PROBE_CAUSAL_SUBSTITUTE"] = "0/2"
+            print(f"=== pair ({ship},{style}): W594 {arm}, {spec['frames']} lf")
+            r = trace(tsv, frames=spec["frames"], buttons=buttons,
+                      build="B", meter=False, extra_env=env)
+            check(r, f"pairgate causality {arm} ({ship},{style})")
+            if r.find("MACHINE ") != [PAIRGATE_MACHINE]:
+                print(f"PAIRGATE FAIL: pair {ship},{style} {arm} machine lines "
+                      f"{r.find('MACHINE ')!r}", file=sys.stderr)
+                rc = 1
+                pair_ok = False
+                continue
+            gate_args = [
+                "--pair", f"{ship}/{style}", "--arm", arm,
+                "--trace", str(tsv), "--events", str(events),
+            ]
+            if _causalitygate_node(gate_args) != 0:
+                print(f"PAIRGATE FAIL: pair {ship},{style} {arm} capture differs "
+                      "from W594", file=sys.stderr)
+                rc = 1
+                pair_ok = False
+                continue
+            captures[arm] = (tsv, events)
+            print(f"  verified ignored {arm} trace: {tsv}")
+            print(f"  verified ignored {arm} events: {events}")
+
+        if pair_ok and set(captures) == {"natural", "intervention"}:
+            natural = captures["natural"]
+            intervention = captures["intervention"]
+            compare_args = [
+                "--pair", f"{ship}/{style}",
+                "--natural-trace", str(natural[0]),
+                "--natural-events", str(natural[1]),
+                "--intervention-trace", str(intervention[0]),
+                "--intervention-events", str(intervention[1]),
+            ]
+            if _causalitygate_node(compare_args) != 0:
+                print(f"PAIRGATE FAIL: pair {ship},{style} intervention comparison "
+                      "differs from W594", file=sys.stderr)
+                rc = 1
     return rc
 
 
 def _cmd_pairgate(argv: list[str]) -> int:
-    """W592. Cold-boot selector capture plus deterministic offline verification.
+    """W592-W594. Cold-boot selector evidence, effects and causality.
 
       pgm.py pairgate selector --all
       pgm.py pairgate selector --ship 2 --style 6
       pgm.py pairgate effects --ship 0 --style 4 --smoke
       pgm.py pairgate effects --all
+      pgm.py pairgate causality --ship 2 --style 6
+      pgm.py pairgate causality --all
       pgm.py pairgate verify --all
 
     `verify` launches neither MAME nor a capture reducer. It reads only the
     tracked compact W592 witness and scenarios.json. `effects` is W593's bounded
-    movement, shot, laser, producer-bucket, palette and pixel capture.
+    movement, shot, laser, producer-bucket, palette and pixel capture. `causality`
+    is W594's natural trace plus its ancestry-only 0/2 intervention.
     """
     if not argv:
         raise SystemExit(_cmd_pairgate.__doc__)
@@ -3322,8 +3446,9 @@ def _cmd_pairgate(argv: list[str]) -> int:
             raise SystemExit("pairgate verify: only --all is accepted; verification "
                              "is always the complete six-pair matrix")
         return _pairgate_node(verify_args)
-    if mode not in ("selector", "effects"):
-        raise SystemExit(f"pairgate: unknown mode {mode!r}; use selector, effects or verify")
+    if mode not in ("selector", "effects", "causality"):
+        raise SystemExit(f"pairgate: unknown mode {mode!r}; use selector, effects, "
+                         "causality or verify")
 
     # Validate the tracked contract before paying for any emulator run.
     if _pairgate_node(verify_args) != 0:
@@ -3333,6 +3458,10 @@ def _cmd_pairgate(argv: list[str]) -> int:
         if _effectgate_node([]) != 0:
             return 1
         return _pairgate_effects(defs, rest)
+    if mode == "causality":
+        if _causalitygate_node([]) != 0:
+            return 1
+        return _pairgate_causality(defs, rest)
     spec = defs.get("pairgate")
     if not spec:
         raise SystemExit("scenarios.json has no pairgate definition")
