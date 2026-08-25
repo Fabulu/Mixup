@@ -6,6 +6,23 @@
     "versionB": "560=D;570=;600=A;610=;1000=N;1010=;1100=N;1110=;1200=S;1210=;1500=A;1510=;1560=A;1570=;1700=A;1710=",
     "versionA": "1000=N;1010=;1100=N;1110=;1200=S;1210=;1500=A;1510=;1560=A;1570=;1700=A;1710="
   },
+  "pairgate": {
+    "schema": "ddpdoj-pairgate-selector-scenarios-v1",
+    "why": "W592 cold-boots every authentic fighter/style pair on VERSION-B and observes selector commit, player creation and live stage-1 state. This selector gate does not claim weapon-effect or sprite-producer fidelity; those belong to W593.",
+    "frames": 2050,
+    "build": "B",
+    "chooserPrefix": "560=D;570=;600=A;610=;1000=N;1010=;1100=N;1110=;1200=S;1210=",
+    "snapshotLogicFrame": 2000,
+    "watch": "mb84=813084,mb88=813088,cur08=813008:b,cur09=813009:b,cship=81043E,cstyle=810440,p24=81040A:b,p25=81040B:b,img=8103F0,hit=8103F6,speed1a=810400:b,laser38=81041E:b,speed39=81041F:b,powe4=8127E4:l,powe8=8127E8:l,stage=813092,pstate=8103E6,py=8103E8,px=8103EA",
+    "pairs": [
+      { "ship": 0, "style": 2, "tail": "1500=A;1510=;1560=A;1570=;1700=A;1710=" },
+      { "ship": 0, "style": 4, "tail": "1500=A;1510=;1530=R;1540=;1560=A;1570=;1700=A;1710=" },
+      { "ship": 0, "style": 6, "tail": "1500=A;1510=;1520=R;1530=;1540=R;1550=;1560=A;1570=;1700=A;1710=" },
+      { "ship": 2, "style": 2, "tail": "1460=R;1470=;1500=A;1510=;1560=A;1570=;1700=A;1710=" },
+      { "ship": 2, "style": 4, "tail": "1460=R;1470=;1500=A;1510=;1530=R;1540=;1560=A;1570=;1700=A;1710=" },
+      { "ship": 2, "style": 6, "tail": "1460=R;1470=;1500=A;1510=;1520=R;1530=;1540=R;1550=;1560=A;1570=;1700=A;1710=" }
+    ]
+  },
   "scenarios": [
     {
       "name": "chooser",

@@ -1,0 +1,622 @@
+{
+  "schema": "ddpdoj-pairgate-selector-witness-v1",
+  "scope": "Cold-boot selector evidence for six authentic VERSION-B fighter/style pairs. Effects, sprite buckets and pixel crops are not covered by W592.",
+  "oracle": {
+    "mame": "0.288 (mame0288)",
+    "set": "ddpdojblk",
+    "build": "B",
+    "maincpuSize": 6291456,
+    "decryptedMaincpuFnv64": "D4C25CA9C91B9D47"
+  },
+  "capture": {
+    "frames": 2050,
+    "snapshotLogicFrame": 2000,
+    "snapshotPng": {
+      "width": 224,
+      "height": 448
+    },
+    "watch": "mb84=813084,mb88=813088,cur08=813008:b,cur09=813009:b,cship=81043E,cstyle=810440,p24=81040A:b,p25=81040B:b,img=8103F0,hit=8103F6,speed1a=810400:b,laser38=81041E:b,speed39=81041F:b,powe4=8127E4:l,powe8=8127E8:l,stage=813092,pstate=8103E6,py=8103E8,px=8103EA"
+  },
+  "pairs": {
+    "0,2": {
+      "ship": 0,
+      "style": 2,
+      "script": "560=D;570=;600=A;610=;1000=N;1010=;1100=N;1110=;1200=S;1210=;1500=A;1510=;1560=A;1570=;1700=A;1710=",
+      "trace": {
+        "rows": 2050,
+        "firstLogicFrame": 1,
+        "lastLogicFrame": 2050,
+        "sha256": "1c73c25092080039747a160e91e1c821e2a3fb77370869b8838288bb78f66c8a"
+      },
+      "snapshotLf2000": {
+        "videoFrame": 2036,
+        "sha256": "848843dcb02430294c150cda533c133c259cb684d6ebd14daa5cd38e219712c7"
+      },
+      "transitions": {
+        "lastBuildA": {
+          "lf": 699,
+          "vf": 713
+        },
+        "firstBuildB": {
+          "lf": 700,
+          "vf": 722
+        },
+        "beforeSelectorCommit": {
+          "lf": 1616,
+          "vf": 1651
+        },
+        "selectorCommit": {
+          "lf": 1617,
+          "vf": 1652
+        },
+        "beforePlayerCreation": {
+          "lf": 1967,
+          "vf": 2003,
+          "p1State": 0
+        },
+        "playerCreated": {
+          "lf": 1968,
+          "vf": 2004
+        },
+        "liveSnapshot": {
+          "lf": 2000,
+          "vf": 2036
+        }
+      },
+      "selectorCommit": {
+        "mailboxShip": 0,
+        "mailboxStyle": 2,
+        "savedShipCursor": 0,
+        "savedStyleCursor": 0,
+        "cachedShip": 0,
+        "cachedStyle": 0,
+        "bombPlus24": 0,
+        "bombPlus25": 0,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 0,
+        "speedIndex": 0,
+        "laserFloor": 0,
+        "baseSpeed": 0,
+        "powerCursorE4": 0,
+        "powerCursorE8": 0,
+        "p1State": 0
+      },
+      "playerCreated": {
+        "mailboxShip": 0,
+        "mailboxStyle": 2,
+        "savedShipCursor": 0,
+        "savedStyleCursor": 0,
+        "cachedShip": 0,
+        "cachedStyle": 2,
+        "bombPlus24": 3,
+        "bombPlus25": 3,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 128,
+        "speedIndex": 22,
+        "laserFloor": 12,
+        "baseSpeed": 22,
+        "powerCursorE4": 2445884,
+        "powerCursorE8": 2445944,
+        "p1State": 32768
+      },
+      "liveLf2000": {
+        "mailboxShip": 0,
+        "mailboxStyle": 2,
+        "savedShipCursor": 0,
+        "savedStyleCursor": 0,
+        "cachedShip": 0,
+        "cachedStyle": 2,
+        "bombPlus24": 3,
+        "bombPlus25": 3,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 128,
+        "speedIndex": 22,
+        "laserFloor": 12,
+        "baseSpeed": 22,
+        "powerCursorE4": 2445884,
+        "powerCursorE8": 2445944,
+        "p1State": 32768
+      }
+    },
+    "0,4": {
+      "ship": 0,
+      "style": 4,
+      "script": "560=D;570=;600=A;610=;1000=N;1010=;1100=N;1110=;1200=S;1210=;1500=A;1510=;1530=R;1540=;1560=A;1570=;1700=A;1710=",
+      "trace": {
+        "rows": 2050,
+        "firstLogicFrame": 1,
+        "lastLogicFrame": 2050,
+        "sha256": "52ee9c97b5c25c21ab64cee87e8e635c36cab45018c375f244f0e125dda40861"
+      },
+      "snapshotLf2000": {
+        "videoFrame": 2036,
+        "sha256": "6dd9f1ba4bd54ac912950e2271576509df924421d25a2cac02230ca047f4775c"
+      },
+      "transitions": {
+        "lastBuildA": {
+          "lf": 699,
+          "vf": 713
+        },
+        "firstBuildB": {
+          "lf": 700,
+          "vf": 722
+        },
+        "beforeSelectorCommit": {
+          "lf": 1616,
+          "vf": 1651
+        },
+        "selectorCommit": {
+          "lf": 1617,
+          "vf": 1652
+        },
+        "beforePlayerCreation": {
+          "lf": 1967,
+          "vf": 2003,
+          "p1State": 0
+        },
+        "playerCreated": {
+          "lf": 1968,
+          "vf": 2004
+        },
+        "liveSnapshot": {
+          "lf": 2000,
+          "vf": 2036
+        }
+      },
+      "selectorCommit": {
+        "mailboxShip": 0,
+        "mailboxStyle": 4,
+        "savedShipCursor": 0,
+        "savedStyleCursor": 1,
+        "cachedShip": 0,
+        "cachedStyle": 0,
+        "bombPlus24": 0,
+        "bombPlus25": 0,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 0,
+        "speedIndex": 0,
+        "laserFloor": 0,
+        "baseSpeed": 0,
+        "powerCursorE4": 0,
+        "powerCursorE8": 0,
+        "p1State": 0
+      },
+      "playerCreated": {
+        "mailboxShip": 0,
+        "mailboxStyle": 4,
+        "savedShipCursor": 0,
+        "savedStyleCursor": 1,
+        "cachedShip": 0,
+        "cachedStyle": 4,
+        "bombPlus24": 2,
+        "bombPlus25": 2,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 128,
+        "speedIndex": 22,
+        "laserFloor": 16,
+        "baseSpeed": 22,
+        "powerCursorE4": 2445904,
+        "powerCursorE8": 2445964,
+        "p1State": 32768
+      },
+      "liveLf2000": {
+        "mailboxShip": 0,
+        "mailboxStyle": 4,
+        "savedShipCursor": 0,
+        "savedStyleCursor": 1,
+        "cachedShip": 0,
+        "cachedStyle": 4,
+        "bombPlus24": 2,
+        "bombPlus25": 2,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 128,
+        "speedIndex": 22,
+        "laserFloor": 16,
+        "baseSpeed": 22,
+        "powerCursorE4": 2445904,
+        "powerCursorE8": 2445964,
+        "p1State": 32768
+      }
+    },
+    "0,6": {
+      "ship": 0,
+      "style": 6,
+      "script": "560=D;570=;600=A;610=;1000=N;1010=;1100=N;1110=;1200=S;1210=;1500=A;1510=;1520=R;1530=;1540=R;1550=;1560=A;1570=;1700=A;1710=",
+      "trace": {
+        "rows": 2050,
+        "firstLogicFrame": 1,
+        "lastLogicFrame": 2050,
+        "sha256": "16a4afbedc7c2f7b0ebad31cd8ee033456ddf03951f397ffea2e4f369d813c5a"
+      },
+      "snapshotLf2000": {
+        "videoFrame": 2036,
+        "sha256": "fbb99fa69e86339295d7ea1402acf79cf6b34c25340e615138272595c67167c7"
+      },
+      "transitions": {
+        "lastBuildA": {
+          "lf": 699,
+          "vf": 713
+        },
+        "firstBuildB": {
+          "lf": 700,
+          "vf": 722
+        },
+        "beforeSelectorCommit": {
+          "lf": 1616,
+          "vf": 1651
+        },
+        "selectorCommit": {
+          "lf": 1617,
+          "vf": 1652
+        },
+        "beforePlayerCreation": {
+          "lf": 1967,
+          "vf": 2003,
+          "p1State": 0
+        },
+        "playerCreated": {
+          "lf": 1968,
+          "vf": 2004
+        },
+        "liveSnapshot": {
+          "lf": 2000,
+          "vf": 2036
+        }
+      },
+      "selectorCommit": {
+        "mailboxShip": 0,
+        "mailboxStyle": 6,
+        "savedShipCursor": 0,
+        "savedStyleCursor": 2,
+        "cachedShip": 0,
+        "cachedStyle": 0,
+        "bombPlus24": 0,
+        "bombPlus25": 0,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 0,
+        "speedIndex": 0,
+        "laserFloor": 0,
+        "baseSpeed": 0,
+        "powerCursorE4": 0,
+        "powerCursorE8": 0,
+        "p1State": 0
+      },
+      "playerCreated": {
+        "mailboxShip": 0,
+        "mailboxStyle": 6,
+        "savedShipCursor": 0,
+        "savedStyleCursor": 2,
+        "cachedShip": 0,
+        "cachedStyle": 6,
+        "bombPlus24": 1,
+        "bombPlus25": 1,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 128,
+        "speedIndex": 22,
+        "laserFloor": 16,
+        "baseSpeed": 22,
+        "powerCursorE4": 2445924,
+        "powerCursorE8": 2445984,
+        "p1State": 32768
+      },
+      "liveLf2000": {
+        "mailboxShip": 0,
+        "mailboxStyle": 6,
+        "savedShipCursor": 0,
+        "savedStyleCursor": 2,
+        "cachedShip": 0,
+        "cachedStyle": 6,
+        "bombPlus24": 1,
+        "bombPlus25": 1,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 128,
+        "speedIndex": 22,
+        "laserFloor": 16,
+        "baseSpeed": 22,
+        "powerCursorE4": 2445924,
+        "powerCursorE8": 2445984,
+        "p1State": 32768
+      }
+    },
+    "2,2": {
+      "ship": 2,
+      "style": 2,
+      "script": "560=D;570=;600=A;610=;1000=N;1010=;1100=N;1110=;1200=S;1210=;1460=R;1470=;1500=A;1510=;1560=A;1570=;1700=A;1710=",
+      "trace": {
+        "rows": 2050,
+        "firstLogicFrame": 1,
+        "lastLogicFrame": 2050,
+        "sha256": "4a0f56e3a9887f9fa0661fbe02a8f0a09ad078a696275e1e8c2d27b9c6fddcef"
+      },
+      "snapshotLf2000": {
+        "videoFrame": 2036,
+        "sha256": "082c9c7418451e42cd4ab2370afd7fa163903e2ec2e9bcd9f81284ad3e1bac96"
+      },
+      "transitions": {
+        "lastBuildA": {
+          "lf": 699,
+          "vf": 713
+        },
+        "firstBuildB": {
+          "lf": 700,
+          "vf": 722
+        },
+        "beforeSelectorCommit": {
+          "lf": 1616,
+          "vf": 1651
+        },
+        "selectorCommit": {
+          "lf": 1617,
+          "vf": 1652
+        },
+        "beforePlayerCreation": {
+          "lf": 1967,
+          "vf": 2003,
+          "p1State": 0
+        },
+        "playerCreated": {
+          "lf": 1968,
+          "vf": 2004
+        },
+        "liveSnapshot": {
+          "lf": 2000,
+          "vf": 2036
+        }
+      },
+      "selectorCommit": {
+        "mailboxShip": 2,
+        "mailboxStyle": 2,
+        "savedShipCursor": 1,
+        "savedStyleCursor": 0,
+        "cachedShip": 0,
+        "cachedStyle": 0,
+        "bombPlus24": 0,
+        "bombPlus25": 0,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 0,
+        "speedIndex": 0,
+        "laserFloor": 0,
+        "baseSpeed": 0,
+        "powerCursorE4": 0,
+        "powerCursorE8": 0,
+        "p1State": 0
+      },
+      "playerCreated": {
+        "mailboxShip": 2,
+        "mailboxStyle": 2,
+        "savedShipCursor": 1,
+        "savedStyleCursor": 0,
+        "cachedShip": 2,
+        "cachedStyle": 2,
+        "bombPlus24": 3,
+        "bombPlus25": 3,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 256,
+        "speedIndex": 19,
+        "laserFloor": 12,
+        "baseSpeed": 19,
+        "powerCursorE4": 2445894,
+        "powerCursorE8": 2445954,
+        "p1State": 32768
+      },
+      "liveLf2000": {
+        "mailboxShip": 2,
+        "mailboxStyle": 2,
+        "savedShipCursor": 1,
+        "savedStyleCursor": 0,
+        "cachedShip": 2,
+        "cachedStyle": 2,
+        "bombPlus24": 3,
+        "bombPlus25": 3,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 256,
+        "speedIndex": 19,
+        "laserFloor": 12,
+        "baseSpeed": 19,
+        "powerCursorE4": 2445894,
+        "powerCursorE8": 2445954,
+        "p1State": 32768
+      }
+    },
+    "2,4": {
+      "ship": 2,
+      "style": 4,
+      "script": "560=D;570=;600=A;610=;1000=N;1010=;1100=N;1110=;1200=S;1210=;1460=R;1470=;1500=A;1510=;1530=R;1540=;1560=A;1570=;1700=A;1710=",
+      "trace": {
+        "rows": 2050,
+        "firstLogicFrame": 1,
+        "lastLogicFrame": 2050,
+        "sha256": "0d53b45fc6dfd2768888075b016fe06c8fd5ba0957986d9b43bb9851d7e0fde1"
+      },
+      "snapshotLf2000": {
+        "videoFrame": 2036,
+        "sha256": "23afef26ee4cc5b486cd5e1a3fb112821b707717c44515a52fe94a48de684146"
+      },
+      "transitions": {
+        "lastBuildA": {
+          "lf": 699,
+          "vf": 713
+        },
+        "firstBuildB": {
+          "lf": 700,
+          "vf": 722
+        },
+        "beforeSelectorCommit": {
+          "lf": 1616,
+          "vf": 1651
+        },
+        "selectorCommit": {
+          "lf": 1617,
+          "vf": 1652
+        },
+        "beforePlayerCreation": {
+          "lf": 1967,
+          "vf": 2003,
+          "p1State": 0
+        },
+        "playerCreated": {
+          "lf": 1968,
+          "vf": 2004
+        },
+        "liveSnapshot": {
+          "lf": 2000,
+          "vf": 2036
+        }
+      },
+      "selectorCommit": {
+        "mailboxShip": 2,
+        "mailboxStyle": 4,
+        "savedShipCursor": 1,
+        "savedStyleCursor": 1,
+        "cachedShip": 0,
+        "cachedStyle": 0,
+        "bombPlus24": 0,
+        "bombPlus25": 0,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 0,
+        "speedIndex": 0,
+        "laserFloor": 0,
+        "baseSpeed": 0,
+        "powerCursorE4": 0,
+        "powerCursorE8": 0,
+        "p1State": 0
+      },
+      "playerCreated": {
+        "mailboxShip": 2,
+        "mailboxStyle": 4,
+        "savedShipCursor": 1,
+        "savedStyleCursor": 1,
+        "cachedShip": 2,
+        "cachedStyle": 4,
+        "bombPlus24": 2,
+        "bombPlus25": 2,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 256,
+        "speedIndex": 19,
+        "laserFloor": 15,
+        "baseSpeed": 19,
+        "powerCursorE4": 2445914,
+        "powerCursorE8": 2445974,
+        "p1State": 32768
+      },
+      "liveLf2000": {
+        "mailboxShip": 2,
+        "mailboxStyle": 4,
+        "savedShipCursor": 1,
+        "savedStyleCursor": 1,
+        "cachedShip": 2,
+        "cachedStyle": 4,
+        "bombPlus24": 2,
+        "bombPlus25": 2,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 256,
+        "speedIndex": 19,
+        "laserFloor": 15,
+        "baseSpeed": 19,
+        "powerCursorE4": 2445914,
+        "powerCursorE8": 2445974,
+        "p1State": 32768
+      }
+    },
+    "2,6": {
+      "ship": 2,
+      "style": 6,
+      "script": "560=D;570=;600=A;610=;1000=N;1010=;1100=N;1110=;1200=S;1210=;1460=R;1470=;1500=A;1510=;1520=R;1530=;1540=R;1550=;1560=A;1570=;1700=A;1710=",
+      "trace": {
+        "rows": 2050,
+        "firstLogicFrame": 1,
+        "lastLogicFrame": 2050,
+        "sha256": "8a970397cdbe238aff5660287fb4a9fb39e1c7fbdbe1e9b5bdb4375cfbe2beb0"
+      },
+      "snapshotLf2000": {
+        "videoFrame": 2036,
+        "sha256": "db8930e92e73beb38cbe73bfc6abf35f9608b9b91c9419ab45434646636e2978"
+      },
+      "transitions": {
+        "lastBuildA": {
+          "lf": 699,
+          "vf": 713
+        },
+        "firstBuildB": {
+          "lf": 700,
+          "vf": 722
+        },
+        "beforeSelectorCommit": {
+          "lf": 1616,
+          "vf": 1651
+        },
+        "selectorCommit": {
+          "lf": 1617,
+          "vf": 1652
+        },
+        "beforePlayerCreation": {
+          "lf": 1967,
+          "vf": 2003,
+          "p1State": 0
+        },
+        "playerCreated": {
+          "lf": 1968,
+          "vf": 2004
+        },
+        "liveSnapshot": {
+          "lf": 2000,
+          "vf": 2036
+        }
+      },
+      "selectorCommit": {
+        "mailboxShip": 2,
+        "mailboxStyle": 6,
+        "savedShipCursor": 1,
+        "savedStyleCursor": 2,
+        "cachedShip": 0,
+        "cachedStyle": 0,
+        "bombPlus24": 0,
+        "bombPlus25": 0,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 0,
+        "speedIndex": 0,
+        "laserFloor": 0,
+        "baseSpeed": 0,
+        "powerCursorE4": 0,
+        "powerCursorE8": 0,
+        "p1State": 0
+      },
+      "playerCreated": {
+        "mailboxShip": 2,
+        "mailboxStyle": 6,
+        "savedShipCursor": 1,
+        "savedStyleCursor": 2,
+        "cachedShip": 2,
+        "cachedStyle": 6,
+        "bombPlus24": 1,
+        "bombPlus25": 1,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 256,
+        "speedIndex": 19,
+        "laserFloor": 15,
+        "baseSpeed": 19,
+        "powerCursorE4": 2445934,
+        "powerCursorE8": 2445994,
+        "p1State": 32768
+      },
+      "liveLf2000": {
+        "mailboxShip": 2,
+        "mailboxStyle": 6,
+        "savedShipCursor": 1,
+        "savedStyleCursor": 2,
+        "cachedShip": 2,
+        "cachedStyle": 6,
+        "bombPlus24": 1,
+        "bombPlus25": 1,
+        "initialImageHighWord": 0,
+        "hitboxHighWord": 256,
+        "speedIndex": 19,
+        "laserFloor": 15,
+        "baseSpeed": 19,
+        "powerCursorE4": 2445934,
+        "powerCursorE8": 2445994,
+        "p1State": 32768
+      }
+    }
+  }
+}

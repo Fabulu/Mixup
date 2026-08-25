@@ -73,6 +73,7 @@ Commands
                 every 250 logic frames), and a manifest.  Every later
                 comparison re-seeds the port from a rung and needs no emulator.
                 `--verify` proves the new dumper byte-identical to wave 4's.
+  pairgate      W592: capture or offline-verify all six VERSION-B selectors
 
  7. THE OBJECT DRIVER IS MAIN-LOOP CALL #2, $2410BC (build A: $1413FE): 20 slots
     of $50 bytes at $80E240, dispatched through a 20-entry table at $240F62,
@@ -3180,7 +3181,142 @@ def _cmd_ckpt(argv: list[str]) -> int:
     return rc
 
 
+# --------------------------------------------------------------------------- wave 592
+PAIRGATE_WITNESS = HERE / "w592selectorpairgate.board.json"
+PAIRGATE_TOOL = HERE.parent.parent / "tools" / "pairgate.mjs"
+PAIRGATE_MAME = "0.288 (mame0288)"
+PAIRGATE_MACHINE = ("MACHINE romname=ddpdojblk maincpu_size=6291456 "
+                    "maincpu_fnv64=D4C25CA9C91B9D47")
+
+
+def _pairgate_node(args: list[str]) -> int:
+    node = shutil.which("node")
+    if not node:
+        raise SystemExit("node not on PATH -- pairgate verification is JavaScript")
+    res = subprocess.run([node, str(PAIRGATE_TOOL), *args], text=True)
+    return res.returncode
+
+
+def _pairgate_selection(spec: dict, argv: list[str]) -> list[dict]:
+    """Select either the exact six-pair matrix or one explicit authentic pair."""
+    has_all = "--all" in argv
+    has_ship = "--ship" in argv
+    has_style = "--style" in argv
+    known = {"--all", "--ship", "--style"}
+    stray = [arg for arg in argv if arg.startswith("--") and arg not in known]
+    if stray:
+        raise SystemExit(f"pairgate selector: unknown option {stray[0]}")
+    if has_all and (has_ship or has_style):
+        raise SystemExit("pairgate selector: --all cannot be combined with --ship/--style")
+    if has_all:
+        if argv != ["--all"]:
+            raise SystemExit("pairgate selector: --all takes no other arguments")
+        return spec["pairs"]
+    if not (has_ship and has_style):
+        raise SystemExit("pairgate selector: use --all or both --ship N --style N")
+    if len(argv) != 4 or argv.count("--ship") != 1 or argv.count("--style") != 1:
+        raise SystemExit("pairgate selector: expected exactly --ship N --style N")
+    try:
+        ship = int(argv[argv.index("--ship") + 1])
+        style = int(argv[argv.index("--style") + 1])
+    except (IndexError, ValueError):
+        raise SystemExit("pairgate selector: --ship and --style require integers") from None
+    selected = [p for p in spec["pairs"]
+                if p["ship"] == ship and p["style"] == style]
+    if not selected:
+        raise SystemExit(f"pairgate selector: ({ship},{style}) is not one of "
+                         "(0,2),(0,4),(0,6),(2,2),(2,4),(2,6)")
+    return selected
+
+
+def _cmd_pairgate(argv: list[str]) -> int:
+    """W592. Cold-boot selector capture plus deterministic offline verification.
+
+      pgm.py pairgate selector --all
+      pgm.py pairgate selector --ship 2 --style 6
+      pgm.py pairgate verify --all
+
+    `verify` launches neither MAME nor a capture reducer. It reads only the
+    tracked compact witness and scenarios.json. W592 deliberately covers the
+    selector path only. Effects, producer buckets and pixel crops move to W593.
+    """
+    if not argv:
+        raise SystemExit(_cmd_pairgate.__doc__)
+    mode, rest = argv[0], argv[1:]
+    scenario_path = HERE / "scenarios.json"
+    verify_args = ["verify", str(PAIRGATE_WITNESS), str(scenario_path)]
+    if mode == "verify":
+        if rest not in ([], ["--all"]):
+            raise SystemExit("pairgate verify: only --all is accepted; verification "
+                             "is always the complete six-pair matrix")
+        return _pairgate_node(verify_args)
+    if mode == "effects":
+        raise SystemExit("pairgate effects is not part of W592; effects, sprite "
+                         "buckets and pixel crops move to W593")
+    if mode != "selector":
+        raise SystemExit(f"pairgate: unknown mode {mode!r}; use selector or verify")
+
+    # Validate the tracked contract before paying for any emulator run.
+    if _pairgate_node(verify_args) != 0:
+        return 1
+    defs = scenarios()
+    spec = defs.get("pairgate")
+    if not spec:
+        raise SystemExit("scenarios.json has no pairgate definition")
+    selected = _pairgate_selection(spec, rest)
+
+    version = subprocess.run([str(mame_exe()), "-version"], capture_output=True,
+                             text=True, timeout=30).stdout.strip()
+    if version != PAIRGATE_MAME:
+        raise SystemExit(f"pairgate: MAME PIN CHANGED: {version!r} != "
+                         f"{PAIRGATE_MAME!r}")
+
+    out = OUT / "w592-pairgate"
+    out.mkdir(parents=True, exist_ok=True)
+    rc = 0
+    for pair in selected:
+        ship, style = pair["ship"], pair["style"]
+        key = f"{ship},{style}"
+        # A process-unique name prevents a failed fresh run from being mistaken
+        # for an older complete capture. Bulk TSV/PNG files remain gitignored.
+        stem = f"pair-{ship}-{style}-{os.getpid()}"
+        tsv = out / f"{stem}.tsv"
+        png = scratch() / "snap" / f"{stem}_lf{spec['snapshotLogicFrame']:06d}.png"
+        script = f"{spec['chooserPrefix']};{pair['tail']}"
+        print(f"=== pair ({ship},{style}): cold boot, VERSION-B, {spec['frames']} lf")
+        r = trace(tsv, frames=spec["frames"], buttons=script,
+                  build=spec["build"], meter=True,
+                  snap=str(spec["snapshotLogicFrame"]),
+                  extra_env={"PROBE_PORTIN": "1", "PROBE_WATCH": spec["watch"]})
+        check(r, f"pairgate selector ({ship},{style})")
+        pins = r.find("MACHINE ")
+        if pins != [PAIRGATE_MACHINE]:
+            print(f"PAIRGATE FAIL: pair {key} machine lines {pins!r} do not equal "
+                  f"[{PAIRGATE_MACHINE!r}]", file=sys.stderr)
+            rc = 1
+            continue
+        if r.find(f"SNAP lf={spec['snapshotLogicFrame']}") != \
+                [f"SNAP lf={spec['snapshotLogicFrame']}"]:
+            print(f"PAIRGATE FAIL: pair {key} did not report exactly one lf2000 "
+                  "snapshot", file=sys.stderr)
+            rc = 1
+            continue
+        if not png.exists():
+            print(f"PAIRGATE FAIL: pair {key} wrote no {png}", file=sys.stderr)
+            rc = 1
+            continue
+        capture_args = ["capture", str(PAIRGATE_WITNESS), str(scenario_path),
+                        key, str(tsv), str(png)]
+        if _pairgate_node(capture_args) != 0:
+            rc = 1
+        else:
+            print(f"  ignored capture: {tsv}")
+            print(f"  ignored snapshot PNG: {png}")
+    return rc
+
+
 COMMANDS = {
+    "pairgate": _cmd_pairgate,
     "ckpt": _cmd_ckpt,
     "verify": _cmd_verify, "landmarks": _cmd_landmarks, "trace": _cmd_trace,
     "snap": _cmd_snap, "seed": _cmd_seed, "scen": _cmd_scen, "gate": _cmd_gate,
