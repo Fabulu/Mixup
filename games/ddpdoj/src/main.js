@@ -414,6 +414,7 @@ export class Game {
       'deathPositionCapture',
       'respawnPositionTransform',
       'playerPositionTransform',
+      'objectDriverHook',
       'enemyDeathHook',
       'friendlyBulletConvertHook',
       'enemyBulletCollisionFilter',
@@ -545,6 +546,7 @@ export class Game {
         ? { respawnPositionTransform: this.respawnPositionTransform } : {}),
       ...(this.playerPositionTransform
         ? { playerPositionTransform: this.playerPositionTransform } : {}),
+      ...(this.objectDriverHook ? { objectDriverHook: this.objectDriverHook } : {}),
       ...(this.enemyDeathHook ? { enemyDeathHook: this.enemyDeathHook } : {}),
       ...(this.friendlyBulletConvertHook
         ? { friendlyBulletConvertHook: this.friendlyBulletConvertHook } : {}),

@@ -86,6 +86,9 @@ export function runObjectDriver(ram, handlers, ctx) {
   for (const r of created) {
     if (r !== ALLOC_RESULT.OK) ctx.allocEvent?.(r, 1);
   }
+  ctx.objectDriverHook?.({
+    phase: 'after-commit', ram, killed, created,
+  });
   let processed = 0;
   for (let i = 0; i < OBJ.slots; i++) {                 // $2410CA .. $2410EC
     const slot = OBJ.base + i * OBJ.stride;             // $2410E8
@@ -100,14 +103,26 @@ export function runObjectDriver(ram, handlers, ctx) {
     const t = type & 0xff;                              // $2410D0 andi.w #$ff
     order.push(i, type);                                // $2410D8, the hook
     processed++;
+    const hasHook = typeof ctx.objectDriverHook === 'function';
+    const marker = hasHook || t === 3 ? ram.u8(slot + 0x07) : null;
+    const intercepted = hasHook && ctx.objectDriverHook({
+      phase: 'before-dispatch', ram, slot, slotIndex: i,
+      type: t, typeWord: type, marker,
+    }) === true;
+    // Native type 3 treats every nonzero marker as P2. Marker 2 belongs only to
+    // the host-backed P3 controller and must never reach that boolean fallback.
+    if (t === 3 && marker === 2 && !intercepted) {
+      throw new Error(`marker-2 type-3 object in slot ${i} was not intercepted`);
+    }
     const h = handlers.get(t);
-    if (h) h(ram, slot, i, ctx);
-    else unportedLog.note(0x240f62 + t * 8,
+    if (!intercepted && h) h(ram, slot, i, ctx);
+    else if (!intercepted) unportedLog.note(0x240f62 + t * 8,
       `object dispatch entry [${t}] -- handler not ported in wave 4`);
     // The per-slot cost the budget accounts in.  ONE unit per dispatched slot,
     // deliberately crude: there is no calibration to be faithful to yet, and a
     // fabricated per-type cost would look like a measurement.
     budget.charge(1);
   }
+  ctx.objectDriverHook?.({ phase: 'after-driver', ram, processed });
   return processed;
 }
