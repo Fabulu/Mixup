@@ -381,6 +381,16 @@ export function setPanel2603B0(ram, ctx, a6) {
   ram.setU16(a6 + 0x02, 0);                           // $2603CC
 }
 
+/** Apply the narrow optional host position seam without exposing a player record. */
+function applyPlayerPositionTransform(ram, rec, playerIdx, ctx) {
+  if (!ctx?.playerPositionTransform) return;
+  const position = ctx.playerPositionTransform(ram, playerIdx,
+    ram.u16(rec + P.posY), ram.u16(rec + P.posX));
+  if (!position || !Number.isFinite(position.y) || !Number.isFinite(position.x)) return;
+  ram.setU16(rec + P.posY, u16(Math.trunc(position.y)));
+  ram.setU16(rec + P.posX, u16(Math.trunc(position.x)));
+}
+
 /**
  * `$2491C0` / `$249246` -- ONE FRAME OF THE PLAYER OBJECT, including the
  * ONE-TIME INIT the port did not have until W231.
@@ -487,6 +497,7 @@ export function playerObject2491C0(ram, slot, slotIndex, ctx) {
   // none: it comes from the OBJECT record its creator filled, not the template.
   ram.setU16(rec + P.posY, ram.u16(slot + 0x08));        // $249426
   ram.setU16(rec + P.posX, ram.u16(slot + 0x0a));        // $24942C
+  applyPlayerPositionTransform(ram, rec, c.p2 ? 1 : 0, ctx);
   const anim = 0x2551ea + u16(ram.u16(rec + 0x58) * 4);  // $249432..$249440
   ram.setU32(rec + P.animA, rom.u32(anim));              // $249442
   ram.setU32(rec + 0x10, rom.u32(anim + 4));             // $249446
@@ -847,6 +858,8 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
     ram.setU16(rec + P.posX,
       u16(i16(ram.u16(rec + P.posX)) - i16(ram.u16(0x813176))));
   }
+
+  applyPlayerPositionTransform(ram, rec, ram.u8(rec + P.playerIdx) & 1, ctx);
 
   // $2497AA .. $249E4C -- bomb, hyper, shot and laser.
   // Wave 4 stopped at the FIRST instruction of the shot branch; wave 5 carries
