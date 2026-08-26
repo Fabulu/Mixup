@@ -39,6 +39,7 @@ import { hyperStock286ED6, setPanelBody2532B6 } from './hud.js';
 export { setPanelBody2532B6 } from './hud.js';
 import { install2415A2 } from './palette.js';
 import { ALLOC, queueKill } from './objalloc.js';
+import { bcdAdd } from './score.js';
 
 // Globals the player reads and the port does not write.  Seeded once and
 // FROZEN for the run.  Listed by name so the runner can print them and a
@@ -877,13 +878,10 @@ function finish(ram, rec, d2, d3, ctx, skipClamps) {
   tail249E4E(ram, rec, ctx);
 }
 
-/** `$249E4E..$249E7C` and the shadow -- THE PLAYER'S TAIL, and it is a real
- *  branch target and not just the end of `finish`: `$24A400 bcc $249E4E`,
- *  `$24A418 beq $249E4E` and `$24A426 bra $249E4E` all enter HERE, skipping
- *  every clamp above.  W62 lifted it out of `finish` unchanged so the
- *  stage-clear path can reach it without re-running the clamps. */
+/** `$249E4E..$249F88`: player image, hitbox, shadow, and packed-BCD score tail.
+ * This is also a branch target from the stage-clear path, which skips the clamps
+ * and weapon update but still reaches every tail gate in cartridge order. */
 function tail249E4E(ram, rec, ctx) {
-  const { unportedLog } = ctx;
   const ship = ram.u16(rec + P.shipSel);
   const t = ctx.tables.anim(ram.u16(rec + P.tilt), ship);
   ram.setU16(rec + P.animA, t.a[0]);                 // $249E62
@@ -894,22 +892,25 @@ function tail249E4E(ram, rec, ctx) {
   const h = SHIP_MUTATE.value === 'hitx-frozen' ? ctx.tables.anim(0, ship) : t;
   ram.setU16(rec + P.hitXPlus, h.hitX[0]);           // $249E78, the LONG at +$14
   ram.setU16(rec + P.hitXMinus, h.hitX[1]);          // ...i.e. +$14 and +$16
-  // $249E7E onward: the ground-plane shadow emit ($249EA0 -> $23EFC0, bucket 5)
-  // and the score BCD block.  WAVE 12 ports the shadow; the rest is W17's and
-  // is counted rather than silent.
-  //
-  // WAVE 12.5's AUDIT CORRECTED THIS NOTE'S ADDRESS.  `drawShipShadow` has FIVE
-  // exits -- four gates that are `bne/beq $249EE8` and the fall-through past
-  // `$249EE2 jsr $23EFC0` -- and all five land on `$249EE8`, not on `$249F16`.
-  // `$249EE8..$249F14` is a chain of five more gates ($80392C, $8130F8 bit 0,
-  // $81309C, (A6) bit 6, ($7,A5), $812914) that decide whether the BCD block
-  // runs at all, and `$249F4C..$249F88` is P2's copy of it.  The note named
-  // only the middle of the region.  Control DOES reach this line on every path
-  // -- it was never a quiet return -- but an unported region whose census line
-  // understates its own extent is how one becomes invisible.
-  drawShipShadow(ram, rec, ctx);
-  unportedLog.note(0x249ee8, 'player tail: the five gates $249EE8..$249F14 and '
-    + 'the score BCD block behind them ($249F16..$249F88, P1 and P2)');
+
+  // Five shadow exits converge on $249EE8. The packed-BCD add is gated before
+  // the side fork, then each side has its own reload timer, source, and pending
+  // accumulator. Loop 2 repeats the same four `abcd` instructions.
+  drawShipShadow(ram, rec, ctx);                     // $249E7E..$249EE2
+  if (ram.u16(0x80392c) !== 0                       // $249EE8 tst.w
+      || ram.btst8(0x8130f8, 0)                     // $249EF0 btst #0
+      || ram.u16(0x81309c) !== 0                    // $249EFA tst.w
+      || ram.btst8(rec + P.state, 6)) return;        // $249F02 btst #6,(A6)
+
+  const p2 = ram.u8(rec + P.playerIdx) !== 0;        // $249F08 tst.b ($7,A5)
+  const timer = p2 ? 0x812918 : 0x812914;
+  if (ram.u16(timer) !== 0) return;                  // $249F0E/$249F4C
+  const pendingEnd = p2 ? 0x81b4c8 : 0x81b4c4;
+  const addend = ram.u32(p2 ? 0x812904 : 0x8128f6);
+  bcdAdd(ram, pendingEnd, addend);                    // $249F16/$249F54
+  if (ram.u16(0x813098) !== 0) {
+    bcdAdd(ram, pendingEnd, addend);                  // $249F3C/$249F7A
+  }
 }
 
 /**

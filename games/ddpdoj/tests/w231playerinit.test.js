@@ -100,9 +100,8 @@ test('W231 a fresh player object takes its position from the object record',
     assert.equal(ram.u8(RAM.player1 + P.speedIdx),
       ram.u8(RAM.player1 + P.baseSpeed), 'the SAME byte reaches $1A and $39');
     assert.deepEqual(events.map((e) => e[0]), ['player-init']);
-    // The only counted call the init makes is the player TAIL's own, which every
-    // player frame makes: the init reaches no NEW gap.
-    assert.deepEqual(log.report().map((l) => l.trim().split(' ')[2]), ['$249EE8']);
+    // The player tail is now implemented, so initialization reaches no counted gap.
+    assert.deepEqual(log.report(), []);
   });
 
 function ROM_TEMPLATE_WORD() { return ROM.u16(0x24915e); }
