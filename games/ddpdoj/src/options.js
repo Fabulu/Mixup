@@ -43,17 +43,27 @@
 import { P, RAM, ROM, OPT } from './machine.js';
 import { i16, u16, asr } from './ram.js';
 import { unreached } from './unported.js';
-import { enqueueRequest, enqueueRegisters, NAMED_BUCKETS } from './spritequeue.js';
+import {
+  enqueueRequest, enqueueRegisters, encodeRegisterRequest, NAMED_BUCKETS,
+} from './spritequeue.js';
 import { groundPlane, SHIP_MUTATE } from './shipsprite.js';
 import {
   BEAM, runLaserGate, buildBeam, wipeSegmentPool, rampDown,
 } from './laser.js';
 
 /** The two players' blocks, in the ROM's own order: P1 first, P2 second. */
-export const OPTION_BLOCKS = [
-  { d7: 1, opt: RAM.p1Options, player: RAM.player1, laser: 0x811f32 },  // $24C096
-  { d7: 0, opt: RAM.p2Options, player: RAM.player2, laser: 0x811f52 },  // $24C0B0
-];
+export const OPTION_BLOCKS = Object.freeze([
+  Object.freeze({
+    ownerIndex: 0, d7: 1, opt: RAM.p1Options, player: RAM.player1,
+    laser: 0x811f32, beam: BEAM[0], rampGuard: 0x811f72,
+    allowLaser: true, allowShots: true, virtualRequests: null,
+  }),                                                        // $24C096
+  Object.freeze({
+    ownerIndex: 1, d7: 0, opt: RAM.p2Options, player: RAM.player2,
+    laser: 0x811f52, beam: BEAM[1], rampGuard: 0x811f72,
+    allowLaser: true, allowShots: true, virtualRequests: null,
+  }),                                                        // $24C0B0
+]);
 
 /** `$24BBAA` -- the per-FORMATION template table, indexed `(($5a,A4)-2)*2` into
  *  LONGWORDS, so only EVEN formations land on an entry.  MEASURED entries:
@@ -140,8 +150,17 @@ export function runOptionObject(ram, ctx) {
   }
 }
 
+/** Refuse excluded owner inputs before any option-side state can change. */
+export function assertOptionOwnerInputAllowed(ram, b) {
+  if (b.allowLaser === false && (ram.u8(b.player + P.dirByte) & 0x10) !== 0) {
+    unreached(0x24c164, 'private P3 laser is excluded from the options-only wave');
+  }
+}
+
+/** Run one option block whose owner resources are supplied explicitly. */
 function runOneBlock(ram, ctx, b) {
   const { opt, player } = b;
+  assertOptionOwnerInputAllowed(ram, b);
 
   // $24C0C8 bset #0,($1,A6) / bne $24C134 -- the ONE-TIME INIT.  MEASURED: the
   // bit is already set at every sample point of every scenario in the corpus
@@ -205,10 +224,35 @@ function runOneBlock(ram, ctx, b) {
   return noLaser(ram, ctx, b);                              // $24C16A beq
 }
 
-/** The `src/laser.js` block that shares this one's player.  The two lists are
- *  kept apart on purpose: `OPTION_BLOCKS` carries what `$24C096` needs and
- *  `BEAM` carries the four RAM records the beam lives in. */
-function beamOf(b) { return BEAM[b.d7 ? 0 : 1]; }
+export { runOneBlock as runOptionBlock };
+
+/** Resolve the beam resource `$24C096` names for this exact owner. */
+function beamOf(b) {
+  if (b.beam) return b.beam;
+  throw new TypeError(`option owner ${b.ownerIndex} has no laser resource`);
+}
+
+function emitRegisters(ram, b, bucket, d1, d2, d3, d4) {
+  if (b.virtualRequests == null) {
+    return enqueueRegisters(ram, bucket, d1, d2, d3, d4);
+  }
+  if (!Array.isArray(b.virtualRequests)) {
+    throw new TypeError('virtual option requests must be an array');
+  }
+  b.virtualRequests.push({ bucket, bytes: encodeRegisterRequest(d1, d2, d3, d4) });
+  return b.virtualRequests.length - 1;
+}
+
+function emitRequest(ram, b, bucket, rec) {
+  if (b.virtualRequests == null) return enqueueRequest(ram, bucket, rec);
+  const long = u16(i16(ram.u16(rec + 0x02)) + i16(ram.u16(rec + 0x06)));
+  const short = u16(i16(ram.u16(rec + 0x04)) + i16(ram.u16(rec + 0x08)));
+  const position = (((long << 16) >>> 0) | short) >>> 0;
+  b.virtualRequests.push({ bucket, bytes: encodeRegisterRequest(
+    position, ram.u32(rec + 0x0a), ram.u16(rec + 0x0e), ram.u16(rec + 0x1c),
+  ) });
+  return b.virtualRequests.length - 1;
+}
 
 /** `$24C29E..$24C338` -- the ordinary pod path, and the RELEASE TEARDOWN. */
 function noLaser(ram, ctx, b) {
@@ -222,7 +266,7 @@ function noLaser(ram, ctx, b) {
     return podsOnShip(ram, ctx, b);                        // $24C2A8 bra
   }
   ram.setU16(player + 0x60, 0);                            // $24C2AC jsr $25370A
-  rampUp(ram, player);                                     // $24C2B2 bsr $24C8E4
+  rampUp(ram, b);                                          // $24C2B2 bsr $24C8E4
   ram.setU8(opt + 0x3f, 0x0a);                             // $24C2B6 move.b #$a
   if (!ram.btst8(opt + OPT.state, 6)) {                    // $24C2BC btst #6,(A6)
     return podsOnShip(ram, ctx, b);                        // $24C2C0 beq
@@ -351,17 +395,18 @@ function beamPodTail(ram, ctx, b) {
   if (!gated && SHIP_MUTATE.value !== 'no-shadow') {
     const d1 = groundPlane(ram.u16(opt + OPT.posY),        // $24CC92..$24CCAE
       ram.u16(opt + OPT.posX), 0xfe00fe00);
-    enqueueRegisters(ram, NAMED_BUCKETS.shadows, d1,
-      ram.u32(opt + OPT.shadow0), 0x210, 0x18);            // $24CCB4..$24CCC0
+    emitRegisters(ram, b, NAMED_BUCKETS.shadows, d1,
+      ram.u32(opt + OPT.shadow0), 0x210, 0x18);             // $24CCB4..$24CCC0
   }
-  enqueueRequest(ram, NAMED_BUCKETS.options, opt);         // $24CCC6 jmp $23F2CA
+  emitRequest(ram, b, NAMED_BUCKETS.options, opt);          // $24CCC6 jmp $23F2CA
   return undefined;
 }
 
 /** `$24C8E4` -- the speed ramp UP, one index per frame toward ($39,A4). */
-function rampUp(ram, player) {
+function rampUp(ram, b) {
+  const { player, rampGuard } = b;
   // $24C8E4 tst.w $811F72 / beq $24C8F6 ; $24C8EE btst #6,($1,A4) / bne -> rts
-  if (ram.u16(0x811f72) !== 0 && ram.btst8(player + P.flags1, 6)) return;
+  if (ram.u16(rampGuard) !== 0 && ram.btst8(player + P.flags1, 6)) return;
   const idx = ram.u8(player + P.speedIdx);                 // $24C8F6
   if (idx === ram.u8(player + P.baseSpeed)) return;        // $24C8FA cmp.b ($39,A4)
   ram.setU8(player + P.speedIdx, (idx + 1) & 0xff);        // $24C900 addq.b #1
@@ -418,8 +463,8 @@ function podsDeploy24C934(ram, ctx, b) {
   if (ram.u16(0x812970) === 0 && ram.u16(0x80390c) === 0    // $24C9B4/$24C9BE
       && ram.u16(0x813098) === 0 && ram.u16(0x813092) !== 2) {  // $24C9C8/$24C9D2
     if (SHIP_MUTATE.value !== 'no-shadow') {
-      podShadow(ram, opt, OPT.posY, OPT.flipColour, OPT.shadow0);   // $24C9DE
-      podShadow(ram, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1);  // $24CA16
+      podShadow(ram, b, opt, OPT.posY, OPT.flipColour, OPT.shadow0);   // $24C9DE
+      podShadow(ram, b, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1);  // $24CA16
     }
   }
   movePod(ram, ctx, b, opt);                               // $24CA4E bsr $24D12E
@@ -481,8 +526,8 @@ function formation2(ram, ctx, b) {
   // to prove the shadow columns are compared, and if it also skipped the
   // handshake below it would light up two instruments for one cause.
   if (SHIP_MUTATE.value !== 'no-shadow') {
-    podShadow(ram, opt, OPT.posY, OPT.flipColour, OPT.shadow0);        // $24C406
-    podShadow(ram, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1); // $24C43E
+    podShadow(ram, b, opt, OPT.posY, OPT.flipColour, OPT.shadow0);        // $24C406
+    podShadow(ram, b, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1); // $24C43E
   }
   return fireHandshake(ram, ctx, b);                       // fall through $24C474
 }
@@ -521,8 +566,8 @@ function formation4(ram, ctx, b) {
   if (ram.u16(0x813098) !== 0) return tail();              // $24C524/$24C52A
   if (ram.u16(0x813092) === 2) return tail();              // $24C52E/$24C536
   if (SHIP_MUTATE.value !== 'no-shadow') {
-    podShadow(ram, opt, OPT.posY, OPT.flipColour, OPT.shadow0);            // $24C53A
-    podShadow(ram, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1); // $24C572
+    podShadow(ram, b, opt, OPT.posY, OPT.flipColour, OPT.shadow0);            // $24C53A
+    podShadow(ram, b, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1); // $24C572
   }
   return tail();                                           // falls into $24C5AA
 }
@@ -631,10 +676,10 @@ function rotatePod24C7F8(ram, ctx, b, pod, d1, a2, a3) {
       // $24C87E..$24C8B2 -- the ordinary pod shadow, except that D2 is the long
       // `$24C82A` just read out of the table and NOT `($5c,A6)`: on a rotating
       // frame the record's shadow field is written AFTER this returns.
-      podShadowD2(ram, pod, OPT.posY, OPT.flipColour, d6);
+      podShadowD2(ram, b, pod, OPT.posY, OPT.flipColour, d6);
     }
   }
-  enqueueRequest(ram, NAMED_BUCKETS.options, pod);         // $24C8B4 jmp $23F2CA
+  emitRequest(ram, b, NAMED_BUCKETS.options, pod);          // $24C8B4 jmp $23F2CA
   // $24C8BA nop -- the two bytes between the `jmp` and the `rts`.
   return d6;
 }
@@ -669,8 +714,8 @@ function formation6(ram, ctx, b) {
   if (ram.u16(0x813098) !== 0) return tail();              // $24C6F0/$24C6F6
   if (ram.u16(0x813092) === 2) return tail();              // $24C6FA/$24C702
   if (SHIP_MUTATE.value !== 'no-shadow') {
-    podShadow(ram, opt, OPT.posY, OPT.flipColour, OPT.shadow0);            // $24C706
-    podShadow(ram, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1); // $24C73E
+    podShadow(ram, b, opt, OPT.posY, OPT.flipColour, OPT.shadow0);            // $24C706
+    podShadow(ram, b, opt, OPT.posY2, OPT.pod + OPT.flipColour, OPT.shadow1); // $24C73E
   }
   return tail();                                           // fall through $24C774
 }
@@ -710,6 +755,7 @@ function formation6(ram, ctx, b) {
  * green over a routine that had been dropped.
  */
 export function fireHandshake(ram, ctx, b, spawn = POD_SPAWNS[2]) {
+  if (b.allowShots === false) return undefined;
   // THE WRONG PORT, and it is wave 12's own: do what `$24C390` did before this
   // wave and return.  It has to be reproducible from outside the source file
   // or "the gate would have caught it" is a claim about a tree nobody has.
@@ -1153,15 +1199,15 @@ function podShotSpawn24D75C(ram, ctx, b) {
 }
 
 /** `$24C406..$24C43C` and its verbatim twin `$24C43E..$24C474`. */
-function podShadow(ram, opt, posOff, flipOff, shadowOff) {
-  return podShadowD2(ram, opt, posOff, flipOff, ram.u32(opt + shadowOff));  // $24C434
+function podShadow(ram, b, opt, posOff, flipOff, shadowOff) {
+  return podShadowD2(ram, b, opt, posOff, flipOff, ram.u32(opt + shadowOff));  // $24C434
 }
 
 /** The same six instructions with D2 already in hand -- `$24C8AC move.l D6,D2`,
  *  the rotating pod's, where `$24C434` reads it back out of `($5c,A6)`. The two
  *  sites are `$24C406..$24C438` and `$24C87E..$24C8B2`; MEASURED byte-identical
  *  apart from that one load. */
-function podShadowD2(ram, opt, posOff, flipOff, d2) {
+function podShadowD2(ram, b, opt, posOff, flipOff, d2) {
   // $24C422 addi.l #$FE00FF00,D1 -- note the SECOND word differs from the
   // ship's $FE00FE00: the pods' shadows sit one pixel further along the short
   // axis. Translated as written.
@@ -1172,7 +1218,7 @@ function podShadowD2(ram, opt, posOff, flipOff, d2) {
   // BYTE store into the same register, so D4 keeps the flip bits and takes the
   // shadow's colour. MEASURED $0018 and $4018.
   const d4 = (ram.u16(opt + flipOff) & 0xff00) | POD_SHADOW_COLOUR;
-  enqueueRegisters(ram, NAMED_BUCKETS.shadows, d1, d2, d3, d4);  // jsr $23EFEE
+  emitRegisters(ram, b, NAMED_BUCKETS.shadows, d1, d2, d3, d4);  // jsr $23EFEE
 }
 
 /**
@@ -1232,7 +1278,7 @@ function movePod(ram, ctx, b, pod) {
   if (ram.i8(player + P.flags1) < 0) {                     // $24D178 tst.b/bmi
     return podKnockback24D188(ram, ctx, b, pod);           // $24D17C bmi $24D188
   }
-  enqueueRequest(ram, NAMED_BUCKETS.options, pod);         // $24D17E jmp $23F2CA
+  emitRequest(ram, b, NAMED_BUCKETS.options, pod);          // $24D17E jmp $23F2CA
   return undefined;
 }
 
@@ -1303,10 +1349,10 @@ export function podKnockback24D188(ram, ctx, b, pod) {
     const lo = u16(asr(u16(px - 0x1c00) << 16 >> 16, 1) + 0x1c00);
     const hi = u16(asr(u16(py - 0x1400) << 16 >> 16, 1) + 0x1400);
     const d1 = ((((hi << 16) >>> 0) + lo) + 0xfe00fe00) >>> 0;   // $24D1E0
-    enqueueRegisters(ram, NAMED_BUCKETS.shadows, d1,       // $24D1F2 jsr $23EFEE
+    emitRegisters(ram, b, NAMED_BUCKETS.shadows, d1,       // $24D1F2 jsr $23EFEE
       ram.u32(pod + OPT.shadow0), 0x210, 0x18);            // $24D1E6/$24D1EA/$24D1EE
   }
-  enqueueRequest(ram, NAMED_BUCKETS.options, pod);         // $24D1F8/$24D27A jmp
+  emitRequest(ram, b, NAMED_BUCKETS.options, pod);          // $24D1F8/$24D27A jmp
   return undefined;
 }
 
@@ -1322,8 +1368,9 @@ export function podKnockback24D188(ram, ctx, b, pod) {
  *   24c0f8: move.l (A0)+,(A1)+  x15         +$26..+$61
  *   24c116: move.w (A0)+,(A1)+              +$62..+$63
  *
- * 90 template bytes into 94 record bytes with a four-byte hole.  Then five byte
- * copies out of the player and a `clr.w ($16,A2)` on the laser block.
+ * 90 template bytes into 94 record bytes with a four-byte hole. Then five byte
+ * copies out of the player and, for a laser-capable native owner, a clear on the
+ * laser block.
  *
  * NEVER EXERCISED BY A GATED RUN: the init bit is already set at every sample
  * point in the corpus.  It is here so that a scenario which starts before the
@@ -1347,10 +1394,12 @@ function copyTemplate(ram, ctx, b) {
   const d0 = ram.u8(player + P.dirLatch);                  // $24C118 ($1d,A4)
   ram.setU8(opt + 0x1d, d0);                               // $24C11C
   ram.setU8(opt + 0x3d, d0);                               // $24C120
-  const pw = ram.u8(player + 0x56);                        // $24C124 ($56,A4)
-  ram.setU8(laser + 0x1d, pw);                             // $24C128 ($1d,A2)
-  ram.setU8(laser + 0x1e, pw);                             // $24C12C ($1e,A2)
-  ram.setU16(laser + 0x16, 0);                             // $24C130 clr.w ($16,A2)
+  if (b.allowLaser !== false) {
+    const pw = ram.u8(player + 0x56);                        // $24C124 ($56,A4)
+    ram.setU8(laser + 0x1d, pw);                             // $24C128 ($1d,A2)
+    ram.setU8(laser + 0x1e, pw);                             // $24C12C ($1e,A2)
+    ram.setU16(laser + 0x16, 0);                             // $24C130 clr.w ($16,A2)
+  }
 }
 
 export { OPT, ROM };

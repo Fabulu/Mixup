@@ -1,8 +1,8 @@
 // Private three-pilot formation actors.
 //
 // This is a foundation, not a public game mode. P3 has an allocator identity and
-// independent host memory for position, input, and future side resources. It
-// does not implement P3 rendering, weapons, collisions, score, death, or HUD.
+// independent host memory for position, input, and private option pods. It does
+// not implement ordinary shots, laser, collisions, score, death, lives, or HUD.
 
 import { mirrorsFromPort } from './input.js';
 import { MACHINE, OPT, P, RAM } from './machine.js';
@@ -12,6 +12,9 @@ import {
 import {
   createThreePilotRenderState, renderThreePilotRequests,
 } from './formationrender.js';
+import {
+  assertOptionOwnerInputAllowed, runOptionBlock,
+} from './options.js';
 
 const THREE_PILOT_ID = 'all-three-pilots-each-piloting-a-ship';
 const THREE_PILOT_NAME = 'All Three Pilots, Each Piloting a Ship';
@@ -75,11 +78,22 @@ export const P3_VIRTUAL_RANGES = Object.freeze([
 ]);
 
 export const THREE_PILOT_SHARED_RANGES = Object.freeze([
-  Object.freeze({ name: 'p1-motion', start: RAM.player1, length: 0x06 }),
-  Object.freeze({ name: 'p1-speed', start: RAM.player1 + P.speedIdx, length: 0x01 }),
-  Object.freeze({ name: 'p2-motion', start: RAM.player2, length: 0x06 }),
-  Object.freeze({ name: 'stage-clear', start: STAGE_CLEAR, length: 0x02 }),
-  Object.freeze({ name: 'movement-disable', start: MOVEMENT_DISABLE, length: 0x02 }),
+  Object.freeze({ name: 'presentation-phase', start: 0x80390c, length: 0x02,
+    writable: false }),
+  Object.freeze({ name: 'p1-motion', start: RAM.player1, length: 0x06, writable: true }),
+  Object.freeze({ name: 'p1-speed', start: RAM.player1 + P.speedIdx, length: 0x01,
+    writable: false }),
+  Object.freeze({ name: 'p2-motion', start: RAM.player2, length: 0x06, writable: true }),
+  Object.freeze({ name: 'stage-draw-freeze', start: 0x812970, length: 0x02,
+    writable: false }),
+  Object.freeze({ name: 'stage-clear', start: STAGE_CLEAR, length: 0x02,
+    writable: false }),
+  Object.freeze({ name: 'stage-selector', start: 0x813092, length: 0x02,
+    writable: false }),
+  Object.freeze({ name: 'presentation-gate', start: 0x813098, length: 0x02,
+    writable: false }),
+  Object.freeze({ name: 'movement-disable', start: MOVEMENT_DISABLE, length: 0x02,
+    writable: false }),
 ]);
 
 const P1_BINDING = Object.freeze({
@@ -141,6 +155,7 @@ function normalizeRanges(ranges, kind) {
       length,
       end: start + length,
       offset: 0,
+      writable: range.writable !== false,
     };
   }).sort((a, b) => a.start - b.start);
   let offset = 0;
@@ -216,6 +231,14 @@ export class StrictSidecarMemory {
     throw new RangeError(`${label} $${address.toString(16)}`);
   }
 
+  #writeLocation(address, width) {
+    const loc = this.#location(address, width);
+    if (loc.kind === 'shared' && !loc.range.writable) {
+      throw new TypeError(`shared range ${loc.range.name} is read-only`);
+    }
+    return loc;
+  }
+
   u8(address) {
     const loc = this.#location(address, 1);
     return loc.kind === 'shared' ? this.#realRam.u8(address) : this.#bytes[loc.offset];
@@ -240,36 +263,36 @@ export class StrictSidecarMemory {
       : this.#view.getUint32(loc.offset, false);
   }
   setU8(address, value) {
-    const loc = this.#location(address, 1);
+    const loc = this.#writeLocation(address, 1);
     if (loc.kind === 'shared') this.#realRam.setU8(address, value);
     else this.#bytes[loc.offset] = value & 0xff;
   }
   setU16(address, value) {
-    const loc = this.#location(address, 2);
+    const loc = this.#writeLocation(address, 2);
     if (loc.kind === 'shared') this.#realRam.setU16(address, value);
     else this.#view.setUint16(loc.offset, value & 0xffff, false);
   }
   setU32(address, value) {
-    const loc = this.#location(address, 4);
+    const loc = this.#writeLocation(address, 4);
     if (loc.kind === 'shared') this.#realRam.setU32(address, value);
     else this.#view.setUint32(loc.offset, value >>> 0, false);
   }
   bchg8(address, bit) {
-    const loc = this.#location(address, 1);
+    const loc = this.#writeLocation(address, 1);
     if (loc.kind === 'shared') return this.#realRam.bchg8(address, bit);
     const old = (this.#bytes[loc.offset] >> bit) & 1;
     this.#bytes[loc.offset] ^= 1 << bit;
     return old;
   }
   bclr8(address, bit) {
-    const loc = this.#location(address, 1);
+    const loc = this.#writeLocation(address, 1);
     if (loc.kind === 'shared') return this.#realRam.bclr8(address, bit);
     const old = (this.#bytes[loc.offset] >> bit) & 1;
     this.#bytes[loc.offset] &= ~(1 << bit) & 0xff;
     return old;
   }
   bset8(address, bit) {
-    const loc = this.#location(address, 1);
+    const loc = this.#writeLocation(address, 1);
     if (loc.kind === 'shared') return this.#realRam.bset8(address, bit);
     const old = (this.#bytes[loc.offset] >> bit) & 1;
     this.#bytes[loc.offset] |= 1 << bit;
@@ -283,6 +306,72 @@ export class StrictSidecarMemory {
 }
 
 const ATTACHED = new WeakMap();
+
+function clearP3OptionState(state) {
+  if (!state?.weapons) return;
+  state.weapons.requests.length = 0;
+  state.weapons.actorId = 0;
+  for (let offset = 0; offset < OPT.stride; offset++) {
+    state.memory.setU8(P3_BINDING.options + offset, 0);
+  }
+}
+
+function initializeP3OptionState(state) {
+  clearP3OptionState(state);
+  state.memory.setU16(P3_BINDING.options + OPT.state, 0x8000);
+  state.weapons.actorId = state.actorId;
+}
+
+function collectThreePilotSpriteRequests(state, game) {
+  if (state.game !== game || ATTACHED.get(game) !== state) {
+    throw new Error('private P3 sprite hook is attached to a different Game');
+  }
+  if (state.lifecycle !== 'alive' || state.actorId === 0
+      || game.ram.u16(STAGE_CLEAR) !== 0) {
+    clearP3OptionState(state);
+    return renderThreePilotRequests(state, game);
+  }
+  const optionRequests = state.weapons.requests.splice(0);
+  const shipRequests = renderThreePilotRequests(state, game);
+  return optionRequests.concat(shipRequests);
+}
+
+function p3OptionBlock(state) {
+  return {
+    ownerIndex: P3_BINDING.logicalIndex,
+    opt: P3_BINDING.options,
+    player: P3_BINDING.player,
+    laser: null,
+    beam: null,
+    rampGuard: P3_BINDING.bomb,
+    allowLaser: false,
+    allowShots: false,
+    virtualRequests: state.weapons.requests,
+  };
+}
+
+/** Run the attached private option owner after the native P1/P2 pass. */
+export function runThreePilotOptionObject(game) {
+  const state = ATTACHED.get(game);
+  if (!state) return 0;
+  if (state.lifecycle !== 'alive' || state.actorId === 0
+      || game.ram.u16(STAGE_CLEAR) !== 0) {
+    clearP3OptionState(state);
+    return 0;
+  }
+
+  const block = p3OptionBlock(state);
+  assertOptionOwnerInputAllowed(state.memory, block);
+  state.weapons.requests.length = 0;
+  if (state.weapons.actorId !== state.actorId
+      || (state.memory.u16(P3_BINDING.options + OPT.state) & 0x8000) === 0) {
+    initializeP3OptionState(state);
+  }
+
+  runOptionBlock(state.memory, game, block);
+  state.weapons.calls++;
+  return state.weapons.requests.length;
+}
 
 function activeLifecycle(lifecycle) {
   return lifecycle === 'staged' || lifecycle === 'alive';
@@ -355,19 +444,60 @@ function updateP3Input(state, p1Mirror) {
   state.memory.setU16(input.edge, raw & ~previous);
 }
 
+function romByte(rom, address) {
+  if (typeof rom.u8 === 'function') return rom.u8(address);
+  const word = rom.u16(address & ~1);
+  return (address & 1) === 0 ? word >>> 8 : word & 0xff;
+}
+
+function romLong(rom, address) {
+  if (typeof rom.u32 === 'function') return rom.u32(address);
+  return ((rom.u16(address) << 16) | rom.u16(address + 2)) >>> 0;
+}
+
 function initializeP3Record(state, alive) {
   const { memory } = state;
+  const { rom } = state.game;
   const player = P3_BINDING.player;
-  memory.setU16(player + P.state, alive ? 0x8000 : 0);
+  const { ship, style } = THREE_PILOT_FORMATION_MODE.authenticSelection.p3;
+
+  for (let offset = 0; offset < P.stride; offset++) memory.setU8(player + offset, 0);
+  for (let word = 0; word < 48; word++) {
+    memory.setU16(player + 0x02 + word * 2, rom.u16(0x249160 + word * 2));
+  }
+
+  const open = 0x2551da;
+  memory.setU32(player + 0x02, romLong(rom, open));
+  memory.setU16(player + 0x1c, rom.u16(open + 4));
+  memory.setU8(player + 0x54, romByte(rom, open + 6));
+  memory.setU8(player + 0x55, romByte(rom, open + 7));
+  memory.setU8(player + 0x56, memory.u8(player + 0x54));
+
+  memory.setU16(player + P.shipSel, ship);
+  memory.setU16(player + P.optFormation, style);
+  const styleValue = romByte(rom, 0x2551fa + (style - 2));
+  memory.setU8(player + 0x24, styleValue);
+  memory.setU8(player + 0x25, styleValue);
+
+  const initial = 0x2551ea + ship * 4;
+  memory.setU32(player + P.animA, romLong(rom, initial));
+  memory.setU32(player + P.hitYPlus, romLong(rom, initial + 4));
+  const speedIndex = (style - 2) * 2 + ship;
+  const speed = typeof rom.u8 === 'function'
+    ? rom.u8(0x255200 + speedIndex)
+    : memory.u8(P1_BINDING.player + P.speedIdx);
+  memory.setU8(player + P.speedIdx, speed);
+  memory.setU8(player + P.baseSpeed, speed);
+  memory.setU8(player + P.laserFloor, romByte(rom, 0x255201 + speedIndex));
+  const rampIndex = (style - 2) * 4 + ship * 2;
+  memory.setU16(player + 0x2c, rom.u16(0x2552c4 + rampIndex));
+  memory.setU16(player + 0x36, rom.u16(0x2552c6 + rampIndex));
+
   memory.setU8(player + P.playerIdx, P3_BINDING.logicalIndex);
-  memory.setU16(player + P.shipSel,
-    THREE_PILOT_FORMATION_MODE.authenticSelection.p3.ship);
-  memory.setU16(player + P.optFormation,
-    THREE_PILOT_FORMATION_MODE.authenticSelection.p3.style);
-  memory.setU8(player + P.speedIdx,
-    memory.u8(P1_BINDING.player + P.speedIdx));
+  memory.setU8(player + P.invuln, 0xd0);
   memory.setU16(player + P.posY, state.runtime.targets[2].y);
   memory.setU16(player + P.posX, state.runtime.targets[2].x);
+  memory.setU16(player + P.state, alive ? 0x8000 : 0);
 }
 
 function stageP3Actor(state) {
@@ -378,6 +508,7 @@ function stageP3Actor(state) {
   if (!made.ok) return false;
 
   state.actorId = game.ram.u32(made.addr + ALLOC.idOff);
+  clearP3OptionState(state);
   state.lifecycle = 'staged';
   state.restagePending = false;
   initializeP3Record(state, false);
@@ -389,6 +520,7 @@ function stageP3Actor(state) {
 }
 
 function detachP3(state) {
+  clearP3OptionState(state);
   state.actorId = 0;
   state.lifecycle = 'detached';
   state.restagePending = true;
@@ -401,6 +533,7 @@ function refreshLifecycle(state, committed) {
   if (!resolved.found) {
     if (committed) {
       if (state.lifecycle === 'staged') {
+        clearP3OptionState(state);
         state.actorId = 0;
         state.lifecycle = 'dropped';
         state.memory.setU16(P3_BINDING.player + P.state, 0);
@@ -455,6 +588,9 @@ export function attachThreePilotFoundation(game, options = {}) {
   if (game.virtualSpriteRequestHook != null) {
     throw new Error('Game already has a virtualSpriteRequestHook');
   }
+  if (game.privateOptionObjectHook != null) {
+    throw new Error('Game already has a privateOptionObjectHook');
+  }
   if (game.ram.u32(ALLOC.idCounter) === 0xffffffff) {
     throw new RangeError('P3 allocator ID would wrap to zero');
   }
@@ -473,6 +609,7 @@ export function attachThreePilotFoundation(game, options = {}) {
     restagePending: false,
     inputSeeded: false,
     render: createThreePilotRenderState(),
+    weapons: { requests: [], actorId: 0, calls: 0 },
     runtime: {
       anchorX: clamp(game.ram.u16(RAM.player1 + P.posX) + OFFSET_X,
         ANCHOR.xMin, ANCHOR.xMax),
@@ -491,6 +628,7 @@ export function attachThreePilotFoundation(game, options = {}) {
   }
 
   if (!stageP3Actor(state)) {
+    clearP3OptionState(state);
     state.lifecycle = 'dropped';
     state.memory.setU16(P3_BINDING.player + P.state, 0);
   }
@@ -498,13 +636,16 @@ export function attachThreePilotFoundation(game, options = {}) {
   const hook = (event) => controllerHook(state, event);
   const positionTransform = (ram, playerIdx) =>
     cachedPositionTransform(state, ram, playerIdx);
-  const renderHook = (hookGame) => renderThreePilotRequests(state, hookGame);
+  const renderHook = (hookGame) => collectThreePilotSpriteRequests(state, hookGame);
+  const optionHook = () => runThreePilotOptionObject(game);
   state.objectDriverHook = hook;
   state.playerPositionTransform = positionTransform;
   state.virtualSpriteRequestHook = renderHook;
+  state.privateOptionObjectHook = optionHook;
   game.objectDriverHook = hook;
   game.playerPositionTransform = positionTransform;
   game.virtualSpriteRequestHook = renderHook;
+  game.privateOptionObjectHook = optionHook;
   ATTACHED.set(game, state);
   return state;
 }
@@ -546,7 +687,12 @@ export function prepareThreePilotFrame(state, game, word) {
   const p1Mirror = mirrorsFromPort(input).p1;
   updateP3Input(state, p1Mirror);
   const { memory, runtime } = state;
+  memory.setU8(P3_BINDING.player + P.dirByte,
+    memory.u16(P3_BINDING.input.raw) & 0xff);
+  memory.setU8(P3_BINDING.player + P.btnByte,
+    memory.u16(P3_BINDING.input.edge) & 0xff);
   if (memory.u16(STAGE_CLEAR) !== 0) {
+    clearP3OptionState(state);
     runtime.rebasePending = true;
     return input;
   }

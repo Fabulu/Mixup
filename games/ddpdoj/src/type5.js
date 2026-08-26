@@ -378,6 +378,7 @@ export function makeType5(rom) {
             ctx.unportedLog.note(c, 'MUTATION no-option-object');
           } else {
             runOptionObject(ram, ctx);
+            ctx.privateOptionObjectHook?.();
           }
           break;
         case TYPE5.segmentDriver:                       // $28B61C -> $254680

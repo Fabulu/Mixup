@@ -527,6 +527,7 @@ export class Game {
 
   /** The context every ported routine gets.  No clock is reachable from it. */
   #ctx() {
+    const privateOptionObjectHook = /** @type {any} */ (this).privateOptionObjectHook;
     return {
       tables: this.tables,
       rom: this.rom,
@@ -547,6 +548,7 @@ export class Game {
       ...(this.playerPositionTransform
         ? { playerPositionTransform: this.playerPositionTransform } : {}),
       ...(this.objectDriverHook ? { objectDriverHook: this.objectDriverHook } : {}),
+      ...(privateOptionObjectHook ? { privateOptionObjectHook } : {}),
       ...(this.enemyDeathHook ? { enemyDeathHook: this.enemyDeathHook } : {}),
       ...(this.friendlyBulletConvertHook
         ? { friendlyBulletConvertHook: this.friendlyBulletConvertHook } : {}),

@@ -429,6 +429,9 @@ test('W612 exact-bundle Game step adds one visible center P3 body without changi
       undefined, null, null, null, selection);
     const rendered = attachThreePilotFoundation(renderedDemo.game, { inputWord: 0xffff });
     const control = attachThreePilotFoundation(controlDemo.game, { inputWord: 0xffff });
+    // Keep this W612 proof body-only now that W613 installs the private option seam.
+    (/** @type {any} */ (renderedDemo.game)).privateOptionObjectHook = undefined;
+    (/** @type {any} */ (controlDemo.game)).privateOptionObjectHook = undefined;
     (/** @type {any} */ (controlDemo.game)).virtualSpriteRequestHook = undefined;
 
     renderedDemo.step();

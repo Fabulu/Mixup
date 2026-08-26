@@ -224,6 +224,7 @@ import {
   assertFormationReplayCompatible, createFormationState, formationGameOptions,
   initializeFormation, prepareFormationFrame, resolveFormationAuthenticSelection,
 } from '../formation.js';
+import { threePilotFoundationForGame } from '../formationactors.js';
 
 // --------------------------------------------------------------- PRESENTATION
 //
@@ -830,6 +831,12 @@ export function namedMisses(missing, n = 3) {
 export const SPRITE_SOURCES = Object.freeze(['port', 'capture']);
 export const DEFAULT_SPRITE_SOURCE = 'port';
 
+function assertPrivateFormationReplayCompatible(game, operation) {
+  if (!threePilotFoundationForGame(game)) return;
+  throw new Error(`${operation} is unavailable while private three-pilot formation state is active. `
+    + 'Replay v1 cannot encode formation state.');
+}
+
 // EXPORTED for `tests/w375coinwiring.test.js`. Constructing one needs a bundle,
 // a capture and a canvas, but `step()`, `inPlayback()` and `coinTick()` are
 // callable on a stub `this`, and testing the REAL methods is the difference
@@ -1055,6 +1062,8 @@ export class Demo {
   step() {
     const g = this.game;
     const inPlayback = this.inPlayback();
+    if (this.recorder) assertPrivateFormationReplayCompatible(g, 'REC');
+    if (inPlayback) assertPrivateFormationReplayCompatible(g, 'PLAY');
     this.prevPos = [g.ram.u16(RAM.player1 + P.posY), g.ram.u16(RAM.player1 + P.posX)];
     this.prevTilt = g.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;   // ($4e,A6)
     this.prevShipSel = g.ram.u16(RAM.player1 + P.shipSel);         // ($58,A6)
@@ -1167,6 +1176,7 @@ export class Demo {
    */
   async armRecording() {
     assertFormationReplayCompatible(this.formation, 'REC');
+    assertPrivateFormationReplayCompatible(this.game, 'REC');
     if (this.recorder) return this.recorder;
     assertReplayCompatible(this.mods, 'REC');
     // WAVE 132 -- REC and PLAY are mutually exclusive.  The recorder would tee
@@ -1206,6 +1216,8 @@ export class Demo {
     }
     const tablesB64 = recB64(tablesBytes);
 
+    // Attachment can occur while the asynchronous table hash is in flight.
+    assertPrivateFormationReplayCompatible(g, 'REC');
     const seeded = this.stats().seeded;
     this.recorder = armRecorder(g, {
       columns: CLAIMED,                 // a live recording freezes ALL of CLAIMED
@@ -1261,6 +1273,7 @@ export class Demo {
    */
   playFrom(obj) {
     assertFormationReplayCompatible(this.formation, 'PLAY');
+    assertPrivateFormationReplayCompatible(this.game, 'PLAY');
     assertReplayCompatible(this.mods, 'PLAY');
     const parsed = validateReplay(obj);
     // Decode the seed the same way `replay.mjs:108-121` does.
