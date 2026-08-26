@@ -294,6 +294,52 @@ function mutating(opts, name) {
   return opts.mutate === name;
 }
 
+/** Validate and snapshot optional host-owned requests before call #4 mutates RAM. */
+function virtualBucketsFrom(requests) {
+  if (requests == null) return null;
+  if (!Array.isArray(requests)) {
+    throw new TypeError('virtual sprite requests must be an array');
+  }
+  if (requests.length === 0) return null;
+  const buckets = new Array(BUCKETS.length);
+  for (let i = 0; i < requests.length; i++) {
+    const request = requests[i];
+    const bucket = request?.bucket;
+    if (!Number.isInteger(bucket) || bucket < 0 || bucket >= BUCKETS.length) {
+      throw new RangeError(`virtual sprite request ${i} has no bucket 0..${BUCKETS.length - 1}`);
+    }
+    if (!(request.bytes instanceof Uint8Array)
+        || request.bytes.byteLength !== RECORD_BYTES) {
+      throw new RangeError(`virtual sprite request ${i} must contain ${RECORD_BYTES} bytes`);
+    }
+    (buckets[bucket] ??= []).push(request.bytes.slice());
+  }
+  return buckets;
+}
+
+/** Append one already-encoded virtual request to the shared gather queue. */
+function appendVirtualRequest(ram, bytes) {
+  const off = u16(ram.u16(COUNTER_BASE));
+  const at = DL.queue + off;
+  for (let k = 0; k < RECORD_BYTES; k++) ram.setU8(at + k, bytes[k]);
+  const next = u16(off + RECORD_BYTES);
+  ram.setU16(COUNTER_BASE, next);
+  return next;
+}
+
+/** Append one bucket after its physical records and report whether the cap fired. */
+function appendVirtualBucket(ram, buckets, bucket, capGe, telemetry) {
+  const requests = buckets?.[bucket];
+  if (!requests) return false;
+  for (const bytes of requests) {
+    const counter = appendVirtualRequest(ram, bytes);
+    telemetry.perBucketRecords[bucket]++;
+    telemetry.perBucketVirtualRecords[bucket]++;
+    if (capGe ? counter >= DL.capBytes : counter === DL.capBytes) return true;
+  }
+  return false;
+}
+
 /**
  * THE STANDING ASSERTION §3(ii), AND W432 ANSWERED THE QUESTION IT ASKED.
  *
@@ -367,11 +413,15 @@ export function assertShortAxis(before, after, entry, telemetry, warn) {
  * writes the hardware display list to $800000..$8009FF, and clears the counters.
  *
  * @param {import('./ram.js').Ram} ram
- * @param {{mutate?: string, warn?: (msg: string) => void}} opts
+ * @param {{mutate?: string, warn?: (msg: string) => void, videoRegs?: {ctrl:number},
+ *   virtualRequests?: Array<{bucket:number, bytes:Uint8Array}>}} opts
  * @returns telemetry -- what the frame did, for the gate and the runner to print
  */
 export function buildDisplayList(ram, opts = {}) {
   const warn = opts.warn ?? (() => {});
+  const virtualBuckets = virtualBucketsFrom(opts.virtualRequests);
+  const virtualRequestCount = virtualBuckets
+    ? virtualBuckets.reduce((sum, requests) => sum + requests.length, 0) : 0;
   const t = {
     pendingBytes: 0, pendingRecords: 0, overBudgetBytes: 0,
     droppedBucket20: 0, dropped6and9: 0,
@@ -383,6 +433,11 @@ export function buildDisplayList(ram, opts = {}) {
     // W375 -- what `$23C008` mirrored into $B0E000 at each end of the build.
     ctrlAtStart: 0, ctrlAtEnd: 0,
   };
+  if (opts.virtualRequests != null) {
+    t.virtualRecords = 0;
+    t.virtualDropped = 0;
+    t.perBucketVirtualRecords = new Array(BUCKETS.length).fill(0);
+  }
 
   // (a) $23D2AE jsr $23C1A2 -- `move.w #1,D0 / not.w D0 / and.w D0,$80393C`,
   //     AND `bra.w $23C008`, which mirrors the word into $B0E000. See the block
@@ -392,9 +447,15 @@ export function buildDisplayList(ram, opts = {}) {
   // (b) THE SUM, $23D2B4..$23D362.  `move.w` then 29 x `add.w`: WORD arithmetic,
   //     so it wraps at $10000 and the port must too.
   let d0 = 0;
+  const sumWithoutQueue = mutating(opts, 'sum-without-queue');
   for (const a of SUM_ORDER) {
-    if (mutating(opts, 'sum-without-queue') && a === COUNTER_BASE) continue;
+    if (sumWithoutQueue && a === COUNTER_BASE) continue;
     d0 = u16(d0 + ram.u16(a));
+  }
+  if (virtualBuckets) {
+    const virtualQueueCount = virtualBuckets[0]?.length ?? 0;
+    const summedVirtualCount = virtualRequestCount - (sumWithoutQueue ? virtualQueueCount : 0);
+    d0 = u16(d0 + summedVirtualCount * RECORD_BYTES);
   }
   t.pendingBytes = d0;
   t.pendingRecords = Math.floor(d0 / RECORD_BYTES);
@@ -415,15 +476,23 @@ export function buildDisplayList(ram, opts = {}) {
   if (!mutating(opts, 'no-preemptive-drop')) {
     let rem = i16(ram.u16(DL.overBudgetBytes));
     if (rem >= 0) {                                      // $23D3A8 tst / bmi
-      const b20 = ram.u16(BUCKETS[20].counter);          // $23D3B0
+      const b20Physical = ram.u16(BUCKETS[20].counter);  // $23D3B0
+      const b20Virtual = (virtualBuckets?.[20]?.length ?? 0) * RECORD_BYTES;
+      const b20 = u16(b20Physical + b20Virtual);
       ram.setU16(BUCKETS[20].counter, 0);                // $23D3B6 DROP IT WHOLE
+      if (virtualBuckets?.[20]) virtualBuckets[20].length = 0;
       ram.setU16(DL.dropped20Flag, 1);                   // $23D3BC
       t.droppedBucket20 = Math.floor(b20 / RECORD_BYTES);
       rem = i16(u16(rem - b20));                         // $23D3C4 sub.w
       ram.setU16(DL.overBudgetBytes, u16(rem));
       if (rem >= 0) {                                    // $23D3CA bmi
+        const virtual6 = virtualBuckets?.[6]?.length ?? 0;
+        const virtual9 = virtualBuckets?.[9]?.length ?? 0;
         t.dropped6and9 = Math.floor(ram.u16(BUCKETS[6].counter) / RECORD_BYTES)
-          + Math.floor(ram.u16(BUCKETS[9].counter) / RECORD_BYTES);
+          + Math.floor(ram.u16(BUCKETS[9].counter) / RECORD_BYTES)
+          + virtual6 + virtual9;
+        if (virtualBuckets?.[6]) virtualBuckets[6].length = 0;
+        if (virtualBuckets?.[9]) virtualBuckets[9].length = 0;
         ram.setU16(BUCKETS[6].counter, 0);               // $23D3CC
         ram.setU16(BUCKETS[9].counter, 0);               // $23D3D2
         ram.setU16(DL.dropped69Flag, 1);                 // $23D3D8
@@ -441,45 +510,63 @@ export function buildDisplayList(ram, opts = {}) {
 
   const capGe = mutating(opts, 'cap-as-ge');
   let abandoned = false;
+  if (virtualBuckets && appendVirtualBucket(ram, virtualBuckets, 0, capGe, t)) {
+    t.capFired = true;
+    t.capBucket = 0;
+    abandoned = true;
+  }
+
   for (const bi of order) {
-    if (abandoned) { t.bucketsAbandoned++; continue; }   // `bcs $23D624`
+    if (abandoned) {
+      t.bucketsAbandoned++;
+      continue;
+    }                                                       // `bcs $23D624`
     const b = BUCKETS[bi];
-    let d0b = ram.u16(b.counter);                        // $23D726 move.w (A1),D0
-    if (d0b === 0) continue;                             // $23D728 beq -> rts
-    let a2 = DL.queue + u16(ram.u16(COUNTER_BASE));      // $23D72A / $23D730
-    let a0 = b.buffer;
+    let d0b = ram.u16(b.counter);                           // $23D726 move.w (A1),D0
+    const virtualCount = virtualBuckets?.[bi]?.length ?? 0;
+    if (d0b === 0 && virtualCount === 0) continue;          // $23D728 beq -> rts
     let full = false;
-    for (;;) {
-      // $23D736 -- FOUR `move.l (A0)+,(A2)+`: sixteen bytes, see §1.
-      for (let k = 0; k < 16; k += 2) {
-        ram.setU16(a2 + k, ram.u16(a0 + k));
+
+    if (d0b !== 0) {
+      let a2 = DL.queue + u16(ram.u16(COUNTER_BASE));       // $23D72A / $23D730
+      let a0 = b.buffer;
+      for (;;) {
+        // $23D736 -- FOUR `move.l (A0)+,(A2)+`: sixteen bytes, see §1.
+        for (let k = 0; k < 16; k += 2) {
+          ram.setU16(a2 + k, ram.u16(a0 + k));
+        }
+        a0 += 16; a2 += 16;
+        const ctr = u16(ram.u16(COUNTER_BASE) + RECORD_BYTES);
+        ram.setU16(COUNTER_BASE, ctr);                     // $23D73E addi.w #$c
+        t.perBucketRecords[bi]++;
+        if (capGe ? ctr >= DL.capBytes : ctr === DL.capBytes) {   // $23D746/$23D74E
+          full = true;
+          break;
+        }
+        d0b = u16(d0b - RECORD_BYTES);                    // $23D750 subi.w
+        if (d0b === 0) break;                             // $23D754 bne
+        // `subi.w #$c / bne` only terminates if the count is a multiple of 4
+        // (gcd(12, $10000)); the board would spin here too, but a tool that hangs
+        // is worse than one that says WHERE. This can only fire on a counter the
+        // game cannot produce -- every producer steps by exactly 12 from 0.
+        if (t.perBucketRecords[bi] > 0x4000) {
+          unreached(0x23d754, `bucket ${bi}'s count $${ram.u16(b.counter).toString(16)
+            } is not a multiple of 12, so \`subi.w #$c,D0 / bne\` never reaches 0 `
+            + `and the drain does not terminate`);
+        }
       }
-      a0 += 16; a2 += 16;
-      const ctr = u16(ram.u16(COUNTER_BASE) + RECORD_BYTES);
-      ram.setU16(COUNTER_BASE, ctr);                     // $23D73E addi.w #$c
-      t.perBucketRecords[bi]++;
-      if (capGe ? ctr >= DL.capBytes : ctr === DL.capBytes) {   // $23D746/$23D74E
-        full = true;
-        break;
-      }
-      d0b = u16(d0b - RECORD_BYTES);                     // $23D750 subi.w
-      if (d0b === 0) break;                              // $23D754 bne
-      // `subi.w #$c / bne` only terminates if the count is a multiple of 4
-      // (gcd(12, $10000)); the board would spin here too, but a tool that hangs
-      // is worse than one that says WHERE. This can only fire on a counter the
-      // game cannot produce -- every producer steps by exactly 12 from 0.
-      if (t.perBucketRecords[bi] > 0x4000) {
-        unreached(0x23d754, `bucket ${bi}'s count $${ram.u16(b.counter).toString(16)
-          } is not a multiple of 12, so \`subi.w #$c,D0 / bne\` never reaches 0 `
-          + `and the drain does not terminate`);
-      }
+      ram.setU16(b.counter, 0);                            // $23D756/$23D75A
     }
+
+    if (!full && virtualBuckets) {
+      full = appendVirtualBucket(ram, virtualBuckets, bi, capGe, t);
+    }
+
     if (full) {
-      ram.setU16(b.counter, 0);                          // $23D75A clr.w (A1)
-      t.capFired = true; t.capBucket = bi;
-      abandoned = true;                                  // ori #1,SR -> bcs
+      t.capFired = true;
+      t.capBucket = bi;
+      abandoned = true;                                   // ori #1,SR -> bcs
     } else {
-      ram.setU16(b.counter, 0);                          // $23D756 move.w D0,(A1), D0==0
       t.bucketsDrained++;
     }
   }
@@ -578,6 +665,10 @@ export function buildDisplayList(ram, opts = {}) {
   // (j) $23D71E jsr $23C194 -- `move.w #1,D0 / or.w D0,$80393C`, and the same
   //     `bra.w $23C008` commit step (a) takes.
   t.ctrlAtEnd = sectionFlagSet23C194(ram, opts.videoRegs);
+  if (virtualBuckets) {
+    t.virtualRecords = t.perBucketVirtualRecords.reduce((sum, count) => sum + count, 0);
+    t.virtualDropped = virtualRequestCount - t.virtualRecords;
+  }
   return t;
 }
 

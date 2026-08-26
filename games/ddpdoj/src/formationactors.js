@@ -9,6 +9,9 @@ import { MACHINE, OPT, P, RAM } from './machine.js';
 import {
   ALLOC, resolveHandle241298, stageCreate,
 } from './objalloc.js';
+import {
+  createThreePilotRenderState, renderThreePilotRequests,
+} from './formationrender.js';
 
 const THREE_PILOT_ID = 'all-three-pilots-each-piloting-a-ship';
 const THREE_PILOT_NAME = 'All Three Pilots, Each Piloting a Ship';
@@ -449,6 +452,9 @@ export function attachThreePilotFoundation(game, options = {}) {
   if (game.playerPositionTransform != null) {
     throw new Error('Game already has an incompatible playerPositionTransform');
   }
+  if (game.virtualSpriteRequestHook != null) {
+    throw new Error('Game already has a virtualSpriteRequestHook');
+  }
   if (game.ram.u32(ALLOC.idCounter) === 0xffffffff) {
     throw new RangeError('P3 allocator ID would wrap to zero');
   }
@@ -466,6 +472,7 @@ export function attachThreePilotFoundation(game, options = {}) {
     lifecycle: 'staged',
     restagePending: false,
     inputSeeded: false,
+    render: createThreePilotRenderState(),
     runtime: {
       anchorX: clamp(game.ram.u16(RAM.player1 + P.posX) + OFFSET_X,
         ANCHOR.xMin, ANCHOR.xMax),
@@ -491,10 +498,13 @@ export function attachThreePilotFoundation(game, options = {}) {
   const hook = (event) => controllerHook(state, event);
   const positionTransform = (ram, playerIdx) =>
     cachedPositionTransform(state, ram, playerIdx);
+  const renderHook = (hookGame) => renderThreePilotRequests(state, hookGame);
   state.objectDriverHook = hook;
   state.playerPositionTransform = positionTransform;
+  state.virtualSpriteRequestHook = renderHook;
   game.objectDriverHook = hook;
   game.playerPositionTransform = positionTransform;
+  game.virtualSpriteRequestHook = renderHook;
   ATTACHED.set(game, state);
   return state;
 }

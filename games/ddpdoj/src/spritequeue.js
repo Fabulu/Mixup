@@ -241,6 +241,30 @@ export function enqueueRequest(ram, bucket, rec) {
 // D1 IS ALREADY PACKED: high word = long axis, low word = short axis, and the
 // caller has ALREADY added the position and any offset.  That is the difference
 // from `enqueueRequest`, which does the three `add.w`s itself.
+/**
+ * Build the twelve bytes `$23EFC0` would stage from D1-D4, without selecting a
+ * physical bucket or writing cartridge RAM. The display-list virtual merge uses
+ * this pure half of the register convention; ordinary producers still call
+ * `enqueueRegisters` below.
+ */
+function encodedRegisterPosition(d1) {
+  const packed = (d1 | 0) >> 6;                               // $23EFD6 asr.l #6
+  return ((packed & ENQUEUE_MASK) | NO_ZOOM_OR) >>> 0;        // $23EFD8/$23EFDE
+}
+
+export function encodeRegisterRequest(d1, d2, d3, d4) {
+  const d0 = encodedRegisterPosition(d1);
+  const request = new Uint8Array(RECORD_BYTES);
+  const view = new DataView(request.buffer, request.byteOffset, request.byteLength);
+  view.setUint16(0, (d0 >>> 16) & 0xffff, false);
+  view.setUint16(2, d0 & 0xffff, false);
+  view.setUint16(4, (d2 >>> 16) & 0xffff, false);              // $23EFE6 move.l D2
+  view.setUint16(6, d2 & 0xffff, false);
+  view.setUint16(8, d3 & 0xffff, false);                       // $23EFE8 move.w D3
+  view.setUint16(10, d4 & 0xffff, false);                      // $23EFEA move.w D4
+  return request;
+}
+
 export function enqueueRegisters(ram, bucket, d1, d2, d3, d4) {
   const b = BUCKETS[bucket];
   if (!b) throw new RangeError(`no sprite bucket ${bucket}`);
@@ -248,8 +272,7 @@ export function enqueueRegisters(ram, bucket, d1, d2, d3, d4) {
   const at = b.buffer + off;
   ram.setU16(b.counter, u16(off + RECORD_BYTES));             // $23EFCC addi.w
 
-  const packed = (d1 | 0) >> 6;                               // $23EFD6 asr.l #6
-  const d0 = ((packed & ENQUEUE_MASK) | NO_ZOOM_OR) >>> 0;    // $23EFD8/$23EFDE
+  const d0 = encodedRegisterPosition(d1);
   ram.setU16(at + 0, (d0 >>> 16) & 0xffff);
   ram.setU16(at + 2, d0 & 0xffff);
   ram.setU16(at + 4, (d2 >>> 16) & 0xffff);                   // $23EFE6 move.l D2

@@ -1081,7 +1081,21 @@ export class Game {
     // counters are cleared.  `pgm.py shipgate` compares these against the
     // board's dump of the same instant.  Diagnostic only; call #4 reads RAM.
     this.staged = PRODUCED_BUCKETS.map((b) => snapshotBucket(this.ram, b));
+    // W612. An attached private actor may supply already-encoded host requests
+    // after every object updater and before call #4. The seam is deliberately
+    // absent from constructor options: attachThreePilotFoundation is its only
+    // installer. Validation happens before the hook can run or call #4 can
+    // mutate RAM, and the returned records never enter physical staging buckets.
+    let virtualRequests;
+    const virtualSpriteRequestHook = /** @type {any} */ (this).virtualSpriteRequestHook;
+    if (virtualSpriteRequestHook != null) {
+      if (typeof virtualSpriteRequestHook !== 'function') {
+        throw new TypeError('Game virtualSpriteRequestHook must be a function');
+      }
+      virtualRequests = virtualSpriteRequestHook(this);
+    }
     this.displayList = buildDisplayList(this.ram, {                  // $23D2AE
+      virtualRequests,
       // THE $80B054 WATCH, counted and printed like every other honest gap:
       // $23D6A6 is the `add.l $80B054,D1` whose behaviour changes if it moves.
       warn: (m) => this.unportedLog.note(0x23d6a6, `WATCH ${m}`),
