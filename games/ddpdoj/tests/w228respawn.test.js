@@ -37,20 +37,24 @@ const SKIP_SEED = HAVE && existsSync(seedPath)
   ? false : 'generated ROM tables/seed absent; skip, not pass';
 
 const ENTRY = 0x8130fa;          // P1's $25FF7A table entry, stride $24
-const COUNT = 0x8130be;          // what the seed's $8(a6) points at
+const COUNT = 0x8130be;          // what P1's $8(a6) points at
+const P2_ENTRY = 0x81311e;
+const P2_COUNT = 0x8130c0;
 
 /** The entry as the seed carries it, with the count set by the caller. */
 function entry(ram, count, { p2 = false, type = 2 } = {}) {
-  ram.setU16(ENTRY, 1);                       // $24A210 armed it
-  ram.setU16(ENTRY + 0x02, 0x1234);           // cleared unconditionally at $26004E
-  ram.setU32(ENTRY + 0x08, COUNT);
-  ram.setU16(ENTRY + 0x0c, 0x1000);
-  ram.setU16(ENTRY + 0x0e, 0x0e00);
-  ram.setU16(ENTRY + 0x14, type);
-  ram.setU8(ENTRY + 0x17, p2 ? 1 : 0);
-  ram.setU32(ENTRY + 0x18, 0xdeadbeef);
-  ram.setU16(COUNT, count);
-  return ENTRY;
+  const a6 = p2 ? P2_ENTRY : ENTRY;
+  const counter = p2 ? P2_COUNT : COUNT;
+  ram.setU16(a6, 1);                       // $24A210 armed it
+  ram.setU16(a6 + 0x02, 0x1234);           // cleared unconditionally at $26004E
+  ram.setU32(a6 + 0x08, counter);
+  ram.setU16(a6 + 0x0c, 0x1000);
+  ram.setU16(a6 + 0x0e, 0x0e00);
+  ram.setU16(a6 + 0x14, type);
+  ram.setU8(a6 + 0x17, p2 ? 1 : 0);
+  ram.setU32(a6 + 0x18, 0xdeadbeef);
+  ram.setU16(counter, count);
+  return a6;
 }
 
 function ctxOf(ram) {
@@ -166,14 +170,20 @@ test('W228 the last life falls through to the game-over arm', { skip: SKIP }, ()
     assert.deepEqual(events, [['game-over', 1, 0xffff]]);
   });
 
-test('W228 the P2 arm writes the other three words', { skip: SKIP }, () => {
+test('W228 the P2 arm uses only the P2 tally and life word', { skip: SKIP }, () => {
   const ram = new Ram();
   const { ctx } = ctxOf(ram);
-  bonusLine125FFA8(ram, ROM, ctx, entry(ram, 0, { p2: true, type: 3 }));
+  const a6 = entry(ram, 0, { p2: true, type: 3 });
+  assert.equal(a6, P2_ENTRY);
+  bonusLine125FFA8(ram, ROM, ctx, a6);
+  assert.equal(ram.u16(P2_COUNT), 0xffff, 'P2 borrows its own reserve-life word');
+  assert.equal(ram.u16(P2_ENTRY), 2, 'P2 arms its own game-over request');
   assert.deepEqual([ram.u16(0x812932), ram.u16(0x812936), ram.u16(0x81293a)],
     [0, 1, 0], '$25FFF0, P2 side');
+  assert.equal(ram.u16(COUNT), 0, 'P1 reserve lives stay untouched');
+  assert.equal(ram.u16(ENTRY), 0, 'P1 tally stays idle');
   assert.deepEqual([ram.u16(0x812930), ram.u16(0x812934), ram.u16(0x812938)],
-    [0, 0, 0], "and P1's are untouched");
+    [0, 0, 0], "and P1's completion words are untouched");
 });
 
 test('W228 a real death respawns and keeps running',
