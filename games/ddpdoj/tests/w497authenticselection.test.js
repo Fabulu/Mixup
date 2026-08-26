@@ -168,8 +168,11 @@ test('W497 page wiring keeps authentic selection separate from mods, rungs, and 
     'the selector query and mod hash must coexist without one encoding the other');
 
   const ctor = app.slice(app.indexOf('  constructor(canvas, bundle'), app.indexOf('  step() {'));
-  assert.match(ctor, /const authentic = rung \? null : normalizeAuthenticSelection/,
-    'a labelled rung must retain its exact selector state');
+  assert.match(ctor,
+    /const ordinaryAuthentic = rung\s*\? null\s*:\s*normalizeAuthenticSelection/,
+    'a labelled rung must retain its exact selector state outside formation mode');
+  assert.match(ctor, /const authentic = formationAuthentic \?\? ordinaryAuthentic/,
+    'formation may supply its pair without weakening the ordinary rung fallback');
   assert.match(ctor, /if \(authentic\) applyAuthenticSelection\(this\.game, authentic\)/);
 
   const replay = app.slice(app.indexOf('  playFrom(obj) {'), app.indexOf('  endPlayback() {'));

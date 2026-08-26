@@ -4,7 +4,9 @@
 // unknown mode creates no runtime state, no Game callback, and no RAM writes.
 // Every mutable value below belongs to one createFormationState() result.
 
-import { normalizeAuthenticSelection } from './authentic.js';
+import {
+  AUTHENTIC_SHIPS, AUTHENTIC_STYLES, normalizeAuthenticSelection,
+} from './authentic.js';
 import { mirrorsFromPort } from './input.js';
 import { P, RAM } from './machine.js';
 
@@ -54,6 +56,50 @@ export function hashToFormation(hash = '') {
 }
 
 /**
+ * Read only selector fields that were actually present in a launch query. The
+ * ordinary authentic parser intentionally fills cartridge defaults, which is
+ * right for a normal launch but would overwrite the formation's Type-B P2 when
+ * a link specifies only `p2style`. Invalid and orphaned P2 fields are ignored as
+ * one invalid override set; the active mode will retain its complete defaults.
+ */
+export function formationAuthenticOverridesFromParams(params) {
+  const has = (name) => params?.has?.(name) ?? false;
+  const any = ['ship', 'style', 'p2', 'p2ship', 'p2style'].some(has);
+  if (!any) return null;
+
+  const selected = {};
+  if (has('ship')) {
+    const text = params.get('ship');
+    if (!AUTHENTIC_SHIPS.map(String).includes(text)) return null;
+    selected.ship = Number(text);
+  }
+  if (has('style')) {
+    const text = params.get('style');
+    if (!AUTHENTIC_STYLES.map(String).includes(text)) return null;
+    selected.style = Number(text);
+  }
+
+  const hasP2Ship = has('p2ship');
+  const hasP2Style = has('p2style');
+  if ((hasP2Ship || hasP2Style) && !has('p2')) return null;
+  if (has('p2')) {
+    if (params.get('p2') !== '1') return null;
+    selected.p2 = {};
+    if (hasP2Ship) {
+      const text = params.get('p2ship');
+      if (!AUTHENTIC_SHIPS.map(String).includes(text)) return null;
+      selected.p2.ship = Number(text);
+    }
+    if (hasP2Style) {
+      const text = params.get('p2style');
+      if (!AUTHENTIC_STYLES.map(String).includes(text)) return null;
+      selected.p2.style = Number(text);
+    }
+  }
+  return selected;
+}
+
+/**
  * Resolve the authentic two-player selection used to launch a formation.
  * Explicit fields override their side of the mode's pair. Missing fields keep
  * the formation defaults, including its required P2. Off mode leaves ordinary
@@ -79,6 +125,15 @@ export function resolveFormationAuthenticSelection(modeValue, explicitSelection 
     },
   };
   return normalizeAuthenticSelection(candidate);
+}
+
+/** Replay v1 has no field for the active formation or its input transform. */
+export function assertFormationReplayCompatible(state, action = 'replay') {
+  if (state?.mode && resolveMode(state.mode) === FORMATION_MODE) {
+    throw new Error(`${action} is unavailable while formation mode is active: `
+      + `${FORMATION_MODE.name}. Replay v1 cannot encode formation state.`);
+  }
+  return true;
 }
 
 /** Return mutable runtime state only for the recognized active formation. */

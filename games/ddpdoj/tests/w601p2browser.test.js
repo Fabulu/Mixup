@@ -249,7 +249,7 @@ test('W601 normal frame path creates, moves, and fires the genuine P2 actor',
     assert.deepEqual(liveRecords(game.ram, SHOT.p2Table), [0x810ed2, 0x810f02]);
   });
 
-test('W601 start page restores, scopes, clears, and serializes P2 selection', () => {
+test('W601 start page restores, scopes, preserves, and serializes explicit P2 selection', () => {
   const start = readFileSync(new URL('../start.html', import.meta.url), 'utf8');
   assert.match(start, /id="join-p2"/);
   assert.match(start, /data-auth-p2-ship="0"/);
@@ -257,7 +257,14 @@ test('W601 start page restores, scopes, clears, and serializes P2 selection', ()
   assert.match(start, /data-auth-p2-style="2"/);
   assert.match(start, /data-auth-p2-style="4"/);
   assert.match(start, /data-auth-p2-style="6"/);
-  assert.match(start, /let p2Joined = !!initialAuthentic\?\.p2/);
-  assert.match(start, /\.\.\.\(p2Joined \? \{ p2: \{ ship: authenticP2Ship, style: authenticP2Style \} \} : \{\}\)/);
-  assert.match(start, /p2Joined = false;\s+authenticP2Ship = 0;\s+authenticP2Style = 2;/);
+  assert.match(start, /explicitP2Joined = hasOwn\(overrides, 'p2'\)/,
+    'the query restores explicit P2 separately from derived formation state');
+  assert.match(start,
+    /\.\.\.\(explicitP2Joined\s*\? \{ p2: \{ ship: authenticP2Ship, style: authenticP2Style \} \}\s*: \{\}\)/,
+    'ordinary launches serialize the complete explicit P2 pair');
+  const clear = start.slice(start.indexOf("document.getElementById('clear').addEventListener"),
+    start.indexOf("document.getElementById('games').addEventListener"));
+  assert.match(clear, /formationActive = false/);
+  assert.doesNotMatch(clear, /explicitP2Joined\s*=/,
+    'CLEAR drops any formation-derived P2 without erasing an explicit join');
 });

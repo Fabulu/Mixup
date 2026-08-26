@@ -132,15 +132,26 @@
     </button>
   </div>
 
+  <h2>Formation</h2>
+  <div class="sub">A separate synchronized authentic two-ship launch mode. It is not one of
+    the mod catalogue entries. P1 steers both ships and owns manual Button 2.</div>
+  <div class="grid" id="formations">
+    <button class="card" id="formation-side-by-side" type="button" aria-pressed="false">
+      <div class="name"><span>Fly Both Ships Side by Side</span><span class="mark">ON</span></div>
+      <div class="blurb">Autojoins genuine P2 request 4 beside P1. Default pair: P1 Type-A style 2 and P2 Type-B style 2.</div>
+    </button>
+  </div>
+
   <h2>Survival</h2><div class="grid" data-category="survival"></div>
   <h2>Arsenal</h2><div class="grid" data-category="arsenal"></div>
   <h2>Challenge and timing</h2><div class="grid" data-category="challenge"></div>
   <h2>Presentation</h2><div class="grid" data-category="presentation"></div>
 
-  <div class="policy">Replay v1 does not carry simulation mods. REC and PLAY are refused
-    when any survival, arsenal, challenge, input, or timing mod is active.
-    Invert Colors, Monochrome, Ghost Trail, Drop the Sprite Hold, and Show Hitboxes remain
-    replay-compatible because they change only the displayed frame or its finished RGB.</div>
+  <div class="policy">Replay v1 does not carry formation state or simulation mods. REC and PLAY
+    are refused while Fly Both Ships Side by Side or any survival, arsenal, challenge, input,
+    or timing mod is active. Invert Colors, Monochrome, Ghost Trail, Drop the Sprite Hold, and
+    Show Hitboxes remain replay-compatible because they change only the displayed frame or its
+    finished RGB.</div>
 
   <div class="bar">
     <div id="summary"></div>
@@ -157,16 +168,102 @@ import {
 import {
   authenticSelectionFromParams, authenticSelectionQuery,
 } from './src/authentic.js';
+import {
+  FORMATION_MODE, formationAuthenticOverridesFromParams, formationToHash,
+  hashToFormation, resolveFormationAuthenticSelection,
+} from './src/formation.js';
 
-const selected = new Set(hashToLoadout(location.hash).ids);
-const initialAuthentic = authenticSelectionFromParams(new URLSearchParams(location.search));
-let authenticShip = initialAuthentic?.ship ?? 0;
-let authenticStyle = initialAuthentic?.style ?? 2;
-let p2Joined = !!initialAuthentic?.p2;
-let authenticP2Ship = initialAuthentic?.p2?.ship ?? 0;
-let authenticP2Style = initialAuthentic?.p2?.style ?? 2;
+const selected = new Set();
+let formationActive = false;
+let authenticShip = 0;
+let authenticStyle = 2;
+let authenticShipExplicit = false;
+let authenticStyleExplicit = false;
+let explicitP2Joined = false;
+let authenticP2Ship = 0;
+let authenticP2Style = 2;
+let authenticP2ShipExplicit = false;
+let authenticP2StyleExplicit = false;
 const cards = new Map();
 let lastConflicts = [];
+
+function hasOwn(value, name) {
+  return Object.prototype.hasOwnProperty.call(value ?? {}, name);
+}
+
+function restoreStateFromLocation() {
+  const loadout = hashToLoadout(location.hash);
+  selected.clear();
+  for (const id of loadout.ids) selected.add(id);
+  formationActive = !!hashToFormation(location.hash);
+
+  const params = new URLSearchParams(location.search);
+  const overrides = formationAuthenticOverridesFromParams(params);
+  const ordinary = authenticSelectionFromParams(params);
+  const formation = formationActive
+    ? resolveFormationAuthenticSelection(FORMATION_MODE, overrides)
+      ?? resolveFormationAuthenticSelection(FORMATION_MODE)
+    : null;
+  const effective = formation ?? ordinary;
+  authenticShip = effective?.ship ?? 0;
+  authenticStyle = effective?.style ?? 2;
+  authenticShipExplicit = hasOwn(overrides, 'ship');
+  authenticStyleExplicit = hasOwn(overrides, 'style');
+
+  explicitP2Joined = hasOwn(overrides, 'p2');
+  authenticP2Ship = ordinary?.p2?.ship ?? 0;
+  authenticP2Style = ordinary?.p2?.style ?? 2;
+  authenticP2ShipExplicit = hasOwn(overrides?.p2, 'ship');
+  authenticP2StyleExplicit = hasOwn(overrides?.p2, 'style');
+}
+
+function effectiveP2Selection() {
+  if (!formationActive) {
+    return explicitP2Joined
+      ? { ship: authenticP2Ship, style: authenticP2Style }
+      : null;
+  }
+  const defaults = FORMATION_MODE.authenticSelection.p2;
+  return {
+    ship: authenticP2ShipExplicit ? authenticP2Ship : defaults.ship,
+    style: authenticP2StyleExplicit ? authenticP2Style : defaults.style,
+  };
+}
+
+function formationAuthenticQuery() {
+  const params = new URLSearchParams();
+  if (authenticShipExplicit) params.set('ship', String(authenticShip));
+  if (authenticStyleExplicit) params.set('style', String(authenticStyle));
+  if (explicitP2Joined) {
+    params.set('p2', '1');
+    if (authenticP2ShipExplicit) params.set('p2ship', String(authenticP2Ship));
+    if (authenticP2StyleExplicit) params.set('p2style', String(authenticP2Style));
+  }
+  const text = params.toString();
+  return text ? `?${text}` : '';
+}
+
+function launchAuthenticQuery() {
+  if (formationActive) return formationAuthenticQuery();
+  return authenticSelectionQuery({
+    ship: authenticShip,
+    style: authenticStyle,
+    ...(explicitP2Joined
+      ? { p2: { ship: authenticP2Ship, style: authenticP2Style } }
+      : {}),
+  });
+}
+
+function stateUrl(hash) {
+  const query = launchAuthenticQuery();
+  return `${location.pathname}${query}${hash ? `#${hash}` : ''}`;
+}
+
+function pushStateUrl(hash) {
+  const target = stateUrl(hash);
+  const current = `${location.pathname}${location.search}${location.hash}`;
+  if (target !== current) history.pushState(null, '', target);
+}
 
 function makeCard(id, entry) {
   const button = document.createElement('button');
@@ -224,7 +321,7 @@ for (const preset of Object.values(PRESETS)) {
   document.getElementById('presets').appendChild(button);
 }
 
-function sync() {
+function sync({ writeHistory = true } = {}) {
   const resolved = resolveLoadout([...selected]);
   lastConflicts = resolved.conflicts;
   selected.clear();
@@ -232,23 +329,29 @@ function sync() {
   for (const [id, button] of cards) {
     button.setAttribute('aria-pressed', String(selected.has(id)));
   }
-  document.getElementById('vanilla').setAttribute('aria-pressed', String(!resolved.ids.length));
+  document.getElementById('vanilla').setAttribute('aria-pressed',
+    String(!resolved.ids.length && !formationActive));
+  document.getElementById('formation-side-by-side').setAttribute(
+    'aria-pressed', String(formationActive));
   for (const button of document.querySelectorAll('[data-auth-ship]')) {
     button.setAttribute('aria-pressed', String(Number(button.dataset.authShip) === authenticShip));
   }
   for (const button of document.querySelectorAll('[data-auth-style]')) {
     button.setAttribute('aria-pressed', String(Number(button.dataset.authStyle) === authenticStyle));
   }
-  document.getElementById('join-p2').setAttribute('aria-pressed', String(p2Joined));
+  const effectiveP2 = effectiveP2Selection();
+  const joinP2 = document.getElementById('join-p2');
+  joinP2.disabled = formationActive;
+  joinP2.setAttribute('aria-pressed', String(!!effectiveP2));
   for (const button of document.querySelectorAll('[data-auth-p2-ship]')) {
-    button.disabled = !p2Joined;
+    button.disabled = !effectiveP2;
     button.setAttribute('aria-pressed', String(
-      p2Joined && Number(button.dataset.authP2Ship) === authenticP2Ship));
+      !!effectiveP2 && Number(button.dataset.authP2Ship) === effectiveP2.ship));
   }
   for (const button of document.querySelectorAll('[data-auth-p2-style]')) {
-    button.disabled = !p2Joined;
+    button.disabled = !effectiveP2;
     button.setAttribute('aria-pressed', String(
-      p2Joined && Number(button.dataset.authP2Style) === authenticP2Style));
+      !!effectiveP2 && Number(button.dataset.authP2Style) === effectiveP2.style));
   }
 
   const summary = document.getElementById('summary');
@@ -257,14 +360,21 @@ function sync() {
   if (resolved.ids.length) {
     main.innerHTML = `<b>${resolved.ids.length}</b> active: `;
     main.append(document.createTextNode(resolved.ids.map((id) => MODS[id].name).join(', ')));
+  } else if (formationActive) {
+    main.innerHTML = '<b>Formation active</b>: Fly Both Ships Side by Side';
   } else {
     main.innerHTML = '<b>Original Game</b>: nothing selected';
   }
   summary.appendChild(main);
+  if (formationActive && resolved.ids.length) {
+    const formation = document.createElement('span');
+    formation.textContent = ' | Formation: Fly Both Ships Side by Side';
+    summary.appendChild(formation);
+  }
   const authentic = document.createElement('span');
   const p1 = `P1 Type-${authenticShip === 0 ? 'A' : 'B'}, pilot/style selector ${authenticStyle}`;
-  const p2 = p2Joined
-    ? ` | P2 Type-${authenticP2Ship === 0 ? 'A' : 'B'}, pilot/style selector ${authenticP2Style}`
+  const p2 = effectiveP2
+    ? ` | P2 Type-${effectiveP2.ship === 0 ? 'A' : 'B'}, pilot/style selector ${effectiveP2.style}`
     : ' | P2 not joined';
   authentic.textContent = ` | ${p1}${p2}`;
   summary.appendChild(authentic);
@@ -277,64 +387,96 @@ function sync() {
     warning.textContent = ` | ${text}`;
     summary.appendChild(warning);
   }
-  location.hash = loadoutToHash(resolved.ids);
+  const launchHash = [
+    loadoutToHash(resolved.ids),
+    formationToHash(formationActive ? FORMATION_MODE : null),
+  ].filter(Boolean).join('&');
+  if (writeHistory) pushStateUrl(launchHash);
 }
+
+document.getElementById('formation-side-by-side').addEventListener('click', () => {
+  if (!formationActive && explicitP2Joined) {
+    // A P2 chosen before formation is an explicit pair, not a formation default.
+    authenticP2ShipExplicit = true;
+    authenticP2StyleExplicit = true;
+  }
+  formationActive = !formationActive;
+  sync();
+});
 
 for (const button of document.querySelectorAll('[data-auth-ship]')) {
   button.addEventListener('click', () => {
     authenticShip = Number(button.dataset.authShip);
+    authenticShipExplicit = true;
     sync();
   });
 }
 for (const button of document.querySelectorAll('[data-auth-style]')) {
   button.addEventListener('click', () => {
     authenticStyle = Number(button.dataset.authStyle);
+    authenticStyleExplicit = true;
     sync();
   });
 }
 document.getElementById('join-p2').addEventListener('click', () => {
-  p2Joined = !p2Joined;
+  if (formationActive) return;
+  explicitP2Joined = !explicitP2Joined;
+  if (explicitP2Joined) {
+    authenticP2ShipExplicit = true;
+    authenticP2StyleExplicit = true;
+  }
   sync();
 });
 for (const button of document.querySelectorAll('[data-auth-p2-ship]')) {
   button.addEventListener('click', () => {
+    explicitP2Joined = true;
     authenticP2Ship = Number(button.dataset.authP2Ship);
+    authenticP2ShipExplicit = true;
     sync();
   });
 }
 for (const button of document.querySelectorAll('[data-auth-p2-style]')) {
   button.addEventListener('click', () => {
+    explicitP2Joined = true;
     authenticP2Style = Number(button.dataset.authP2Style);
+    authenticP2StyleExplicit = true;
     sync();
   });
 }
 
 document.getElementById('vanilla').addEventListener('click', () => {
   selected.clear();
+  formationActive = false;
   sync();
 });
 document.getElementById('clear').addEventListener('click', () => {
   selected.clear();
+  formationActive = false;
   authenticShip = 0;
   authenticStyle = 2;
-  p2Joined = false;
-  authenticP2Ship = 0;
-  authenticP2Style = 2;
+  authenticShipExplicit = false;
+  authenticStyleExplicit = false;
   sync();
 });
 document.getElementById('games').addEventListener('click', () => {
   location.href = '../../index.html';
 });
 document.getElementById('launch').addEventListener('click', () => {
-  const hash = loadoutToHash([...selected]);
-  const query = authenticSelectionQuery({
-    ship: authenticShip,
-    style: authenticStyle,
-    ...(p2Joined ? { p2: { ship: authenticP2Ship, style: authenticP2Style } } : {}),
-  });
+  const hash = [
+    loadoutToHash([...selected]),
+    formationToHash(formationActive ? FORMATION_MODE : null),
+  ].filter(Boolean).join('&');
+  const query = launchAuthenticQuery();
   location.href = `./index.html${query}${hash ? `#${hash}` : ''}`;
 });
-sync();
+
+function restoreNavigationState() {
+  restoreStateFromLocation();
+  sync({ writeHistory: false });
+}
+window.addEventListener('hashchange', restoreNavigationState);
+window.addEventListener('popstate', restoreNavigationState);
+restoreNavigationState();
 </script>
 </body>
 </html>

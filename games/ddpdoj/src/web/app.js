@@ -220,6 +220,10 @@ import {
   transformModInput, transformModTiming, applyPresentationMods, applyHitboxOverlay,
   assertReplayCompatible, modGameOptions,
 } from '../mods.js';
+import {
+  assertFormationReplayCompatible, createFormationState, formationGameOptions,
+  initializeFormation, prepareFormationFrame, resolveFormationAuthenticSelection,
+} from '../formation.js';
 
 // --------------------------------------------------------------- PRESENTATION
 //
@@ -838,16 +842,29 @@ export class Demo {
   //  is labelled on screen.  It is LOCAL DEVELOPMENT ONLY: the ladder files
   //  are not in dist/, so on the published page `rung` is always null.
   constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE, rung = null,
-      soundController = null, loadout = null, authenticSelection = null) {
+      soundController = null, loadout = null, authenticSelection = null,
+      formationModeValue = null) {
     this.bundle = bundle;
     this.cap = bundle.cap;
     // No recognized selection means no mod runtime object. Direct index.html,
     // an empty hash, and an unknown-only hash all take this path.
     const modState = createModState(loadout);
     if (modState) this.mods = modState;
-    // Authentic cartridge content is not a mod.  Labelled rungs own their exact
-    // RAM snapshot, so an ordinary-launch selection is ignored for a rung.
-    const authentic = rung ? null : normalizeAuthenticSelection(authenticSelection);
+    // A recognized mode owns exactly one mutable state object for this Demo.
+    // Missing and unknown formation ids produce null and add no Game callback.
+    this.formation = createFormationState(formationModeValue);
+    // Authentic cartridge content is not a mod. A formation always resolves a
+    // complete pair and therefore always arms genuine P2 request 4. Invalid
+    // selector overrides fall back to that pair rather than disabling its P2.
+    // Labelled rungs otherwise retain their exact RAM snapshot.
+    const formationAuthentic = this.formation
+      ? resolveFormationAuthenticSelection(this.formation.mode, authenticSelection)
+        ?? resolveFormationAuthenticSelection(this.formation.mode)
+      : null;
+    const ordinaryAuthentic = rung
+      ? null
+      : normalizeAuthenticSelection(authenticSelection);
+    const authentic = formationAuthentic ?? ordinaryAuthentic;
     if (authentic) this.authentic = authentic;
     this.progressionPokes = progressionPokesForRung(rung);
     this.progressionPoke = rung?.poke ?? '';
@@ -890,12 +907,14 @@ export class Demo {
     this.soundController = soundController;
     const launchSeed = launchSeedForBrowser(rung ? rung.seed : bundle.seed, rung, modState);
     const gameMods = modGameOptions(modState);
+    const gameFormation = this.formation ? formationGameOptions(this.formation) : null;
     this.game = new Game(launchSeed, bundle.tables, {
       logicFrame: this.seedLf,
       videoFrame: rung ? rung.vf : this.cap.frames[0].vf,
       bgSeed: rung ? rung.bgSeed : this.cap.part(0, 'bg'),
       soundSink: soundController,
       ...(gameMods ?? {}),
+      ...(gameFormation ?? {}),
       // W375 -- THE COIN PULSE ADVANCE. `Game#step` calls this at the ONE site
       // it calls `coinDebounce13CEC8`, i.e. once every two video frames, which
       // is the rate `currentCoinWord()`'s purity exists to protect.
@@ -905,6 +924,7 @@ export class Demo {
       coinTick: () => this.coinTick(),
     });
     if (authentic) applyAuthenticSelection(this.game, authentic);
+    if (this.formation) initializeFormation(this.formation, this.game);
     this.hitboxRam = modState?.loadout.presentation.hitboxes
       ? this.game.ram.clone() : null;
     // A non-default selector patch changes live RAM before frame 1, but the seed's
@@ -1064,7 +1084,12 @@ export class Demo {
     const rawPw = inPlayback
       ? this.playback.words[this.playback.i++]
       : currentPortWord();
-    const pw = transformModInput(this.mods, rawPw, g.logicFrame);
+    const modPw = transformModInput(this.mods, rawPw, g.logicFrame);
+    // Formation consumes the catalogue's final input, then supplies both its
+    // geometry decision and the packed cabinet word handed to Game.step().
+    const pw = this.formation
+      ? prepareFormationFrame(this.formation, g, modPw)
+      : modPw;
     if (this.recorder) this.recorder.input(pw);
     // W375 -- THE COIN WORD, `$C08004`. A FIELD, not a second `step()` argument:
     // `.replay` v1 fixes `portin.encoding === 'u16be'` at ONE word per logic
@@ -1141,6 +1166,7 @@ export class Demo {
    * `'fallback-json'` so the discrepancy is on the file, not hidden.
    */
   async armRecording() {
+    assertFormationReplayCompatible(this.formation, 'REC');
     if (this.recorder) return this.recorder;
     assertReplayCompatible(this.mods, 'REC');
     // WAVE 132 -- REC and PLAY are mutually exclusive.  The recorder would tee
@@ -1234,6 +1260,7 @@ export class Demo {
    * Returns the playback descriptor (or throws on a format/seed mismatch).
    */
   playFrom(obj) {
+    assertFormationReplayCompatible(this.formation, 'PLAY');
     assertReplayCompatible(this.mods, 'PLAY');
     const parsed = validateReplay(obj);
     // Decode the seed the same way `replay.mjs:108-121` does.
@@ -1561,6 +1588,10 @@ export class Demo {
       mode: this.mode,
       modIds: this.mods?.loadout.ids ?? [],
       modNames: this.mods?.loadout.ids.map((id) => MODS[id].name) ?? [],
+      formationId: this.formation?.mode.id ?? null,
+      formationName: this.formation?.mode.name ?? null,
+      formationControl: this.formation
+        ? 'P1 steers both ships and owns manual Button 2.' : null,
       spliced: this.spliced,
       // WAVE 37.  The page must keep SAYING what it is: `stripped` is how many
       // of the recording's own display-list records were thrown away this
@@ -1881,7 +1912,7 @@ export async function boot(canvas, opts = {}) {
   // until assets arrive, then advances the singleton runtime silently until a
   // gesture attaches AudioOut. No pre-gesture PCM becomes an audible backlog.
   const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung, sound,
-    opts.mods ?? null, opts.authentic ?? null);
+    opts.mods ?? null, opts.authentic ?? null, opts.formation ?? null);
   // WAVE 131 -- the asset base `armRecording()` re-fetches the tables from, so
   // a live REC's `version.tablesSha256` can match the shipped bytes rather than
   // the fallback `JSON.stringify(bundle.tables)`.
