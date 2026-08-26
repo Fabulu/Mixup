@@ -89,14 +89,15 @@ export const GAMEPAD_MAP = Object.freeze({
 });
 
 // Two shared controllers feed the board's two halves of `$C08000`. Controller 0
-// also owns the P1 keyboard map; controller 1 is physical-pad only, so mobile and
-// keyboard remain P1-only.
+// also owns the P1 keyboard map; controller 1 is physical-pad only. The one
+// on-screen pad defaults to P1 and may be handed to a genuinely joined P2.
 let controller = null;
 let controllerP2 = null;
 const controllerCoinDown = [false, false];
 const controllerCoinBlocked = [false, false];
 const controllerHadPad = [false, false];
-let touchHeld = 0;
+const touchHeld = [0, 0];
+let touchOwner = 0;
 
 /** Convert one normalized controller state to `$803970/$803976` bit positions. */
 function maskFromController(c) {
@@ -114,13 +115,15 @@ function maskFromController(c) {
   return mask & 0xffff;
 }
 
-/** P1's live mask: controller index 0 plus the P1-only mobile/keyboard paths. */
+/** P1's live mask: controller index 0 plus P1-owned touch input. */
 export function currentMask() {
-  return (maskFromController(controller) | touchHeld) & 0xffff;
+  return (maskFromController(controller) | touchHeld[0]) & 0xffff;
 }
 
-/** P2's live mask: controller index 1 only. Mobile remains deliberately P1-only. */
-export function currentP2Mask() { return maskFromController(controllerP2); }
+/** P2's live mask: controller index 1 plus P2-owned touch input. */
+export function currentP2Mask() {
+  return (maskFromController(controllerP2) | touchHeld[1]) & 0xffff;
+}
 
 /** Bit POSITIONS, for `portWordFromBits`. */
 export function currentBits(mask = currentMask()) {
@@ -345,20 +348,39 @@ export function hasGamepad() {
 
 // ------------------------------------------------------------ on-screen pad
 
-/** Press or release one on-screen button. */
+export const TOUCH_OWNERS = Object.freeze({ P1: 0, P2: 1 });
+
+/** The shared pad's current player. P1 is the default on every page load. */
+export function currentTouchOwner() { return touchOwner === TOUCH_OWNERS.P2 ? 'P2' : 'P1'; }
+
+/** Hand the shared pad to one player. P2 requires an explicit authentic join.
+ *  Invalid requests leave both held masks and the current owner untouched. */
+export function selectTouchOwner(owner, options = {}) {
+  if (!Object.hasOwn(TOUCH_OWNERS, owner)) return false;
+  if (owner === 'P2' && options?.p2Joined !== true) return false;
+  const next = TOUCH_OWNERS[owner];
+  if (next === touchOwner) return true;
+  clearTouch();
+  touchOwner = next;
+  return true;
+}
+
+/** Press or release one on-screen button for the selected player. */
 export function setTouchButton(name, down) {
   const b = 1 << CONTROLS[name];
-  if (down) touchHeld |= b; else touchHeld &= ~b;
+  if (down) touchHeld[touchOwner] |= b; else touchHeld[touchOwner] &= ~b;
 }
 
-/** Replace the whole direction nibble in one write, leaving the face buttons
- *  alone.  The d-pad is one surface, so it hands over a MASK, not an edge. */
+/** Replace the selected player's whole direction nibble in one write, leaving
+ *  the face buttons alone. The d-pad is one surface, so it hands over a MASK,
+ *  not an edge. */
 export function setTouchDirections(mask) {
-  touchHeld = ((touchHeld & ~DPAD_MASK) | (mask & DPAD_MASK)) & 0xffff;
+  touchHeld[touchOwner] = ((touchHeld[touchOwner] & ~DPAD_MASK)
+    | (mask & DPAD_MASK)) & 0xffff;
 }
 
-/** The backstop.  Any interruption the buttons never saw clears everything. */
-export function clearTouch() { touchHeld = 0; }
+/** The backstop. Any interruption the buttons never saw clears both owners. */
+export function clearTouch() { touchHeld.fill(0); }
 
 /** Test seam + page backstop: the keyboard half of the reset.  With the shared
  *  controller, this clears its keyboard state; in headless (no controller) it is
@@ -392,8 +414,8 @@ export function dpadMask(u, v, w, h) {
 
 /**
  * Wire an on-screen pad. `dpadEl` is ONE capture target hit-tested by
- * `dpadMask`; `buttons` carry either `data-btn="SHOT"` for the player port or
- * `data-coin="COIN1"` for the separate coin port.
+ * `dpadMask`; `buttons` carry either `data-btn="SHOT"` for the selected player
+ * or the shared coin button's current `data-coin` route for the separate port.
  *
  * @returns {() => void} the backstop, so the page can also call it from
  *          `blur` / `pagehide` / `visibilitychange`.
@@ -434,6 +456,7 @@ export function attachPad(dpadEl, buttons, { onPaint } = {}) {
   }
   dpadEl.addEventListener('contextmenu', (e) => e.preventDefault());
 
+  const releaseButtons = [];
   for (const b of buttons) {
     const name = b.dataset.btn;
     const coinName = b.dataset.coin;
@@ -448,21 +471,43 @@ export function attachPad(dpadEl, buttons, { onPaint } = {}) {
       throw new Error(`on-screen button data-coin="${coinName}" is not a coin switch; `
         + `known: ${Object.keys(COIN_BITS).join(', ')}`);
     }
-    const setButton = coinName
-      ? (down) => setCoinKey(coinName, down)
-      : (down) => setTouchButton(name, down);
+    let pressedCoin = null;
+    const releaseHeld = () => {
+      delete b.dataset.on;
+      if (coinName) {
+        // Release the route this press actually used. The shared coin button may
+        // have changed data-coin while captured during a P1/P2 owner switch.
+        const routedCoin = pressedCoin ?? b.dataset.coin;
+        if (Object.hasOwn(COIN_BITS, routedCoin)) setCoinKey(routedCoin, false);
+        pressedCoin = null;
+      } else {
+        setTouchButton(name, false);
+      }
+    };
     const press = (e) => {
       e.preventDefault();
       // The finger may slide off the button; the capture keeps its release ours.
       b.setPointerCapture?.(e.pointerId);
       b.dataset.on = '1';
-      setButton(true);
+      if (coinName) {
+        const routedCoin = b.dataset.coin;
+        if (!Object.hasOwn(COIN_BITS, routedCoin)) {
+          throw new Error(`on-screen button data-coin="${routedCoin}" is not a coin switch; `
+            + `known: ${Object.keys(COIN_BITS).join(', ')}`);
+        }
+        if (pressedCoin === null) {
+          pressedCoin = routedCoin;
+          setCoinKey(routedCoin, true);
+        }
+      } else {
+        setTouchButton(name, true);
+      }
     };
     const release = (e) => {
       e.preventDefault();
-      delete b.dataset.on;
-      setButton(false);
+      releaseHeld();
     };
+    releaseButtons.push(releaseHeld);
     b.addEventListener('pointerdown', press);
     b.addEventListener('pointerup', release);
     b.addEventListener('pointercancel', release);
@@ -476,10 +521,7 @@ export function attachPad(dpadEl, buttons, { onPaint } = {}) {
     clearTouch();
     padPointer = null;
     paint(0);
-    for (const b of buttons) {
-      if (b.dataset.coin) setCoinKey(b.dataset.coin, false);
-      delete b.dataset.on;
-    }
+    for (const releaseButton of releaseButtons) releaseButton();
   };
 }
 
@@ -491,7 +533,7 @@ export function attachPad(dpadEl, buttons, { onPaint } = {}) {
  * schemes feed exactly the same path, and the picker can switch between them
  * at runtime with no game-logic change.
  *
- * The face buttons (COIN1/START/SHOT/BOMB/AUTO) stay the fixed cluster; the floating
+ * The face buttons (shared COIN/START/SHOT/BOMB/AUTO) stay the fixed cluster; the
  * stick replaces ONLY the D-pad. `onPaint` receives the direction mask while
  * `onVisual` receives the shared stick's origin and current pointer, or two
  * nulls when it clears.

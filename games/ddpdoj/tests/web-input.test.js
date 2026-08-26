@@ -82,14 +82,21 @@ test('index.html mobile buttons match the two input ports in game.json', () => {
   assert.ok(names.length >= 4, 'the page has on-screen player buttons');
   for (const n of names) assert.ok(n in CONTROLS, `data-btn="${n}"`);
   for (const n of coins) assert.ok(n in COIN_BITS, `data-coin="${n}"`);
-  assert.deepEqual(coins, ['COIN1'], 'mobile exposes P1 coin, not P2 controls');
-  assert.ok(names.includes('START'), 'mobile keeps P1 START');
-  // The shared face cluster serves AUTO, FIXED and FLOAT, and game.json names
-  // exactly the same controls without pretending COIN1 is in $C08000.
+  assert.deepEqual(coins, ['COIN1'], 'the shared coin button defaults to P1');
+  assert.ok(names.includes('START'), 'the shared panel keeps START');
+  // The manifest lists the fixed face controls separately from the one coin
+  // button whose route changes with the selected owner.
   const declared = gameJson.input.touchLayout.clusters.flat().sort();
-  assert.deepEqual([...names, ...coins].sort(), declared);
-  assert.deepEqual(gameJson.input.coinButtons,
-    [{ id: 'COIN1', port: 'C08004', bit: 0, activeLow: true }]);
+  assert.deepEqual(names.sort(), declared);
+  assert.deepEqual(gameJson.input.touchLayout.sharedCoinButton,
+    { P1: 'COIN1', P2: 'COIN2' });
+  assert.equal(gameJson.input.touchLayout.shared, true);
+  assert.equal(gameJson.input.touchLayout.defaultOwner, 'P1');
+  assert.equal(gameJson.input.touchLayout.p2RequiresAuthenticJoin, true);
+  assert.deepEqual(gameJson.input.coinButtons, [
+    { id: 'COIN1', port: 'C08004', bit: 0, activeLow: true },
+    { id: 'COIN2', port: 'C08004', bit: 1, activeLow: true },
+  ]);
 });
 
 test('index.html d-pad cells match game.json and dpadMask()', () => {
@@ -185,12 +192,12 @@ test('the machine packer feeds both halves of the board one-word P1/P2 contract'
     '$13D464 derives both full hardware mirrors, including ignored cross-byte garbage');
 });
 
-test('the mobile mask remains confined to P1', () => {
+test('the mobile mask defaults to P1', () => {
   clearTouch(); clearKeyboard();
   setTouchDirections(1 << CONTROLS.LEFT);
   setTouchButton('SHOT', true);
   assert.equal(currentMask(), (1 << BIT.left) | (1 << BIT.b1));
-  assert.equal(currentP2Mask(), 0, 'touch does not synthesize P2 movement or fire');
+  assert.equal(currentP2Mask(), 0, 'default touch does not synthesize P2 movement or fire');
   assert.equal(currentPortWord() >>> 8, 0xff, 'the board P2 half stays idle');
   clearTouch();
 });

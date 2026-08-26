@@ -236,6 +236,8 @@
     touch-action: none; cursor: pointer; padding: 0;
   }
   .tbtn.sml { width: 68px; height: 24px; border-radius: 6px; font-size: 10px; }
+  .tbtn[hidden] { display: none; }
+  .tbtn[disabled] { opacity: .5; cursor: default; }
   .tbtn[data-on] { background: rgba(47, 110, 168, .76); border-color: #4d92cf; color: #fff; }
   /* Landscape on a phone: in TATE the picture is 224x448, so a short viewport
      leaves real estate on both sides. Put the pad in the letterbox rather than
@@ -377,8 +379,11 @@
     <i data-cell="DOWN LEFT">&#9699;</i><i data-cell="DOWN">&#9660;</i><i data-cell="DOWN RIGHT">&#9698;</i>
   </div>
   <div class="cluster">
+    <button id="pad-owner" class="tbtn sml" type="button" hidden disabled
+      aria-label="Switch the shared touch panel between joined players"
+      aria-pressed="false">P1 PAD</button>
     <div class="row">
-      <button class="tbtn sml" type="button" data-coin="COIN1">P1 COIN</button>
+      <button id="pad-coin" class="tbtn sml" type="button" data-coin="COIN1">P1 COIN</button>
       <button class="tbtn sml" type="button" data-btn="START">START</button>
     </div>
     <div class="row">
@@ -641,7 +646,9 @@ import {
 } from './src/web/app.js';
 import { hashToLoadout } from './src/mods.js';
 import { authenticSelectionFromParams } from './src/authentic.js';
-import { attachPad, attachStick, clearKeyboard, CONTROLS } from './src/web/input.js';
+import {
+  attachPad, attachStick, clearKeyboard, CONTROLS, currentTouchOwner, selectTouchOwner,
+} from './src/web/input.js';
 
 const canvas = document.getElementById('screen');
 const stage = document.getElementById('stage');
@@ -669,6 +676,8 @@ const rungParam = Number.isFinite(rungRaw) ? rungRaw : null;
 const ladderParam = params.get('ladder') || undefined;
 const ladderDirParam = params.get('ladderDir') || undefined;
 const dpadEl = document.getElementById('dpad');
+const padOwnerBtn = document.getElementById('pad-owner');
+const padCoinBtn = document.getElementById('pad-coin');
 const stickzone = document.getElementById('stickzone');
 const stickOriginEl = document.getElementById('stick-origin');
 const stickKnobEl = document.getElementById('stick-knob');
@@ -744,9 +753,32 @@ const paintStick = (origin, current) => {
 // A display:none element does not receive pointer events, so the inactive
 // source is inert. The face buttons are part of the pad's cluster and stay
 // visible whenever touch is on.
-const padBackstop = attachPad(dpadEl, [...pad.querySelectorAll('.tbtn')],
+const padBackstop = attachPad(dpadEl,
+  [...pad.querySelectorAll('.tbtn[data-btn], .tbtn[data-coin]')],
   { onPaint: paintDpad });
 const stickBackstop = attachStick(stickzone, { onVisual: paintStick });
+
+// One shared panel defaults to P1. It may be handed to P2 only when the
+// authentic launch actually joined P2; normal one-player pages leave this
+// selector hidden, disabled, and unwired.
+function applyPadOwner(owner) {
+  if (!selectTouchOwner(owner, { p2Joined: !!authenticSelection?.p2 })) return false;
+  padBackstop();
+  stickBackstop();
+  const p2 = currentTouchOwner() === 'P2';
+  padOwnerBtn.textContent = p2 ? 'P2 PAD' : 'P1 PAD';
+  padOwnerBtn.setAttribute('aria-pressed', String(p2));
+  padCoinBtn.dataset.coin = p2 ? 'COIN2' : 'COIN1';
+  padCoinBtn.textContent = p2 ? 'P2 COIN' : 'P1 COIN';
+  return true;
+}
+if (authenticSelection?.p2) {
+  padOwnerBtn.hidden = false;
+  padOwnerBtn.disabled = false;
+  padOwnerBtn.addEventListener('click', () => {
+    applyPadOwner(currentTouchOwner() === 'P1' ? 'P2' : 'P1');
+  });
+}
 
 function applyScheme() {
   const useFloat = scheme === 'auto' || scheme === 'float';

@@ -47,7 +47,8 @@
       { "id": "START", "bit": 15, "mask": 32768 }
     ],
     "coinButtons": [
-      { "id": "COIN1", "port": "C08004", "bit": 0, "activeLow": true }
+      { "id": "COIN1", "port": "C08004", "bit": 0, "activeLow": true },
+      { "id": "COIN2", "port": "C08004", "bit": 1, "activeLow": true }
     ],
     "defaultKeymap": {
       "ArrowUp": "UP", "ArrowDown": "DOWN", "ArrowLeft": "LEFT", "ArrowRight": "RIGHT",
@@ -58,13 +59,17 @@
     },
     "keymapNote": "Matched on e.code, i.e. PHYSICAL key position. KeyZ and KeyY are BOTH shot: on a Swiss QWERTZ keyboard the key printed Z sits where QWERTY has Y and reports KeyY. A standing requirement, asked for twice.",
     "touchLayout": {
-      "note": "The on-screen pad in index.html. The d-pad is ONE pointer-capture surface hit-tested as a 3x3 grid, not four buttons: four captured buttons can never report a diagonal, because the capture that stops a stuck direction is also what stops a second button ever seeing the finger. A vertical shooter without diagonals is not playable. The corner cells report TWO bits, which is exactly what $803970 carries -- one bit per direction, tested independently by the mover at $141B2E. One shared face cluster serves AUTO, FIXED and FLOAT: P1 COIN and START sit above the three fire buttons. COIN1 uses the separate active-low $C08004 pulse path rather than the player-port shuffle.",
+      "note": "The on-screen panel in index.html is shared rather than duplicated. P1 owns it by default; the P1 PAD/P2 PAD selector is hidden and disabled unless authenticSelection.p2 proves that a genuine P2 joined. Switching owner clears every held direction and face button before the same d-pad, START, SHOT, BOMB and AUTO controls are routed to the other player. The d-pad remains one pointer-capture surface hit-tested as a 3x3 grid, so its corner cells can report both direction bits. The shared coin button routes by owner to COIN1 or COIN2 on the separate active-low $C08004 pulse path and never enters the player-port shuffle.",
+      "shared": true,
+      "defaultOwner": "P1",
+      "p2RequiresAuthenticJoin": true,
+      "sharedCoinButton": { "P1": "COIN1", "P2": "COIN2" },
       "dpad": [
         ["UP", "LEFT"], ["UP"], ["UP", "RIGHT"],
         ["LEFT"], [], ["RIGHT"],
         ["DOWN", "LEFT"], ["DOWN"], ["DOWN", "RIGHT"]
       ],
-      "clusters": [["COIN1", "START"], ["AUTO", "BOMB", "SHOT"]]
+      "clusters": [["START"], ["AUTO", "BOMB", "SHOT"]]
     }
   },
   "assets": {
