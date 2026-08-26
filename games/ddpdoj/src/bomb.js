@@ -832,7 +832,7 @@ function beamSegmentAlive(ram, rec, d0, phase2) {
 
 /** `$2562FC` -- record 42's mover.  Twenty-one instructions and every one of
  *  its three RAM writes is a bit or a word of that record. */
-function beamHead2562FC(ram) {
+function beamHead2562FC(ram, a5) {
   const rec = BOMBRAM.rec, a6 = rec + BEAM_REC.tail;
   if (ram.u16(a6 + 0x28) !== 0) return;                // $256302 tst.w / bne
   if (ram.u16(BOMBRAM.g12954) === 0) {                 // $256308 tst.w / bne
@@ -846,7 +846,7 @@ function beamHead2562FC(ram) {
   } else { ram.bset8(a6, 1); return; }                 // $25633C
   ram.bclr8(a6, 1);                                    // $25631C bclr #$1,(A6)
   const d0 = u16(u16(ram.u16(a6 + 0x02) + 0x400)       // $256320/$256324
-    + ram.u16(RAM.player1 + P.velY));                  // $256328 add.w ($30,A5)
+    + ram.u16(a5 + P.velY));                            // $256328 add.w ($30,A5)
   ram.setU16(a6 + 0x02, d0);                           // $25632C move.w D0
   if (d0 >= 0x7e00) ram.setU16(a6 + 0x28, 1);          // $256330 cmpi / $256336
 }
@@ -1016,7 +1016,7 @@ export function bombScriptAlt255FE2(ram, rom, ctx, p2) {
 function beamFrame256120(ram, rom, ctx, a5) {
   const rec = BOMBRAM.rec;
   beamSegments2561AA(ram, rom, ctx, a5);               // $256120 bsr $2561AA
-  beamHead2562FC(ram);                                 // $256124 bsr $2562FC
+  beamHead2562FC(ram, a5);                             // $256124 bsr $2562FC
   beamHead256348(ram, ctx);                            // $256128/$25612C bsr
   draw23FF06(ram, ctx, rec);                           // $256130 jsr $23FF06
   if (!ram.btst8(rec + BEAM_REC.tail, 1)) {            // $25613A btst #$1 / bne

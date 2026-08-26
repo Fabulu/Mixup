@@ -163,6 +163,30 @@ test('$286A8A beq $286ABC: a zero $81B60C starts the counter from $286A82 too, '
   assert.equal(ram.u32(0x81b4c0), 0, '$286AE8 rts -- no score on the start');
 });
 
+test('W603: $286B9C cold-start seeds P2 $81B638 and leaves P1 $81B636 alone', () => {
+  const ram = new Ram();
+  ram.setU8(A6, 0);
+  ram.setU16(SCORE.laserRec, 0x0001);
+  ram.setU16(LEDGER.p1.rankDivider, 0x2222);
+  ram.setU16(LEDGER.p2.rankDivider, 0x3333);
+  ram.setU16(LEDGER.p2.power, 2);
+  ram.setU32(LEDGER.p2.acc1, 0x12345678);
+
+  scoreHit(ram, ctx(), A6, 0x0c); // P2 hit bit 3 plus the $400 bit 2
+
+  assert.equal(ram.u16(SCORE.laserRec), 0x0001,
+    '$811F72 is non-negative, so this is not the existing $286DD0 negative arm');
+  assert.equal(ram.u16(LEDGER.p2.meter), 0x0a, '$286BE0 move.w #$A,$81B5EA');
+  assert.equal(ram.u32(LEDGER.p2.acc1), 0, '$286BBC clears the P2 cold-start state');
+  assert.equal(ram.u16(LEDGER.p2.rankDivider), 0x1b,
+    '$286BFA seeds $81B638 with (8 - 2) + 3 + $12');
+  assert.equal(ram.u16(LEDGER.p2.w1e), 0x1b, '$286C0C stores the same seed in $81B608');
+  assert.equal(ram.u16(LEDGER.p1.rankDivider), 0x2222,
+    'the mirrored P2 start does not overwrite P1 $81B636');
+  assert.equal(ram.u32(LEDGER.p2.pendingEnd - 4), 0,
+    '$286C12 rts occurs before any P2 pending-score add');
+});
+
 // ===========================================================================
 // 3.  `$286A92` -- THE BOSS-HP LATCH FORK, ASSERTED BOTH WAYS.
 // ===========================================================================
@@ -232,16 +256,16 @@ test('$286B10, hyper OUTSIDE stage 3: D0 doubles once, and AGAIN in a later '
   assert.equal(snap(l1).w1e, 0, 'the loop word does not touch D2 on this arm');
 });
 
-test('$286B16, hyper INSIDE stage 3: no doubling at all, and the divider '
-  + 'reloads to 2 in a later loop instead of 0', () => {
+test('$286B16, hyper INSIDE stage 3: a later loop adds 2 to D0 and leaves '
+  + 'the divider at 0', () => {
   const s3l0 = bench({ hyper: 1, hyperLvl: 2, stage: 3, loop: 0, w1e: 0, itemCount: 0 });
   laserAltHit(s3l0, ctx(), 1, 0x14);
   const s3l1 = bench({ hyper: 1, hyperLvl: 2, stage: 3, loop: 1, w1e: 0, itemCount: 0 });
   laserAltHit(s3l1, ctx(), 1, 0x14);
   assert.equal(snap(s3l0).count, 3, '$286B10 add.w $81B654,D0 and nothing else');
-  assert.equal(snap(s3l1).count, 3, 'still 3 -- $286B28 beq skips the doubling');
+  assert.equal(snap(s3l1).count, 5, '$286B2A addq.w #$2,D0');
   assert.equal(snap(s3l0).w1e, 0, '$813098 == 0 takes $286B28 beq $286B52');
-  assert.equal(snap(s3l1).w1e, 2, '$286B2A addq.w #$2,D2');
+  assert.equal(snap(s3l1).w1e, 0, '$286B2A does not touch D2');
 });
 
 // ===========================================================================

@@ -265,7 +265,9 @@ export const SCORE = {
   hyperGrant: 0x287682,     // $2867A4 jsr, shared W163 grantor
   rankAccum: 0x81b64a,      // $28679E add.w D2,$81B64A
   bombStock: 0x81b65c,      // $286782 cmpi.w #$5
-  altLaserP1: 0x286a82, altLaserP2: 0x286da8,   // NOTED
+  altLaserP1: 0x286a82, altLaserP2: 0x286da8,
+  altBombP2: 0x286b9c, altBombSharedP2: 0x286dd0,
+  bombRankFeedP2: 0x2867f4, laserRankFeedP2: 0x286836,
   /** `$2867B4` -- **THE LASER'S RANK FEEDER**, reached ONLY by
    *  `$286AF8 bsr` from inside `$286A82`, with 0 absolute callers.  Its own
    *  8-frame divider `$81B636`, `+4` (or `+$30` while hypering) into `$81B64A`,
@@ -341,6 +343,9 @@ export const LEDGER = {
     wrap: 0x28614a,         // $2861E4 bsr  (the four repeats)
     power: 0x810408,        // $2868C4 / $286910 -- ($22,A4), the POWER word
     formation: 0x810440,    // $286922 cmpi.w #$2 -- ($5a,A4), the FORMATION
+    rankDivider: 0x81b636,  // $286774 / $2867B4
+    rankAccum: 0x81b64a,    // $28679E / $2867C8
+    bombStock: 0x81b65c,    // $286782
   },
   p2: {
     who: 2,
@@ -367,6 +372,11 @@ export const LEDGER = {
     refill: 0x2866de,       // $2864CC / $286598 bsr
     hyperLvl: 0x81b656,     // $286232
     wrap: 0x286154,         // $28628C bsr
+    power: 0x81046a,        // $286BEA / $286C36
+    formation: 0x8104a2,    // $286C48 cmpi.w #$2
+    rankDivider: 0x81b638,  // $2867F4 / $286836
+    rankAccum: 0x81b64c,    // $286820 / $28684A
+    bombStock: 0x81b65e,    // $286804
   },
 };
 
@@ -576,13 +586,13 @@ function chainContinue(ram, rom, ctx, p, d3, d1) {
  * the cartridge has not got.  Whether it is a compiler artifact or a disabled
  * feature I do not know and do not claim.
  */
-function bombRankFeed(ram, ctx) {
-  const d = u16(ram.u16(SCORE.laserRankDivider) - 1);   // $286774 subq.w #1
-  ram.setU16(SCORE.laserRankDivider, d);
-  if (d !== 0xffff) return;                             // $28677A bcc -> rts
-  ram.setU16(SCORE.rankAccum, u16(ram.u16(SCORE.rankAccum) + 0x18));  // $28679E
-  grantHyper287682(ram, ctx.rom, ctx, false);           // $2867A4 jsr $287682
-  ram.setU16(SCORE.laserRankDivider, 8);                // $2867AA/$2867AC
+function bombRankFeed(ram, ctx, p) {
+  const d = u16(ram.u16(p.rankDivider) - 1);              // $286774 / $2867F4
+  ram.setU16(p.rankDivider, d);
+  if (d !== 0xffff) return;                               // $28677A / $2867FA
+  ram.setU16(p.rankAccum, u16(ram.u16(p.rankAccum) + 0x18));  // $28679E / $286820
+  grantHyper287682(ram, ctx.rom, ctx, p.who === 2);       // $2867A4 / $286826
+  ram.setU16(p.rankDivider, 8);                           // $2867AA / $28682E
 }
 
 // ===========================================================================
@@ -634,51 +644,51 @@ function bombRankFeed(ram, ctx) {
  * `37-recon-laser.md` §9.8: porting `$286A82` without this ships a laser that
  * scores and does not raise rank.  It is not shipped without it.
  */
-function laserRankFeed(ram, ctx) {
-  const d = u16(ram.u16(SCORE.laserRankDivider) - 1);   // $2867B4 subq.w #1
-  ram.setU16(SCORE.laserRankDivider, d);
-  if (d !== 0xffff) return;                             // $2867BA bcc -> $2867B2
-  const d2 = ram.u16(LEDGER.p1.hyper) !== 0 ? 0x30 : 4; // $2867BC/$2867C4/$2867C6
-  ram.setU16(SCORE.rankAccum, u16(ram.u16(SCORE.rankAccum) + d2));  // $2867C8
-  grantHyper287682(ram, ctx?.rom, ctx, false);          // $2867CE jsr $287682
-  ram.setU16(SCORE.laserRankDivider, 8);                // $2867D4/$2867D6
+function laserRankFeed(ram, ctx, p) {
+  const d = u16(ram.u16(p.rankDivider) - 1);              // $2867B4 / $286836
+  ram.setU16(p.rankDivider, d);
+  if (d !== 0xffff) return;                               // $2867BA / $28683C
+  const d2 = ram.u16(p.hyper) !== 0 ? 0x30 : 4;           // $2867BC / $28683E
+  ram.setU16(p.rankAccum, u16(ram.u16(p.rankAccum) + d2)); // $2867C8 / $28684A
+  grantHyper287682(ram, ctx?.rom, ctx, p.who === 2);      // $2867CE / $286850
+  ram.setU16(p.rankDivider, 8);                           // $2867D4 / $286856
 }
 
 /** `$286ABC..$286AE8` -- START THE COUNTER FROM NOTHING.  Reached from
  *  `$286A8A beq` (timer already 0) and by falling out of `$286AAA`'s two
  *  tests.  Note the reload is `16 - power` and NOT the `(8-power)*1.5+$12`
  *  `$2868C2` uses: this is a different formula in the same file. */
-function laserItemStart(ram) {
-  ram.setU16(SCORE.itemTimer, 0x0a);                    // $286ABC move.w #$A
-  ram.setU16(SCORE.itemKind, 0x07);                     // $286AC4 move.w #$7
-  ram.setU16(SCORE.itemCount, 0);                       // $286ACC clr.w
-  ram.setU16(SCORE.itemDir, 0);                         // $286AD2 clr.w
-  const d2 = u16(u16(8 - ram.u16(LEDGER.p1.power)) + 8);  // $286AD8/$286ADA/$286AE0
-  ram.setU16(LEDGER.p1.w1e, d2);                        // $286AE2 move.w D2,$81B5DE
-}                                                       // $286AE8 rts
+function laserItemStart(ram, p) {
+  ram.setU16(SCORE.itemTimer, 0x0a);                    // $286ABC / $286DE2
+  ram.setU16(SCORE.itemKind, 0x07);                     // $286AC4 / $286DEA
+  ram.setU16(SCORE.itemCount, 0);                       // $286ACC / $286DF2
+  ram.setU16(SCORE.itemDir, 0);                         // $286AD2 / $286DF8
+  const d2 = u16(u16(8 - ram.u16(p.power)) + 8);        // $286AD8 / $286DFE
+  ram.setU16(p.w1e, d2);                                // $286AE2 / $286E08
+}
 
 /** `$286B6A..$286B9A` -- the counter's CLAMP and the score's BCD add.  Both
  *  the divider-borrow path and the no-borrow path end here, so **the pending
  *  score gains D3 on every hit that reaches the tail**, while the counter only
  *  moves on a borrow. */
-function laserClamp(ram, d3) {
-  if (ram.u16(SCORE.itemCount) > 0x7fff) {              // $286B6A cmpi.w/$286B72 bls
-    ram.setU16(SCORE.itemCount, 0x7fff);                // $286B76
+function laserClamp(ram, d3, p) {
+  if (ram.u16(SCORE.itemCount) > 0x7fff) {              // $286B6A / $286E90
+    ram.setU16(SCORE.itemCount, 0x7fff);                // $286B76 / $286E9C
   }
-  bcdAdd(ram, LEDGER.p1.pendingEnd, d3);                // $286B7E/$286B80/$286B86
-  ram.setU16(SCORE.itemTimer, 0x0a);                    // $286B8A move.w #$A
-  ram.setU16(SCORE.itemKind, 0x07);                     // $286B92 move.w #$7
-}                                                       // $286B9A rts
+  bcdAdd(ram, p.pendingEnd, d3);                        // $286B7E / $286EA4
+  ram.setU16(SCORE.itemTimer, 0x0a);                    // $286B8A / $286EB0
+  ram.setU16(SCORE.itemKind, 0x07);                     // $286B92 / $286EB8
+}
 
 /** `$286B58..$286B68` -- add D0 to the counter, TWICE if D1 bit 6 is set.
  *  Same `btst #$6,D1` `$286966` uses for the chain's double increment, i.e.
  *  block 8's `$2452F2 ori.w #$4400,D4`. */
-function laserItemAdd(ram, d0, d1, d3) {
-  ram.setU16(SCORE.itemCount, u16(ram.u16(SCORE.itemCount) + d0));  // $286B58
-  if ((d1 & 0x40) !== 0) {                              // $286B5E btst #$6,D1
-    ram.setU16(SCORE.itemCount, u16(ram.u16(SCORE.itemCount) + d0));  // $286B64
+function laserItemAdd(ram, d0, d1, d3, p) {
+  ram.setU16(SCORE.itemCount, u16(ram.u16(SCORE.itemCount) + d0));  // $286B58 / $286E7E
+  if ((d1 & 0x40) !== 0) {                              // $286B5E / $286E84
+    ram.setU16(SCORE.itemCount, u16(ram.u16(SCORE.itemCount) + d0));
   }
-  return laserClamp(ram, d3);                           // falls into $286B6A
+  return laserClamp(ram, d3, p);                        // $286B6A / $286E90
 }
 
 /**
@@ -696,36 +706,36 @@ function laserItemAdd(ram, d0, d1, d3) {
  *   * no hyper -> D0 = 1, divider = `16 - power`, minus 3 unless the option
  *     FORMATION `$810440` is exactly 2 (`$286B4E beq` steps over `$286B50
  *     subq.w #3,D2`);
- *   * hyper, stage 3 -> D0 = `1 + $81B654`, divider = 0, or 2 in a later loop;
+ *   * hyper, stage 3 -> D0 = `1 + $81B654`, plus 2 in a later loop,
+ *     divider 0;
  *   * hyper, any other stage -> D0 doubled, and doubled AGAIN in a later loop,
  *     divider 0.  So outside stage 3 a hyper adds 2 or 4 per tick and inside
  *     it adds `1 + level`.  Transcribed, not rationalised.
  */
-function laserSharedTail(ram, ctx, d1, d3) {
-  if ((ram.u16(SCORE.itemCount) & 0x8000) !== 0) {      // $286AEA tst.w/$286AF0 bpl
-    ram.setU16(SCORE.itemCount, 0);                     // $286AF2 clr.w
+function laserSharedTail(ram, ctx, d1, d3, p) {
+  if ((ram.u16(SCORE.itemCount) & 0x8000) !== 0) {      // $286AEA / $286E10
+    ram.setU16(SCORE.itemCount, 0);                     // $286AF2 / $286E18
   }
-  laserRankFeed(ram, ctx);                              // $286AF8 bsr.w $2867B4
-  const w = u16(ram.u16(LEDGER.p1.w1e) - 1);            // $286AFC subq.w #1
-  ram.setU16(LEDGER.p1.w1e, w);
-  if (w !== 0xffff) return laserClamp(ram, d3);         // $286B02 bcc -> $286B6A
-  let d2 = 0;                                           // $286B04 moveq #0,D2
-  let d0 = 1;                                           // $286B06 moveq #1,D0
-  if (ram.u16(LEDGER.p1.hyper) === 0) {                 // $286B08 tst.w/$286B0E beq
-    // ---- $286B3C: the ORDINARY reload.  16 - power, less 3 off formation 2.
-    d2 = u16(u16(8 - ram.u16(LEDGER.p1.power)) + 8);    // $286B3C/$286B3E/$286B44
-    if (ram.u16(LEDGER.p1.formation) !== 2) d2 = u16(d2 - 3);  // $286B46/$286B4E/$286B50
+  laserRankFeed(ram, ctx, p);                           // $286AF8 / $286E1E
+  const w = u16(ram.u16(p.w1e) - 1);                    // $286AFC / $286E22
+  ram.setU16(p.w1e, w);
+  if (w !== 0xffff) return laserClamp(ram, d3, p);       // $286B02 / $286E28
+  let d2 = 0;                                           // $286B04 / $286E2A
+  let d0 = 1;                                           // $286B06 / $286E2C
+  if (ram.u16(p.hyper) === 0) {                         // $286B08 / $286E2E
+    d2 = u16(u16(8 - ram.u16(p.power)) + 8);            // $286B3C / $286E62
+    if (ram.u16(p.formation) !== 2) d2 = u16(d2 - 3);   // $286B46 / $286E6C
   } else {
-    d0 = u16(d0 + ram.u16(LEDGER.p1.hyperLvl));         // $286B10 add.w $81B654,D0
-    if (ram.u16(SCORE.stage) === 3) {                   // $286B16 cmpi.w #$3
-      if (ram.u16(SCORE.loop) !== 0) d2 = 2;            // $286B22 tst.w/$286B2A addq
+    d0 = u16(d0 + ram.u16(p.hyperLvl));                 // $286B10 / $286E36
+    if (ram.u16(SCORE.stage) === 3) {                   // $286B16 / $286E3C
+      if (ram.u16(SCORE.loop) !== 0) d0 = u16(d0 + 2);  // $286B22 / $286E50
     } else {
-      d0 = u16(d0 + d0);                                // $286B2E add.w D0,D0
-      if (ram.u16(SCORE.loop) !== 0) d0 = u16(d0 + d0); // $286B30 tst.w/$286B38
+      d0 = u16(d0 + d0);                                // $286B2E / $286E54
+      if (ram.u16(SCORE.loop) !== 0) d0 = u16(d0 + d0); // $286B30 / $286E5E
     }
   }
-  ram.setU16(LEDGER.p1.w1e, d2);                        // $286B52 move.w D2,$81B5DE
-  return laserItemAdd(ram, d0, d1, d3);                 // -> $286B58
+  ram.setU16(p.w1e, d2);                                // $286B52 / $286E78
+  return laserItemAdd(ram, d0, d1, d3, p);              // $286B58 / $286E7E
 }
 
 /**
@@ -747,19 +757,23 @@ function laserSharedTail(ram, ctx, d1, d3) {
  * btst #$6,D1` can double the item add on this entrance too.  Passing a zero
  * here would have been a silent halving that nothing measures.
  */
+function laserScoreHitFor(ram, ctx, d0, d1, p) {
+  const d3 = d0 >>> 0;
+  if (ram.u16(SCORE.itemTimer) === 0) {
+    return laserItemStart(ram, p);
+  }
+  if (ram.u16(SCORE.bossHpLatch) === 0) {
+    return laserSharedTail(ram, ctx, d1, d3, p);
+  }
+  let d0out = 1;
+  if (ram.u16(p.hyper) !== 0) {
+    d0out = u16(d0out + ram.u16(p.hyperLvl));
+  }
+  return laserItemAdd(ram, d0out, d1, d3, p);
+}
+
 export function laserScoreHit(ram, ctx, d0, d1) {
-  const d3 = d0 >>> 0;                                  // $286A82 move.l D0,D3
-  if (ram.u16(SCORE.itemTimer) === 0) {                 // $286A84 tst.w/$286A8A beq
-    return laserItemStart(ram);                         // -> $286ABC
-  }
-  if (ram.u16(SCORE.bossHpLatch) === 0) {               // $286A8C tst.w/$286A92 beq
-    return laserSharedTail(ram, ctx, d1, d3);           // -> $286AEA
-  }
-  let d0out = 1;                                        // $286A94 moveq #1,D0
-  if (ram.u16(LEDGER.p1.hyper) !== 0) {                 // $286A96 tst.w/$286A9C beq
-    d0out = u16(d0out + ram.u16(LEDGER.p1.hyperLvl));   // $286AA0 add.w $81B654,D0
-  }
-  return laserItemAdd(ram, d0out, d1, d3);              // $286AA6 bra.w $286B58
+  return laserScoreHitFor(ram, ctx, d0, d1, LEDGER.p1);
 }
 
 /**
@@ -773,20 +787,24 @@ export function laserScoreHit(ram, ctx, d0, d1) {
  * hits left behind.  A bench built on a fresh `Ram()` would run the start
  * block instead and never exercise the tail at all -- the W416 shape.
  */
+function laserAltHitFor(ram, ctx, d0, d1, p) {
+  const d3 = d0 >>> 0;                                  // $286AAA / $286DD0
+  if ((ram.u16(SCORE.laserRec) & 0x8000) !== 0) {       // $286AAC / $286DD2
+    return laserSharedTail(ram, ctx, d1, d3, p);        // $286AEA / $286E10
+  }
+  if (ram.u16(SCORE.itemTimer) !== 0) {                 // $286AB4 / $286DDA
+    return laserSharedTail(ram, ctx, d1, d3, p);        // $286AEA / $286E10
+  }
+  return laserItemStart(ram, p);                        // $286ABC / $286DE2
+}
+
 export function laserAltHit(ram, ctx, d0, d1) {
-  const d3 = d0 >>> 0;                                  // $286AAA move.l D0,D3
-  if ((ram.u16(SCORE.laserRec) & 0x8000) !== 0) {       // $286AAC tst.w/$286AB2 bmi
-    return laserSharedTail(ram, ctx, d1, d3);           // -> $286AEA
-  }
-  if (ram.u16(SCORE.itemTimer) !== 0) {                 // $286AB4 tst.w/$286ABA bne
-    return laserSharedTail(ram, ctx, d1, d3);           // -> $286AEA
-  }
-  return laserItemStart(ram);                           // -> $286ABC
+  return laserAltHitFor(ram, ctx, d0, d1, LEDGER.p1);
 }
 
 /**
- * `$286876..$286A80` -- `$286096`'s `$400`-bit arm, 523 bytes.  P1 only:
- * `$286118 bra.w $286B9C` is P2's and stays a note.
+ * `$286876..$286A80` and `$286B9C..$286DA6` -- `$286096`'s mirrored
+ * `$400`-bit arms for P1 and P2.
  *
  * It is a THIRD chain machine, beside `$2862C6`'s and `$28615E`'s, and it is
  * not a copy of either.  What it does that `$2862C6` does not:
@@ -804,17 +822,16 @@ export function laserAltHit(ram, ctx, d0, d1) {
  * D0 is the score value (packed BCD) the caller computed at `$2860E4`
  * (`moveq #1 / add.w $81B63E`), D1 the hit mask.
  */
-export function bombHitChain(ram, ctx, d0, d1) {
+function bombHitChainFor(ram, ctx, d0, d1, p) {
   // `$28687E bne $286AAA`.  **W424 (D60): PORTED.**  This was an `unreached`
   // throw and the owner's run died on it -- `$8130F8` bit 2 is set at boss
   // arrival by our own `initbody.js` (`| 0x05`), so the branch is taken every
   // time a `$400` hit lands at a boss.  It is a `bne`, not a `bsr`: the rest
   // of `$286876` does NOT run after it.
-  if ((ram.u8(SCORE.g30f8) & 0x04) !== 0) {             // $286876 btst #$2/bne
-    return laserAltHit(ram, ctx, d0, d1);               // $28687E bne $286AAA
+  if ((ram.u8(SCORE.g30f8) & 0x04) !== 0) {             // $286876 / $286B9C
+    return laserAltHitFor(ram, ctx, d0, d1, p);          // $286AAA / $286DD0
   }
-  const p = LEDGER.p1;
-  const d3 = d0 >>> 0;                                  // $286882 move.l D0,D3
+  const d3 = d0 >>> 0;                                  // $286882 / $286BA8
   const laser = ram.u16(SCORE.laserRec);                // $286884 tst.w $811F72
   if ((laser & 0x8000) === 0 && ram.u16(p.meter) === 0) {  // $28688A/$28688C bne
     // ---- $286894..$2868EC: START A CHAIN FROM NOTHING.  Six longs and two
@@ -830,13 +847,13 @@ export function bombHitChain(ram, ctx, d0, d1) {
     let d2 = u16(8 - ram.u16(p.power));                 // $2868C2/$2868C4
     d2 = u16(d2 + ((d2 & 0xffff) >>> 1));               // $2868CA..$2868CE
     d2 = u16(d2 + 0x12);                                // $2868D0 addi.w #$12
-    ram.setU16(SCORE.laserRankDivider, d2);             // $2868D4
+    ram.setU16(p.rankDivider, d2);                       // $2868D4 / $286BFA
     if (ram.u16(p.hyper) !== 0) d2 = u16(d2 - 0x0c);    // $2868DA/$2868E2
     ram.setU16(p.w1e, d2);                              // $2868E6
     return;                                             // $2868EC rts
   }
   // ======================= $2868EE: THE CHAIN IS ALREADY UP =================
-  bombRankFeed(ram, ctx);                               // $2868EE bsr $286774
+  bombRankFeed(ram, ctx, p);                            // $2868EE / $286C14
   const w = u16(ram.u16(p.w1e) - 1);                    // $2868F2 subq.w #1
   ram.setU16(p.w1e, w);
   if (w !== 0xffff) {                                   // $2868F8 bcc $2869D8
@@ -911,6 +928,10 @@ function bombMeterFloor(ram, p) {
   ram.setU16(p.popup, 0xf0);                            // $286A78
 }
 
+export function bombHitChain(ram, ctx, d0, d1) {
+  return bombHitChainFor(ram, ctx, d0, d1, LEDGER.p1);
+}
+
 /**
  * `$286096` -- A HIT LANDS.
  *
@@ -975,7 +996,7 @@ export function scoreHit(ram, ctx, a6, d1) {
   if ((d1 & 0x08) !== 0) {                            // $286102 btst #3,D1
     const d0 = u16(1 + ram.u16(LEDGER.p2.hyper));     // $28610A/$28610C
     if ((d1 & 0x04) !== 0) {                          // $286112 btst #2,D1
-      note(ctx, 0x286b9c, `$286118 bra.w $286B9C -- $286096's P2 BOMB arm`);
+      bombHitChainFor(ram, ctx, d0, d1, LEDGER.p2);   // $286118 bra.w $286B9C
     } else {
       bcdAdd(ram, LEDGER.p2.pendingEnd, d0);          // $28611C/$286122
     }

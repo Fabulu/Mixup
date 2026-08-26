@@ -14,6 +14,7 @@ import { SHOT } from '../src/weapons.js';
 import { BEAM, SEG } from '../src/laser.js';
 import { ITEM, I, spawnHyperItem } from '../src/items.js';
 import { HYPER } from '../src/hyper.js';
+import { BOMBRAM, BEAM_REC } from '../src/bomb.js';
 import { HUDRAM } from '../src/hud.js';
 import { AssetError, loadBundle } from '../src/web/assets.js';
 import { applyAuthenticSelection } from '../src/authentic.js';
@@ -82,6 +83,10 @@ function packedBcd(value) {
     decimal = decimal * 10 + digit;
   }
   return decimal;
+}
+
+function p1Score(ram) {
+  return packedBcd(ram.u32(HUDRAM.totalP1)) + packedBcd(ram.u32(HUDRAM.pendingP1));
 }
 
 function p2Score(ram) {
@@ -203,4 +208,106 @@ test('W602 genuine P2 collects and activates its own hyper through packed input'
       req: ram.u16(HYPER.p1.req),
       active: ram.u16(HYPER.p1.active),
     }, p1Before, 'P2 activation leaves every mirrored P1 hyper word unchanged');
+  });
+
+test('W603 genuine P2 laser bomb owns its stock, hit mask, and score',
+  { skip: SKIP }, async () => {
+    const game = await genuineP2();
+    const { ram } = game;
+    const p1Before = {
+      stock: ram.u8(RAM.player1 + 0x24),
+      used: ram.u16(BOMBRAM.usedP1),
+      count: ram.u16(BOMBRAM.countP1),
+      score: p1Score(ram),
+    };
+    const p2Stock = ram.u8(RAM.player2 + 0x24);
+    const p2Count = ram.u16(BOMBRAM.countP2);
+    assert.ok(p2Stock > 0, 'the authentic type-3 initializer supplies its bomb stock');
+    assert.equal(ram.u16(HYPER.p2.stock), 0,
+      'zero hyper stock selects the cartridge bomb arm for Button 2');
+
+    const heldB1 = portWordFromPlayerBits([], [BIT.b1]);
+    for (let frame = 0; frame < 120 && ram.u8(RAM.player2 + P.dead) === 0; frame++) {
+      game.step(heldB1);
+    }
+    assert.notEqual(ram.u8(RAM.player2 + P.dead), 0,
+      'normal P2 input reaches the live laser state before the bomb press');
+
+    const p2ScoreBefore = p2Score(ram);
+    game.step(portWordFromPlayerBits([], [BIT.up, BIT.b1, BIT.b2]));
+    assert.equal(ram.u8(RAM.player2 + 0x24), p2Stock - 1,
+      'P2 Button 2 consumes exactly one P2 bomb');
+    assert.equal(ram.u16(BOMBRAM.usedP2), 1);
+    assert.equal(ram.u16(BOMBRAM.countP2), p2Count + 1);
+    assert.ok(ram.btst8(RAM.player2 + P.flags1, 6),
+      'the firing type-3 record owns the bomb damage guard');
+    assert.ok((ram.u16(BOMBRAM.rec) & 0x8000) !== 0);
+    assert.ok((ram.u8(BOMBRAM.rec + 1) & 0x80) !== 0,
+      'the genuine bomb record carries the P2 owner bit');
+
+    const p1VelY = ram.u16(RAM.player1 + P.velY);
+    const p2VelY = ram.u16(RAM.player2 + P.velY);
+    assert.notEqual(p2VelY, p1VelY,
+      'authentic P2 Up input gives the owning ship an asymmetric long-axis velocity');
+    const tailY = ram.u16(BOMBRAM.rec + BEAM_REC.tail + 0x02);
+    const p2TailY = (ram.u16(RAM.player2 + P.posY) + 0xfe00 + 0x400 + p2VelY) & 0xffff;
+    const p1TailY = (ram.u16(RAM.player2 + P.posY) + 0xfe00 + 0x400 + p1VelY) & 0xffff;
+    assert.equal(tailY, p2TailY,
+      '$256328 advances record 42 with the owning type-3 player velocity');
+    assert.notEqual(tailY, p1TailY,
+      '$256328 does not reuse the idle P1 velocity for a P2 laser bomb');
+
+    const targets = () => {
+      const records = new Map();
+      for (const [pool, slots, kind] of [
+        [BOMBRAM.poolA, 100, 'A'], [BOMBRAM.poolB, 50, 'B'],
+      ]) {
+        for (let slot = 0; slot < slots; slot++) {
+          const rec = pool + slot * BOMBRAM.poolAStride;
+          if ((ram.u16(rec) & 0x8000) !== 0) {
+            records.set(rec, { kind, hp: ram.u16(rec + 0x18) });
+          }
+        }
+      }
+      return records;
+    };
+    let damagedTarget = null;
+    for (let frame = 0; frame < 180; frame++) {
+      const before = targets();
+      const mark = game.bombMarks.length;
+      game.step(0xffff);
+      const reached400 = game.bombMarks.slice(mark).some(([kind]) => kind === 'beam-400');
+      if (reached400) {
+        assert.equal(ram.u16(BOMBRAM.hitMask), 0x0800,
+          'the live type-5 P2 collision pass supplies the $0800 owner mask');
+        for (const [rec, old] of before) {
+          const status = ram.u16(rec);
+          const damage = (old.hp - ram.u16(rec + 0x18)) & 0xffff;
+          const unit = old.kind === 'B' ? 0x208 : 0x1e0;
+          if (damage !== 0 && damage % unit === 0 && (status & 0x0c00) === 0x0c00) {
+            damagedTarget = { ...old, rec, status, damage };
+            break;
+          }
+        }
+      }
+      if (damagedTarget && p2Score(ram) > p2ScoreBefore) break;
+    }
+    assert.ok(game.bombMarks.some(([kind]) => kind === 'beam-400'),
+      'P2 laser-bomb damage sets the $400 score branch bit');
+    assert.notEqual(damagedTarget, null,
+      'a normal staged enemy loses cartridge HP under the P2 $0800 plus $400 mask');
+    assert.equal(damagedTarget.status & 0x0c00, 0x0c00,
+      'the damaged enemy record carries P2 $0800 and laser-bomb $400 ownership');
+    assert.equal(damagedTarget.damage % (damagedTarget.kind === 'B' ? 0x208 : 0x1e0), 0,
+      'the actual HP delta is a cartridge laser-bomb damage quantum');
+    assert.ok(p2Score(ram) > p2ScoreBefore,
+      'the $286B9C branch credits the P2 visible ledger');
+    assert.deepEqual({
+      stock: ram.u8(RAM.player1 + 0x24),
+      used: ram.u16(BOMBRAM.usedP1),
+      count: ram.u16(BOMBRAM.countP1),
+      score: p1Score(ram),
+    }, p1Before, 'P2 bomb resources and scoring leave P1 unchanged');
+    assert.equal(game.unportedLog.report().some(line => line.includes('$286B9C')), false,
+      'the reached P2 bomb-score branch is no longer reported as unported');
   });
