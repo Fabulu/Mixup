@@ -12,6 +12,7 @@ import { Game } from '../src/main.js';
 import { ALLOC } from '../src/objalloc.js';
 import { SHOT } from '../src/weapons.js';
 import { BEAM, SEG } from '../src/laser.js';
+import { DMG } from '../src/damage.js';
 import { ITEM, I, spawnHyperItem } from '../src/items.js';
 import { HYPER } from '../src/hyper.js';
 import { BOMBRAM, BEAM_REC } from '../src/bomb.js';
@@ -73,6 +74,62 @@ function liveSegments(ram, beam) {
     if ((ram.u16(beam.pool + slot * SEG.stride) & 0x8000) !== 0) count++;
   }
   return count;
+}
+
+function liveObjectSlot(ram, type) {
+  for (let slot = 0; slot < ALLOC.slots; slot++) {
+    const word = ram.u16(ALLOC.table + slot * ALLOC.stride);
+    if ((word & 0x8000) !== 0 && (word & 0x7f) === type) return slot;
+  }
+  return -1;
+}
+
+function bombLedger(ram, p2) {
+  return {
+    stock: ram.u8((p2 ? RAM.player2 : RAM.player1) + BOMBRAM.stockOffset),
+    count: ram.u16(p2 ? BOMBRAM.countP2 : BOMBRAM.countP1),
+    used: ram.u16(p2 ? BOMBRAM.usedP2 : BOMBRAM.usedP1),
+  };
+}
+
+function beamState(ram, beam) {
+  return {
+    control: ram.u16(beam.rec),
+    block: ram.u16(beam.blk),
+    blockTail: ram.u16(beam.blk + 0x16),
+    liveSegments: liveSegments(ram, beam),
+  };
+}
+
+function naturalTargetState(ram) {
+  return Array.from({ length: 7 }, (_, slot) => {
+    const rec = BOMBRAM.poolA + slot * BOMBRAM.poolAStride;
+    return { status: ram.u16(rec), hp: ram.u16(rec + 0x18) };
+  });
+}
+
+function stepWithBombEffects(game, input) {
+  const { ram } = game;
+  const players = [RAM.player1, RAM.player2];
+  const wanted = new Set(players.flatMap(player => [player + 0x26, player + 0x28]));
+  const firstWrites = new Map();
+  const setU16 = ram.setU16.bind(ram);
+  ram.setU16 = (address, value) => {
+    if (wanted.has(address) && !firstWrites.has(address)) {
+      firstWrites.set(address, value & 0xffff);
+    }
+    setU16(address, value);
+  };
+  try {
+    game.step(input);
+  } finally {
+    delete ram.setU16;
+  }
+  return players.map(player => ({
+    invuln: ram.u8(player + P.invuln),
+    word26: firstWrites.get(player + 0x26),
+    word28: firstWrites.get(player + 0x28),
+  }));
 }
 
 function packedBcd(value) {
@@ -310,4 +367,96 @@ test('W603 genuine P2 laser bomb owns its stock, hit mask, and score',
     }, p1Before, 'P2 bomb resources and scoring leave P1 unchanged');
     assert.equal(game.unportedLog.report().some(line => line.includes('$286B9C')), false,
       'the reached P2 bomb-score branch is no longer reported as unported');
+  });
+
+test('W606 simultaneous ordinary bombs give the earlier type-2 P1 ownership',
+  { skip: SKIP }, async () => {
+    const game = await genuineP2();
+    const { ram } = game;
+    assert.equal(game.logicFrame, 2002);
+    const p1Slot = liveObjectSlot(ram, 2);
+    const p2Slot = liveObjectSlot(ram, 3);
+    assert.notEqual(p1Slot, -1);
+    assert.notEqual(p2Slot, -1);
+    assert.ok(p1Slot < p2Slot, 'the authentic table dispatches type-2 P1 before type-3 P2');
+    assert.deepEqual(naturalTargetState(ram),
+      Array.from({ length: 7 }, () => ({ status: 0xa200, hp: 0x0038 })));
+
+    const pressed = portWordFromPlayerBits([BIT.b2], [BIT.b2]);
+    assert.equal(pressed, 0xbfbf);
+    const effects = stepWithBombEffects(game, pressed);
+    const b2 = 1 << BIT.b2;
+    assert.equal(ram.u16(RAM.p1edge) & b2, b2);
+    assert.equal(ram.u16(RAM.p2edge) & b2, b2);
+    assert.equal(ram.u16(BOMBRAM.rec), 0x8100,
+      'the earlier type-2 player owns the shared record');
+    assert.equal(game.bombEvents.get('press:fired+partner'), 1);
+    assert.equal(game.bombEvents.get('press:bomb-already-up'), 1,
+      'P2 reaches the same-frame shared-record refusal');
+    assert.deepEqual(bombLedger(ram, false), { stock: 2, count: 1, used: 1 });
+    assert.deepEqual(bombLedger(ram, true), { stock: 3, count: 0, used: 0 });
+    assert.equal(ram.btst8(RAM.player1 + P.flags1, 6), 1);
+    assert.equal(ram.btst8(RAM.player2 + P.flags1, 6), 0);
+    assert.deepEqual(effects, [
+      { invuln: 0xff, word26: 0, word28: 0x003c },
+      { invuln: 0xff, word26: 0, word28: 0x003c },
+    ]);
+    assert.deepEqual(naturalTargetState(ram),
+      Array.from({ length: 7 }, () => ({ status: 0xb200, hp: 0xffe8 })),
+      'all seven natural targets carry P1 $1000 ownership and bomb damage');
+
+    game.step(0xffff);
+    assert.equal(ram.u32(HUDRAM.totalP1), 0x00000056);
+    assert.deepEqual({
+      total: ram.u32(HUDRAM.totalP2), pending: ram.u32(HUDRAM.pendingP2),
+    }, { total: 0, pending: 0 });
+  });
+
+test('W606 a simultaneous bomb press keeps P1 laser-bomb ownership',
+  { skip: SKIP }, async () => {
+    const game = await genuineP2();
+    const { ram } = game;
+    const held = portWordFromPlayerBits([BIT.b1], []);
+    for (let frame = 0; frame < 18; frame++) game.step(held);
+    assert.equal(ram.u8(RAM.player1 + P.dead), 1);
+    assert.ok(liveSegments(ram, BEAM[0]) > 0, 'P1 has a live regular beam segment');
+    const p2BeamBefore = beamState(ram, BEAM[1]);
+
+    const pressed = portWordFromPlayerBits([BIT.b1, BIT.b2], [BIT.b2]);
+    assert.equal(pressed, 0xbf9f);
+    const effects = stepWithBombEffects(game, pressed);
+    const b2 = 1 << BIT.b2;
+    assert.equal(ram.u16(RAM.p1edge) & b2, b2);
+    assert.equal(ram.u16(RAM.p2edge) & b2, b2);
+    assert.equal(ram.u16(BOMBRAM.rec), 0x8101);
+    assert.equal(game.bombEvents.get('press:fired+partner'), 1);
+    assert.equal(game.bombEvents.get('press:bomb-already-up'), 1,
+      'P2 reaches the same-frame shared-record refusal');
+    assert.deepEqual(bombLedger(ram, false), { stock: 2, count: 1, used: 1 });
+    assert.deepEqual(bombLedger(ram, true), { stock: 3, count: 0, used: 0 });
+    assert.equal(ram.u8(RAM.player1 + P.flags1) & 0xc0, 0xc0,
+      'P1 owns both the bomb guard and laser-bomb flag');
+    assert.equal(ram.btst8(RAM.player2 + P.flags1, 6), 0);
+    assert.deepEqual(effects, [
+      { invuln: 0xff, word26: 0x0101, word28: 0x000c },
+      { invuln: 0xff, word26: 0x0101, word28: 0x000c },
+    ]);
+    assert.deepEqual(beamState(ram, BEAM[0]), {
+      control: 0, block: 0, blockTail: 0, liveSegments: 0,
+    }, 'the laser-bomb arm wipes P1 regular beam pool and controls');
+    assert.equal(game.bombEvents.get('beam-arm:armed'), 1);
+    assert.deepEqual(beamState(ram, BEAM[1]), p2BeamBefore,
+      'the losing P2 edge leaves P2 regular-beam ownership resources untouched');
+
+    for (let frame = 0; frame < 14; frame++) game.step(0xffff);
+    assert.equal(game.bombEvents.get('beam-400:A'), 1);
+    assert.equal(ram.u16(BOMBRAM.hitMask), DMG.maskP1);
+    const status = ram.u16(BOMBRAM.poolA);
+    assert.equal(status, 0xb600);
+    assert.equal(status & 0x1400, 0x1400,
+      'the target carries P1 $1000 plus laser-bomb $400 ownership');
+    assert.equal(ram.u32(HUDRAM.totalP1), 0x00000026);
+    assert.deepEqual({
+      total: ram.u32(HUDRAM.totalP2), pending: ram.u32(HUDRAM.pendingP2),
+    }, { total: 0, pending: 0 });
   });
