@@ -293,6 +293,32 @@ export const DMG = {
   maskP1: 0x1000, maskP2: 0x0800,
 };
 
+/** Exact host-side geometry for the private logical owner. Native P1/P2 rows
+ * remain the only cartridge owners; this geometry is accepted only by the
+ * outgoing-only entry below. */
+export const PRIVATE_DAMAGE_GEOMETRY = Object.freeze({
+  ownerIndex: 2,
+  player: 0x10000100,
+  shots: 0x10000400,
+  shotSlots: 36,
+  shotStride: 0x30,
+  beamControl: 0x10000b00,
+  slot27: 0x10001110,
+  slot30: 0x100011a0,
+  scratch: 0x10001400,
+  scratchLength: 0x0e,
+  hyperShadows: 0x1000140e,
+  hyperShadowLength: 0x04,
+  receipts: 0x10001420,
+  receiptCount: 150,
+  enemyBase: 0x81459c,
+  enemySlots: 150,
+  enemyStride: 0x20,
+  ordinaryMask: 0x4000,
+  weaponMask: 0x4400,
+  phaseAddress: 0x80390c,
+});
+
 /** The box, four RAM words at `$80FA74`, and THE FIRST PAIR IS Y.
  *
  * `$244F14 movem.w (A6),D0/D2` loads D0 from record `+$2` and D2 from `+$4`,
@@ -1056,6 +1082,111 @@ const SCORE_G30F8 = 0x8130f8;
  */
 function bombLaserBlock(ram, ctx, a4) {
   return bombDamage24560A(ram, ctx, a4);
+}
+
+function assertPrivateDamageResources(resources) {
+  if (!resources || typeof resources !== 'object') {
+    throw new TypeError('private damage resources are required');
+  }
+  for (const key of [
+    'ownerIndex', 'player', 'shots', 'shotSlots', 'shotStride', 'beamControl',
+    'slot27', 'slot30', 'scratch', 'scratchLength', 'hyperShadows',
+    'hyperShadowLength', 'receipts', 'receiptCount', 'enemyBase', 'enemySlots',
+    'enemyStride', 'ordinaryMask', 'weaponMask', 'phaseAddress',
+  ]) {
+    if (resources[key] !== PRIVATE_DAMAGE_GEOMETRY[key]) {
+      throw new RangeError(`private damage ${key} does not match the exact owner-2 geometry`);
+    }
+  }
+  if (resources.incomingPolicy !== 'none'
+      || resources.bombPolicy !== 'none'
+      || resources.bulletErasePolicy !== 'none'
+      || resources.itemPolicy !== 'none'
+      || resources.hyperPolicy !== 'zero-shadow') {
+    throw new TypeError('private damage requires outgoing-only collision policies');
+  }
+  return resources;
+}
+
+/**
+ * Outgoing-only collision entry for logical owner 2.
+ *
+ * This intentionally reuses the cartridge helpers above. It does not enter
+ * `collisionPass` or `weaponTail`, so player collision, ramming, items, bombs,
+ * laser bombs, impacts, and bullet erasure are outside this boundary.
+ */
+export function privateOutgoingDamagePass(ram, ctx, suppliedResources) {
+  const resources = assertPrivateDamageResources(suppliedResources);
+  if (typeof ram?.assertPrivateDamageCapabilities !== 'function'
+      || typeof ram?.beginPrivateDamageSource !== 'function'
+      || typeof ram?.endPrivateDamageSource !== 'function') {
+    throw new TypeError('private damage requires the strict composite memory adapter');
+  }
+  ram.assertPrivateDamageCapabilities(resources);
+
+  const result = {
+    ran: false, anyShot: false, hitsA: 0, hitsB: 0,
+    weapon: null,
+  };
+  if (ram.u16(resources.phaseAddress) !== 0) return result;
+  const playerWord = ram.u16(resources.player);
+  if ((playerWord & 0x8000) === 0) return result;
+
+  result.ran = true;
+  ram.setU16(DMG.b6e6, 0);
+  ram.setU16(DMG.b6e8, 0);
+  ram.setU16(DMG.fa72, resources.ordinaryMask);
+  let d7 = 0x2800;
+
+  ram.beginPrivateDamageSource('ordinary', resources.ordinaryMask);
+  try {
+    result.anyShot = shotBoundingBox(ram, resources.shots, d7);
+    if (result.anyShot) {
+      const gate = ram.u16(DMG.gate308c);
+      result.hitsA = poolDamage(ram, DMG.poolA, ram.u16(DMG.poolACount),
+        resources.shots, d7, resources.ordinaryMask, gate, 'A', ctx);
+      const countB = ram.u16(DMG.poolBCount);
+      if (countB !== 0) {
+        for (const address of [BOX.maxY, BOX.minY, BOX.maxX, BOX.minX]) {
+          ram.setU16(address, u16(ram.u16(address) + 0xf000));
+        }
+        d7 = 0x1800;
+        result.hitsB = poolDamage(ram, DMG.poolB, countB, resources.shots,
+          d7, resources.ordinaryMask, gate, 'B', ctx);
+      }
+    }
+  } finally {
+    ram.endPrivateDamageSource();
+  }
+
+  // `$24518A` reloads $2800 independently of pool B's $1800 rebias.
+  const d6 = 0x2800;
+  if ((playerWord & 0x0080) === 0
+      && ram.u8(resources.player + DMG.laserByte) !== 0) {
+    const weapon = { hits27: 0, hits30: 0, beam: 0 };
+    ram.beginPrivateDamageSource('slot-27', resources.weaponMask);
+    try {
+      weapon.hits27 = weaponObjectPass(ram, resources.slot27, d6,
+        { block: 7 }, ctx);
+    } finally {
+      ram.endPrivateDamageSource();
+    }
+    ram.beginPrivateDamageSource('slot-30', resources.weaponMask);
+    try {
+      weapon.hits30 = weaponObjectPass(ram, resources.slot30, d6,
+        { block: 8 }, ctx);
+    } finally {
+      ram.endPrivateDamageSource();
+    }
+    ram.beginPrivateDamageSource('beam', resources.weaponMask);
+    try {
+      weapon.beam = laserDamagePass(ram, resources.beamControl, d6, ctx);
+    } finally {
+      ram.endPrivateDamageSource();
+    }
+    result.weapon = weapon;
+  }
+  return result;
 }
 
 /**

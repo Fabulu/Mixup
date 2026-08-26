@@ -46,7 +46,7 @@
 import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { freeEnemy } from './initbody.js';
-import { scoreHit } from './score.js';
+import { clearDeferredScore, replaceDeferredScore, scoreHit } from './score.js';
 import { spawnEffect } from './effects.js';
 import { aim256, AimTables } from './aim.js';
 import { dist242494 } from './bossscripts.js';
@@ -63,7 +63,7 @@ function aimTables(rom) {
 
 const G = {
   f0: 0x8130f0, f4: 0x8130f4, freeze: 0x8130d2,
-  maxDamage: 0x8130e8, maxDamageD1: 0x8130ea,
+  maxDamage: 0x8130e8,
   f2: 0x8130f2, aimA: 0x8130e4, aimB: 0x8130e5,
   scrollY: 0x813176, frameAlt: 0x80390a,
 };
@@ -112,8 +112,7 @@ export function handler42(ram, rom, a5, ctx) {
   // $2A3B0C -- the OTHER global arm. A4 id6 and A1 11's INIT both clear $8130F0, so
   // during F5's phase this is zero; transcribed both ways because it is four lines.
   if (ram.u16(G.f0) !== 0) {
-    ram.setU16(G.maxDamage, 0);                           // $2A3B16
-    ram.setU16(G.maxDamageD1, 0);                         // $2A3B1E
+    clearDeferredScore(ram, ctx, G.maxDamage);              // $2A3B16/$2A3B1E
     if (ram.u8(a6 + 0x1f) !== 0) {                        // $2A3B26 tst.b/beq
       const q = spawnEffect(ram, ctx, 2);                 // $2A3B2E/$2A3B30
       ram.setU32(q + 0x02, ram.u32(a6 + 0x02));           // $2A3B36
@@ -134,8 +133,7 @@ export function handler42(ram, rom, a5, ctx) {
     // readers at $29FB78/$29FD40/$29FDA0, none of which is ported.
     const dealt = u16(0x7fff - ram.u16(a6 + 0x18));
     if (i16(dealt) > i16(ram.u16(G.maxDamage))) {
-      ram.setU16(G.maxDamage, dealt);                     // $2A3B76
-      ram.setU16(G.maxDamageD1, d1);                      // $2A3B7C
+      replaceDeferredScore(ram, ctx, G.maxDamage, a6, dealt, d1); // $2A3B76/$2A3B7C
       // The port's `scoreHit` models `$286096` as returning nothing, so this stores
       // the d1 the ROM had going IN. Counted rather than assumed silent: `$8130EA`
       // has six references and three of its readers are unported boss code.

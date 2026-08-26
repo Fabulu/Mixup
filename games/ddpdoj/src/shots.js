@@ -488,6 +488,14 @@ function emitShotSprite(ram, rec, ctx) {
 // and despawns the shot when it borrows.  `bset` returns the OLD bit, so `beq`
 // is "this is the first hit".
 
+function shotSparkAllocatorPlayer(ctx, semanticPlayer) {
+  const allocatorPlayer = ctx?.shotSparkAllocatorPlayer ?? semanticPlayer;
+  if (!Number.isSafeInteger(allocatorPlayer)) {
+    throw new TypeError('shot spark allocator player must be an exact pointer');
+  }
+  return allocatorPlayer;
+}
+
 /** `$253C10..$253C94` (entry [0]) and `$253EEE..$253F52` (entry [2]) -- the
  *  FIRST hit.  Everything that differs between the two is a parameter here and
  *  is named at the instruction it comes from. */
@@ -501,10 +509,12 @@ function firstHit(ram, rom, rec, ctx, v, prec) {
   // in that file's header and the census is in `53-impl-E5a-spark.md`.
   //
   // A4 is the PLAYER record ($253A86/$253AC6 `lea`), and `$289F82 cmpa.l
-  // #$8103E6,A4` is the ONLY thing that picks P1's 30 slots over P2's -- which
-  // is why `prec` had to be threaded down here.
+  // #$8103E6,A4` is the ONLY thing that picks P1's 30 slots over P2's. Native
+  // callers use `prec`; a private logical owner can select the exact allocator
+  // polarity separately while retaining its own semantic player for shot motion.
   if (ram.u16(0x81308c) !== 0) {                                    // $253C10/$253EEE
-    spawnSpark(ram, rom, ctx, rec, prec);           // $253C18 moveq #$14 / $253C1A
+    spawnSpark(ram, rom, ctx, rec,
+      shotSparkAllocatorPlayer(ctx, prec));                          // $253C18/$253C1A
   }
   let d0 = ram.u16(rec + S.velY);                                   // $253C20/$253EFE
   let d2 = ram.u16(rec + S.velX);                                   // movem.w $2c(a6),d0/d2
@@ -734,7 +744,9 @@ function typeBPlayerLaterHit(ram, rom, rec, ctx) {
 
 /** `$253DAC..$253E30`, the first hit for Type-B player shots. */
 function typeBPlayerFirstHit(ram, rom, rec, ctx, prec) {
-  if (ram.u16(SPAWN.gate308c) !== 0) spawnSpark(ram, rom, ctx, rec, prec);
+  if (ram.u16(SPAWN.gate308c) !== 0) {
+    spawnSpark(ram, rom, ctx, rec, shotSparkAllocatorPlayer(ctx, prec));
+  }
   let vy = ram.u16(rec + S.velY);
   let vx = ram.u16(rec + S.velX);
   if (ram.btst8(rec + S.type, 0)
@@ -896,7 +908,9 @@ function hyperShotHit(ram, rom, rec, ctx, prec, tables) {
     hyperShotLaterHit(ram, rom, rec);
     return;
   }
-  if (ram.u16(SPAWN.gate308c) !== 0) spawnSpark(ram, rom, ctx, rec, prec);
+  if (ram.u16(SPAWN.gate308c) !== 0) {
+    spawnSpark(ram, rom, ctx, rec, shotSparkAllocatorPlayer(ctx, prec));
+  }
   const vy = ram.u16(rec + S.velY);
   const vx = ram.u16(rec + S.velX);
   ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + vy));

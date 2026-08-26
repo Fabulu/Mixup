@@ -162,7 +162,21 @@ export function runEnemyDriver(ram, handlers, ctx) {
         ctx.killEvent?.(d0, d1);
       },
     } : ctx;
-    fn(ram, rec, i, handlerCtx);                         // $263538 jsr (A1)
+    const receiptContext = ctx?.privateDamageReceiptHook ? {
+      main: rec,
+      sub,
+      span: ram.u16(rec + ENEMY.seqOff) + 1,
+    } : null;
+    if (receiptContext) {
+      ctx.privateDamageReceiptHook({ phase: 'enter-enemy', ram, ...receiptContext });
+    }
+    try {
+      fn(ram, rec, i, handlerCtx);                       // $263538 jsr (A1)
+    } finally {
+      if (receiptContext) {
+        ctx.privateDamageReceiptHook({ phase: 'exit-enemy', ram, ...receiptContext });
+      }
+    }
     processed++;
     if (fatal && (ram.u16(rec) & 0x8000) === 0) {
       deathHook(ram, fatal, handlerCtx);

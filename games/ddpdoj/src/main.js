@@ -529,7 +529,7 @@ export class Game {
   #ctx() {
     const installedPrivateShotHook = /** @type {any} */ (this).privateShotObjectHook;
     const privateShotObjectHook = installedPrivateShotHook
-      ? () => installedPrivateShotHook(this)
+      ? (invokingCtx) => installedPrivateShotHook(this, invokingCtx)
       : null;
     const installedPrivateOptionHook = /** @type {any} */ (this).privateOptionObjectHook;
     const privateOptionObjectHook = installedPrivateOptionHook
@@ -542,6 +542,14 @@ export class Game {
     const installedPrivateBeamDrawHook = /** @type {any} */ (this).privateBeamDrawHook;
     const privateBeamDrawHook = installedPrivateBeamDrawHook
       ? () => installedPrivateBeamDrawHook(this)
+      : null;
+    const installedPrivateDamageHook = /** @type {any} */ (this).privateDamageTailHook;
+    const privateDamageTailHook = installedPrivateDamageHook
+      ? (invokingCtx) => installedPrivateDamageHook(this, invokingCtx)
+      : null;
+    const installedPrivateReceiptHook = /** @type {any} */ (this).privateDamageReceiptHook;
+    const privateDamageReceiptHook = installedPrivateReceiptHook
+      ? (event) => installedPrivateReceiptHook(this, event)
       : null;
     return {
       tables: this.tables,
@@ -567,6 +575,8 @@ export class Game {
       ...(privateOptionObjectHook ? { privateOptionObjectHook } : {}),
       ...(privateSegmentDriverHook ? { privateSegmentDriverHook } : {}),
       ...(privateBeamDrawHook ? { privateBeamDrawHook } : {}),
+      ...(privateDamageTailHook ? { privateDamageTailHook } : {}),
+      ...(privateDamageReceiptHook ? { privateDamageReceiptHook } : {}),
       ...(this.enemyDeathHook ? { enemyDeathHook: this.enemyDeathHook } : {}),
       ...(this.friendlyBulletConvertHook
         ? { friendlyBulletConvertHook: this.friendlyBulletConvertHook } : {}),

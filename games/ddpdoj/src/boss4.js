@@ -12,7 +12,7 @@
 import { asr, i16, i32, u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { freeEnemy } from './initbody.js';
-import { scoreHit } from './score.js';
+import { replaceDeferredScore, scoreHit } from './score.js';
 import {
   livePlayers2428A6, bigBurst28B4BE, clamp253564, bossClear242922,
 } from './boss.js';
@@ -334,6 +334,8 @@ function placeBoss4Parts29F50E(ram, ctx, slot) {
   ram.setU32(a6 + 0x122, (pos - 0x14000000) >>> 0);
 }
 
+const BOSS4_DEFERRED_DAMAGE = 0x8130e8;
+
 function resetBoss4Palettes(ram, a6) {
   for (const [off, value] of [
     [0x146, 0x13], [0x147, 0x14], [0x148, 0x15],
@@ -351,6 +353,11 @@ export function boss4Damage29FB5C(ram, rom, a5, a6, ctx) {
   const externalPending = ram.u16(0x8130e8) !== 0;
   if (externalPending) {
     hit = ram.u16(0x8130ea);
+    ctx.privateDamageReceiptHook?.({
+      phase: 'consume-deferred-score',
+      ram,
+      key: BOSS4_DEFERRED_DAMAGE,
+    });
     ram.setU16(a6 + 0x16a, hit);
     carriedDamage = ram.u16(0x8130e8) >>> 1;
     ram.setU16(0x8130e8, 0);
@@ -394,9 +401,8 @@ export function boss4Damage29FB5C(ram, rom, a5, a6, ctx) {
       if (ram.u8(a6 + palOff) === 0x19) ram.setU8(a6 + palOff, 0x13);
       ram.setU8(a6 + palOff, ram.u8(a6 + palOff) ^ 0x0c);
       const damage = u16(0x7fff - ram.u16(a6 + hpOff));
-      if (i16(damage) > i16(ram.u16(0x8130e8))) {
-        ram.setU16(0x8130e8, damage);
-        ram.setU16(0x8130ea, partHit);
+      if (i16(damage) > i16(ram.u16(BOSS4_DEFERRED_DAMAGE))) {
+        replaceDeferredScore(ram, ctx, BOSS4_DEFERRED_DAMAGE, a6 + part, damage, partHit);
       }
       ram.setU16(a6 + hpOff, 0x7fff);
     }

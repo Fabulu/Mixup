@@ -1,9 +1,9 @@
 // Private three-pilot formation actors.
 //
 // This remains a private foundation. P3 has an allocator identity, independent
-// host memory, ordinary shots, option pods, and an independently owned laser.
-// Collision ownership, damage, score, death, lives, HUD, and public activation
-// remain excluded.
+// host memory, ordinary shots, option pods, an independently owned laser, and
+// outgoing enemy collision and damage. Incoming collision, P3 rewards, death,
+// lives, HUD, and public activation remain excluded.
 
 import { mirrorsFromPort } from './input.js';
 import { MACHINE, OPT, P, RAM } from './machine.js';
@@ -23,6 +23,10 @@ import {
 import { runOrdinaryShotPath2497AA } from './player.js';
 import { shotHandlers } from './shots.js';
 import { runShotPool } from './weapons.js';
+import {
+  DMG, PRIVATE_DAMAGE_GEOMETRY, privateOutgoingDamagePass,
+} from './damage.js';
+import { ENEMY } from './enemies.js';
 import { encodeRecordRequest } from './spritequeue.js';
 
 const THREE_PILOT_ID = 'all-three-pilots-each-piloting-a-ship';
@@ -71,6 +75,9 @@ export const P3_VIRTUAL = Object.freeze({
   positionHistory: P3_VIRTUAL_BASE + 0x1200,
   imageHistory: P3_VIRTUAL_BASE + 0x1240,
   hyper: P3_VIRTUAL_BASE + 0x1300,
+  damageScratch: P3_VIRTUAL_BASE + 0x1400,
+  damageHyperShadows: P3_VIRTUAL_BASE + 0x140e,
+  damageReceipts: P3_VIRTUAL_BASE + 0x1420,
   score: P3_VIRTUAL_BASE + 0x1500,
   bomb: P3_VIRTUAL_BASE + 0x1600,
   lives: P3_VIRTUAL_BASE + 0x1700,
@@ -87,6 +94,10 @@ export const P3_VIRTUAL_RANGES = Object.freeze([
   Object.freeze({ name: 'p3-position-history', start: P3_VIRTUAL.positionHistory, length: 0x40 }),
   Object.freeze({ name: 'p3-image-history', start: P3_VIRTUAL.imageHistory, length: 0x40 }),
   Object.freeze({ name: 'p3-hyper-reserved', start: P3_VIRTUAL.hyper, length: 0x0100 }),
+  Object.freeze({ name: 'p3-damage-scratch', start: P3_VIRTUAL.damageScratch, length: 0x0e }),
+  Object.freeze({ name: 'p3-damage-hyper-shadows', start: P3_VIRTUAL.damageHyperShadows,
+    length: 0x04 }),
+  Object.freeze({ name: 'p3-damage-receipts', start: P3_VIRTUAL.damageReceipts, length: 150 }),
   Object.freeze({ name: 'p3-score-reserved', start: P3_VIRTUAL.score, length: 0x20 }),
   Object.freeze({ name: 'p3-bomb-reserved', start: P3_VIRTUAL.bomb, length: 0x20 }),
   Object.freeze({ name: 'p3-lives-reserved', start: P3_VIRTUAL.lives, length: 0x02 }),
@@ -98,6 +109,7 @@ export const THREE_PILOT_SHARED_RANGES = Object.freeze([
     writable: false }),
   Object.freeze({ name: 'presentation-phase', start: 0x80390c, length: 0x02,
     writable: false }),
+  Object.freeze({ name: 'impact-rng', start: 0x803916, length: 0x02, writable: true }),
   Object.freeze({ name: 'p1-motion', start: RAM.player1, length: 0x06, writable: true }),
   Object.freeze({ name: 'p1-speed', start: RAM.player1 + P.speedIdx, length: 0x01,
     writable: false }),
@@ -118,6 +130,10 @@ export const THREE_PILOT_SHARED_RANGES = Object.freeze([
     writable: false }),
   Object.freeze({ name: 'shot-scroll-delta', start: 0x813176, length: 0x02,
     writable: false }),
+  Object.freeze({ name: 'p1-impact-sparks', start: 0x81d394, length: 30 * 0x22,
+    writable: true }),
+  Object.freeze({ name: 'impact-spark-count', start: 0x81db8c, length: 0x02,
+    writable: true }),
 ]);
 
 const P1_BINDING = Object.freeze({
@@ -337,6 +353,315 @@ export class StrictSidecarMemory {
   }
 }
 
+export const P3_PRIVATE_DAMAGE_RESOURCES = Object.freeze({
+  ...PRIVATE_DAMAGE_GEOMETRY,
+  incomingPolicy: 'none',
+  bombPolicy: 'none',
+  bulletErasePolicy: 'none',
+  itemPolicy: 'none',
+  hyperPolicy: 'zero-shadow',
+});
+
+const DAMAGE_NATIVE_READS = Object.freeze([
+  Object.freeze({ start: DMG.mirror2, length: 0x02 }),
+  Object.freeze({ start: 0x8130f8, length: 0x02 }),
+  Object.freeze({ start: DMG.gate308c, length: 0x02 }),
+  Object.freeze({ start: DMG.g309c, length: 0x02 }),
+  Object.freeze({ start: DMG.poolACount, length: 0x04 }),
+  Object.freeze({ start: DMG.b410, length: 0x02 }),
+]);
+
+const DAMAGE_SIDECAR_RANGES = Object.freeze([
+  Object.freeze({ start: P3_VIRTUAL.player, length: P.stride, writable: false }),
+  Object.freeze({ start: P3_VIRTUAL.shots, length: 36 * 0x30, writable: true }),
+  Object.freeze({ start: P3_VIRTUAL.beamControl, length: 0x20, writable: true }),
+  Object.freeze({ start: PRIVATE_DAMAGE_GEOMETRY.slot27, length: 0x30, writable: true }),
+  Object.freeze({ start: PRIVATE_DAMAGE_GEOMETRY.slot30, length: 0x30, writable: true }),
+]);
+
+function rangeContains(range, address, width) {
+  return address >= range.start && address + width <= range.start + range.length;
+}
+
+function enemyIndexForAddress(address) {
+  const delta = address - PRIVATE_DAMAGE_GEOMETRY.enemyBase;
+  if (delta < 0 || delta >= PRIVATE_DAMAGE_GEOMETRY.enemySlots
+      * PRIVATE_DAMAGE_GEOMETRY.enemyStride) return -1;
+  return Math.floor(delta / PRIVATE_DAMAGE_GEOMETRY.enemyStride);
+}
+
+function mainIdentity(ram, main, subBase, span) {
+  return {
+    main,
+    mainWord: ram.u16(main),
+    subBase,
+    span,
+    handler: ram.u32(main + ENEMY.handlerOff),
+    classByte: ram.u8(main + ENEMY.classOff),
+  };
+}
+
+function sameMainIdentity(a, b) {
+  return a != null && b != null
+    && a.main === b.main && a.mainWord === b.mainWord
+    && a.subBase === b.subBase && a.span === b.span
+    && a.handler === b.handler && a.classByte === b.classByte;
+}
+
+function buildEnemyOwnerMap(state) {
+  const { ram } = state.game;
+  const owners = new Array(PRIVATE_DAMAGE_GEOMETRY.enemySlots).fill(null);
+  const enemyStart = PRIVATE_DAMAGE_GEOMETRY.enemyBase;
+  const enemyEnd = enemyStart + PRIVATE_DAMAGE_GEOMETRY.enemySlots
+    * PRIVATE_DAMAGE_GEOMETRY.enemyStride;
+  for (let slot = 0; slot < ENEMY.slots; slot++) {
+    const main = ENEMY.table + slot * ENEMY.stride;
+    if (ram.u16(main) === 0) continue;
+    const subBase = ram.u32(main + ENEMY.subRecOff);
+    const span = ram.u16(main + ENEMY.seqOff) + 1;
+    const subEnd = subBase + span * PRIVATE_DAMAGE_GEOMETRY.enemyStride;
+    if (subEnd <= enemyStart || subBase >= enemyEnd) continue;
+    if (subBase < enemyStart || subEnd > enemyEnd
+        || (subBase - enemyStart) % PRIVATE_DAMAGE_GEOMETRY.enemyStride !== 0) {
+      throw new RangeError('enemy main/subrecord span crosses private damage geometry');
+    }
+    const identity = mainIdentity(ram, main, subBase, span);
+    for (let part = 0; part < span; part++) {
+      const index = (subBase - enemyStart) / PRIVATE_DAMAGE_GEOMETRY.enemyStride + part;
+      if (owners[index] != null) {
+        throw new RangeError(`enemy subrecord ${index} has overlapping main owners`);
+      }
+      owners[index] = { ...identity, part };
+    }
+  }
+  return owners;
+}
+
+function clearDamageReceipt(state, index) {
+  state.memory.setU8(P3_VIRTUAL.damageReceipts + index, 0);
+  state.damage.receiptMeta[index] = null;
+}
+
+function clearAllDamageReceipts(state) {
+  for (let index = 0; index < PRIVATE_DAMAGE_GEOMETRY.receiptCount; index++) {
+    clearDamageReceipt(state, index);
+  }
+  state.damage.deferredEvents.clear();
+  state.damage.enemyContext = null;
+}
+
+function reconcileDamageReceipts(state, suppliedOwners = null) {
+  const owners = suppliedOwners ?? buildEnemyOwnerMap(state);
+  const { ram } = state.game;
+  for (let index = 0; index < PRIVATE_DAMAGE_GEOMETRY.receiptCount; index++) {
+    const meta = state.damage.receiptMeta[index];
+    const receipt = state.memory.u8(P3_VIRTUAL.damageReceipts + index);
+    if (meta == null && receipt === 0) continue;
+    const owner = owners[index];
+    const rec = PRIVATE_DAMAGE_GEOMETRY.enemyBase
+      + index * PRIVATE_DAMAGE_GEOMETRY.enemyStride;
+    if (meta == null || receipt !== (0x80 | meta.preMask)
+        || !sameMainIdentity(meta.owner, owner)
+        || (ram.u16(rec) & ~0x5c00) !== meta.baseWord) {
+      clearDamageReceipt(state, index);
+    }
+  }
+  return owners;
+}
+
+function clearP3DamageScratch(state) {
+  if (!state?.damage) return;
+  for (let offset = 0; offset < PRIVATE_DAMAGE_GEOMETRY.scratchLength; offset++) {
+    state.memory.setU8(P3_VIRTUAL.damageScratch + offset, 0);
+  }
+  for (let offset = 0; offset < PRIVATE_DAMAGE_GEOMETRY.hyperShadowLength; offset++) {
+    state.memory.setU8(P3_VIRTUAL.damageHyperShadows + offset, 0);
+  }
+  state.damage.last = null;
+  state.damage.source = null;
+  state.damage.ownerMap = null;
+  state.damage.actorId = 0;
+}
+
+class PrivateDamageMemory {
+  #state;
+
+  constructor(state) {
+    this.#state = state;
+  }
+
+  #mappedSidecar(address, width, writable) {
+    const scratchStart = DMG.fa72;
+    const scratchEnd = scratchStart + PRIVATE_DAMAGE_GEOMETRY.scratchLength;
+    if (address >= scratchStart && address + width <= scratchEnd) {
+      return P3_VIRTUAL.damageScratch + address - scratchStart;
+    }
+    const hyperStart = DMG.b6e6;
+    const hyperEnd = hyperStart + PRIVATE_DAMAGE_GEOMETRY.hyperShadowLength;
+    if (address >= hyperStart && address + width <= hyperEnd) {
+      return P3_VIRTUAL.damageHyperShadows + address - hyperStart;
+    }
+    const range = DAMAGE_SIDECAR_RANGES.find((candidate) =>
+      rangeContains(candidate, address, width));
+    if (range) {
+      if (writable && !range.writable) {
+        throw new TypeError(`private damage sidecar range at $${address.toString(16)} is read-only`);
+      }
+      return address;
+    }
+    return null;
+  }
+
+  #nativeReadAllowed(address, width) {
+    const index = enemyIndexForAddress(address);
+    if (index >= 0) {
+      const record = PRIVATE_DAMAGE_GEOMETRY.enemyBase
+        + index * PRIVATE_DAMAGE_GEOMETRY.enemyStride;
+      return address + width <= record + PRIVATE_DAMAGE_GEOMETRY.enemyStride;
+    }
+    return DAMAGE_NATIVE_READS.some((range) => rangeContains(range, address, width));
+  }
+
+  #read(kind, address, width) {
+    const sidecar = this.#mappedSidecar(address, width, false);
+    if (sidecar != null) return this.#state.memory[kind](sidecar);
+    if (!this.#nativeReadAllowed(address, width)) {
+      throw new RangeError(`private damage rejected native read at $${address.toString(16)}`);
+    }
+    return this.#state.game.ram[kind](address);
+  }
+
+  #receiptForEnemyWrite(address, value) {
+    const index = enemyIndexForAddress(address);
+    const record = PRIVATE_DAMAGE_GEOMETRY.enemyBase
+      + index * PRIVATE_DAMAGE_GEOMETRY.enemyStride;
+    const offset = address - record;
+    if (index < 0 || (offset !== 0 && offset !== 0x18)) {
+      throw new TypeError(`private damage rejected native write at $${address.toString(16)}`);
+    }
+    if (this.#state.damage.source == null) {
+      throw new Error('private damage enemy write has no owner-scoped source');
+    }
+    const owner = this.#state.damage.ownerMap?.[index] ?? null;
+    if (owner == null) {
+      throw new RangeError(`enemy subrecord ${index} has no current main-record owner`);
+    }
+    let meta = this.#state.damage.receiptMeta[index];
+    if (meta != null && !sameMainIdentity(meta.owner, owner)) {
+      clearDamageReceipt(this.#state, index);
+      meta = null;
+    }
+    if (offset === 0) {
+      const newMask = (value >>> 8) & 0x5c;
+      const required = this.#state.damage.source.rawMask >>> 8;
+      if ((newMask & required) !== required) {
+        throw new TypeError('private damage type write omitted its transient wake mask');
+      }
+      if (meta == null) {
+        const oldWord = this.#state.game.ram.u16(record);
+        const preMask = this.#state.game.ram.u8(record) & 0x5c;
+        meta = {
+          index,
+          rec: record,
+          owner,
+          actorId: this.#state.actorId,
+          epoch: this.#state.damage.epoch,
+          preMask,
+          baseWord: oldWord & ~0x5c00,
+          postMask: newMask,
+          sources: new Set(),
+          committed: false,
+        };
+        this.#state.memory.setU8(P3_VIRTUAL.damageReceipts + index, 0x80 | preMask);
+        this.#state.damage.receiptMeta[index] = meta;
+      }
+      meta.postMask = newMask;
+      meta.sources.add(this.#state.damage.source.name);
+      return { index, meta, record, offset };
+    }
+    if (meta == null || !meta.committed) {
+      throw new Error('private damage HP write has no committed type-word receipt');
+    }
+    return { index, meta, record, offset };
+  }
+
+  #write(kind, address, width, value) {
+    const sidecar = this.#mappedSidecar(address, width, true);
+    if (sidecar != null) {
+      this.#state.memory[kind](sidecar, value);
+      return;
+    }
+    if (kind !== 'setU16' || width !== 2) {
+      throw new TypeError(`private damage rejected native write at $${address.toString(16)}`);
+    }
+    const receipt = this.#receiptForEnemyWrite(address, value);
+    this.#state.game.ram.setU16(address, value);
+    if (receipt.offset === 0) receipt.meta.committed = true;
+  }
+
+  assertPrivateDamageCapabilities(resources) {
+    const state = this.#state;
+    if (resources !== state.damage.resources
+        || state.game.ram !== state.damage.realRam
+        || ATTACHED.get(state.game) !== state
+        || state.lifecycle !== 'alive' || state.actorId === 0
+        || state.damage.actorId !== state.actorId) {
+      throw new Error('private damage adapter identity or lifecycle mismatch');
+    }
+    const resolved = resolveHandle241298(state.game.ram, state.actorId);
+    if (!resolved.found
+        || (state.game.ram.u16(resolved.rec) & 0xff) !== P3_BINDING.objectType
+        || state.game.ram.u8(resolved.rec + 0x07) !== P3_BINDING.marker) {
+      throw new Error('private damage allocator identity mismatch');
+    }
+    for (let offset = 0; offset < PRIVATE_DAMAGE_GEOMETRY.hyperShadowLength; offset++) {
+      if (state.memory.u8(P3_VIRTUAL.damageHyperShadows + offset) !== 0) {
+        throw new Error('private damage hyper shadows must remain zero');
+      }
+    }
+    state.damage.ownerMap = reconcileDamageReceipts(state);
+  }
+
+  beginPrivateDamageSource(name, rawMask) {
+    const expected = name === 'ordinary'
+      ? PRIVATE_DAMAGE_GEOMETRY.ordinaryMask : PRIVATE_DAMAGE_GEOMETRY.weaponMask;
+    if (!['ordinary', 'slot-27', 'slot-30', 'beam'].includes(name)
+        || rawMask !== expected || this.#state.damage.source != null) {
+      throw new TypeError('private damage source or transient mask is invalid');
+    }
+    this.#state.damage.source = { name, rawMask };
+  }
+
+  endPrivateDamageSource() {
+    this.#state.damage.source = null;
+  }
+
+  u8(address) { return this.#read('u8', address, 1); }
+  i8(address) { return this.#read('i8', address, 1); }
+  u16(address) { return this.#read('u16', address, 2); }
+  i16(address) { return this.#read('i16', address, 2); }
+  u32(address) { return this.#read('u32', address, 4); }
+  setU8(address, value) { this.#write('setU8', address, 1, value); }
+  setU16(address, value) { this.#write('setU16', address, 2, value); }
+  setU32(address, value) { this.#write('setU32', address, 4, value); }
+  bchg8(address, bit) {
+    const old = this.btst8(address, bit);
+    this.setU8(address, this.u8(address) ^ (1 << bit));
+    return old;
+  }
+  bclr8(address, bit) {
+    const old = this.btst8(address, bit);
+    this.setU8(address, this.u8(address) & ~(1 << bit));
+    return old;
+  }
+  bset8(address, bit) {
+    const old = this.btst8(address, bit);
+    this.setU8(address, this.u8(address) | (1 << bit));
+    return old;
+  }
+  btst8(address, bit) { return (this.u8(address) >> bit) & 1; }
+}
+
 const ATTACHED = new WeakMap();
 
 function clearP3ShotState(state) {
@@ -387,6 +712,7 @@ function clearP3WeaponState(state) {
   clearP3ShotState(state);
   clearP3OptionState(state);
   clearP3BeamState(state);
+  clearP3DamageScratch(state);
 }
 
 function bindP3ShotResources(state) {
@@ -536,7 +862,7 @@ function clearMismatchedWeaponIdentity(state) {
 }
 
 /** Run P3 cadence, private spawn, movement, expiry, and virtual shot drawing. */
-export function runThreePilotShotObject(game) {
+export function runThreePilotShotObject(game, invokingCtx = null) {
   const state = ATTACHED.get(game);
   if (!state) return 0;
   if (state.lifecycle !== 'alive' || state.actorId === 0
@@ -553,6 +879,8 @@ export function runThreePilotShotObject(game) {
     rom: game.rom,
     tables: game.tables,
     unportedLog: game.unportedLog,
+    soundPost: invokingCtx?.soundPost,
+    shotSparkAllocatorPlayer: 0x8103e6,
   };
   runOrdinaryShotPath2497AA(state.memory, P3_BINDING.player, ctx,
     state.shots.resources.ordinary);
@@ -635,6 +963,260 @@ export function runThreePilotBeamDrawObject(game) {
   }, state.beam.resources);
   state.beam.drawCalls++;
   return emitted;
+}
+
+/** Run P3's outgoing-only damage after the native type-5 tail. */
+export function runThreePilotDamageObject(game, invokingCtx = null) {
+  const state = ATTACHED.get(game);
+  if (!state) return null;
+  reconcileDamageReceipts(state);
+  if (state.lifecycle !== 'alive' || state.actorId === 0
+      || !liveNonDeath(state.memory, P3_BINDING)
+      || game.ram.u16(STAGE_CLEAR) !== 0) {
+    clearP3WeaponState(state);
+    return null;
+  }
+  clearMismatchedWeaponIdentity(state);
+
+  let liveShots = false;
+  for (let slot = 0; slot < PRIVATE_DAMAGE_GEOMETRY.shotSlots; slot++) {
+    if ((state.memory.u16(P3_VIRTUAL.shots + slot * PRIVATE_DAMAGE_GEOMETRY.shotStride)
+        & 0x8000) !== 0) {
+      liveShots = true;
+      break;
+    }
+  }
+  const liveBeam = (state.memory.u16(P3_VIRTUAL.beamControl) & 0x8000) !== 0
+    || (state.memory.u16(PRIVATE_DAMAGE_GEOMETRY.slot27) & 0x8000) !== 0
+    || (state.memory.u16(PRIVATE_DAMAGE_GEOMETRY.slot30) & 0x8000) !== 0;
+  if ((liveShots && state.shots.actorId !== state.actorId)
+      || (liveBeam && state.beam.actorId !== state.actorId)) {
+    clearP3WeaponState(state);
+    return null;
+  }
+
+  clearP3DamageScratch(state);
+  state.damage.actorId = state.actorId;
+  state.damage.epoch++;
+  const result = privateOutgoingDamagePass(state.damage.memory, invokingCtx,
+    state.damage.resources);
+  state.damage.last = result;
+  state.damage.calls++;
+  return result;
+}
+
+function availableReceiptIndices(state, current) {
+  return current.indices.filter((index) => {
+    if (current.used.has(index)) return false;
+    return state.damage.receiptMeta[index]?.committed === true;
+  });
+}
+
+function selectReceiptIndices(state, current, event, rawMask) {
+  const available = availableReceiptIndices(state, current);
+  if (available.length === 0) return [];
+
+  // Damage handlers clear their consumed $5C bits before scoring. This identifies
+  // every receipt that contributed to an aggregate handler without guessing its
+  // part layout or treating one receipt's postMask as the aggregate mask.
+  const changed = available.filter((index) => {
+    const meta = state.damage.receiptMeta[index];
+    return (state.game.ram.u8(meta.rec) & 0x5c) !== meta.postMask;
+  });
+  if (changed.length !== 0) return changed;
+
+  if (event.phase === 'score-hit') {
+    const exact = enemyIndexForAddress(event.a6);
+    if (available.includes(exact)) return [exact];
+  }
+
+  if (rawMask === 0) return [];
+  return available.filter((index) => {
+    const postMask = state.damage.receiptMeta[index].postMask;
+    return (postMask & rawMask) === postMask;
+  });
+}
+
+function storedReceiptSnapshot(state, index) {
+  const meta = state.damage.receiptMeta[index];
+  const receipt = state.memory.u8(P3_VIRTUAL.damageReceipts + index);
+  if (meta == null || !meta.committed || receipt !== (0x80 | meta.preMask)) {
+    throw new Error('private damage receipt byte and metadata disagree');
+  }
+  return Object.freeze({
+    preMask: meta.preMask,
+    postMask: meta.postMask,
+    rec: meta.rec,
+  });
+}
+
+function resolveReceiptSnapshots(snapshots, rawMask) {
+  let savedNative = 0;
+  let introduced = 0;
+  const subrecords = [];
+  for (const snapshot of snapshots) {
+    savedNative |= snapshot.preMask;
+    introduced |= snapshot.postMask & ~snapshot.preMask;
+    subrecords.push(snapshot.rec);
+  }
+  const nativeRemainder = rawMask & ~introduced & 0x5c;
+  const mask = (savedNative | nativeRemainder) & 0x5c;
+  return Object.freeze({
+    receipt: true,
+    mask,
+    privateOnly: mask === 0,
+    rawMask,
+    subrecord: subrecords[0],
+    subrecords: Object.freeze(subrecords),
+  });
+}
+
+function resolveReceiptSet(state, indices, rawMask) {
+  return resolveReceiptSnapshots(indices.map((index) => storedReceiptSnapshot(state, index)),
+    rawMask);
+}
+
+function resolvePairedReceipts(state, paired, rawMask) {
+  if (paired.snapshots) return resolveReceiptSnapshots(paired.snapshots, rawMask);
+  return resolveReceiptSet(state, paired.indices, rawMask);
+}
+
+function receiptResolution(state, event) {
+  const current = state.damage.enemyContext;
+  if (current == null) return null;
+  const rawMask = event.d1 & 0x5c;
+
+  if (event.phase === 'score-kill' && current.last != null) {
+    return resolvePairedReceipts(state, current.last, rawMask);
+  }
+  if (event.phase === 'score-hit') {
+    current.last = null;
+    if (current.deferredEvent != null) {
+      const deferred = current.deferredEvent;
+      current.deferredEvent = null;
+      if (!deferred.receipt) return null;
+      current.last = { snapshots: deferred.snapshots };
+      return resolveReceiptSnapshots(deferred.snapshots, rawMask);
+    }
+  }
+
+  const indices = selectReceiptIndices(state, current, event, rawMask);
+  if (indices.length === 0) return null;
+  for (const index of indices) current.used.add(index);
+  if (event.phase === 'score-hit') {
+    current.last = { indices: Object.freeze(indices.slice()) };
+  }
+  return resolveReceiptSet(state, indices, rawMask);
+}
+
+function privateDamageReceiptEvent(state, game, event) {
+  if (game !== state.game || ATTACHED.get(game) !== state
+      || event?.ram !== game.ram) {
+    throw new Error('private P3 damage receipt hook invoked for a different Game');
+  }
+  if (event.phase === 'allocator-reset') {
+    clearAllDamageReceipts(state);
+    return null;
+  }
+  if (event.phase === 'enter-enemy') {
+    if (!Number.isSafeInteger(event.main) || !Number.isSafeInteger(event.sub)
+        || !Number.isSafeInteger(event.span) || event.span <= 0) {
+      throw new TypeError('private damage enemy context is malformed');
+    }
+    const owners = reconcileDamageReceipts(state);
+    const indices = [];
+    for (let index = 0; index < owners.length; index++) {
+      const owner = owners[index];
+      if (owner?.main === event.main && owner.subBase === event.sub
+          && owner.span === event.span) indices.push(index);
+    }
+    state.damage.enemyContext = {
+      main: event.main,
+      sub: event.sub,
+      span: event.span,
+      indices,
+      used: new Set(),
+      last: null,
+      deferredEvent: null,
+    };
+    return null;
+  }
+  if (event.phase === 'clear-deferred-score') {
+    if (state.damage.enemyContext == null || !Number.isSafeInteger(event.key)) {
+      throw new Error('private damage deferred clear has no enemy context');
+    }
+    state.damage.deferredEvents.delete(event.key);
+    return null;
+  }
+  if (event.phase === 'replace-deferred-score') {
+    const current = state.damage.enemyContext;
+    const index = enemyIndexForAddress(event.a6);
+    if (current == null || index < 0 || !current.indices.includes(index)
+        || !Number.isSafeInteger(event.key)
+        || !Number.isSafeInteger(event.damage) || event.damage < 0 || event.damage > 0xffff
+        || !Number.isSafeInteger(event.d1) || event.d1 < 0 || event.d1 > 0xffff) {
+      throw new Error('private damage deferred replacement is outside its enemy context');
+    }
+    const owner = Object.freeze(mainIdentity(game.ram, current.main, current.sub, current.span));
+    const meta = state.damage.receiptMeta[index];
+    let snapshots = Object.freeze([]);
+    if (meta != null) {
+      if (meta.rec !== event.a6 || !sameMainIdentity(meta.owner, owner)) {
+        throw new Error('private damage deferred receipt is malformed');
+      }
+      snapshots = Object.freeze([storedReceiptSnapshot(state, index)]);
+      clearDamageReceipt(state, index);
+    }
+    state.damage.deferredEvents.set(event.key, Object.freeze({
+      receipt: snapshots.length !== 0,
+      snapshots,
+      damage: event.damage,
+      d1: event.d1,
+      owner,
+      main: current.main,
+      sub: current.sub,
+      span: current.span,
+    }));
+    return null;
+  }
+  if (event.phase === 'consume-deferred-score') {
+    const current = state.damage.enemyContext;
+    if (current == null || !Number.isSafeInteger(event.key)) {
+      throw new Error('private damage deferred event has no enemy context');
+    }
+    const deferred = state.damage.deferredEvents.get(event.key) ?? null;
+    state.damage.deferredEvents.delete(event.key);
+    const matches = deferred != null
+      && deferred.damage === game.ram.u16(event.key)
+      && deferred.d1 === game.ram.u16(event.key + 2);
+    current.deferredEvent = matches ? deferred : Object.freeze({
+      receipt: false,
+      snapshots: Object.freeze([]),
+    });
+    return null;
+  }
+  if (event.phase === 'score-hit' || event.phase === 'score-kill') {
+    return receiptResolution(state, event);
+  }
+  if (event.phase === 'exit-enemy') {
+    const current = state.damage.enemyContext;
+    if (current == null || current.main !== event.main || current.sub !== event.sub
+        || current.span !== event.span) {
+      throw new Error('private damage enemy context exit does not match its entry');
+    }
+    const mainLive = game.ram.u16(event.main) !== 0;
+    for (const index of current.indices) {
+      const meta = state.damage.receiptMeta[index];
+      if (meta == null) continue;
+      const mask = game.ram.u8(meta.rec) & 0x5c;
+      if (!mainLive || current.used.has(index) || mask !== meta.postMask) {
+        clearDamageReceipt(state, index);
+      }
+    }
+    state.damage.enemyContext = null;
+    return null;
+  }
+  throw new RangeError(`unknown private damage receipt phase ${event.phase}`);
 }
 
 function activeLifecycle(lifecycle) {
@@ -864,6 +1446,12 @@ export function attachThreePilotFoundation(game, options = {}) {
   if (game.privateBeamDrawHook != null) {
     throw new Error('Game already has a privateBeamDrawHook');
   }
+  if (game.privateDamageTailHook != null) {
+    throw new Error('Game already has a privateDamageTailHook');
+  }
+  if (game.privateDamageReceiptHook != null) {
+    throw new Error('Game already has a privateDamageReceiptHook');
+  }
   if (game.ram.u32(ALLOC.idCounter) === 0xffffffff) {
     throw new RangeError('P3 allocator ID would wrap to zero');
   }
@@ -890,6 +1478,20 @@ export function attachThreePilotFoundation(game, options = {}) {
     beam: {
       requests: [], actorId: 0, segmentCalls: 0, drawCalls: 0, resources: null,
     },
+    damage: {
+      resources: P3_PRIVATE_DAMAGE_RESOURCES,
+      realRam: game.ram,
+      memory: null,
+      actorId: 0,
+      epoch: 0,
+      calls: 0,
+      last: null,
+      source: null,
+      ownerMap: null,
+      enemyContext: null,
+      receiptMeta: new Array(PRIVATE_DAMAGE_GEOMETRY.receiptCount).fill(null),
+      deferredEvents: new Map(),
+    },
     runtime: {
       anchorX: clamp(game.ram.u16(RAM.player1 + P.posX) + OFFSET_X,
         ANCHOR.xMin, ANCHOR.xMax),
@@ -899,6 +1501,7 @@ export function attachThreePilotFoundation(game, options = {}) {
       targets: [{ y: 0, x: 0 }, { y: 0, x: 0 }, { y: 0, x: 0 }],
     },
   };
+  state.damage.memory = new PrivateDamageMemory(state);
   bindP3ShotResources(state);
   bindP3BeamResources(state);
   cacheTargets(state);
@@ -919,11 +1522,11 @@ export function attachThreePilotFoundation(game, options = {}) {
   const positionTransform = (ram, playerIdx) =>
     cachedPositionTransform(state, ram, playerIdx);
   const renderHook = (hookGame) => collectThreePilotSpriteRequests(state, hookGame);
-  const shotHook = (hookGame) => {
+  const shotHook = (hookGame, invokingCtx = null) => {
     if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
       throw new Error('private P3 shot hook invoked for a different Game');
     }
-    return runThreePilotShotObject(hookGame);
+    return runThreePilotShotObject(hookGame, invokingCtx);
   };
   const optionHook = (hookGame) => {
     if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
@@ -943,6 +1546,14 @@ export function attachThreePilotFoundation(game, options = {}) {
     }
     return runThreePilotBeamDrawObject(hookGame);
   };
+  const damageHook = (hookGame, invokingCtx = null) => {
+    if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
+      throw new Error('private P3 damage hook invoked for a different Game');
+    }
+    return runThreePilotDamageObject(hookGame, invokingCtx);
+  };
+  const receiptHook = (hookGame, event) =>
+    privateDamageReceiptEvent(state, hookGame, event);
   state.objectDriverHook = hook;
   state.playerPositionTransform = positionTransform;
   state.virtualSpriteRequestHook = renderHook;
@@ -950,6 +1561,8 @@ export function attachThreePilotFoundation(game, options = {}) {
   state.privateOptionObjectHook = optionHook;
   state.privateSegmentDriverHook = segmentHook;
   state.privateBeamDrawHook = beamDrawHook;
+  state.privateDamageTailHook = damageHook;
+  state.privateDamageReceiptHook = receiptHook;
   game.objectDriverHook = hook;
   game.playerPositionTransform = positionTransform;
   game.virtualSpriteRequestHook = renderHook;
@@ -957,6 +1570,8 @@ export function attachThreePilotFoundation(game, options = {}) {
   game.privateOptionObjectHook = optionHook;
   game.privateSegmentDriverHook = segmentHook;
   game.privateBeamDrawHook = beamDrawHook;
+  game.privateDamageTailHook = damageHook;
+  game.privateDamageReceiptHook = receiptHook;
   ATTACHED.set(game, state);
   return state;
 }

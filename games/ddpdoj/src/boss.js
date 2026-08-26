@@ -362,7 +362,7 @@ export function bossDamage294AD8(ram, rom, ctx, a5, a6) {
     if (d1 !== 0) {
       ram.setU8(a6 + BOSS.st1, ram.u8(a6 + BOSS.st1) & 0xa3);   // $294BBC/$294BC0
       ram.setU16(a6 + BOSS.hitMask, d1);               // $294BC4
-      scoreHit(ram, ctx, a6, d1);                      // $294BC8 -- A6 IS STILL
+      scoreHit(ram, ctx, a6, d1, a6 + BOSS.st1);        // $294BC8 -- A6 IS STILL
                                                        //   THE BASE, not +$20
       if (ram.u8(a6 + BOSS.anim1) === 0x19) ram.setU8(a6 + BOSS.anim1, 0x15);
       ram.setU8(a6 + BOSS.anim1, ram.u8(a6 + BOSS.anim1) ^ 0x0a);   // $294BE4
@@ -396,7 +396,7 @@ export function bossDamage294AD8(ram, rom, ctx, a5, a6) {
     if (d1 !== 0) {
       ram.setU8(a6 + BOSS.st2, ram.u8(a6 + BOSS.st2) & 0xa3);
       ram.setU16(a6 + BOSS.hitMask, d1);
-      scoreHit(ram, ctx, a6, d1);                      // $294CAC
+      scoreHit(ram, ctx, a6, d1, a6 + BOSS.st2);        // $294CAC
       if (ram.u8(a6 + BOSS.anim2) === 0x19) ram.setU8(a6 + BOSS.anim2, 0x15);
       ram.setU8(a6 + BOSS.anim2, ram.u8(a6 + BOSS.anim2) ^ 0x0a);
       const d2 = (0x7fff - ram.u16(a6 + BOSS.snap2)) | 0;
@@ -433,8 +433,9 @@ export function bossDamage294AD8(ram, rom, ctx, a5, a6) {
  *  negative: score `$1000`, drop a HYPER ITEM, hit-stop `$6E`, and if the
  *  OTHER part's `$114(A6)` gate is set, drop a second one from that part. */
 function partDeathDrop(ram, rom, ctx, a5, a6, mine, other) {
-  const d1 = ram.u16(a6 + BOSS.hitMask);               // $294C40
-  scoreKill(ram, rom, ctx, 0x1000, d1);                // $294C44/$294C4A
+  let d1 = ram.u16(a6 + BOSS.hitMask);                   // $294C40
+  const ownership = scoreKill(ram, rom, ctx, 0x1000, d1); // $294C44/$294C4A
+  d1 = ownership.mask;
   // $294C50 `moveq #$C,D0 / btst #4,D1 / bne / moveq #$14,D0` -- the item kind
   // is P1's hyper ($C) when the killing hit was P1's, P2's ($14) otherwise.
   //
@@ -453,10 +454,13 @@ function partDeathDrop(ram, rom, ctx, a5, a6, mine, other) {
   //
   // `w283itemsources.test.js` pins both halves.
   const d0 = (d1 & 0x10) !== 0 ? 0x0c : 0x14;          // $294C50..$294C58
-  spawnItem(ram, rom, ctx, d0, a6 + mine, 0x294c5e);   // $294C5A lea $20(A6),A6
+  if (!ownership.privateOnly) {
+    spawnItem(ram, rom, ctx, d0, a6 + mine, 0x294c5e); // $294C5A lea $20(A6),A6
+  }
   note(ctx, 0x243dd0);                                 // $294C68
   ram.setU16(a5 + BOSS.hitStop, 0x6e);                 // $294C6E
-  if (ram.u16(a6 + BOSS.itemGate2) !== 0) {            // $294C74 tst.w $114(A6)
+  if (!ownership.privateOnly && ram.u16(a6 + BOSS.itemGate2) !== 0) {
+    // $294C74 tst.w $114(A6)
     spawnItem(ram, rom, ctx, d0, a6 + other, 0x294c7e);   // $294C7A/$294C7E
   }
 }

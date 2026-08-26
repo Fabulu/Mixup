@@ -591,7 +591,7 @@ test('W615 call-10 and call-11 hooks reject cross-Game use and remain isolated',
 test('W615 ordering, privacy, replay refusal, and 32-mod closure stay explicit', async () => {
   const type5 = readFileSync(new URL('../src/type5.js', import.meta.url), 'utf8');
   const call8 = type5.indexOf('ctx.shotsProcessed = runShotDriver');
-  const private8 = type5.indexOf('ctx.privateShotObjectHook?.()', call8);
+  const private8 = type5.indexOf('ctx.privateShotObjectHook?.(ctx)', call8);
   const call9 = type5.indexOf('runOptionObject(ram, ctx)', private8);
   const private9 = type5.indexOf('ctx.privateOptionObjectHook?.()', call9);
   const call10 = type5.indexOf('ctx.laserSegments = runSegmentDriver', private9);

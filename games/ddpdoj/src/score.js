@@ -952,7 +952,47 @@ export function bombHitChain(ram, ctx, d0, d1) {
  * sub-record, so this is per-enemy and must be transcribed even though no
  * stage-1 handler is known to set it.
  */
-export function scoreHit(ram, ctx, a6, d1) {
+export function clearDeferredScore(ram, ctx, key) {
+  if (!Number.isSafeInteger(key)) throw new TypeError('deferred score clear is malformed');
+  ctx?.privateDamageReceiptHook?.({ phase: 'clear-deferred-score', ram, key });
+  ram.setU16(key, 0);
+  ram.setU16(key + 2, 0);
+}
+
+export function replaceDeferredScore(ram, ctx, key, receiptRecord, damage, d1) {
+  if (!Number.isSafeInteger(key) || !Number.isSafeInteger(receiptRecord)
+      || !Number.isSafeInteger(damage) || damage < 0 || damage > 0xffff
+      || !Number.isSafeInteger(d1) || d1 < 0 || d1 > 0xffff) {
+    throw new TypeError('deferred score replacement is malformed');
+  }
+  ctx?.privateDamageReceiptHook?.({
+    phase: 'replace-deferred-score',
+    ram,
+    key,
+    a6: receiptRecord,
+    damage,
+    d1,
+  });
+  ram.setU16(key, damage);
+  ram.setU16(key + 2, d1);
+}
+
+function privateScoreOwnership(ram, ctx, phase, d1, a6 = null) {
+  const hook = ctx?.privateDamageReceiptHook;
+  if (!hook) return { receipt: false, mask: d1, privateOnly: false };
+  const resolved = hook({ phase, ram, d1, ...(a6 == null ? {} : { a6 }) });
+  if (resolved == null) return { receipt: false, mask: d1, privateOnly: false };
+  if (resolved.receipt !== true || !Number.isSafeInteger(resolved.mask)
+      || typeof resolved.privateOnly !== 'boolean') {
+    throw new TypeError('private damage score receipt resolution is malformed');
+  }
+  return resolved;
+}
+
+export function scoreHit(ram, ctx, a6, d1, receiptRecord = a6) {
+  const ownership = privateScoreOwnership(ram, ctx, 'score-hit', d1, receiptRecord);
+  if (ownership.privateOnly) return;
+  d1 = ownership.mask;
   if ((ram.u8(a6) & 0x02) !== 0) return;              // $286096 btst #1,(A6)
   let skipP1 = false;
   if ((ram.u8(SCORE.g30f8) & 0x04) !== 0) {           // $28609E btst #2,$8130F8
@@ -1013,11 +1053,14 @@ export function scoreHit(ram, ctx, a6, d1) {
  * HYPER is up it re-enters that machine `$81B654` more times.
  */
 export function scoreKill(ram, rom, ctx, d0, d1) {
+  const ownership = privateScoreOwnership(ram, ctx, 'score-kill', d1);
+  d1 = ownership.mask;
   // The one hook this file offers a runner: every `$28615E` with its D0 (the
   // enemy's score value, from the call site) and its D1 (which player).  A
   // KILL is the thing a damage wave has to be able to count, and counting
   // `freeEnemy` would count off-screen exits too.
   ctx?.killEvent?.(d0, d1);
+  if (ownership.privateOnly) return ownership;
   const loop = ram.u16(SCORE.loop);                   // $28615E
   ram.setU16(SCORE.capWord, rom.u16(SCORE.capTable + u16(loop + loop)));  // $28616C
   if ((d1 & 0x10) !== 0) {                            // $286174 btst #4,D1
@@ -1026,6 +1069,7 @@ export function scoreKill(ram, rom, ctx, d0, d1) {
   if ((d1 & 0x08) !== 0) {                            // $28621C btst #3,D1
     killFor(ram, rom, ctx, LEDGER.p2, d0, d1);
   }
+  return ownership;
 }
 
 function killFor(ram, rom, ctx, p, d0, d1) {

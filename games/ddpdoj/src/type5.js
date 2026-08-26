@@ -338,6 +338,7 @@ export function makeType5(rom) {
     if (ram.u8(slot + 2) === 0) {                       // $28B5E0 tst.b ($2,A5)
       // W380.  `beq $28B5A8` -- the FIRST FRAME.  Eight resets, the started
       // flag, and `rts`: the twenty-three calls below do NOT run this frame.
+      ctx.privateDamageReceiptHook?.({ phase: 'allocator-reset', ram });
       ctx.type5Started = notStarted28B5A8(ram, rom, ctx);
       ram.setU8(slot + 2, 1);                           // $28B5D8 move.b #$1,($2,A5)
       return;                                           // $28B5DE rts
@@ -369,7 +370,7 @@ export function makeType5(rom) {
           break;
         case TYPE5.shotDriver:                          // $28B610
           ctx.shotsProcessed = runShotDriver(ram, rom, handlers, ctx);
-          ctx.privateShotObjectHook?.();
+          ctx.privateShotObjectHook?.(ctx);
           break;
         case TYPE5.optionObject:                        // $28B616 -> $24C096
           // The `no-option-object` mutation is wave 11's behaviour restored:
@@ -525,6 +526,7 @@ export function makeType5(rom) {
     // this frame's positions -- which is what makes `$80390C`'s per-frame
     // alternation a 30 Hz collision check rather than an accident.
     ctx.damage = runType5Tail(ram, ctx);
+    ctx.privateDamageTailHook?.(ctx);
     notePerFrameLedger(ctx);
     void index;
   };

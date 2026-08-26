@@ -538,7 +538,7 @@ test('W614 call-8 and call-9 hooks remain private, ordered, replay-closed, and 3
 
     const type5 = readFileSync(new URL('../src/type5.js', import.meta.url), 'utf8');
     const shot = type5.indexOf('ctx.shotsProcessed = runShotDriver');
-    const privateShot = type5.indexOf('ctx.privateShotObjectHook?.()', shot);
+    const privateShot = type5.indexOf('ctx.privateShotObjectHook?.(ctx)', shot);
     const nativeOptions = type5.indexOf('runOptionObject(ram, ctx)', privateShot);
     const privateOptions = type5.indexOf('ctx.privateOptionObjectHook?.()', nativeOptions);
     assert.ok(shot >= 0 && shot < privateShot && privateShot < nativeOptions
