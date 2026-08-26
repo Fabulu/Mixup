@@ -8,9 +8,9 @@
 // is not verified by a green gate, so it must not be made to look verified.
 //
 // ---------------------------------------------------------------- THE RECORD
-// 36 slots x $30 at $810572 (P1).  $24A222 fills bytes $00..$2B from a 38-byte
-// ROM TEMPLATE plus six player fields; $2C..$2F are the per-frame velocity the
-// handlers write.  Offsets, with the instruction that writes each:
+// 36 slots x $30 per side: P1 at $810572 and P2 at $810C32. `$24A222` fills
+// bytes $00..$2B from a ROM-template record, then overlays six player fields;
+// $2C..$2F are the per-frame velocity the handlers write. Offsets, with the
 //
 //   +$00 w  TYPE WORD.  Low nibble -> the $253ADE dispatch.  bit 15 = "slot in
 //           use": the spawn's free-slot scan is `tst.w (A0) / bpl`, bit 15, and
@@ -224,16 +224,13 @@ function postPlayerShotSound(ram, prec, ctx, normalRequest, hyper) {
  * table at the end of the player's cadence machine.
  */
 export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
-  if (player !== 0) {
-    unreached(0x249c0e, `the P2 shot spawn ($249C0E lea $810C32,A0 / `
-      + `movea.l $8127EC,A2). P2 is ported but no scenario has a second player`);
-  }
-  const base = SHOT.p1Table;                                        // $249BFC
+  const base = player !== 0 ? SHOT.p2Table : SHOT.p1Table;           // $249BFC/$249C0E
+  const countPointer = player !== 0 ? SPAWN.countPtrP2 : SPAWN.countPtrP1;
   const hyper = ram.btst8(prec + P.flags1, 0) === 1;                // $249C1C
 
   // $249C1A `move.w (A2),D7` -- the scan LENGTH, a ROM word behind a RAM
   // pointer.  $249C24 overrides it with 6 for hyper shots.
-  const countPtr = ram.u32(SPAWN.countPtrP1);                       // $249C02
+  const countPtr = ram.u32(countPointer);                            // $249C02/$249C14
   let d7 = hyper ? 6 : rom.u16(countPtr);                           // $249C24
 
   const form = u16(ram.u16(prec + PS.formation));                   // $249C28
@@ -309,13 +306,10 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
 
 /** `$249D2C..$249E4C`: the ship-selector-2 player shot spawn. */
 export function spawnShotTypeB(ram, rom, prec, ctx, { player = 0 } = {}) {
-  if (player !== 0) {
-    unreached(0x249d3e, `the Type-B P2 shot spawn ($249D3E lea $810C32,A0 / `
-      + `movea.l $8127EC,A2). P2 is ported but no scenario has a second player`);
-  }
-  const base = SHOT.p1Table;
+  const base = player !== 0 ? SHOT.p2Table : SHOT.p1Table;
+  const countPointer = player !== 0 ? SPAWN.countPtrP2 : SPAWN.countPtrP1;
   const hyper = ram.btst8(prec + P.flags1, 0) === 1;                // $249D4C
-  const countPtr = ram.u32(SPAWN.countPtrP1);
+  const countPtr = ram.u32(countPointer);
   let d7 = hyper ? 6 : rom.u16(countPtr);                           // $249D4A..$249D54
   const form = u16(ram.u16(prec + PS.formation));
   if (form !== 2 && form !== 4 && form !== 6) {

@@ -23,11 +23,12 @@
   h2 { margin: 1.6rem 0 .55rem; color: var(--dim); font-size: .78rem;
     letter-spacing: .13em; text-transform: uppercase; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: .6rem; }
-  #styles { margin-top: .6rem; }
+  #styles, #p2-join, #p2-ships, #p2-styles { margin-top: .6rem; }
   .card { padding: .72rem .82rem; text-align: left; color: inherit; cursor: pointer;
     background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
     font: inherit; }
   .card:hover { border-color: #46536a; }
+  .card:disabled { cursor: not-allowed; opacity: .45; }
   .card[aria-pressed="true"] { border-color: var(--on); background: #172319; }
   .card .name { display: flex; justify-content: space-between; gap: .5rem; font-weight: 650; }
   .card .mark { color: var(--on); visibility: hidden; }
@@ -70,9 +71,10 @@
   </div>
 
   <h2>Authentic cartridge selection</h2>
-  <div class="sub">Ship and pilot/style are original Version-B cartridge choices, not mods.
+  <div class="sub">Each player gets an original Version-B ship and pilot/style pair, not a mod.
     The listing proves selector values 2, 4, and 6 but does not prove which human-readable
     pilot name belongs to each, so this page keeps the cartridge numbers explicit.</div>
+  <div class="sub"><b>PLAYER 1</b></div>
   <div class="grid" id="ships">
     <button class="card" type="button" data-auth-ship="0" aria-pressed="true">
       <div class="name"><span>Type-A ship</span><span class="mark">ON</span></div>
@@ -95,6 +97,38 @@
     <button class="card" type="button" data-auth-style="6" aria-pressed="false">
       <div class="name"><span>Pilot/style slot 3</span><span class="mark">ON</span></div>
       <div class="blurb">Cartridge selector 6.</div>
+    </button>
+  </div>
+
+  <div class="sub"><b>PLAYER 2</b></div>
+  <div class="grid" id="p2-join">
+    <button class="card" id="join-p2" type="button" aria-pressed="false">
+      <div class="name"><span>Join Player 2</span><span class="mark">ON</span></div>
+      <div class="blurb">Arm the cartridge's genuine type-3 player request.</div>
+    </button>
+  </div>
+  <div class="grid" id="p2-ships">
+    <button class="card" type="button" data-auth-p2-ship="0" aria-pressed="true">
+      <div class="name"><span>P2 Type-A ship</span><span class="mark">ON</span></div>
+      <div class="blurb">Cartridge P2 ship selector 0. Default.</div>
+    </button>
+    <button class="card" type="button" data-auth-p2-ship="2" aria-pressed="false">
+      <div class="name"><span>P2 Type-B ship</span><span class="mark">ON</span></div>
+      <div class="blurb">Cartridge P2 ship selector 2.</div>
+    </button>
+  </div>
+  <div class="grid" id="p2-styles">
+    <button class="card" type="button" data-auth-p2-style="2" aria-pressed="true">
+      <div class="name"><span>P2 pilot/style slot 1</span><span class="mark">ON</span></div>
+      <div class="blurb">Cartridge P2 selector 2. Default.</div>
+    </button>
+    <button class="card" type="button" data-auth-p2-style="4" aria-pressed="false">
+      <div class="name"><span>P2 pilot/style slot 2</span><span class="mark">ON</span></div>
+      <div class="blurb">Cartridge P2 selector 4.</div>
+    </button>
+    <button class="card" type="button" data-auth-p2-style="6" aria-pressed="false">
+      <div class="name"><span>P2 pilot/style slot 3</span><span class="mark">ON</span></div>
+      <div class="blurb">Cartridge P2 selector 6.</div>
     </button>
   </div>
 
@@ -128,6 +162,9 @@ const selected = new Set(hashToLoadout(location.hash).ids);
 const initialAuthentic = authenticSelectionFromParams(new URLSearchParams(location.search));
 let authenticShip = initialAuthentic?.ship ?? 0;
 let authenticStyle = initialAuthentic?.style ?? 2;
+let p2Joined = !!initialAuthentic?.p2;
+let authenticP2Ship = initialAuthentic?.p2?.ship ?? 0;
+let authenticP2Style = initialAuthentic?.p2?.style ?? 2;
 const cards = new Map();
 let lastConflicts = [];
 
@@ -202,6 +239,17 @@ function sync() {
   for (const button of document.querySelectorAll('[data-auth-style]')) {
     button.setAttribute('aria-pressed', String(Number(button.dataset.authStyle) === authenticStyle));
   }
+  document.getElementById('join-p2').setAttribute('aria-pressed', String(p2Joined));
+  for (const button of document.querySelectorAll('[data-auth-p2-ship]')) {
+    button.disabled = !p2Joined;
+    button.setAttribute('aria-pressed', String(
+      p2Joined && Number(button.dataset.authP2Ship) === authenticP2Ship));
+  }
+  for (const button of document.querySelectorAll('[data-auth-p2-style]')) {
+    button.disabled = !p2Joined;
+    button.setAttribute('aria-pressed', String(
+      p2Joined && Number(button.dataset.authP2Style) === authenticP2Style));
+  }
 
   const summary = document.getElementById('summary');
   summary.replaceChildren();
@@ -214,7 +262,11 @@ function sync() {
   }
   summary.appendChild(main);
   const authentic = document.createElement('span');
-  authentic.textContent = ` | Type-${authenticShip === 0 ? 'A' : 'B'}, pilot/style selector ${authenticStyle}`;
+  const p1 = `P1 Type-${authenticShip === 0 ? 'A' : 'B'}, pilot/style selector ${authenticStyle}`;
+  const p2 = p2Joined
+    ? ` | P2 Type-${authenticP2Ship === 0 ? 'A' : 'B'}, pilot/style selector ${authenticP2Style}`
+    : ' | P2 not joined';
+  authentic.textContent = ` | ${p1}${p2}`;
   summary.appendChild(authentic);
   if (lastConflicts.length) {
     const warning = document.createElement('span');
@@ -240,6 +292,22 @@ for (const button of document.querySelectorAll('[data-auth-style]')) {
     sync();
   });
 }
+document.getElementById('join-p2').addEventListener('click', () => {
+  p2Joined = !p2Joined;
+  sync();
+});
+for (const button of document.querySelectorAll('[data-auth-p2-ship]')) {
+  button.addEventListener('click', () => {
+    authenticP2Ship = Number(button.dataset.authP2Ship);
+    sync();
+  });
+}
+for (const button of document.querySelectorAll('[data-auth-p2-style]')) {
+  button.addEventListener('click', () => {
+    authenticP2Style = Number(button.dataset.authP2Style);
+    sync();
+  });
+}
 
 document.getElementById('vanilla').addEventListener('click', () => {
   selected.clear();
@@ -249,6 +317,9 @@ document.getElementById('clear').addEventListener('click', () => {
   selected.clear();
   authenticShip = 0;
   authenticStyle = 2;
+  p2Joined = false;
+  authenticP2Ship = 0;
+  authenticP2Style = 2;
   sync();
 });
 document.getElementById('games').addEventListener('click', () => {
@@ -256,7 +327,11 @@ document.getElementById('games').addEventListener('click', () => {
 });
 document.getElementById('launch').addEventListener('click', () => {
   const hash = loadoutToHash([...selected]);
-  const query = authenticSelectionQuery({ ship: authenticShip, style: authenticStyle });
+  const query = authenticSelectionQuery({
+    ship: authenticShip,
+    style: authenticStyle,
+    ...(p2Joined ? { p2: { ship: authenticP2Ship, style: authenticP2Style } } : {}),
+  });
   location.href = `./index.html${query}${hash ? `#${hash}` : ''}`;
 });
 sync();

@@ -2625,7 +2625,7 @@ Candidates to evaluate once D38's measurement exists (each is a separate toggle,
 
 **W372 MADE THE CANDIDATES CONCRETE**, because D38's measurement says where the frames actually are. The port samples
 input immediately before `g.step()` and holds the sprite list one frame to match hardware DMA. The three candidates
-below were evaluated independently; the 2026-08-26 correction under MOD 3 records why one is not a latency mod:
+below were evaluated independently; the 2026-08-26 corrections under MOD 2 and MOD 3 record why two are not latency mods:
 
     MOD 1  DROP THE SPRITE HOLD.  app.js's step() snapshots $800000 BEFORE stepping, deliberately, to match
            render/capture.js's MEASURED hardware lag of 1. Snapshotting AFTER shows the frame the game just
@@ -2634,9 +2634,11 @@ below were evaluated independently; the 2026-08-26 correction under MOD 3 record
            W44's comment must be read before touching it -- the hold is also what keeps `draw()` independent
            of step rate, so a naive move breaks repaint-without-step.
 
-    MOD 2  SAMPLE INSIDE THE STEP.  The cartridge samples in IRQ6, before the loop's seven calls. A mod could
-           re-read input between calls so a press made during the frame is seen by the object driver in the
-           SAME frame. Faithful ordering says no; it is worth roughly one frame.
+    MOD 2  SAMPLE INSIDE THE STEP. INVALIDATED 2026-08-26. Browser events cannot interleave with the synchronous
+           `Game.step(portWord)`, and replay v1 supplies one immutable packed input word per logic frame. Re-reading
+           between the loop's calls therefore returns the same sample and removes no latency. A genuine intra-step
+           sample would require splitting the simulation across event-loop turns and extending the replay format to
+           record multiple samples per frame. That is an architectural and replay-contract change, not this small mod.
 
     MOD 3  SKIP THE EDGE DELAY. INVALIDATED 2026-08-26. The IRQ6 path writes raw input, derives the edge, and then
            runs the object/menu driver in the same `Game.step()`. A new press is therefore visible to both raw and

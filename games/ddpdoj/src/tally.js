@@ -391,14 +391,12 @@ export function bonusLine42601F4(ram, rom, ctx, a6) {
   // $26022A -- the allocate, and ($6,A0) is a BYTE FROM RAM here.
   const made = stageCreate(ram, ram.u16(a6 + TALLY.type),
     (t) => rom.u16(DISPATCH + t * 8 + 4));                 // $26022E jsr $241182
-  const res = (((0 & 0xffff0000) | (u16(ram.u16(a6 + TALLY.type) | 0x8000))) >>> 0);
-  ram.setU32(a6 + TALLY.result, res);                      // $260234 move.l D0
-  if (made.ok) {
-    ram.setU8(made.addr + 0x06, ram.u8(BONUS4.loopByte));  // $260238 -- NOT a literal 0
-    ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row));   // $260240
-    ram.setU16(made.addr + 0x08, ram.u16(a6 + TALLY.argA));// $260246
-    ram.setU16(made.addr + 0x0a, ram.u16(a6 + TALLY.argB));// $26024C
-  }
+  ram.setU32(a6 + TALLY.result,
+    made.ok ? ram.u32(made.addr + ALLOC.idOff) : 0);       // $260234 move.l D0
+  ram.setU8(made.addr + 0x06, ram.u8(BONUS4.loopByte));    // $260238 -- NOT a literal 0
+  ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row));     // $260240
+  ram.setU16(made.addr + 0x08, ram.u16(a6 + TALLY.argA));  // $260246
+  ram.setU16(made.addr + 0x0a, ram.u16(a6 + TALLY.argB));  // $26024C
 
   // $260254..$260286 -- the palette set, on the RECORD's row byte as always.
   if (ctx?.palette) {
@@ -755,8 +753,7 @@ function rowStack(ram, rom, ctx, who) {
  * @param ram
  * @param rom  the RomWindows, for the rows that read tables
  * @param ctx  for the two counted gaps below
- * @param d0   the caller's D0. Its LOW WORD is posted to `$813084`/`$813086`;
- *   its HIGH word survives into `+$18` untouched, see the note there.
+ * @param d0   the caller's D0. Its low word is posted to the side selector.
  * @param d1   the caller's D1, posted to `$813088`/`$81308A`
  * @param d2   ZERO selects side 0, anything else side 1
  * @returns the record the allocator left for the caller to fill, or null when
@@ -769,7 +766,7 @@ export function tally2600D8(ram, rom, ctx, d0, d1, d2) {
   ram.setU16(TALLY.postD0[side], u16(d0));                 // $2600E2 / $2600F8
   ram.setU16(TALLY.postD1[side], u16(d1));                 // $2600E8 / $2600FE
   const a6 = side === 1 ? TALLY.side1 : TALLY.side0;       // $2600EE / $260104
-  return tallyBody260112(ram, rom, ctx, a6, d0);
+  return tallyBody260112(ram, rom, ctx, a6);
 }
 
 /**
@@ -787,14 +784,13 @@ export function tally2600D8(ram, rom, ctx, d0, d1, d2) {
  * and the only one of the four that a previous wave had already half-noticed.
  *
  * @param a6 the record the DRIVER chose, not one this routine picks
- * @param d0 the caller's D0, whose high word survives into `+$18` (see the body)
  */
-export function bonusLine326010E(ram, rom, ctx, a6, d0 = 0) {
-  return tallyBody260112(ram, rom, ctx, a6, d0);
+export function bonusLine326010E(ram, rom, ctx, a6) {
+  return tallyBody260112(ram, rom, ctx, a6);
 }
 
 /** `$260112..$2601F2` -- the body both entry points share. */
-function tallyBody260112(ram, rom, ctx, a6, d0) {
+function tallyBody260112(ram, rom, ctx, a6) {
   // $260112 subq.w #1,$813142 -- an UNGUARDED decrement, so it wraps past zero.
   ram.setU16(TALLY.counter, u16(ram.u16(TALLY.counter) - 1));
 
@@ -823,18 +819,16 @@ function tallyBody260112(ram, rom, ctx, a6, d0) {
   // $241198 lea ($240F62,PC),A0 / $24119C move.w ($4,A0,D1.w),D1 -- the same
   // dispatch table and the same +$4 priority word `stageend.js` reads.
   const made = stageCreate(ram, type, (t) => rom.u16(DISPATCH + t * 8 + 4));
-  // $260136 move.l D0,($18,A6). D0's low word is $2411A8's `ori.w #$8000,D0`;
-  // its HIGH word is the caller's, untouched by every `move.b`/`move.w` above.
-  // `$25FD94` only tests the long for zero and `type | $8000` is never zero, so
-  // the high half is unobservable -- but it is stored, so it is stored here.
-  const res = (((d0 & 0xffff0000) | (u16(type | 0x8000))) >>> 0);
-  ram.setU32(a6 + TALLY.result, res);
-  if (made.ok) {
-    ram.setU8(made.addr + 0x06, 0);                        // $26013A move.b #$0,($6,A0)
-    ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row));   // $260140 move.b ($17,A6)
-    ram.setU16(made.addr + 0x08, ram.u16(a6 + TALLY.argA));// $260146 move.w ($10,A6)
-    ram.setU16(made.addr + 0x0a, ram.u16(a6 + TALLY.argB));// $26014C move.w ($12,A6)
-  }
+  // $260136 move.l D0,($18,A6). `$2411C4` leaves the freshly minted allocator ID
+  // in D0, while the full-queue arm at `$2411DA` leaves a literal zero.
+  ram.setU32(a6 + TALLY.result,
+    made.ok ? ram.u32(made.addr + ALLOC.idOff) : 0);
+  // The cartridge fills A0 unconditionally. On allocation failure A0 is the
+  // shared `$80D51C` dummy, so these writes deliberately land there too.
+  ram.setU8(made.addr + 0x06, 0);                          // $26013A move.b #$0,($6,A0)
+  ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row));     // $260140 move.b ($17,A6)
+  ram.setU16(made.addr + 0x08, ram.u16(a6 + TALLY.argA));  // $260146 move.w ($10,A6)
+  ram.setU16(made.addr + 0x0a, ram.u16(a6 + TALLY.argB));  // $26014C move.w ($12,A6)
 
   // $260152..$26015C -- the ROW SELECTOR is the RECORD's byte, not D2.
   const who = ram.u8(a6 + TALLY.row) === 0 ? 0 : 1;

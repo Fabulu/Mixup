@@ -10,6 +10,7 @@ import {
   install24150A, materializeSpriteTextPalette, paletteSet241688,
 } from './palette.js';
 import { BUCKETS } from './spritequeue.js';
+import { armRequest25FF38 } from './player.js';
 
 export const AUTHENTIC_SHIPS = Object.freeze([0, 2]);
 export const AUTHENTIC_STYLES = Object.freeze([2, 4, 6]);
@@ -27,31 +28,65 @@ export function authenticSelectionIndices(ship, style) {
   });
 }
 
-export function normalizeAuthenticSelection(value) {
+function authenticPair(value) {
   if (!value || typeof value !== 'object') return null;
   const ship = value.ship ?? DEFAULT_AUTHENTIC_SELECTION.ship;
   const style = value.style ?? DEFAULT_AUTHENTIC_SELECTION.style;
   if (!AUTHENTIC_SHIPS.includes(ship) || !AUTHENTIC_STYLES.includes(style)) return null;
-  if (ship === DEFAULT_AUTHENTIC_SELECTION.ship
-      && style === DEFAULT_AUTHENTIC_SELECTION.style) return null;
   return Object.freeze({ ship, style });
+}
+
+function isDefaultPair(value) {
+  return value.ship === DEFAULT_AUTHENTIC_SELECTION.ship
+    && value.style === DEFAULT_AUTHENTIC_SELECTION.style;
+}
+
+export function normalizeAuthenticSelection(value) {
+  const p1 = authenticPair(value);
+  if (!p1) return null;
+  const hasP2 = value.p2 != null;
+  const p2 = hasP2 ? authenticPair(value.p2) : null;
+  if (hasP2 && !p2) return null;
+  if (isDefaultPair(p1) && !p2) return null;
+  return Object.freeze(p2 ? { ...p1, p2 } : p1);
 }
 
 export function authenticSelectionFromParams(params) {
   const hasShip = params?.has?.('ship') ?? false;
   const hasStyle = params?.has?.('style') ?? false;
-  if (!hasShip && !hasStyle) return null;
+  const hasP2 = params?.has?.('p2') ?? false;
+  const hasP2Ship = params?.has?.('p2ship') ?? false;
+  const hasP2Style = params?.has?.('p2style') ?? false;
+  if (!hasShip && !hasStyle && !hasP2 && !hasP2Ship && !hasP2Style) return null;
+  if ((hasP2Ship || hasP2Style) && !hasP2) return null;
+  if (hasP2 && params.get('p2') !== '1') return null;
+
   const shipText = hasShip ? params.get('ship') : '0';
   const styleText = hasStyle ? params.get('style') : '2';
   if (!AUTHENTIC_SHIPS.map(String).includes(shipText)
       || !AUTHENTIC_STYLES.map(String).includes(styleText)) return null;
-  return normalizeAuthenticSelection({ ship: Number(shipText), style: Number(styleText) });
+
+  let p2 = null;
+  if (hasP2) {
+    const p2ShipText = hasP2Ship ? params.get('p2ship') : '0';
+    const p2StyleText = hasP2Style ? params.get('p2style') : '2';
+    if (!AUTHENTIC_SHIPS.map(String).includes(p2ShipText)
+        || !AUTHENTIC_STYLES.map(String).includes(p2StyleText)) return null;
+    p2 = { ship: Number(p2ShipText), style: Number(p2StyleText) };
+  }
+  return normalizeAuthenticSelection({
+    ship: Number(shipText), style: Number(styleText), ...(p2 ? { p2 } : {}),
+  });
 }
 
-/** Empty for the exact default, otherwise the complete selector query. */
+/** Empty for an exact one-player default, otherwise the complete selector query. */
 export function authenticSelectionQuery(value) {
   const selected = normalizeAuthenticSelection(value);
-  return selected ? `?ship=${selected.ship}&style=${selected.style}` : '';
+  if (!selected) return '';
+  const query = `?ship=${selected.ship}&style=${selected.style}`;
+  return selected.p2
+    ? `${query}&p2=1&p2ship=${selected.p2.ship}&p2style=${selected.p2.style}`
+    : query;
 }
 
 /**
@@ -80,10 +115,7 @@ function warmAuthenticOptions(game) {
  * history that happened before the LF2000 seed; a small unit fixture without
  * movement tables retains the initializer's `$8000` option state.
  */
-export function applyAuthenticSelection(game, value) {
-  const selected = normalizeAuthenticSelection(value);
-  if (!selected) return null;
-
+function applyP1Selection(game, selected) {
   const { ram, rom } = game;
   const { ship, style } = selected;
   const { initial, powerOffset, speedIndex, rampIndex } =
@@ -135,6 +167,37 @@ export function applyAuthenticSelection(game, value) {
     paletteSet241688(ram, game.palette, rom, 0, ship / 2);
     materializeSpriteTextPalette(ram, game.palette);
   }
+}
 
+function applyP2Selection(game, selected) {
+  const { ram, rom } = game;
+  const { ship, style } = selected;
+  ram.setU16(0x813086, ship);                              // $249246 source
+  ram.setU16(0x81308a, style);                             // $24924E source
+  ram.setU8(0x813018, ship / 2);                           // saved ship cursor
+  ram.setU8(0x813019, (style - 2) / 2);                    // saved style cursor
+
+  if (game.palette) {
+    const styleRow = 0x25f868 + (style - 2) * 4;
+    const stylePalette = rom.u32(styleRow + 4);
+    install24150A(ram, game.palette, 0x18, rom.bytes(stylePalette, 64),
+      0x25f456, 'selected P2 style presentation palette');
+    paletteSet241688(ram, game.palette, rom, 1, ship / 2);
+    materializeSpriteTextPalette(ram, game.palette);
+  }
+
+  armRequest25FF38(ram, 1, 4);
+}
+
+/**
+ * Apply explicit browser fighter selections. P1 is patched only when its pair
+ * differs from the live seed. P2 is always created through tally request 4,
+ * leaving the cartridge type-3 initializer to build its live records.
+ */
+export function applyAuthenticSelection(game, value) {
+  const selected = normalizeAuthenticSelection(value);
+  if (!selected) return null;
+  if (!isDefaultPair(selected)) applyP1Selection(game, selected);
+  if (selected.p2) applyP2Selection(game, selected.p2);
   return selected;
 }
