@@ -465,7 +465,7 @@ test('W589 production route completes entries, terminates, hands to type $800F, 
           state.ramSha256, state.gameSha256,
         ], [156873, 167534, 2,
           '39fec6bd684f28cb9d226707e954455bccb63830753eb1b09bcc9ab2b73b4db1',
-          '565b725623188438d0fe2fb93b2930298f97df718402014f637b60ac90269afe']);
+          '83a3155641cf568654a1381350ac0e4d20aba1a56b9df6b5329ace21a728d46a']);
       }
       if (attempted === 5244) {
         const state = checkpointDocument(resumed.game, assets, {
@@ -478,7 +478,7 @@ test('W589 production route completes entries, terminates, hands to type $800F, 
           state.ramSha256, state.gameSha256,
         ], [156875, 167536, 0x800f, 1, 2,
           '01fef155caf28fcdf4bc47b9f92814865d46c09ca65002f24168c3915260b662',
-          '80a3bcba375ebc1f8e2c41a1db0caa9bff9ec83cb75ae356f96d9cd1fed04b0e']);
+          '14e18e0f907f35fa8186abd1475456f19ffa1688af5f784ca355e0b543940c48']);
       }
     }
 

@@ -309,7 +309,7 @@ test('W575 exact progression crosses lf151631 and reaches the W587 $291040 front
     ], [
       0, 0x008a,
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      '5cd13dcbdcbb8a69a59dbac2244a4a6daeafd8b48ff4c38a6d2ae50e0a55b507',
+      'b68ce097514518437deed8c58fbe069137af4fc5ab2e413f95424fd97e4c74c3',
     ]);
     assert.equal(frontier.frame.logic + 1500, 149131);
     assert.ok(resumed.game.logicFrame > frontier.frame.logic + 2500,

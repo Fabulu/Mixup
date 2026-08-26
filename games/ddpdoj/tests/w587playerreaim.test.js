@@ -199,7 +199,7 @@ test('W587 crosses the exact split and W588 reaches the $291836 ROM-table fronti
     ], [
       2940, 154570, 165232, 0x291836, 4, 8, 16, 1,
       'fd73b75fa8808eb7164a738a4771541013e3e2e78609f9a8cec8c6b403f81d12',
-      '38b0b4e17b4eec7e79d064b5de9269b1a8650ac4167de16b7b0d554cba34a814',
+      '559657a57aa134df69739f8ccec7562b5f06043734eb4cf1813dc2579d6b3611',
     ]);
     assert.equal(SLOT7.seqLists[1], 0x291816);
     assert.equal(ROM.u32(SLOT7.seqLists[1]), 0x291836,

@@ -50,7 +50,7 @@ const W595_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0
 const PRE_W595_TABLE_HASH = 'b062e45b4c4ca0488a0c4660a83a9d868feaf8b6d00b670d1de9948481f3f7c3';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
 const TERMINAL_RAM_HASH = 'e98132ee41b1603089104c7734032b64fbf389cafc543ed8b473f01ad94df297';
-const TERMINAL_GAME_HASH = '9d3c4690d9dab10a17836f257562c1e0aee7ef8e0820ca3bc5b50f2d26d2dfb1';
+const TERMINAL_GAME_HASH = 'a1ad5533763c122c6cb3c866c9d4f2b69961a78357d3504ac96d49f39584f2d9';
 
 const canonicalHash = (value) => createHash('sha256')
   .update(JSON.stringify(value)).digest('hex');

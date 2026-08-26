@@ -387,10 +387,10 @@ test('SECTION 6: live scanner APIs reconcile through W554 and keep W457/W458 abs
   assert.equal(narrow.length, 16, 'W497 registers the authentic-selection adapter at $2491C0');
   assert.equal(heads.length, 71,
     'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate');
-  assert.equal(pairs.length, 28,
-    'W461 left 27; W497 adds the authentic-selection/player-object body pair');
-  assert.equal(bodyOnly.length, 22,
-    'body-only remains derived live and unchanged because W461 removes a head-visible pair');
+  assert.equal(pairs.length, 27,
+    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
+  assert.equal(bodyOnly.length, 21,
+    'body-only remains derived live; W603 removes the body-only score-hit pair');
   assert.equal(heads.includes(BODY_START), false, '$25DA60 stays off the widened register');
   assert.equal(narrow.some(([at]) => at === BODY_START), false, '$25DA60 stays off the narrow register');
   assert.equal(pairs.some(([pair]) => pair === removed), false, '$25DA60 body edge stays absent');

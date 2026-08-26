@@ -296,6 +296,6 @@ test('W577 restores exact lf148131 and reaches the W587 $291040 frontier',
     assert.match(error?.message ?? '', /word at \$291040 is outside every ROM window/);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      '5cd13dcbdcbb8a69a59dbac2244a4a6daeafd8b48ff4c38a6d2ae50e0a55b507',
+      '4f715c4df69367cb9987d36179d51c48085a59e4924898750f74e92505aa11bc',
     ]);
   });

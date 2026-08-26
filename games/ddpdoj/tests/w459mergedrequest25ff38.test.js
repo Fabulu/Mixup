@@ -401,16 +401,17 @@ test('SECTION 5: cartridge and production-source reachability are proved separat
   assert.deepEqual(heads, ['player.js armRequest25FF38'],
     'source has one canonical function body and no tally body');
   assert.deepEqual(callers.sort(), [
+    'authentic.js applyP2Selection',
     'objslot13.js menuArm',
     'objslot14.js state2',
     'player.js playerDead24A130',
     'player.js playerObject2491C0',
     'rank.js stagePair2603FE',
     'tallyscreen.js tallyPhase0Arm25DC2C',
-  ], 'all six production source caller bodies are inventoried');
+  ], 'all seven production source caller bodies are inventoried');
   assert.equal((sources().map(([, text]) => text).join('\n')
-    .match(/\barmRequest25FF38\s*\(/g) ?? []).length, 7,
-  'six calls plus the one canonical declaration exist across production source');
+    .match(/\barmRequest25FF38\s*\(/g) ?? []).length, 8,
+  'seven calls plus the one canonical declaration exist across production source');
   assert.equal((tallySource.match(/function tallyRequest25FF38\s*\(/g) ?? []).length, 0,
     'historical tally body cannot regrow');
   assert.match(tallySource, /export \{ armRequest25FF38 as tallyRequest25FF38 \};/,
@@ -445,10 +446,10 @@ test('SECTION 6: live scanner APIs reconcile W459 through W554 and derive body-o
   assert.equal(narrow.length, 16, 'W497 registers the authentic-selection adapter at $2491C0');
   assert.equal(heads.length, 71,
     'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate');
-  assert.equal(pairs.length, 28,
-    'W461 left 27; W497 adds the authentic-selection/player-object body pair');
-  assert.equal(bodyOnly.length, 22,
-    'body-only is derived live and unchanged because W461 removes a head-visible pair');
+  assert.equal(pairs.length, 27,
+    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
+  assert.equal(bodyOnly.length, 21,
+    'body-only is derived live; W603 removes the body-only score-hit pair');
   assert.equal(heads.includes(BODY_START), false, '$25FF38 stays off the widened register');
   assert.equal(narrow.some(([at]) => at === BODY_START), false, '$25FF38 stays off the narrow register');
   assert.equal(pairs.some(([pair]) => pair === removed), false, '$25FF38 body edge stays absent');

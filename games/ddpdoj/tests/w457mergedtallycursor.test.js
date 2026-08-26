@@ -324,7 +324,7 @@ test('SECTION 6: source keeps one $25D9E6 body and W458 leaves one $25DA60 body'
     '$25DA60 imports now share one function object');
 });
 
-test('SECTION 6b: live registers derive 16 narrow, 71 widened, 28 pairs and 22 body-only', () => {
+test('SECTION 6b: live registers derive 16 narrow, 71 widened, 27 pairs and 21 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -343,10 +343,10 @@ test('SECTION 6b: live registers derive 16 narrow, 71 widened, 28 pairs and 22 b
   assert.equal(narrow.length, 16, 'W497 registers the authentic-selection adapter at $2491C0');
   assert.equal(heads.length, 71,
     'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate');
-  assert.equal(pairs.length, 28,
-    'W461 left 27; W497 adds the authentic-selection/player-object body pair');
-  assert.equal(bodyOnly.length, 22,
-    'body-only remains executable headIndex() derivation; W461 removes a head-visible pair');
+  assert.equal(pairs.length, 27,
+    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
+  assert.equal(bodyOnly.length, 21,
+    'body-only remains an executable headIndex() derivation; W603 removes the body-only score-hit pair');
   assert.equal(heads.includes(BODY_START), false, '$25D9E6 stays off the widened register');
   assert.equal(narrow.some(([at]) => at === BODY_START), false, '$25D9E6 stays off the narrow register');
   assert.equal(pairs.some(([pair]) => pair === removed), false, 'W457 merged body edge stays absent');

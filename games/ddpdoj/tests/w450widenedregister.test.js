@@ -34,7 +34,7 @@
 //     of the shipped 16                  16 still there, NONE dropped
 //     newly visible                      55
 //
-// ...plus a second register the old scan had no axis for at all: 28 PAIRS OF
+// ...plus a second register the old scan had no axis for at all: 27 PAIRS OF
 // BODIES that transcribe a shared RUN of ROM instructions. W456 removed four
 // pair edges by deleting one duplicate body; W457 removed the complete tally
 // cursor-map edge; W458 removed the complete tally cursor-load edge; W459
@@ -56,7 +56,7 @@
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
 //   3   THE HEAD REGISTER, exact, 71
-//   4   THE BODY REGISTER, exact, 28 pairs; 22 body-only findings
+//   4   THE BODY REGISTER, exact, 27 pairs; 21 body-only findings
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
 
@@ -358,7 +358,7 @@ test('SECTION 3: the widened head register is exactly these 71 addresses', () =>
 // `$268A0E` and `$268376` blocks differ only in their type-local draw branches
 // and sprite-table address, so both production handlers now call one body.
 //
-// W497 ADDS `authentic.js applyAuthenticSelection <> player.js playerObject2491C0`.
+// W497 ADDS `authentic.js applyP1Selection <> player.js playerObject2491C0`.
 // The adapter reapplies the cartridge-derived selector fields to an already-live
 // browser seed, while the full object initializer owns fresh-object state. The
 // shared marked instruction subset remains registered for duplicate cleanup after
@@ -369,7 +369,7 @@ test('SECTION 3: the widened head register is exactly these 71 addresses', () =>
 // dirty-item `$27EE88` caller proved both bodies equivalent.
 const BODY_REGISTER = Object.freeze([
   ['aim.js targetSelectBy <> midboss.js bigFan', [0x24270a, 0x242726]],
-  ['authentic.js applyAuthenticSelection <> player.js playerObject2491C0',
+  ['authentic.js applyP1Selection <> player.js playerObject2491C0',
     [0x2491fc, 0x249204, 0x2492c8, 0x249368, 0x249432,
       0x24944a, 0x2494c0, 0x2494c4, 0x2494d4, 0x2494d8]],
   ['background.js elemScrollComp <> effects.js runEffectDriver', [0x2417a8, 0x2417b0]],
@@ -409,13 +409,12 @@ const BODY_REGISTER = Object.freeze([
   ['options.js podKnockback24D188 <> player.js updatePlayer', [0x2417f4, 0x2417f8]],
   ['player.js applyPlayerVector2417DE <> player.js updatePlayer', [0x2417f4, 0x2417f8]],
   ['rank.js playerRecords25FE42 <> rank.js stagePair2603FE', [0x24119c, 0x2411c4]],
-  ['score.js laserAltHit <> score.js laserScoreHit', [0x286abc, 0x286aea]],
   ['spawn.js dispatchScriptRecord <> spawn.js walkScriptLoop', [0x2633e0, 0x263428]],
   ['stageend.js artByte28ECB2 <> stageend.js loadBannerArt', [0x28ecc2, 0x28eda2]],
   ['stageend.js f4BonusPool28DB5E <> stageend.js result28D9AA', [0x28db5e, 0x28dc18, 0x28dc1c]],
 ]);
 
-test('SECTION 4: exactly these 28 pairs of bodies transcribe a shared run of ROM instructions',
+test('SECTION 4: exactly these 27 pairs of bodies transcribe a shared run of ROM instructions',
   () => {
     const got = bodyPairs().map(([p, v]) => [p, v]);
     assert.deepEqual(got.map(([p]) => p), BODY_REGISTER.map(([p]) => p),
@@ -441,12 +440,13 @@ test('SECTION 4: exactly these 28 pairs of bodies transcribe a shared run of ROM
     }
     const bodyOnly = got.filter(([pair]) => pair.split(' <> ')
       .some((body) => !visibleHeads.has(body)));
-    assert.equal(bodyOnly.length, 22,
-      'body-only is derived from the live head register, not copied from a prior wave');
+    assert.equal(bodyOnly.length, 21,
+      'body-only is derived from the live head register; W603 removes one body-only score pair');
 
-    assert.equal(got.length, 28,
-      'the body register is 28 pairs: W450 through W461 reduced 39 to 27, then W497 '
-      + 'registered the seeded-browser selection adapter against playerObject2491C0. '
+    assert.equal(got.length, 27,
+      'the body register is 27 pairs: W450 through W461 reduced 39 to 27, W497 '
+      + 'registered the seeded-browser selection adapter against playerObject2491C0, '
+      + 'and W603 generalized the two score-hit bodies into one implementation. '
       + 'As a NUMBER as well as a set, because an empty list satisfies a deepEqual '
       + 'against a shrunken array and reads as progress');
   });

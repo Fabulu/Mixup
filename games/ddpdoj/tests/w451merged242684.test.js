@@ -288,8 +288,8 @@ test('SECTION 3: one `$242684` claimant survives, and all six old private heads 
     'the deleted body pair left the body register too');
   assert.equal(headRegister().length, 71,
     'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate');
-  assert.equal(pairs.length, 28,
-    'W461 left 27; W497 adds the authentic-selection/player-object body pair');
+  assert.equal(pairs.length, 27,
+    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
 });
 
 // ==============================================================================================

@@ -390,6 +390,6 @@ test('W582 restores exact lf150131 and reaches the exact W587 $291040 frontier',
       SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride), Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      '5cd13dcbdcbb8a69a59dbac2244a4a6daeafd8b48ff4c38a6d2ae50e0a55b507',
+      'ad4f9e47d97460e6c8441a58e5d32ed782bfceefccc13a7c58d0bc201c65d22c',
     ]);
   });

@@ -259,6 +259,6 @@ test('W578 restores lf148631 and reaches the exact W587 $291040 frontier',
     Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      '5cd13dcbdcbb8a69a59dbac2244a4a6daeafd8b48ff4c38a6d2ae50e0a55b507',
+      '614e030798098ebd7f2ce40905eab521f038258f2efe3377779f724a768dd5be',
     ]);
   });

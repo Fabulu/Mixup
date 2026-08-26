@@ -602,7 +602,7 @@ test('SECTION 5c: source-represented callers, the one static gap and dependency 
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live registers reconcile to 16 narrow, 71 widened, 28 pairs and 22 body-only', () => {
+test('SECTION 6: live registers reconcile to 16 narrow, 71 widened, 27 pairs and 21 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -618,11 +618,11 @@ test('SECTION 6: live registers reconcile to 16 narrow, 71 widened, 28 pairs and
   assert.equal(heads.length, 71,
     'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate');
   assert.equal(heads.includes(BODY_START), false);
-  assert.equal(pairs.length, 28,
-    'W461 left 27; W497 adds the authentic-selection/player-object body pair');
+  assert.equal(pairs.length, 27,
+    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
   assert.equal(pairs.some(([pair]) => /installTxBank/.test(pair)), false);
-  assert.equal(bodyOnly.length, 22,
-    'body-only is derived from live headIndex(), not copied arithmetic');
+  assert.equal(bodyOnly.length, 21,
+    'body-only is derived from live headIndex(); W603 removes the body-only score-hit pair');
 });
 
 test('SECTION 6b: all existing palette windows remain exact and executable bytes remain unexported', () => {
