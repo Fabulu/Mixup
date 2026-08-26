@@ -168,7 +168,9 @@ test('W613 commit and restage preserve the current private input bytes',
     activate(state);
     assert.equal(state.memory.u8(P3_VIRTUAL.player + P.dirByte), 0x10);
     assert.equal(state.memory.u8(P3_VIRTUAL.player + P.btnByte), 0x10);
-    assert.throws(() => runThreePilotOptionObject(game), /\$24C164/);
+    assert.doesNotThrow(() => runThreePilotOptionObject(game));
+    assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.beamRecord, 0x40),
+      new Uint8Array(0x40));
 
     prepareThreePilotFrame(state, game, 0xffff);
     state.lifecycle = 'detached';
@@ -178,7 +180,9 @@ test('W613 commit and restage preserve the current private input bytes',
     activate(state);
     assert.equal(state.memory.u8(P3_VIRTUAL.player + P.dirByte), 0x10);
     assert.equal(state.memory.u8(P3_VIRTUAL.player + P.btnByte), 0x10);
-    assert.throws(() => runThreePilotOptionObject(game), /\$24C164/);
+    assert.doesNotThrow(() => runThreePilotOptionObject(game));
+    assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.beamRecord, 0x40),
+      new Uint8Array(0x40));
   });
 
 test('W613 u16-only ROM adapters initialize P3 speed from the cartridge row',
@@ -251,33 +255,26 @@ test('W613 style-6 movement stays native-exact across deployment and active fram
     assert.equal(state.memory.u16(P3_VIRTUAL.options + OPT.state) & 0x0002, 0x0002);
   });
 
-test('W613 refuses Button 1 before mutation and Button 3 allocates no private shot',
+test('W613 Button 1 bypasses laser and Button 3 alone allocates no private shot',
   { skip: SKIP_ASSETS }, async () => {
     const { state, game } = await exactState();
     const player = P3_VIRTUAL.player;
     state.memory.setU8(player + P.dirByte, 0x10);
-    const firstOptionBefore = sidecarBytes(state.memory, P3_VIRTUAL.options, OPT.stride);
     const firstBeamBefore = sidecarBytes(state.memory, P3_VIRTUAL.beamRecord, 0x40);
     const nativeBefore = game.ram.b.slice();
-    assert.throws(() => runThreePilotOptionObject(game), /\$24C164/);
-    assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.options, OPT.stride),
-      firstOptionBefore);
+    assert.doesNotThrow(() => runThreePilotOptionObject(game));
     assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.beamRecord, 0x40),
       firstBeamBefore);
-    assert.equal(state.weapons.actorId, 0);
-    assert.equal(state.weapons.calls, 0);
-    assert.equal(state.weapons.requests.length, 0);
+    assert.equal(state.weapons.actorId, state.actorId);
+    assert.equal(state.weapons.calls, 1);
     assert.deepEqual(game.ram.b, nativeBefore);
 
     state.memory.setU8(player + P.dirByte, 0);
     runThreePilotOptionObject(game);
-    const optionBefore = sidecarBytes(state.memory, P3_VIRTUAL.options, OPT.stride);
-    const requestsBefore = state.weapons.requests.map(({ bucket, bytes }) =>
-      ({ bucket, bytes: bytes.slice() }));
     state.memory.setU8(player + P.dirByte, 0x10);
-    assert.throws(() => runThreePilotOptionObject(game), /\$24C164/);
-    assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.options, OPT.stride), optionBefore);
-    assert.deepEqual(state.weapons.requests, requestsBefore);
+    assert.doesNotThrow(() => runThreePilotOptionObject(game));
+    assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.beamRecord, 0x40),
+      new Uint8Array(0x40));
 
     state.memory.setU8(player + P.dirByte, 0x40);
     state.memory.setU8(player + P.btnByte, 0x40);

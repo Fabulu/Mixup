@@ -1,8 +1,8 @@
 // Private three-pilot formation actors.
 //
-// This is a foundation, not a public game mode. P3 has an allocator identity and
-// independent host memory for position, input, and private option pods. It does
-// not implement ordinary shots, laser, collisions, score, death, lives, or HUD.
+// This remains a private foundation. P3 has an allocator identity, independent
+// host memory, ordinary shots, and option pods. Laser, collision ownership,
+// damage, score, death, lives, HUD, and public activation remain excluded.
 
 import { mirrorsFromPort } from './input.js';
 import { MACHINE, OPT, P, RAM } from './machine.js';
@@ -15,6 +15,10 @@ import {
 import {
   assertOptionOwnerInputAllowed, runOptionBlock,
 } from './options.js';
+import { runOrdinaryShotPath2497AA } from './player.js';
+import { shotHandlers } from './shots.js';
+import { runShotPool } from './weapons.js';
+import { encodeRecordRequest } from './spritequeue.js';
 
 const THREE_PILOT_ID = 'all-three-pilots-each-piloting-a-ship';
 const THREE_PILOT_NAME = 'All Three Pilots, Each Piloting a Ship';
@@ -78,21 +82,29 @@ export const P3_VIRTUAL_RANGES = Object.freeze([
 ]);
 
 export const THREE_PILOT_SHARED_RANGES = Object.freeze([
+  Object.freeze({ name: 'auto-shot-setting', start: 0x80380f, length: 0x01,
+    writable: false }),
   Object.freeze({ name: 'presentation-phase', start: 0x80390c, length: 0x02,
     writable: false }),
   Object.freeze({ name: 'p1-motion', start: RAM.player1, length: 0x06, writable: true }),
   Object.freeze({ name: 'p1-speed', start: RAM.player1 + P.speedIdx, length: 0x01,
     writable: false }),
   Object.freeze({ name: 'p2-motion', start: RAM.player2, length: 0x06, writable: true }),
+  Object.freeze({ name: 'shot-count-pointers', start: 0x8127e4, length: 0x08,
+    writable: false }),
   Object.freeze({ name: 'stage-draw-freeze', start: 0x812970, length: 0x02,
     writable: false }),
   Object.freeze({ name: 'stage-clear', start: STAGE_CLEAR, length: 0x02,
+    writable: false }),
+  Object.freeze({ name: 'shot-spawn-gate', start: 0x81308c, length: 0x02,
     writable: false }),
   Object.freeze({ name: 'stage-selector', start: 0x813092, length: 0x02,
     writable: false }),
   Object.freeze({ name: 'presentation-gate', start: 0x813098, length: 0x02,
     writable: false }),
   Object.freeze({ name: 'movement-disable', start: MOVEMENT_DISABLE, length: 0x02,
+    writable: false }),
+  Object.freeze({ name: 'shot-scroll-delta', start: 0x813176, length: 0x02,
     writable: false }),
 ]);
 
@@ -307,13 +319,91 @@ export class StrictSidecarMemory {
 
 const ATTACHED = new WeakMap();
 
+function clearP3ShotState(state) {
+  if (!state?.shots) return;
+  state.shots.requests.length = 0;
+  state.shots.actorId = 0;
+  state.shots.calls = 0;
+  const player = P3_BINDING.player;
+  state.memory.bclr8(player + P.flags1, 3);
+  state.memory.bclr8(player + P.flags1, 4);
+  state.memory.bclr8(player + P.state, 3);
+  state.memory.setU8(player + 0x2a, 0);
+  state.memory.setU8(player + 0x2b, 0);
+  state.memory.setU8(player + 0x3c, 0);
+  for (let offset = 0; offset < 36 * 0x30; offset++) {
+    state.memory.setU8(P3_BINDING.shots + offset, 0);
+  }
+}
+
 function clearP3OptionState(state) {
   if (!state?.weapons) return;
   state.weapons.requests.length = 0;
   state.weapons.actorId = 0;
+  state.weapons.calls = 0;
   for (let offset = 0; offset < OPT.stride; offset++) {
     state.memory.setU8(P3_BINDING.options + offset, 0);
   }
+}
+
+function clearP3WeaponState(state) {
+  clearP3ShotState(state);
+  clearP3OptionState(state);
+}
+
+function bindP3ShotResources(state) {
+  const requestSink = (bucket) => (memory, rec) => {
+    state.shots.requests.push({ bucket, bytes: encodeRecordRequest(memory, rec) });
+    return state.shots.requests.length - 1;
+  };
+  const ship = Object.freeze({
+    ownerIndex: P3_BINDING.logicalIndex,
+    pool: P3_BINDING.shots,
+    slots: 36,
+    stride: 0x30,
+    countPointer: 0x8127e4,
+    gate308c: 0x81308c,
+    primaryTable: 0x2554ea,
+    secondaryTable: 0x255502,
+    typeBTable: 0x25551a,
+    soundPolicy: 'silent',
+  });
+  const options = Object.freeze({
+    ownerIndex: P3_BINDING.logicalIndex,
+    pool: P3_BINDING.shots,
+    slots: 36,
+    stride: 0x30,
+    countPointer: 0x8127e8,
+    gate308c: 0x81308c,
+    formation2PrimaryTable: 0x24d2fc,
+    formation2SecondaryTable: 0x24d35c,
+    formation4Table: 0x24d3bc,
+    formation6Table: 0x24d41c,
+    hyperCounts: 0x24d47c,
+    presentationSink: requestSink(0),
+  });
+  const driver = Object.freeze({
+    ownerIndex: P3_BINDING.logicalIndex,
+    pool: P3_BINDING.shots,
+    player: P3_BINDING.player,
+    slots: 36,
+    stride: 0x30,
+    scrollDelta: 0x813176,
+    liveCounter: null,
+    presentationSink: requestSink(14),
+    requestTelemetry: false,
+  });
+  state.shots.resources = Object.freeze({
+    ordinary: Object.freeze({
+      ownerIndex: P3_BINDING.logicalIndex,
+      options: P3_BINDING.options,
+      autoShotSetting: 0x80380f,
+      shotResources: ship,
+    }),
+    ship,
+    options,
+    driver,
+  });
 }
 
 function initializeP3OptionState(state) {
@@ -328,12 +418,13 @@ function collectThreePilotSpriteRequests(state, game) {
   }
   if (state.lifecycle !== 'alive' || state.actorId === 0
       || game.ram.u16(STAGE_CLEAR) !== 0) {
-    clearP3OptionState(state);
+    clearP3WeaponState(state);
     return renderThreePilotRequests(state, game);
   }
+  const shotRequests = state.shots.requests.splice(0);
   const optionRequests = state.weapons.requests.splice(0);
   const shipRequests = renderThreePilotRequests(state, game);
-  return optionRequests.concat(shipRequests);
+  return shotRequests.concat(optionRequests, shipRequests);
 }
 
 function p3OptionBlock(state) {
@@ -345,9 +436,46 @@ function p3OptionBlock(state) {
     beam: null,
     rampGuard: P3_BINDING.bomb,
     allowLaser: false,
-    allowShots: false,
+    allowShots: true,
     virtualRequests: state.weapons.requests,
+    shotResources: state.shots.resources.options,
   };
+}
+
+function assertP3ShotInputAllowed(state) {
+  const excludedInput = state.memory.u8(P3_BINDING.player + P.dirByte)
+    | state.memory.u8(P3_BINDING.player + P.btnByte);
+  if ((excludedInput & 0xa0) !== 0) {
+    throw new RangeError('private ordinary-shot owner received excluded B2 or Start input');
+  }
+}
+
+/** Run P3 cadence, private spawn, movement, expiry, and virtual shot drawing. */
+export function runThreePilotShotObject(game) {
+  const state = ATTACHED.get(game);
+  if (!state) return 0;
+  if (state.lifecycle !== 'alive' || state.actorId === 0
+      || game.ram.u16(STAGE_CLEAR) !== 0) {
+    clearP3WeaponState(state);
+    return 0;
+  }
+  assertP3ShotInputAllowed(state);
+  if (state.shots.actorId !== state.actorId) {
+    if (state.weapons.actorId !== state.actorId) clearP3WeaponState(state);
+    state.shots.actorId = state.actorId;
+  }
+  state.shots.requests.length = 0;
+  const ctx = {
+    rom: game.rom,
+    tables: game.tables,
+    unportedLog: game.unportedLog,
+  };
+  runOrdinaryShotPath2497AA(state.memory, P3_BINDING.player, ctx,
+    state.shots.resources.ordinary);
+  const processed = runShotPool(state.memory, game.rom, shotHandlers(), ctx,
+    state.shots.resources.driver);
+  state.shots.calls++;
+  return processed;
 }
 
 /** Run the attached private option owner after the native P1/P2 pass. */
@@ -508,7 +636,7 @@ function stageP3Actor(state) {
   if (!made.ok) return false;
 
   state.actorId = game.ram.u32(made.addr + ALLOC.idOff);
-  clearP3OptionState(state);
+  clearP3WeaponState(state);
   state.lifecycle = 'staged';
   state.restagePending = false;
   initializeP3Record(state, false);
@@ -520,7 +648,7 @@ function stageP3Actor(state) {
 }
 
 function detachP3(state) {
-  clearP3OptionState(state);
+  clearP3WeaponState(state);
   state.actorId = 0;
   state.lifecycle = 'detached';
   state.restagePending = true;
@@ -533,7 +661,7 @@ function refreshLifecycle(state, committed) {
   if (!resolved.found) {
     if (committed) {
       if (state.lifecycle === 'staged') {
-        clearP3OptionState(state);
+        clearP3WeaponState(state);
         state.actorId = 0;
         state.lifecycle = 'dropped';
         state.memory.setU16(P3_BINDING.player + P.state, 0);
@@ -591,6 +719,9 @@ export function attachThreePilotFoundation(game, options = {}) {
   if (game.privateOptionObjectHook != null) {
     throw new Error('Game already has a privateOptionObjectHook');
   }
+  if (game.privateShotObjectHook != null) {
+    throw new Error('Game already has a privateShotObjectHook');
+  }
   if (game.ram.u32(ALLOC.idCounter) === 0xffffffff) {
     throw new RangeError('P3 allocator ID would wrap to zero');
   }
@@ -610,6 +741,7 @@ export function attachThreePilotFoundation(game, options = {}) {
     inputSeeded: false,
     render: createThreePilotRenderState(),
     weapons: { requests: [], actorId: 0, calls: 0 },
+    shots: { requests: [], actorId: 0, calls: 0, resources: null },
     runtime: {
       anchorX: clamp(game.ram.u16(RAM.player1 + P.posX) + OFFSET_X,
         ANCHOR.xMin, ANCHOR.xMax),
@@ -619,6 +751,7 @@ export function attachThreePilotFoundation(game, options = {}) {
       targets: [{ y: 0, x: 0 }, { y: 0, x: 0 }, { y: 0, x: 0 }],
     },
   };
+  bindP3ShotResources(state);
   cacheTargets(state);
   if (liveNonDeath(memory, P1_BINDING)) {
     state.runtime.lastP1Speed = memory.u8(P1_BINDING.player + P.speedIdx);
@@ -628,7 +761,7 @@ export function attachThreePilotFoundation(game, options = {}) {
   }
 
   if (!stageP3Actor(state)) {
-    clearP3OptionState(state);
+    clearP3WeaponState(state);
     state.lifecycle = 'dropped';
     state.memory.setU16(P3_BINDING.player + P.state, 0);
   }
@@ -637,6 +770,12 @@ export function attachThreePilotFoundation(game, options = {}) {
   const positionTransform = (ram, playerIdx) =>
     cachedPositionTransform(state, ram, playerIdx);
   const renderHook = (hookGame) => collectThreePilotSpriteRequests(state, hookGame);
+  const shotHook = (hookGame) => {
+    if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
+      throw new Error('private P3 shot hook invoked for a different Game');
+    }
+    return runThreePilotShotObject(hookGame);
+  };
   const optionHook = (hookGame) => {
     if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
       throw new Error('private P3 option hook invoked for a different Game');
@@ -646,10 +785,12 @@ export function attachThreePilotFoundation(game, options = {}) {
   state.objectDriverHook = hook;
   state.playerPositionTransform = positionTransform;
   state.virtualSpriteRequestHook = renderHook;
+  state.privateShotObjectHook = shotHook;
   state.privateOptionObjectHook = optionHook;
   game.objectDriverHook = hook;
   game.playerPositionTransform = positionTransform;
   game.virtualSpriteRequestHook = renderHook;
+  game.privateShotObjectHook = shotHook;
   game.privateOptionObjectHook = optionHook;
   ATTACHED.set(game, state);
   return state;
@@ -697,7 +838,7 @@ export function prepareThreePilotFrame(state, game, word) {
   memory.setU8(P3_BINDING.player + P.btnByte,
     memory.u16(P3_BINDING.input.edge) & 0xff);
   if (memory.u16(STAGE_CLEAR) !== 0) {
-    clearP3OptionState(state);
+    clearP3WeaponState(state);
     runtime.rebasePending = true;
     return input;
   }

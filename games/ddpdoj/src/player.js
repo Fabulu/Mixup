@@ -26,7 +26,9 @@
 import { P, OPT, RAM, CLAMP, ROM } from './machine.js';
 import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
-import { spawnShot, spawnShotTypeB } from './shots.js';
+import {
+  NATIVE_SHOT_RESOURCES, spawnShotTypeBWithResources, spawnShotWithResources,
+} from './shots.js';
 import { drawShipShadow, SHIP_MUTATE } from './shipsprite.js';
 import { fireBomb2498E2, BOMBRAM } from './bomb.js';
 import {
@@ -997,13 +999,30 @@ function tail249E4E(ram, rec, ctx) {
  * finds it while looking for "the other button-3 handler".
  */
 export function autoShot2497AA(ram, rec, dir, playerIdx) {
+  if (playerIdx !== 0 && playerIdx !== 1) {
+    throw new RangeError(`native auto-shot owner ${playerIdx} is outside {0, 1}`);
+  }
+  return autoShot2497AAWithResources(ram, rec, dir, {
+    ownerIndex: playerIdx,
+    options: playerIdx === 0 ? RAM.p1Options : RAM.p2Options,
+    autoShotSetting: 0x80380f,
+  });
+}
+
+/** Resource-bound `$2497AA`; private owners supply their exact option record. */
+export function autoShot2497AAWithResources(ram, rec, dir, resources) {
+  if (!Number.isSafeInteger(resources?.ownerIndex)
+      || !Number.isSafeInteger(resources?.options)
+      || !Number.isSafeInteger(resources?.autoShotSetting)) {
+    throw new TypeError('auto-shot resources must supply owner, options, and operator setting');
+  }
   // THE WAVE-78 PORT: a `return` where the throw used to be. Kept as a named
   // mutation because "handle it by doing nothing" is the shape of the fix
   // somebody reaches for when a throw is in the way of a demo, and it must have
   // a red half that is reproducible without editing this file.
   if (AUTOSHOT_MUTATE.value === 'autoshot-dropped') return;
   // $2497AA tst.b $80380F / $2497B0 beq $2497FE
-  if (ram.u8(0x80380f) === 0) return;
+  if (ram.u8(resources.autoShotSetting) === 0) return;
   // WAVE 78's ACTUAL CODE, restored as a mutation: the throw that stopped the
   // owner playing and blocked 69 of `stage1-sweep`'s 71 rungs.  It is here so
   // `playgate.mjs --break autoshot-unported` has a red half -- a playability
@@ -1027,7 +1046,7 @@ export function autoShot2497AA(ram, rec, dir, playerIdx) {
   if (AUTOSHOT_MUTATE.value !== 'autoshot-no-3c-gate'
     && ram.u8(rec + 0x3c) !== 0) return;
   // $2497C0 lea $8104AA,A0 / $2497C6 tst.b ($7,A5) / $2497CC lea $81050E,A0
-  const opt = playerIdx === 0 ? RAM.p1Options : RAM.p2Options;
+  const opt = resources.options;
   ram.bclr8(rec + P.btnByte, 4);                         // $2497D2 bclr #4,($19,A6)
   ram.bclr8(rec + P.flags1, 3);                          // $2497D8 bclr #3,($1,A6)
   if (AUTOSHOT_MUTATE.value !== 'autoshot-no-optbit') {
@@ -1075,6 +1094,24 @@ export function autoShot2497AA(ram, rec, dir, playerIdx) {
  */
 export const AUTOSHOT_MUTATE = { value: null };
 
+export const NATIVE_ORDINARY_SHOT_OWNERS = Object.freeze([
+  Object.freeze({
+    ownerIndex: 0, options: RAM.p1Options, autoShotSetting: 0x80380f,
+    shotResources: NATIVE_SHOT_RESOURCES[0],
+  }),
+  Object.freeze({
+    ownerIndex: 1, options: RAM.p2Options, autoShotSetting: 0x80380f,
+    shotResources: NATIVE_SHOT_RESOURCES[1],
+  }),
+]);
+
+function nativeOrdinaryShotOwner(playerIdx) {
+  if (playerIdx !== 0 && playerIdx !== 1) {
+    throw new RangeError(`native ordinary-shot owner ${playerIdx} is outside {0, 1}`);
+  }
+  return NATIVE_ORDINARY_SHOT_OWNERS[playerIdx];
+}
+
 /**
  * $2497AA .. $249BE2 -- the weapon block, as far as wave 5 translates it.
  *
@@ -1089,6 +1126,7 @@ export const AUTOSHOT_MUTATE = { value: null };
  */
 export function bombAndShotGuards(ram, rec, ctx, playerIdx) {
   const { unportedLog } = ctx;
+  const resources = nativeOrdinaryShotOwner(playerIdx);
   const dir = ram.u8(rec + P.dirByte);
   // **($19,A6) IS NOT A CONSTANT ACROSS THIS FUNCTION AND CACHING IT WAS THE
   // WAVE-79 BUG.**  Waves 4-78 read the edge byte ONCE here into `btn`, which
@@ -1101,7 +1139,7 @@ export function bombAndShotGuards(ram, rec, ctx, playerIdx) {
   // and `p3c` never leaves 0.  MEASURED as that, on stage1-sweep lf2001..2010,
   // before this comment existed.  Read it where the ROM reads it.
   const btnStale = ram.u8(rec + P.btnByte);              // ...the wave-4 read
-  autoShot2497AA(ram, rec, dir, playerIdx);              // $2497AA..$2497F8
+  autoShot2497AAWithResources(ram, rec, dir, resources);    // $2497AA..$2497F8
   /** `($19,A6)` as the ROM reads it -- FROM MEMORY, at the instruction that
    *  reads it. `autoshot-edge-cached` is the wave-4..78 shape. */
   const btn = () => (AUTOSHOT_MUTATE.value === 'autoshot-edge-cached'
@@ -1147,94 +1185,87 @@ export function bombAndShotGuards(ram, rec, ctx, playerIdx) {
       if (what.startsWith('fired')) return;               // $249B28 bra $249E4E
     }
   }                                                       // ...else fall to $249B2C
-  // $249B2C..$249B3C -- the "power" byte the tail draws from: ($54,A6), or
-  // ($55,A6) when bit 0 of ($1,A6) is set, copied into ($56,A6).
-  ram.setU8(rec + 0x56, ram.btst8(rec + P.flags1, 0)     // $249B30 btst #0
-    ? ram.u8(rec + 0x55) : ram.u8(rec + 0x54));          // $249B38 / $249B2C
-  // $249B40 tst.b ($3f,A6) / bne $249E4E
-  //
-  // **THIS WAS A THROW UNTIL WAVE 45 AND IT IS NOT AN UNPORTED PATH AT ALL.**
-  // The instruction is `bne $249E4E` -- a branch to the player's own TAIL,
-  // which is the very next thing this function's caller does -- so the arm has
-  // always been "skip the shot cadence machine this frame", i.e. a `return`.
-  // Calling `($3f,A6)` "the dead flag" and throwing on it was a guess, and the
-  // thing that flushed it out is the LASER: `$24C282 move.b #$1,($3f,A4)` sets
-  // this byte on the frame the beam's arm-up completes (+16) and
-  // `$24C2D6 move.b D0,($3f,A4)` clears it on release, precisely so that the
-  // ship stops spawning ordinary shots while it is firing a beam.
-  //
-  // That also completes `37-recon-laser.md` §3.4's correction. W37 is right
-  // that `$81295C` falling to 0 is the shot table DRAINING and not a laser
-  // write; what it does not say is WHY nothing refills the table after +16, and
-  // this is why -- the cadence machine is switched off at its head, by the
-  // laser, on purpose.  The six shots at lf2001..2007 are the pre-arm burst.
+  return shotCadence249B2C(ram, rec, ctx, resources, btnStale);
+}
+
+function validateOrdinaryShotResources(resources) {
+  if (!resources || !Number.isSafeInteger(resources.ownerIndex)
+      || !Number.isSafeInteger(resources.options)
+      || !Number.isSafeInteger(resources.autoShotSetting)
+      || !resources.shotResources
+      || resources.shotResources.ownerIndex !== resources.ownerIndex) {
+    throw new TypeError('ordinary-shot owner must supply matching ownership, options, operator setting, and spawn resources');
+  }
+  return resources;
+}
+
+/** `$2497AA` auto-shot followed directly by the `$249B2C` ordinary cadence. */
+export function runOrdinaryShotPath2497AA(ram, rec, ctx, suppliedResources) {
+  const resources = validateOrdinaryShotResources(suppliedResources);
+  const dir = ram.u8(rec + P.dirByte);
+  const btnStale = ram.u8(rec + P.btnByte);
+  autoShot2497AAWithResources(ram, rec, dir, resources);
+  return shotCadence249B2C(ram, rec, ctx, resources, btnStale);
+}
+
+/** Resource-bound `$249B2C..$249BF8` cadence and cartridge spawn dispatch. */
+export function shotCadence249B2C(ram, rec, ctx, suppliedResources, btnStale) {
+  const resources = validateOrdinaryShotResources(suppliedResources);
+  const btn = () => (AUTOSHOT_MUTATE.value === 'autoshot-edge-cached'
+    ? btnStale : ram.u8(rec + P.btnByte));
+  const unportedLog = ctx?.unportedLog;
+
+  ram.setU8(rec + 0x56, ram.btst8(rec + P.flags1, 0)
+    ? ram.u8(rec + 0x55) : ram.u8(rec + 0x54));              // $249B2C..$249B38
   if (ram.u8(rec + P.dead) !== 0) {
-    unportedLog.note(0x249b40, 'shot: ($3f,A6) is set -- the cadence machine is '
+    unportedLog?.note(0x249b40, 'shot: ($3f,A6) is set -- the cadence machine is '
       + 'skipped ($249B44 bne $249E4E). The LASER sets this byte at $24C282 '
       + 'when its arm-up completes and clears it at $24C2D6 on release');
-    return;                                              // $249B44 bne $249E4E
+    return;
   }
 
-  // THE SHOT CADENCE MACHINE, $249B48..$249BE2.  Ported in wave 5.  This is the
-  // part that runs EVERY frame the button is held or released and that decides,
-  // per frame, whether a shot is emitted; the emission itself ($249BFC /
-  // $249D2C) is not ported and throws below.
-  // $249B48 btst #4,($19,A6) -- RE-READ, not the wave-4 cached copy: the
-  // auto-shot block above may have just set this bit.
-  if (btn() & (1 << 4)) {
-    ram.setU8(rec + 0x3c, 1);                            // $249B50
-    // $249B56..$249B70: the RELOAD value for the shot counter ($2b,A6).
-    //   D0 = ($21,A6), or 8 if bit 0 of ($1,A6) is set;
-    //   D0 = ((D0 >> 1) & 6) + ($2d,A6).
-    // `lsr.w #1` then `andi.b #6` -- a WORD shift and a BYTE mask, in that
-    // order, so bit 0 of the shifted value is discarded and only bits 1-2
-    // survive.  Translated as written.
+  if (btn() & (1 << 4)) {                                  // $249B48
+    ram.setU8(rec + 0x3c, 1);                              // $249B50
     let d0 = ram.btst8(rec + P.flags1, 0) ? 8 : ram.u8(rec + 0x21);
-    d0 = ((u16(d0) >> 1) & 6) + ram.u8(rec + 0x2d);      // $249B66/$249B68/$249B6C
-    ram.setU8(rec + 0x2b, d0 & 0xff);                    // $249B70
-    if (ram.bclr8(rec + P.flags1, 3)) {                  // $249B74 bclr #3 / beq
-      ram.bset8(rec + P.state, 3);                       // $249B7C
-      ram.setU8(rec + 0x2b, 0);                          // $249B80 clr.b ($2b,A6)
-      // falls through to $249BC2
-    } else if (ram.bclr8(rec + P.state, 3)) {            // $249B86 bclr #3,(A6)/beq
-      ram.setU8(rec + 0x2a, 1);                          // $249B8C
-      unportedLog.note(0x249b8c, 'shot: the $249B92 bra to the tail');
-      return;                                            // $249B92 bra $249E4E
+    d0 = ((u16(d0) >> 1) & 6) + ram.u8(rec + 0x2d);        // $249B66..$249B6C
+    ram.setU8(rec + 0x2b, d0 & 0xff);                      // $249B70
+    if (ram.bclr8(rec + P.flags1, 3)) {                    // $249B74
+      ram.bset8(rec + P.state, 3);                         // $249B7C
+      ram.setU8(rec + 0x2b, 0);                            // $249B80
+    } else if (ram.bclr8(rec + P.state, 3)) {              // $249B86
+      ram.setU8(rec + 0x2a, 1);                            // $249B8C
+      unportedLog?.note(0x249b8c, 'shot: the $249B92 bra to the tail');
+      return;
     }
   } else {
-    // $249B96 -- the no-shot path.
-    ram.setU8(rec + 0x3c, 0);                            // $249B96
-    ram.bclr8(rec + P.state, 3);                         // $249B9A
-    ram.bclr8(rec + P.flags1, 4);                        // $249B9E
-    if (ram.u8(rec + 0x2b) === 0) {                      // $249BA4 tst.b/beq
-      unportedLog.note(0x249ba4, 'shot: idle, no cadence counter running');
-      return;                                            // -> $249E4E
+    ram.setU8(rec + 0x3c, 0);                              // $249B96
+    ram.bclr8(rec + P.state, 3);                           // $249B9A
+    ram.bclr8(rec + P.flags1, 4);                          // $249B9E
+    if (ram.u8(rec + 0x2b) === 0) {
+      unportedLog?.note(0x249ba4, 'shot: idle, no cadence counter running');
+      return;
     }
-    ram.setU8(rec + 0x2a, (ram.u8(rec + 0x2a) - 1) & 0xff);   // $249BAC subq.b
-    if (ram.u8(rec + 0x2a) !== 0) return;                // $249BB0 bne $249E4E
-    ram.setU8(rec + 0x2b, (ram.u8(rec + 0x2b) - 1) & 0xff);   // $249BB4
-    ram.bset8(rec + P.state, 3);                         // $249BB8
-    ram.bset8(rec + P.flags1, 4);                        // $249BBC
+    ram.setU8(rec + 0x2a, (ram.u8(rec + 0x2a) - 1) & 0xff); // $249BAC
+    if (ram.u8(rec + 0x2a) !== 0) return;                  // $249BB0
+    ram.setU8(rec + 0x2b, (ram.u8(rec + 0x2b) - 1) & 0xff); // $249BB4
+    ram.bset8(rec + P.state, 3);                           // $249BB8
+    ram.bset8(rec + P.flags1, 4);                          // $249BBC
   }
 
-  // $249BC2..$249BDE -- the DELAY reload for ($2a,A6).
-  let d = ram.u8(rec + 0x2c);                            // $249BC2
-  if (ram.btst8(rec + P.flags1, 0)                       // $249BC6 btst #0 / bne
-    || (ram.u16(rec + P.shipSel) === 0                   // $249BCE tst.w ($58,A6)
-      && ram.u16(rec + 0x20) === 8)) {                   // $249BD4 cmpi.w #$8
-    d = 2;                                               // $249BDC moveq #$2,D0
+  let d = ram.u8(rec + 0x2c);                              // $249BC2
+  if (ram.btst8(rec + P.flags1, 0)
+      || (ram.u16(rec + P.shipSel) === 0 && ram.u16(rec + 0x20) === 8)) {
+    d = 2;                                                 // $249BDC
   }
-  ram.setU8(rec + 0x2a, d & 0xff);                       // $249BDE
+  ram.setU8(rec + 0x2a, d & 0xff);                         // $249BDE
 
-  // $249BE2..$249BF8 -- the cartridge's two-entry jump table on ship selector:
-  //   ship 0 -> $249BFC   ship 2 -> $249D2C
-  const ship = ram.u16(rec + P.shipSel);                 // $249BE2
+  const ship = ram.u16(rec + P.shipSel);                   // $249BE2
   if (ship === 0) {
-    spawnShot(ram, ctx.rom, rec, ctx, { player: playerIdx });
+    spawnShotWithResources(ram, ctx.rom, rec, ctx, resources.shotResources);
     return;
   }
   if (ship === 2) {
-    spawnShotTypeB(ram, ctx.rom, rec, ctx, { player: playerIdx });
+    spawnShotTypeBWithResources(ram, ctx.rom, rec, ctx, resources.shotResources);
     return;
   }
   unreached(0x249bf8, `ship selector ${ship} is outside the cartridge set {0, 2}`);

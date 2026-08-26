@@ -260,6 +260,26 @@ test('the shot driver covers BOTH players: 36 slots each, P2 straight after P1',
     assert.equal(r.u16(SHOT.liveCount), 2);
   });
 
+test('$253A70 snapshots scroll once before driving P1 then P2', () => {
+  const r = new Ram();
+  r.setU16(SHOT.scrollDelta, 3);
+  r.setU16(SHOT.p1Table, 0x8000);
+  r.setU16(SHOT.p1Table + 4, 500);
+  r.setU16(SHOT.p2Table, 0x8000);
+  r.setU16(SHOT.p2Table + 4, 500);
+  const h = new Map(SHOT_HANDLERS.map((address) => [address,
+    (ram, rom, rec, ctx, prec) => {
+      if (prec === SHOT.p1Rec) ram.setU16(SHOT.scrollDelta, 100);
+    }]));
+
+  assert.equal(runShotDriver(r, null, h, {}), 2);
+  assert.equal(r.u16(SHOT.p1Table + 4), 497);
+  assert.equal(r.u16(SHOT.p2Table + 4), 497,
+    'P2 uses the D6 value captured before P1 handlers run');
+  assert.equal(r.u16(SHOT.scrollDelta), 100,
+    'the witness mutates live RAM so a second read would disagree');
+});
+
 test('the shot live count $81295C is what the FRAME SYNC governor reads', () => {
   // $23C272 sums $81B40C + $81295C + 2*$81295E. A port that leaves $81295C at
   // zero while shots are on screen changes WHEN the frame is armed. Pinned here

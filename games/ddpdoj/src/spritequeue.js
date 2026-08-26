@@ -190,11 +190,34 @@ export const NO_ZOOM_OR = 0x80008000;    // $23D784 ori.l
 export const ENQUEUE_MASK = 0x07ff03ff;  // $23D77E andi.l
 
 /**
+ * Build the twelve record-convention bytes without selecting a bucket.
+ *
+ * @param {{u16(address: number): number}} memory
+ * @param {number} rec the object record's base address
+ * @returns {Uint8Array} one encoded 12-byte request
+ */
+export function encodeRecordRequest(memory, rec) {
+  const long = u16(i16(memory.u16(rec + 0x2)) + i16(memory.u16(rec + 0x6)));
+  const short = u16(i16(memory.u16(rec + 0x4)) + i16(memory.u16(rec + 0x8)));
+  const packed = (((long << 16) | short) | 0) >> 6;          // $23D77C asr.l #6
+  const d0 = ((packed & ENQUEUE_MASK) | NO_ZOOM_OR) >>> 0;   // $23D77E / $23D784
+  const request = new Uint8Array(RECORD_BYTES);
+  const view = new DataView(request.buffer, request.byteOffset, request.byteLength);
+  view.setUint16(0, (d0 >>> 16) & 0xffff, false);
+  view.setUint16(2, d0 & 0xffff, false);
+  view.setUint16(4, memory.u16(rec + 0x0a), false);
+  view.setUint16(6, memory.u16(rec + 0x0c), false);
+  view.setUint16(8, memory.u16(rec + 0x0e), false);
+  view.setUint16(10, memory.u16(rec + 0x1c), false);
+  return request;
+}
+
+/**
  * One per-record enqueue stub, parameterised over the bucket.
  *
  * @param {import('./ram.js').Ram} ram
- * @param {number} bucket  0..29, the DRAIN position (see BUCKETS)
- * @param {number} rec     the object record's base address (the stubs' A6)
+ * @param {number} bucket 0..29, the DRAIN position (see BUCKETS)
+ * @param {number} rec the object record's base address (the stubs' A6)
  * @returns {number} the byte offset within the bucket the record landed at
  */
 export function enqueueRequest(ram, bucket, rec) {
@@ -203,19 +226,11 @@ export function enqueueRequest(ram, bucket, rec) {
   const off = u16(ram.u16(b.counter));                       // $23D768 adda.w
   const at = b.buffer + off;
   ram.setU16(b.counter, u16(off + RECORD_BYTES));            // $23D794 addi.w
-
-  // $23D772..$23D77A -- built as ONE longword and shifted ONCE.
-  const long = u16(i16(ram.u16(rec + 0x2)) + i16(ram.u16(rec + 0x6)));
-  const short = u16(i16(ram.u16(rec + 0x4)) + i16(ram.u16(rec + 0x8)));
-  const packed = (((long << 16) | short) | 0) >> 6;          // asr.l #6
-  const d0 = ((packed & ENQUEUE_MASK) | NO_ZOOM_OR) >>> 0;   // $23D77E / $23D784
-
-  ram.setU16(at + 0, (d0 >>> 16) & 0xffff);                  // $23D78A move.l
-  ram.setU16(at + 2, d0 & 0xffff);
-  ram.setU16(at + 4, ram.u16(rec + 0x0a));                   // $23D78C move.l
-  ram.setU16(at + 6, ram.u16(rec + 0x0c));
-  ram.setU16(at + 8, ram.u16(rec + 0x0e));                   // $23D78E move.w
-  ram.setU16(at + 10, ram.u16(rec + 0x1c));                  // $23D790 move.w
+  const request = encodeRecordRequest(ram, rec);
+  const view = new DataView(request.buffer, request.byteOffset, request.byteLength);
+  for (let offset = 0; offset < RECORD_BYTES; offset += 2) {
+    ram.setU16(at + offset, view.getUint16(offset, false));
+  }
   return off;
 }
 

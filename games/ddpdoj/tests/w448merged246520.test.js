@@ -247,20 +247,22 @@ test('SECTION 2: `$246520` and `$24652A` are each claimed EXACTLY ONCE, and by t
   }
   // The register itself, held here as well as in w446/w447 so deleting one guard cannot hide it.
   // W450: THIS COUNTS `export function` CLAIMS ONLY, so it is a FLOOR. The scan that can also
-  // see private functions, arrows and methods reports 71 after the later Hibachi source consolidation. SECTION 2d below and
-  // tests/w450widenedregister.test.js SECTION 3 hold the set.
+  // see private functions, arrows and methods reports 72 after W614 registers the documented
+  // $249D2C facade/resource split. SECTION 2d below and tests/w450widenedregister.test.js
+  // SECTION 3 hold the set.
   const dup = [...idx].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
-  assert.equal(dup.length, 16,
-    'W474 left 15; W497 registers the authentic $2491C0 seed adapter, so the live narrow '
-    + 'floor is 16. An unclassified duplicate is not absorbed here: ' + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
+  assert.equal(dup.length, 17,
+    'W474 left 15; W497 registers the authentic $2491C0 seed adapter, and W614 registers '
+    + 'the separately named $2497AA shot adapters, so the live narrow floor is 17. An '
+    + 'unclassified duplicate is not absorbed here: ' + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
 });
 
-test('SECTION 2d [W450/current]: the widened register is 71, and this wave\'s three-copy constructor '
+test('SECTION 2d [W450/current]: the widened register is 72, and this wave\'s three-copy constructor '
   + 'stays merged under it', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
   const wide = headRegister();
-  assert.equal(wide.length, 71,
-    'the widened duplicate register is not 71. ' + W453_NOTE
+  assert.equal(wide.length, 72,
+    'the widened duplicate register is not 72. ' + W453_NOTE
     + 'W457 merged $25D9E6, W458 merged $25DA60, W459 merged $25FF38, W460 removed '
     + 'the optional $24631C forwarding shim, W461 merged the private $242E24 rank-byte '
     + 'body into rng.js drawByte242E24, W462 removed the private $2414BE adapter row, W463 '
@@ -268,7 +270,8 @@ test('SECTION 2d [W450/current]: the widened register is 71, and this wave\'s th
     + 'ledger note claims at $240F62 and $28D520, and W475 removed the palette-reporting '
     + 'method claim at $24133C. W497 registers $2491C0 and the $253D82/$253D90 '
     + 'Type-B hit-flag wrapper rows. Later Hibachi source consolidation removes the temporary '
-    + 'W554 $2A54E2 duplicate. '
+    + 'W554 $2A54E2 duplicate. W614 registers the documented $249D2C native Type-B '
+    + 'facade/resource implementation split. '
     + 'The narrow count above sees only `export '
     + 'function`; W448 merged THREE transcriptions of one body, and the scan that found them '
     + 'would have missed a fourth written as a private function -- which is what happened to '

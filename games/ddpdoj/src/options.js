@@ -44,12 +44,31 @@ import { P, RAM, ROM, OPT } from './machine.js';
 import { i16, u16, asr } from './ram.js';
 import { unreached } from './unported.js';
 import {
-  enqueueRequest, enqueueRegisters, encodeRegisterRequest, NAMED_BUCKETS,
+  encodeRecordRequest, enqueueRequest, enqueueRegisters, encodeRegisterRequest,
+  NAMED_BUCKETS,
 } from './spritequeue.js';
 import { groundPlane, SHIP_MUTATE } from './shipsprite.js';
 import {
   BEAM, runLaserGate, buildBeam, wipeSegmentPool, rampDown,
 } from './laser.js';
+
+/** Explicit cartridge and pool capabilities for native pod-shot production. */
+export const NATIVE_OPTION_SHOT_RESOURCES = Object.freeze([
+  Object.freeze({
+    ownerIndex: 0, pool: 0x810572, slots: 36, stride: 0x30,
+    countPointer: 0x8127e8, gate308c: 0x81308c,
+    formation2PrimaryTable: 0x24d2fc, formation2SecondaryTable: 0x24d35c,
+    formation4Table: 0x24d3bc, formation6Table: 0x24d41c,
+    hyperCounts: 0x24d47c, presentationSink: null,
+  }),
+  Object.freeze({
+    ownerIndex: 1, pool: 0x810c32, slots: 36, stride: 0x30,
+    countPointer: 0x8127f0, gate308c: 0x81308c,
+    formation2PrimaryTable: 0x24d2fc, formation2SecondaryTable: 0x24d35c,
+    formation4Table: 0x24d3bc, formation6Table: 0x24d41c,
+    hyperCounts: 0x24d47c, presentationSink: null,
+  }),
+]);
 
 /** The two players' blocks, in the ROM's own order: P1 first, P2 second. */
 export const OPTION_BLOCKS = Object.freeze([
@@ -57,11 +76,13 @@ export const OPTION_BLOCKS = Object.freeze([
     ownerIndex: 0, d7: 1, opt: RAM.p1Options, player: RAM.player1,
     laser: 0x811f32, beam: BEAM[0], rampGuard: 0x811f72,
     allowLaser: true, allowShots: true, virtualRequests: null,
+    shotResources: NATIVE_OPTION_SHOT_RESOURCES[0],
   }),                                                        // $24C096
   Object.freeze({
     ownerIndex: 1, d7: 0, opt: RAM.p2Options, player: RAM.player2,
     laser: 0x811f52, beam: BEAM[1], rampGuard: 0x811f72,
     allowLaser: true, allowShots: true, virtualRequests: null,
+    shotResources: NATIVE_OPTION_SHOT_RESOURCES[1],
   }),                                                        // $24C0B0
 ]);
 
@@ -150,11 +171,41 @@ export function runOptionObject(ram, ctx) {
   }
 }
 
-/** Refuse excluded owner inputs before any option-side state can change. */
+/** Refuse malformed private capabilities before option-side state can change. */
 export function assertOptionOwnerInputAllowed(ram, b) {
-  if (b.allowLaser === false && (ram.u8(b.player + P.dirByte) & 0x10) !== 0) {
-    unreached(0x24c164, 'private P3 laser is excluded from the options-only wave');
+  if (!Number.isSafeInteger(b?.ownerIndex) || !Number.isSafeInteger(b?.player)) {
+    throw new TypeError('option owner must supply an exact logical owner and player record');
   }
+  if (b.allowLaser === false) {
+    const excludedInput = ram.u8(b.player + P.dirByte)
+      | ram.u8(b.player + P.btnByte);
+    if ((excludedInput & 0xa0) !== 0) {
+      throw new RangeError('private option owner received excluded B2 or Start input');
+    }
+  }
+}
+
+function optionShotResources(b) {
+  const resources = b?.shotResources;
+  if (!resources || resources.ownerIndex !== b.ownerIndex
+      || !Number.isSafeInteger(resources.pool)
+      || !Number.isSafeInteger(resources.countPointer)
+      || !Number.isSafeInteger(resources.gate308c)
+      || !Number.isSafeInteger(resources.formation2PrimaryTable)
+      || !Number.isSafeInteger(resources.formation2SecondaryTable)
+      || !Number.isSafeInteger(resources.formation4Table)
+      || !Number.isSafeInteger(resources.formation6Table)
+      || !Number.isSafeInteger(resources.hyperCounts)) {
+    throw new TypeError('pod-shot owner must supply exact pool, counters, pointers, and cartridge tables');
+  }
+  if (resources.slots !== 36 || resources.stride !== 0x30) {
+    throw new RangeError('pod-shot pool must be 36 records of $30 bytes');
+  }
+  if (resources.presentationSink !== null
+      && typeof resources.presentationSink !== 'function') {
+    throw new TypeError('pod-shot presentation sink must be a function or null');
+  }
+  return resources;
 }
 
 /** Run one option block whose owner resources are supplied explicitly. */
@@ -216,7 +267,7 @@ function runOneBlock(ram, ctx, b) {
   // first held frame -- there was no input short enough to avoid it and the
   // game could not be shot at all (`39-OWNER-visible-play-before-sound.md`).
   // `src/laser.js` is the whole of what is behind it.
-  if (ram.u8(opt + OPT.raw) & 0x10) {
+  if (b.allowLaser !== false && (ram.u8(opt + OPT.raw) & 0x10)) {
     const to = runLaserGate(ram, ctx, beamOf(b));           // $24C16E..$24C29C
     if (to === 'c310') return podsSwingBack(ram, ctx, b);   // $24C178 bne
     return podsOnShip(ram, ctx, b);                         // every other arm
@@ -245,13 +296,14 @@ function emitRegisters(ram, b, bucket, d1, d2, d3, d4) {
 
 function emitRequest(ram, b, bucket, rec) {
   if (b.virtualRequests == null) return enqueueRequest(ram, bucket, rec);
-  const long = u16(i16(ram.u16(rec + 0x02)) + i16(ram.u16(rec + 0x06)));
-  const short = u16(i16(ram.u16(rec + 0x04)) + i16(ram.u16(rec + 0x08)));
-  const position = (((long << 16) >>> 0) | short) >>> 0;
-  b.virtualRequests.push({ bucket, bytes: encodeRegisterRequest(
-    position, ram.u32(rec + 0x0a), ram.u16(rec + 0x0e), ram.u16(rec + 0x1c),
-  ) });
+  b.virtualRequests.push({ bucket, bytes: encodeRecordRequest(ram, rec) });
   return b.virtualRequests.length - 1;
+}
+
+function emitPodShotRequest(ram, b, rec) {
+  const resources = optionShotResources(b);
+  if (resources.presentationSink == null) return enqueueRequest(ram, 0, rec);
+  return resources.presentationSink(ram, rec);
 }
 
 /** `$24C29E..$24C338` -- the ordinary pod path, and the RELEASE TEARDOWN. */
@@ -329,7 +381,8 @@ function podsOnShip(ram, ctx, b) {
   ram.setU32(opt + OPT.posY, pos);
   ram.setU32(opt + OPT.posY2, pos);
 
-  if (ram.u8(opt + OPT.angle) === 0) {                     // $24C346 tst.b/beq
+  if (b.allowLaser !== false
+      && ram.u8(opt + OPT.angle) === 0) {                   // $24C346 tst.b/beq
     // ---- $24C368: **THE BEAM**, not "the pods-stowed path". -----------------
     // `src/options.js` carried that name from wave 12 until W37 §3.3 retired
     // it: this is the second half of the laser and it was unreachable in every
@@ -901,25 +954,26 @@ function fireSpawn(ram, ctx, b, spawn) {
  * ship-select arm is a no-op is a property of the cartridge and not of the port.
  */
 function podShotSpawn(ram, ctx, b) {
-  const { opt, player, d7 } = b;
-  const table = d7 ? 0x810572 : 0x810c32;                  // $24D484 / $24D494
+  const { opt, player } = b;
+  const resources = optionShotResources(b);
+  const table = resources.pool;                              // $24D484 / $24D494
   // $24D48A movea.l $8127E8,A1 / $24D4B2 move.w (A1),D4 -- a ROM pointer held
   // in RAM.  MEASURED $255278 in the shipped seed.
-  const cursor = ram.u32(d7 ? 0x8127e8 : 0x8127f0);        // $24D48A / $24D49A
+  const cursor = ram.u32(resources.countPointer);            // $24D48A / $24D49A
   const a3 = table + 0x150;                                // $24D4AE/$24D4B0
   let d4 = ctx.rom.u16(cursor);                            // $24D4B2 move.w
   const d5sel = ram.u16(player + P.shipSel);               // $24D4B4 move.w
   let d0 = u16(d5sel * 4);                                 // $24D4BA/$24D4BC
   if (ram.btst8(player + P.flags1, 0)) {                   // $24D4BE btst #0
     d0 = u16(d0 + 4);                                      // $24D4C6 addq.w #4
-    d4 = ctx.rom.u16(0x24d47c + i16(d5sel));               // $24D4C8/$24D4CC
+    d4 = ctx.rom.u16(resources.hyperCounts + i16(d5sel));      // $24D4C8/$24D4CC
   }
   // $24D4D0 tst.w $81308C / bne / cmpi.w #$4,D4 / bls / moveq #$4,D4
-  if (ram.u16(0x81308c) === 0 && d4 > 4) d4 = 4;
+  if (ram.u16(resources.gate308c) === 0 && d4 > 4) d4 = 4;
   let d5 = d4;                                             // $24D4E0 move.w
-  let a1 = ctx.rom.u32(ctx.rom.u32(0x24d2fc + i16(d0))     // $24D4EA/$24D4F8
+  let a1 = ctx.rom.u32(ctx.rom.u32(resources.formation2PrimaryTable + i16(d0))
     + i16(u16(ram.u16(player + 0x20) * 2)));
-  let a2 = ctx.rom.u32(ctx.rom.u32(0x24d35c + i16(d0))     // $24D4EE/$24D4FC
+  let a2 = ctx.rom.u32(ctx.rom.u32(resources.formation2SecondaryTable + i16(d0))
     + i16(u16(ram.u16(player + 0x20) * 2)));
 
   const phase = (off) => {                                 // $24D500 / $24D510
@@ -991,7 +1045,7 @@ function writeShot24D530(ram, ctx, b, a0, src, pod, d6, d7ph) {
   // $24D56A lea (-$2c,A0),A6 / $24D56E jsr $23D88E -- 44 bytes written, and
   // $23D88E is the QUEUE's own record enqueue (bucket 0, $80397C/$80AFC0), the
   // same fourteen instructions `enqueueRequest` already ports.
-  enqueueRequest(ram, 0, a0);                              // $24D56E jsr $23D88E
+  emitPodShotRequest(ram, b, a0);                           // $24D56E jsr $23D88E
   return s;                                                // 38 template bytes read
 }
 
@@ -1028,9 +1082,10 @@ function writePodShot(ram, ctx, b, table, count, src, pod, d6, d7ph) {
  * `$24D6C6 lea ($20,A6),A6` is undone before the `rts`.
  */
 function podShotSpawn24D5DA(ram, ctx, b) {
-  const { opt, player, d7 } = b;
-  const table = d7 ? 0x810572 : 0x810c32;                  // $24D5DE / $24D5EE
-  const cursor = ram.u32(d7 ? 0x8127e8 : 0x8127f0);        // $24D5E4 / $24D5F4
+  const { opt, player } = b;
+  const resources = optionShotResources(b);
+  const table = resources.pool;                              // $24D5DE / $24D5EE
+  const cursor = ram.u32(resources.countPointer);            // $24D5E4 / $24D5F4
   // $24D5FA move.w #$450,D0 / tst.w ($58,A4) / beq / move.w #$450,D0 -- BOTH arms
   // load $450 ($30 * 23), exactly as $24D4A4's two arms both load $150 ($30 * 7).
   // Transcribed WITH the branch: a ship-select arm that is a no-op is a property
@@ -1049,11 +1104,11 @@ function podShotSpawn24D5DA(ram, ctx, b) {
     // $24D638 lea ($24D47C,PC),A1 / move.w (A1,D5.w),D4 -- indexed by the ship
     // SELECTOR itself, not by selector*4, which is why $24D47C is only four bytes
     // wide and why the selector must be EVEN (0 or 2).
-    d4 = u16(ctx.rom.u16(POD_HYPER_COUNTS + i16(d5sel)) + 2);   // $24D63C/$24D640
+    d4 = u16(ctx.rom.u16(resources.hyperCounts + i16(d5sel)) + 2);   // $24D63C/$24D640
   }
-  if (ram.u16(0x81308c) === 0 && d4 > 4) d4 = 4;           // $24D642..$24D650
+  if (ram.u16(resources.gate308c) === 0 && d4 > 4) d4 = 4;           // $24D642..$24D650
   const d5 = d4;                                           // $24D652 move.w D4,D5
-  const a1 = ctx.rom.u32(ctx.rom.u32(POD_SPAWN_PTRS[4] + i16(d0))   // $24D654/$24D658
+  const a1 = ctx.rom.u32(ctx.rom.u32(resources.formation4Table + i16(d0))
     + i16(u16(ram.u16(player + 0x20) * 2)));               // $24D65C..$24D662
   const first = freeSlot24D520(ram, a0, d4);               // $24D666..$24D672
   if (first.addr === null) return;                         // $24D672 bra $24D6CC
@@ -1133,7 +1188,7 @@ function writeRotShot24D6D2(ram, ctx, b, a0, tmpl, pod, d6, d7ph) {
     ram.setU8(a0 + 0x1b, -ram.i8(a0 + 0x1b) & 0xff);       // $24D73E neg.b (-$11,A0)
     ram.setU8(a0 + 0x1c, ram.u8(a0 + 0x1c) | 0x40);        // $24D742 ori.b #$40,(-$10,A0)
   }
-  enqueueRequest(ram, 0, a0);                              // $24D748/$24D74C jsr $23D88E
+  emitPodShotRequest(ram, b, a0);                           // $24D748/$24D74C jsr $23D88E
   ram.setU16(a0 + 0x04, u16(ram.u16(a0 + 0x04) + d1));     // $24D752 add.w D1,($4,A6)
 }
 
@@ -1158,9 +1213,10 @@ function writeRotShot24D6D2(ram, ctx, b, a0, tmpl, pod, d6, d7ph) {
  * transcribed, not tidied.
  */
 function podShotSpawn24D75C(ram, ctx, b) {
-  const { opt, player, d7 } = b;
-  const table = d7 ? 0x810572 : 0x810c32;                  // $24D760 / $24D770
-  const cursor = ram.u32(d7 ? 0x8127e8 : 0x8127f0);        // $24D766 / $24D776
+  const { opt, player } = b;
+  const resources = optionShotResources(b);
+  const table = resources.pool;                              // $24D760 / $24D770
+  const cursor = ram.u32(resources.countPointer);            // $24D766 / $24D776
   // $24D77C move.w #$150,D0 / tst.w ($58,A4) / beq / move.w #$150,D0 -- both arms,
   // and D0 is DEAD in both: $24D78C overwrites it unread. Written out so a reader
   // can see the whole branch is here and was not dropped.
@@ -1170,11 +1226,11 @@ function podShotSpawn24D75C(ram, ctx, b) {
   let d0 = u16(d5sel * 4);                                 // $24D790..$24D794
   if (ram.btst8(player + P.flags1, 0)) {                   // $24D796 btst #$0,($1,A4)
     d0 = u16(d0 + 4);                                      // $24D79E addq.w #4
-    d4 = ctx.rom.u16(POD_HYPER_COUNTS + i16(d5sel));       // $24D7A0/$24D7A4
+    d4 = ctx.rom.u16(resources.hyperCounts + i16(d5sel));     // $24D7A0/$24D7A4
   }
-  if (ram.u16(0x81308c) === 0 && d4 > 4) d4 = 4;           // $24D7A8..$24D7B6
+  if (ram.u16(resources.gate308c) === 0 && d4 > 4) d4 = 4;  // $24D7A8..$24D7B6
   d4 = u16(u16(d4 * 2) + 1);                               // $24D7B8/$24D7BA
-  let a1 = ctx.rom.u32(ctx.rom.u32(POD_SPAWN_PTRS[6] + i16(d0))   // $24D7BC/$24D7C0
+  let a1 = ctx.rom.u32(ctx.rom.u32(resources.formation6Table + i16(d0))
     + i16(u16(ram.u16(player + 0x20) * 2)));               // $24D7C4..$24D7CA
   // $24D7CE..$24D7EC -- the phases are stepped ONCE here and SHARED by both pods,
   // the way $24D480 does it and the way $24D5DA does NOT.

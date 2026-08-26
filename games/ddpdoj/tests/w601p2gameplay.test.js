@@ -94,17 +94,24 @@ function liveRecords(ram, table) {
   return out;
 }
 
-test('W601 both ship shot spawns allocate exclusively from the P2 pool',
+test('W601 native owner 1 uses only P2 shots and logical owner 2 never aliases it',
   { skip: SKIP }, () => {
     for (const [ship, spawn] of [[0, spawnShot], [2, spawnShotTypeB]]) {
-      for (const player of [1, 2]) {
-        const ram = new Ram();
-        seedPlayerShot(ram, RAM.player2, 2);
-        spawn(ram, ROM, RAM.player2, { soundPost() {} }, { player });
-        assert.equal(liveRecords(ram, SHOT.p1Table).length, 0,
-          `ship ${ship}, side ${player} leaves every P1 shot slot untouched`);
-        assert.equal(liveRecords(ram, SHOT.p2Table).length, 2,
-          `ship ${ship}, side ${player} allocates both authentic muzzles in the P2 table`);
-      }
+      const ram = new Ram();
+      seedPlayerShot(ram, RAM.player2, 2);
+      spawn(ram, ROM, RAM.player2, { soundPost() {} }, { player: 1 });
+      assert.equal(liveRecords(ram, SHOT.p1Table).length, 0,
+        `ship ${ship}, owner 1 leaves every P1 shot slot untouched`);
+      assert.equal(liveRecords(ram, SHOT.p2Table).length, 2,
+        `ship ${ship}, owner 1 allocates both authentic muzzles in the P2 table`);
+
+      const rejected = new Ram();
+      seedPlayerShot(rejected, RAM.player2, 2);
+      assert.throws(
+        () => spawn(rejected, ROM, RAM.player2, { soundPost() {} }, { player: 2 }),
+        /native shot owner 2 is outside \{0, 1\}/,
+      );
+      assert.equal(liveRecords(rejected, SHOT.p1Table).length, 0);
+      assert.equal(liveRecords(rejected, SHOT.p2Table).length, 0);
     }
   });

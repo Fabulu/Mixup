@@ -103,51 +103,95 @@ export const SHOT_HANDLERS_SEEN = new Map([
   [0x253bda, 3842 + 169 + 12], [0x253ec6, 2585 + 1285 + 165],
 ]);
 
+export const NATIVE_SHOT_DRIVER_RESOURCES = Object.freeze([
+  Object.freeze({
+    ownerIndex: 0, pool: SHOT.p1Table, player: SHOT.p1Rec,
+    slots: SHOT.slots, stride: SHOT.stride, scrollDelta: SHOT.scrollDelta,
+    liveCounter: SHOT.liveCount, presentationSink: null, requestTelemetry: true,
+  }),
+  Object.freeze({
+    ownerIndex: 1, pool: SHOT.p2Table, player: SHOT.p2Rec,
+    slots: SHOT.slots, stride: SHOT.stride, scrollDelta: SHOT.scrollDelta,
+    liveCounter: SHOT.liveCount, presentationSink: null, requestTelemetry: true,
+  }),
+]);
+
+function validateDriverResources(resources) {
+  if (!resources || !Number.isSafeInteger(resources.ownerIndex)
+      || !Number.isSafeInteger(resources.pool) || !Number.isSafeInteger(resources.player)
+      || !Number.isSafeInteger(resources.scrollDelta)) {
+    throw new TypeError('shot driver resources must supply owner, pool, player, and scroll');
+  }
+  if (resources.slots !== SHOT.slots || resources.stride !== SHOT.stride) {
+    throw new RangeError(`shot driver pool must be ${SHOT.slots} records of $${
+      SHOT.stride.toString(16)} bytes`);
+  }
+  if (resources.liveCounter !== null
+      && !Number.isSafeInteger(resources.liveCounter)) {
+    throw new TypeError('shot driver live counter must be an address or null');
+  }
+  if (resources.presentationSink !== null
+      && typeof resources.presentationSink !== 'function') {
+    throw new TypeError('shot driver presentation sink must be a function or null');
+  }
+  if (typeof resources.requestTelemetry !== 'boolean') {
+    throw new TypeError('shot driver request telemetry policy must be Boolean');
+  }
+  return resources;
+}
+
+function driveShotPool(ram, rom, handlers, ctx, resources, scroll) {
+  const handlerCtx = resources.presentationSink == null
+    ? ctx : { ...ctx, shotPresentationSink: resources.presentationSink };
+  let processed = 0;
+  for (let i = 0; i < resources.slots; i++) {
+    const rec = resources.pool + i * resources.stride;
+    const t = ram.u16(rec);
+    if (t === 0) continue;
+    if (resources.liveCounter != null) {
+      ram.setU16(resources.liveCounter, u16(ram.u16(resources.liveCounter) + 1));
+    }
+    ram.setU16(rec + 4, u16(i16(ram.u16(rec + 4)) - scroll));
+    const h = SHOT_HANDLERS[t & 0xf];
+    const fn = handlers?.get(h);
+    if (!fn) {
+      unreached(h, `player-shot handler $${h.toString(16).toUpperCase()} `
+        + `(dispatch entry [${t & 0xf}] of the 16 at $253ADE), for the record `
+        + `at $${rec.toString(16).toUpperCase()} with type word `
+        + `$${t.toString(16).toUpperCase()}. Wave 5 measured only FOUR of the `
+        + `sixteen reached in the stage-1 opening ($253B1E $253E34 $253BDA `
+        + `$253EC6), while W497's shotHandlers() supplies every cartridge `
+        + `entry. Reaching this fallback means the caller passed an incomplete `
+        + `handler map`);
+    }
+    const q0 = resources.requestTelemetry ? ram.u16(0x80afd6) : 0;
+    fn(ram, rom, rec, handlerCtx, resources.player, t & 0xff);
+    if (resources.requestTelemetry) {
+      ctx?.shotRequests?.(resources.ownerIndex, i, q0, ram.u16(0x80afd6));
+    }
+    processed++;
+  }
+  return processed;
+}
+
+/** Drive one explicitly bound ordinary-shot pool. */
+export function runShotPool(ram, rom, handlers, ctx, suppliedResources) {
+  const resources = validateDriverResources(suppliedResources);
+  const scroll = i16(ram.u16(resources.scrollDelta));
+  return driveShotPool(ram, rom, handlers, ctx, resources, scroll);
+}
+
 /**
  * $253A70 -- one pass of the player-shot driver, both players.
  * @param handlers Map from handler ROM address to fn(ram, rec, slot, player, ctx)
  */
 export function runShotDriver(ram, rom, handlers, ctx) {
   ram.setU16(SHOT.liveCount, 0);                        // $253A7C
-  const scroll = i16(ram.u16(SHOT.scrollDelta));        // $253A76
+  const scroll = i16(ram.u16(SHOT.scrollDelta));        // $253A76 move.w $813176,D6
   let processed = 0;
-  for (let pl = 0; pl < 2; pl++) {                      // $253AD4 dbra D6 (high)
-    const base = pl === 0 ? SHOT.p1Table : SHOT.p2Table;
-    const prec = pl === 0 ? SHOT.p1Rec : SHOT.p2Rec;    // $253A86 / $253AC6, A4
-    for (let i = 0; i < SHOT.slots; i++) {              // $253A9A / $253AC2
-      const rec = base + i * SHOT.stride;               // $253ABE
-      const t = ram.u16(rec);                           // $253A9C move.w (A6),D1
-      if (t === 0) continue;                            // $253A9E beq
-      ram.setU16(SHOT.liveCount, u16(ram.u16(SHOT.liveCount) + 1));  // $253AA0
-      // $253AA6 -- every live shot is pulled by the scroll BEFORE its handler
-      // runs.  This is the instruction the wave-5 census hooks.
-      ram.setU16(rec + 4, u16(i16(ram.u16(rec + 4)) - scroll));
-      const h = SHOT_HANDLERS[t & 0xf];                 // $253AAA..$253ABA
-      const fn = handlers?.get(h);
-      if (!fn) {
-        unreached(h, `player-shot handler $${h.toString(16).toUpperCase()} `
-          + `(dispatch entry [${t & 0xf}] of the 16 at $253ADE), for the record `
-          + `at $${rec.toString(16).toUpperCase()} with type word `
-          + `$${t.toString(16).toUpperCase()}. Wave 5 measured only FOUR of the `
-          + `sixteen reached in the stage-1 opening ($253B1E $253E34 $253BDA `
-          + `$253EC6), while W497's shotHandlers() supplies every cartridge `
-          + `entry. Reaching this fallback means the caller passed an incomplete `
-          + `handler map`);
-      }
-      // $253ABC jsr (A0).  D1 is the type word AS READ AT $253A9C -- the
-      // handlers test its low byte with `tst.b D1` AFTER they have already
-      // modified the record, so passing the stale value is the translation.
-      //
-      // The bucket offsets this ONE slot appends are bracketed so the gate can
-      // tell the player's own sprite requests apart from the option pods',
-      // which land in the same bucket from slots 0..12.  Reading $80AFD6 is not
-      // an instrumentation hook the ROM lacks: it is the same word $23F3B4
-      // reads to find where to write.
-      const q0 = ram.u16(0x80afd6);
-      fn(ram, rom, rec, ctx, prec, t & 0xff);
-      ctx?.shotRequests?.(pl, i, q0, ram.u16(0x80afd6));
-      processed++;
-    }
+  for (const suppliedResources of NATIVE_SHOT_DRIVER_RESOURCES) {
+    const resources = validateDriverResources(suppliedResources);
+    processed += driveShotPool(ram, rom, handlers, ctx, resources, scroll);
   }
   return processed;
 }

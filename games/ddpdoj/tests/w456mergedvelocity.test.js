@@ -529,7 +529,7 @@ test('SECTION 6: source census has one implementation and preserves every A5/A6 
     'player update retains its caller-specific D2/D3 continuation');
 });
 
-test('SECTION 6b: registers reconcile to 16 narrow, 71 widened, 27 pairs and 21 body-only', () => {
+test('SECTION 6b: registers reconcile to 17 narrow, 72 widened, 27 pairs and 21 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -545,9 +545,11 @@ test('SECTION 6b: registers reconcile to 16 narrow, 71 widened, 27 pairs and 21 
     'items.js applyItemVelocity <> options.js podKnockback24D188',
     'items.js applyItemVelocity <> player.js updatePlayer',
   ];
-  assert.equal(narrow.length, 16, 'W497 registers the authentic-selection adapter at $2491C0');
-  assert.equal(heads.length, 71,
-    'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate');
+  assert.equal(narrow.length, 17,
+    'W497 registers $2491C0; W614 registers the separately named $2497AA shot adapters');
+  assert.equal(heads.length, 72,
+    'W475 left 68; W497 adds three rows; Hibachi removes W554 $2A54E2; W614 registers '
+    + 'the documented $249D2C native Type-B facade/resource implementation split');
   assert.equal(pairs.length, 27,
     'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
   const visibleHeads = new Set();

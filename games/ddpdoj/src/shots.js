@@ -104,6 +104,60 @@ export const SPAWN = {
  */
 export const PLAYER_SLOTS = { primary: [14, 18], secondary: [21, 25] };
 
+export const NATIVE_SHOT_RESOURCES = Object.freeze([
+  Object.freeze({
+    ownerIndex: 0,
+    pool: SHOT.p1Table,
+    slots: SHOT.slots,
+    stride: SHOT.stride,
+    countPointer: SPAWN.countPtrP1,
+    gate308c: SPAWN.gate308c,
+    primaryTable: SPAWN.ptrPrimary,
+    secondaryTable: SPAWN.ptrSecondary,
+    typeBTable: SPAWN.ptrTypeB,
+    soundPolicy: 'native',
+  }),
+  Object.freeze({
+    ownerIndex: 1,
+    pool: SHOT.p2Table,
+    slots: SHOT.slots,
+    stride: SHOT.stride,
+    countPointer: SPAWN.countPtrP2,
+    gate308c: SPAWN.gate308c,
+    primaryTable: SPAWN.ptrPrimary,
+    secondaryTable: SPAWN.ptrSecondary,
+    typeBTable: SPAWN.ptrTypeB,
+    soundPolicy: 'native',
+  }),
+]);
+
+function validateShotResources(resources) {
+  if (!resources || !Number.isSafeInteger(resources.ownerIndex)
+      || !Number.isSafeInteger(resources.pool)
+      || !Number.isSafeInteger(resources.countPointer)
+      || !Number.isSafeInteger(resources.gate308c)
+      || !Number.isSafeInteger(resources.primaryTable)
+      || !Number.isSafeInteger(resources.secondaryTable)
+      || !Number.isSafeInteger(resources.typeBTable)) {
+    throw new TypeError('ordinary-shot resources must supply owner, pool, counters, and cartridge tables');
+  }
+  if (resources.slots !== SHOT.slots || resources.stride !== SHOT.stride) {
+    throw new RangeError(`ordinary-shot pool must be ${SHOT.slots} records of $${
+      SHOT.stride.toString(16)} bytes`);
+  }
+  if (resources.soundPolicy !== 'native' && resources.soundPolicy !== 'silent') {
+    throw new TypeError('ordinary-shot resources require a native or silent sound policy');
+  }
+  return resources;
+}
+
+function nativeShotResources(player) {
+  if (player !== 0 && player !== 1) {
+    throw new RangeError(`native shot owner ${player} is outside {0, 1}`);
+  }
+  return NATIVE_SHOT_RESOURCES[player];
+}
+
 const CONVERTED_SHOT_SPEED = 0x0400;
 
 /**
@@ -213,10 +267,17 @@ function failPlayerShotAllocation(ram, prec) {
   ram.bclr8(prec + P.state, 3);
 }
 
-function postPlayerShotSound(ram, prec, ctx, normalRequest, hyper) {
+function postPlayerShotSound(ram, prec, ctx, normalRequest, hyper, resources) {
   if (ram.u8(prec + PS.soundGate) !== 0) return;
   ram.setU8(prec + PS.soundGate, 2);
-  ctx?.soundPost?.(hyper ? 0x28c3ee : normalRequest);
+  if (resources.soundPolicy === 'native') {
+    ctx?.soundPost?.(hyper ? 0x28c3ee : normalRequest);
+  }
+}
+
+function noteShotSpawn(resources, ctx, kind, ...records) {
+  if (resources.spawnEvent) resources.spawnEvent(kind, ...records);
+  else ctx?.shotSpawn?.(kind, ...records);
 }
 
 /**
@@ -224,13 +285,18 @@ function postPlayerShotSound(ram, prec, ctx, normalRequest, hyper) {
  * table at the end of the player's cadence machine.
  */
 export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
-  const base = player !== 0 ? SHOT.p2Table : SHOT.p1Table;           // $249BFC/$249C0E
-  const countPointer = player !== 0 ? SPAWN.countPtrP2 : SPAWN.countPtrP1;
+  return spawnShotWithResources(ram, rom, prec, ctx, nativeShotResources(player));
+}
+
+/** Resource-bound `$249BFC`; private owners never pass through a P1/P2 selector. */
+export function spawnShotWithResources(ram, rom, prec, ctx, suppliedResources) {
+  const resources = validateShotResources(suppliedResources);
+  const base = resources.pool;
   const hyper = ram.btst8(prec + P.flags1, 0) === 1;                // $249C1C
 
   // $249C1A `move.w (A2),D7` -- the scan LENGTH, a ROM word behind a RAM
   // pointer.  $249C24 overrides it with 6 for hyper shots.
-  const countPtr = ram.u32(countPointer);                            // $249C02/$249C14
+  const countPtr = ram.u32(resources.countPointer);                  // $249C02/$249C14
   let d7 = hyper ? 6 : rom.u16(countPtr);                           // $249C24
 
   const form = u16(ram.u16(prec + PS.formation));                   // $249C28
@@ -240,14 +306,14 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
   let d0 = u16((form - 2) << 2);                                    // $249C2C
   if (hyper) d0 = u16(d0 + 4);                                      // $249C3A
   const d5 = d0;                                                    // $249C3C
-  const primary = rom.u32(rom.u32(SPAWN.ptrPrimary + d0)            // $249C3E
+  const primary = rom.u32(rom.u32(resources.primaryTable + d0)       // $249C3E
     + u16(ram.u16(prec + PS.power)) * 2);                           // $249C48
 
   // $249CC8: style 4 uses one scan beginning at slot 9 and the tail filler.
   if (form === 4) {
     let a0 = base + 0x1b0;
     d7 = u16(d7 + 2);
-    if (ram.u16(SPAWN.gate308c) === 0 && d7 > 4) d7 = 4;
+    if (ram.u16(resources.gate308c) === 0 && d7 > 4) d7 = 4;
     let found = false;
     for (let i = 0; i <= d7; i++) {
       if ((ram.u16(a0) & 0x8000) === 0) { found = true; break; }
@@ -255,12 +321,12 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
     }
     if (!found) {
       failPlayerShotAllocation(ram, prec);                          // $249CEA..$249CFC
-      ctx?.shotSpawn?.('single-full', a0);
+      noteShotSpawn(resources, ctx, 'single-full', a0);
       return;
     }
     fillShotRecord(ram, rom, a0, primary, prec, true);              // $249D00
-    ctx?.shotSpawn?.('single', a0);
-    postPlayerShotSound(ram, prec, ctx, 0x28c3ba, hyper);
+    noteShotSpawn(resources, ctx, 'single', a0);
+    postPlayerShotSound(ram, prec, ctx, 0x28c3ba, hyper, resources);
     return;
   }
 
@@ -268,7 +334,7 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
   let a4 = base + SPAWN.secondaryOffset;                            // $249C60
   // $249C64 -- $81308C caps the scan at four slots.  A FROZEN global: the port
   // reads the seed's value and never writes it.
-  if (ram.u16(SPAWN.gate308c) === 0 && d7 > 3) d7 = 3;              // $249C6C
+  if (ram.u16(resources.gate308c) === 0 && d7 > 3) d7 = 3;            // $249C6C
   const d6 = d7;                                                    // $249C74
 
   let found = -1;                                                   // $249C76
@@ -278,11 +344,11 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
   }
   if (found >= 0) {
     fillShotRecord(ram, rom, a0, primary, prec);                    // $249C84
-    ctx?.shotSpawn?.('primary', a0);
+    noteShotSpawn(resources, ctx, 'primary', a0);
   }
 
   // $249C88 -- the SECOND table runs whether or not the first found a slot.
-  const secondary = rom.u32(rom.u32(SPAWN.ptrSecondary + d5)        // $249C88
+  const secondary = rom.u32(rom.u32(resources.secondaryTable + d5)   // $249C88
     + u16(ram.u16(prec + PS.power)) * 2);                           // $249C92
   let found2 = -1;                                                  // $249C9C
   for (let i = 0; i <= d6; i++) {
@@ -291,25 +357,30 @@ export function spawnShot(ram, rom, prec, ctx, { player = 0 } = {}) {
   }
   if (found2 >= 0) {
     fillShotRecord(ram, rom, a4, secondary, prec, true);            // $249CC2
-    ctx?.shotSpawn?.('secondary', a4);
+    noteShotSpawn(resources, ctx, 'secondary', a4);
   } else {
     // $249CA8 -- THE FEEDBACK wave 5 named: no free secondary slot clears the
     // cadence counter and bit 3, so the shot table's occupancy is an INPUT to
     // the player record and not merely an effect of it.
     failPlayerShotAllocation(ram, prec);                            // $249CA8..$249CB4
-    ctx?.shotSpawn?.('secondary-full', a4);
+    noteShotSpawn(resources, ctx, 'secondary-full', a4);
     if (found < 0) return;                     // $249CB8 tst.w D7 / bmi $249E4E
   }
 
-  postPlayerShotSound(ram, prec, ctx, 0x28c3ba, hyper);             // $249D04..$249D26
+  postPlayerShotSound(ram, prec, ctx, 0x28c3ba, hyper, resources);    // $249D04..$249D26
 }
 
 /** `$249D2C..$249E4C`: the ship-selector-2 player shot spawn. */
 export function spawnShotTypeB(ram, rom, prec, ctx, { player = 0 } = {}) {
-  const base = player !== 0 ? SHOT.p2Table : SHOT.p1Table;
-  const countPointer = player !== 0 ? SPAWN.countPtrP2 : SPAWN.countPtrP1;
+  return spawnShotTypeBWithResources(ram, rom, prec, ctx, nativeShotResources(player));
+}
+
+/** Resource-bound `$249D2C`; kept separate from the ship-0 cartridge arm. */
+export function spawnShotTypeBWithResources(ram, rom, prec, ctx, suppliedResources) {
+  const resources = validateShotResources(suppliedResources);
+  const base = resources.pool;
   const hyper = ram.btst8(prec + P.flags1, 0) === 1;                // $249D4C
-  const countPtr = ram.u32(countPointer);
+  const countPtr = ram.u32(resources.countPointer);
   let d7 = hyper ? 6 : rom.u16(countPtr);                           // $249D4A..$249D54
   const form = u16(ram.u16(prec + PS.formation));
   if (form !== 2 && form !== 4 && form !== 6) {
@@ -317,13 +388,13 @@ export function spawnShotTypeB(ram, rom, prec, ctx, { player = 0 } = {}) {
   }
   let d0 = u16((form - 2) << 2);                                    // $249D58..$249D60
   if (hyper) d0 = u16(d0 + 4);                                      // $249D62..$249D6A
-  const template = rom.u32(rom.u32(SPAWN.ptrTypeB + d0)
+  const template = rom.u32(rom.u32(resources.typeBTable + d0)
     + u16(ram.u16(prec + PS.power)) * 2);                           // $249D6C..$249D7C
 
   if (form === 4) {
     let rec = base + 0x1b0;                                         // $249DF4
     d7 = u16(d7 + 2);
-    if (ram.u16(SPAWN.gate308c) === 0 && d7 > 4) d7 = 4;
+    if (ram.u16(resources.gate308c) === 0 && d7 > 4) d7 = 4;
     let found = false;
     for (let i = 0; i <= d7; i++) {
       if ((ram.u16(rec) & 0x8000) === 0) { found = true; break; }
@@ -331,18 +402,18 @@ export function spawnShotTypeB(ram, rom, prec, ctx, { player = 0 } = {}) {
     }
     if (!found) {
       failPlayerShotAllocation(ram, prec);                          // $249E16..$249E26
-      ctx?.shotSpawn?.('type-b-single-full', rec);
+      noteShotSpawn(resources, ctx, 'type-b-single-full', rec);
       return;
     }
     fillShotRecord(ram, rom, rec, template, prec, true);            // $249E28
-    ctx?.shotSpawn?.('type-b-single', rec);
-    postPlayerShotSound(ram, prec, ctx, 0x28c3d4, hyper);
+    noteShotSpawn(resources, ctx, 'type-b-single', rec);
+    postPlayerShotSound(ram, prec, ctx, 0x28c3d4, hyper, resources);
     return;
   }
 
   let rec = base + SPAWN.primaryOffset;                             // $249D8A
   d7 = u16(d7 * 2 + 1);                                             // $249D8E/$249D90
-  if (ram.u16(SPAWN.gate308c) === 0 && d7 > 7) d7 = 7;
+  if (ram.u16(resources.gate308c) === 0 && d7 > 7) d7 = 7;
   let first = null;
   for (;;) {
     if ((ram.u16(rec) & 0x8000) === 0) { first = rec; break; }
@@ -352,7 +423,7 @@ export function spawnShotTypeB(ram, rom, prec, ctx, { player = 0 } = {}) {
   }
   if (first === null) {
     failPlayerShotAllocation(ram, prec);                            // $249DAE..$249DC0
-    ctx?.shotSpawn?.('type-b-pair-full', rec);
+    noteShotSpawn(resources, ctx, 'type-b-pair-full', rec);
     return;
   }
 
@@ -366,7 +437,7 @@ export function spawnShotTypeB(ram, rom, prec, ctx, { player = 0 } = {}) {
   }
   if (second === null) {
     failPlayerShotAllocation(ram, prec);                            // $249DD2..$249DE4
-    ctx?.shotSpawn?.('type-b-pair-full', rec);
+    noteShotSpawn(resources, ctx, 'type-b-pair-full', rec);
     return;
   }
 
@@ -374,11 +445,21 @@ export function spawnShotTypeB(ram, rom, prec, ctx, { player = 0 } = {}) {
   // advanced cursor, so the paired Type-B muzzles use adjacent templates.
   fillShotRecord(ram, rom, second, template, prec);                 // $249DE8
   fillShotRecord(ram, rom, first, template + 0x26, prec, true);     // $249DEE
-  ctx?.shotSpawn?.('type-b-pair', first, second);
-  postPlayerShotSound(ram, prec, ctx, 0x28c3d4, hyper);             // $249E2C..$249E4C
+  noteShotSpawn(resources, ctx, 'type-b-pair', first, second);
+  postPlayerShotSound(ram, prec, ctx, 0x28c3d4, hyper, resources);    // $249E2C..$249E4C
 }
 
 // ---------------------------------------------------------------- handlers
+
+function emitShotSprite(ram, rec, ctx) {
+  if (ctx?.shotPresentationSink != null) {
+    if (typeof ctx.shotPresentationSink !== 'function') {
+      throw new TypeError('shot presentation sink must be a function');
+    }
+    return ctx.shotPresentationSink(ram, rec);
+  }
+  return enqueueShotSprite(ram, rec);
+}
 //
 // The four are ONE routine with four entry points: $253BDA and $253EC6 are
 // literally instructions inside $253B1E's and $253E34's bodies.  They are
@@ -482,12 +563,12 @@ function firstHit(ram, rom, rec, ctx, v, prec) {
   // ($22,A6) AND ($24,A6) -- the animation index the very next instruction
   // decrements.  Reading it as a word leaves the index stale.
   ram.setU32(rec + S.anim2, rom.u32(a0 + 10));                      // $253C90/$253F4E
-  return laterHit(ram, rom, rec, v);                                // $253C94 bra $253BE4
+  return laterHit(ram, rom, rec, v, ctx);                             // $253C94 bra $253BE4
 }
 
 /** `$253BE4..$253C0E` / `$253ED0..$253EEC` -- EVERY hit after the first, and
  *  the tail the first one falls into. */
-function laterHit(ram, rom, rec, v) {
+function laterHit(ram, rom, rec, v, ctx) {
   const n = subqBorrow(ram.u16(rec + S.animIdx), 4);                // $253BE4/$253ED0
   ram.setU16(rec + S.animIdx, n.v);
   if (n.borrow) { ram.setU16(rec, 0); return; }                     // $253BE8 bcs $253B90
@@ -499,7 +580,7 @@ function laterHit(ram, rom, rec, v) {
   }
   const p = ram.u32(rec + S.animPtr);                               // $253BFA/$253ED8
   ram.setU32(rec + S.dlWord23, rom.u32(p + i16(ram.u16(rec + S.animIdx))));
-  enqueueShotSprite(ram, rec);                                      // $253C08/$253EE6
+  emitShotSprite(ram, rec, ctx);                                      // $253C08/$253EE6
 }
 
 /** `$253BDE` (entries [0]/[8]) and `$253ECA` ([2]/[10]) -- the fork. */
@@ -512,11 +593,11 @@ function hitPath(ram, rom, rec, ctx, site, prec) {
   if (ram.bset8(rec + S.type, 1) === 0) {                           // $253BDE/$253ECA
     return firstHit(ram, rom, rec, ctx, v, prec);                   // beq -> $253C10
   }
-  return laterHit(ram, rom, rec, v);                                // bne -> $253BE4
+  return laterHit(ram, rom, rec, v, ctx);                             // bne -> $253BE4
 }
 
 /** $253B94..$253BD8 -- $253B1E's move / clamp / re-point / enqueue tail. */
-function body253B94(ram, rom, rec) {
+function body253B94(ram, rom, rec, ctx) {
   ram.setU16(rec + S.posY,                                          // $253B9A
     u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
   // $253B9E `cmpi.w #-$8000,($2,A6) / bcc $253B90` -- an UNSIGNED compare, so
@@ -533,14 +614,14 @@ function body253B94(ram, rom, rec) {
   ram.setU32(rec + S.dlWord23, rom.u32(p + i16(ram.u16(rec + S.animIdx))));
   const n = subqBorrow(ram.u16(rec + S.animIdx), 4);                // $253BC6
   ram.setU16(rec + S.animIdx, n.borrow ? 4 : n.v);                  // $253BCC
-  enqueueShotSprite(ram, rec);                                      // $253BD2
+  emitShotSprite(ram, rec, ctx);                                      // $253BD2
 }
 
 /** $253B1E -- dispatch entry [0]. */
 export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
   if (ram.bset8(rec + S.lowByte, 6) === 0) {                        // $253B1E
     ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);     // $253B3A
-    return enqueueShotSprite(ram, rec);                             // $253B40
+    return emitShotSprite(ram, rec, ctx);                             // $253B40
   }
   if (ram.bset8(rec + 0x00, 0) === 0) {                             // $253B26
     // $253B2C `movem.w ($30,A4),D0-D1` -- A4 is the PLAYER record, so a
@@ -548,7 +629,7 @@ export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
     ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + ram.u16(prec + P.velY)));
     ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + ram.u16(prec + P.velX)));
     ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);     // $253B3A
-    return enqueueShotSprite(ram, rec);
+    return emitShotSprite(ram, rec, ctx);
   }
   // $253B4A
   ram.setU16(rec, u16(ram.u16(rec) | 0x8));                         // ori.w #$8
@@ -563,18 +644,18 @@ export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
   ram.setU16(rec + S.posY,                                          // $253B84
     u16(ram.u16(rec + S.posY) + rom.u16(a0 + 6)));
   ram.bclr8(rec + 0x00, 0);                                         // $253B8A
-  body253B94(ram, rom, rec);                                        // $253B8E
+  body253B94(ram, rom, rec, ctx);                                   // $253B8E
 }
 
 /** $253BDA -- dispatch entry [8]: `tst.b D1 / bpl $253B94`. */
 export function handler253BDA(ram, rom, rec, ctx, prec, d1) {
-  if ((d1 & 0x80) === 0) return body253B94(ram, rom, rec);
+  if ((d1 & 0x80) === 0) return body253B94(ram, rom, rec, ctx);
   return hitPath(ram, rom, rec, ctx, 0x253bde, prec);
 }
 
 /** $253E96..$253EC4 -- $253E34's OWN tail.  Not $253B94's: it clamps Y against
  *  $7800 rather than $8000 and it never re-points ($a,A6). */
-function body253E96(ram, rec) {
+function body253E96(ram, rec, ctx) {
   ram.bset8(rec + 0x00, 0);                                         // $253E96
   ram.setU16(rec + S.posY,                                          // $253EA0
     u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
@@ -584,13 +665,13 @@ function body253E96(ram, rec) {
   if (u16(ram.u16(rec + S.posX) + 0x400) >= 0x4000) {               // $253EB0
     ram.setU16(rec, 0); return;
   }
-  enqueueShotSprite(ram, rec);                                      // $253EBE
+  emitShotSprite(ram, rec, ctx);                                      // $253EBE
 }
 
 /** $253E34 -- dispatch entry [2]. */
 export function handler253E34(ram, rom, rec, ctx, prec, d1) {
   if (ram.bset8(rec + S.lowByte, 6) === 0) {                        // $253E34
-    return enqueueShotSprite(ram, rec);                             // $253E42
+    return emitShotSprite(ram, rec, ctx);                             // $253E42
   }
   ram.bset8(rec + 0x00, 0);                                         // $253E3C
   ram.setU16(rec, u16(ram.u16(rec) | 0x8));                         // $253E4C
@@ -604,12 +685,12 @@ export function handler253E34(ram, rom, rec, ctx, prec, d1) {
   ram.setU16(rec + S.velX, u16(v.dx));
   ram.setU32(rec + S.dlWord23, rom.u32(ram.u32(rec + S.animPtr)));  // $253E84
   ram.bclr8(rec + 0x00, 0);                                         // $253E8C
-  body253E96(ram, rec);                                             // $253E90
+  body253E96(ram, rec, ctx);                                        // $253E90
 }
 
 /** $253EC6 -- dispatch entry [10]: `tst.b D1 / bpl $253E96`. */
 export function handler253EC6(ram, rom, rec, ctx, prec, d1) {
-  if ((d1 & 0x80) === 0) return body253E96(ram, rec);
+  if ((d1 & 0x80) === 0) return body253E96(ram, rec, ctx);
   return hitPath(ram, rom, rec, ctx, 0x253eca, prec);
 }
 
@@ -744,7 +825,7 @@ function typeBOptionHit(ram, rom, rec, ctx, prec) {
     firstHit(ram, rom, rec, ctx, TYPE_B_OPTION_HIT, prec);
     return;
   }
-  laterHit(ram, rom, rec, TYPE_B_OPTION_HIT);
+  laterHit(ram, rom, rec, TYPE_B_OPTION_HIT, ctx);
 }
 
 /** `$253F56`, dispatch entry 3 for normal Type-B option shots. */

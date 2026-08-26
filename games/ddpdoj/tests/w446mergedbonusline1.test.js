@@ -259,7 +259,7 @@ const DOUBLY_CLAIMED_UNAUDITED = Object.freeze([
   // the 122-byte cartridge span and both carry continuations.
   // W459 REMOVED $25FF38: the corrected player.js D0.W body now owns all production
   // calls, and tallyscreen.js preserves its historical name as a compatibility alias.
-  0x2417de, 0x242ec2, 0x246710, 0x24676a, 0x2491c0, 0x249ee2,
+  0x2417de, 0x242ec2, 0x246710, 0x24676a, 0x2491c0, 0x2497aa, 0x249ee2,
   0x2564f0, 0x259962, 0x263386, 0x2633be, 0x2638a6,
   0x27f6e4, 0x2875b4, 0x28f588, 0x29f9b4, 0x2a11d4,
 ]);
@@ -290,10 +290,12 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
     + 'NOTE $28D520 is ABSENT TOO: W474 made the retired ledger note address-free. '
     + '16 - 1 = 15.\n'
     + 'NOTE $2491C0 is now registered: W497 reapplies selector-derived fields to the '
-    + 'already-live browser seed, so 15 + 1 = 16.');
-  assert.equal(dup.length, 16,
-    'the register is 16 after W497 adds the declared authentic-selection adapter claim. '
-    + 'Asserted as a NUMBER as '
+    + 'already-live browser seed, so 15 + 1 = 16.\n'
+    + 'NOTE $2497AA is now registered: W614 separately names the native facade, '
+    + 'resource-bound implementation, and composed ordinary-shot path, so 16 + 1 = 17.');
+  assert.equal(dup.length, 17,
+    'the register is 17 after W497 adds the authentic-selection adapter and W614 '
+    + 'registers the separately named $2497AA shot adapters. Asserted as a NUMBER as '
     + 'well as a set, so that a scan which finds nothing cannot read as two more '
     + 'merges -- an empty dup list satisfies neither.');
 });
@@ -320,11 +322,13 @@ test('SECTION 2b: no NEW ROM address becomes claimed by two exports', () => {
 // W497 registers the authentic `$2491C0` seed adapter, two Type-B hit-flag wrapper
 // rows, and one head-visible body pair: narrow 16, widened 71, body pairs 28.
 // W554 temporarily added `$2A54E2`; later Hibachi source consolidation removed its second claim.
-test('SECTION 2c [W450/current]: the widened register is 71, so narrow 16 remains a floor', async () => {
+// W614 registers the separately named `$2497AA` shot adapters and the documented
+// `$249D2C` native/resource Type-B split: narrow 17, widened 72, body pairs 27.
+test('SECTION 2c [W450/current]: the widened register is 72, so narrow 17 remains a floor', async () => {
   const { headRegister } = await import('./w450widenedscan.js');
-  assert.equal(headRegister().length, 71,
+  assert.equal(headRegister().length, 72,
     'the WIDENED register (private functions, arrows, methods and the whole doc opening '
-    + 'span, not just `export function`) is not 71. ' + W453_NOTE
+    + 'span, not just `export function`) is not 72. ' + W453_NOTE
     + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
     + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
     + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '
@@ -332,8 +336,9 @@ test('SECTION 2c [W450/current]: the widened register is 71, so narrow 16 remain
     + 'removed both private $28C0FC counted-note adapter heads; W464 through W475 removed '
     + '$28E7A2, $28C6C6, $28F4C4/$28F666, $285A12, $2A6EDC, $23C622, '
     + '$23BF74/$23BFDB, $23E3E2, $23FF06, $240DC2, $240F62/$28D520, and $24133C adapter/helper claims; '
+    + 'W614 adds the documented $249D2C native facade/resource implementation split; '
     + 'tests/w450widenedregister.test.js SECTION 3 holds the exact set and is where a new '
-    + 'duplicate must be classified. This cross-check prevents narrow 16 being read as the total');
+    + 'duplicate must be classified. This cross-check prevents narrow 17 being read as the total');
 });
 
 // ======================================================= SECTION 3: THE STATE TRACE

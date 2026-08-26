@@ -369,6 +369,7 @@ export function makeType5(rom) {
           break;
         case TYPE5.shotDriver:                          // $28B610
           ctx.shotsProcessed = runShotDriver(ram, rom, handlers, ctx);
+          ctx.privateShotObjectHook?.();
           break;
         case TYPE5.optionObject:                        // $28B616 -> $24C096
           // The `no-option-object` mutation is wave 11's behaviour restored:

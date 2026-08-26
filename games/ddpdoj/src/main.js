@@ -527,6 +527,10 @@ export class Game {
 
   /** The context every ported routine gets.  No clock is reachable from it. */
   #ctx() {
+    const installedPrivateShotHook = /** @type {any} */ (this).privateShotObjectHook;
+    const privateShotObjectHook = installedPrivateShotHook
+      ? () => installedPrivateShotHook(this)
+      : null;
     const installedPrivateOptionHook = /** @type {any} */ (this).privateOptionObjectHook;
     const privateOptionObjectHook = installedPrivateOptionHook
       ? () => installedPrivateOptionHook(this)
@@ -551,6 +555,7 @@ export class Game {
       ...(this.playerPositionTransform
         ? { playerPositionTransform: this.playerPositionTransform } : {}),
       ...(this.objectDriverHook ? { objectDriverHook: this.objectDriverHook } : {}),
+      ...(privateShotObjectHook ? { privateShotObjectHook } : {}),
       ...(privateOptionObjectHook ? { privateOptionObjectHook } : {}),
       ...(this.enemyDeathHook ? { enemyDeathHook: this.enemyDeathHook } : {}),
       ...(this.friendlyBulletConvertHook
