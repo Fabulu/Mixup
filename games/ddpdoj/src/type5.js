@@ -390,9 +390,11 @@ export function makeType5(rom) {
           // what #9 laid down.  Any two of the three is a machine that arms and
           // never fires.
           ctx.laserSegments = runSegmentDriver(ram, ctx);
+          ctx.privateSegmentDriverHook?.();
           break;
         case TYPE5.beamDraw:                            // $28B622 -> $255042
           ctx.laserDrawn = runBeamDraw(ram, ctx);
+          ctx.privateBeamDrawHook?.();
           break;
         case TYPE5.sparkDriver:                         // $28B628 -> $28A098
           // WAVE 53.  It runs HERE, twelfth of twenty-three, and the position

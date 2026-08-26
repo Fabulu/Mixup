@@ -17,12 +17,28 @@ const P3_STYLE = 6;
 
 const TRAIL_TAPS = Object.freeze([15, 12, 9, 6, 3]);
 
+function addressBackedHistory(memory, address) {
+  if (!memory || !Number.isSafeInteger(address)) {
+    throw new TypeError('P3 render history requires memory and an exact address');
+  }
+  const history = new Array(TRAIL.entries);
+  for (let index = 0; index < TRAIL.entries; index++) {
+    Object.defineProperty(history, index, {
+      enumerable: true,
+      configurable: false,
+      get: () => memory.u32(address + index * 4),
+      set: (value) => memory.setU32(address + index * 4, value),
+    });
+  }
+  return history;
+}
+
 /** Allocate every mutable P3 render value for one Game. */
-export function createThreePilotRenderState() {
+export function createThreePilotRenderState(memory, histories) {
   return {
     requests: [],
-    positionHistory: new Uint32Array(TRAIL.entries),
-    imageHistory: new Uint32Array(TRAIL.entries),
+    positionHistory: addressBackedHistory(memory, histories?.position),
+    imageHistory: addressBackedHistory(memory, histories?.image),
     animationPhase: 0,
     animationDelay: 0,
     actorId: 0,
@@ -84,8 +100,8 @@ function advanceHistory(render, position, image) {
 /**
  * Produce body bucket 19 and afterimage bucket 12 requests for one attached P3.
  * The trail keeps the native routine's 16 slots, five taps, phase gate, coarse skip,
- * longword bias, size, and colour. It is presentation-owned here because this
- * wave deliberately creates no P3 beam byte or weapon state.
+ * longword bias, size, and colour. Its two rings are the same address-backed
+ * histories the private laser seeds, matching the native shared authority.
  */
 export function renderThreePilotRequests(state, game) {
   const render = state?.render;

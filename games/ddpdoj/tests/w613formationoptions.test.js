@@ -255,24 +255,38 @@ test('W613 style-6 movement stays native-exact across deployment and active fram
     assert.equal(state.memory.u16(P3_VIRTUAL.options + OPT.state) & 0x0002, 0x0002);
   });
 
-test('W613 Button 1 bypasses laser and Button 3 alone allocates no private shot',
+test('W613 B1 stays dormant before bootstrap, then enters W615 laser; B3 allocates no shot',
   { skip: SKIP_ASSETS }, async () => {
     const { state, game } = await exactState();
     const player = P3_VIRTUAL.player;
     state.memory.setU8(player + P.dirByte, 0x10);
     const firstBeamBefore = sidecarBytes(state.memory, P3_VIRTUAL.beamRecord, 0x40);
+    const firstPoolBefore = sidecarBytes(state.memory, P3_VIRTUAL.beamPool, 32 * 0x30);
     const nativeBefore = game.ram.b.slice();
     assert.doesNotThrow(() => runThreePilotOptionObject(game));
     assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.beamRecord, 0x40),
-      firstBeamBefore);
+      firstBeamBefore, 'one held frame remains before the authentic laser bootstrap');
+    assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.beamPool, 32 * 0x30),
+      firstPoolBefore);
     assert.equal(state.weapons.actorId, state.actorId);
     assert.equal(state.weapons.calls, 1);
     assert.deepEqual(game.ram.b, nativeBefore);
 
+    for (let frame = 1; frame < 48; frame++) {
+      state.memory.setU8(player + P.dirByte, 0x10);
+      state.memory.setU8(player + P.btnByte, 0);
+      runThreePilotOptionObject(game);
+    }
+    assert.notEqual(state.memory.u16(P3_VIRTUAL.beamPool + 28 * 0x30), 0,
+      'held B1 authentically seeds the private muzzle after bootstrap');
+    assert.equal(sidecarBytes(state.memory, P3_VIRTUAL.positionHistory, 0x40)
+      .some((byte) => byte !== 0), true,
+      'laser bootstrap seeds the shared private position history');
+    assert.deepEqual(game.ram.b, nativeBefore);
+
     state.memory.setU8(player + P.dirByte, 0);
+    state.memory.setU8(player + P.btnByte, 0);
     runThreePilotOptionObject(game);
-    state.memory.setU8(player + P.dirByte, 0x10);
-    assert.doesNotThrow(() => runThreePilotOptionObject(game));
     assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.beamRecord, 0x40),
       new Uint8Array(0x40));
 

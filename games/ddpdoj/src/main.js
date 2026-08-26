@@ -535,6 +535,14 @@ export class Game {
     const privateOptionObjectHook = installedPrivateOptionHook
       ? () => installedPrivateOptionHook(this)
       : null;
+    const installedPrivateSegmentHook = /** @type {any} */ (this).privateSegmentDriverHook;
+    const privateSegmentDriverHook = installedPrivateSegmentHook
+      ? () => installedPrivateSegmentHook(this)
+      : null;
+    const installedPrivateBeamDrawHook = /** @type {any} */ (this).privateBeamDrawHook;
+    const privateBeamDrawHook = installedPrivateBeamDrawHook
+      ? () => installedPrivateBeamDrawHook(this)
+      : null;
     return {
       tables: this.tables,
       rom: this.rom,
@@ -557,6 +565,8 @@ export class Game {
       ...(this.objectDriverHook ? { objectDriverHook: this.objectDriverHook } : {}),
       ...(privateShotObjectHook ? { privateShotObjectHook } : {}),
       ...(privateOptionObjectHook ? { privateOptionObjectHook } : {}),
+      ...(privateSegmentDriverHook ? { privateSegmentDriverHook } : {}),
+      ...(privateBeamDrawHook ? { privateBeamDrawHook } : {}),
       ...(this.enemyDeathHook ? { enemyDeathHook: this.enemyDeathHook } : {}),
       ...(this.friendlyBulletConvertHook
         ? { friendlyBulletConvertHook: this.friendlyBulletConvertHook } : {}),

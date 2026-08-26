@@ -1,8 +1,9 @@
 // Private three-pilot formation actors.
 //
 // This remains a private foundation. P3 has an allocator identity, independent
-// host memory, ordinary shots, and option pods. Laser, collision ownership,
-// damage, score, death, lives, HUD, and public activation remain excluded.
+// host memory, ordinary shots, option pods, and an independently owned laser.
+// Collision ownership, damage, score, death, lives, HUD, and public activation
+// remain excluded.
 
 import { mirrorsFromPort } from './input.js';
 import { MACHINE, OPT, P, RAM } from './machine.js';
@@ -15,6 +16,10 @@ import {
 import {
   assertOptionOwnerInputAllowed, runOptionBlock,
 } from './options.js';
+import {
+  LASER, PRIVATE_BEAM_GEOMETRY, assertPrivateBeamCapabilities,
+  runPrivateBeamDraw, runPrivateSegmentDriver,
+} from './laser.js';
 import { runOrdinaryShotPath2497AA } from './player.js';
 import { shotHandlers } from './shots.js';
 import { runShotPool } from './weapons.js';
@@ -59,7 +64,12 @@ export const P3_VIRTUAL = Object.freeze({
   options: P3_VIRTUAL_BASE + 0x0200,
   shots: P3_VIRTUAL_BASE + 0x0400,
   beamRecord: P3_VIRTUAL_BASE + 0x0b00,
+  beamControl: P3_VIRTUAL_BASE + 0x0b00,
+  beamDraw: P3_VIRTUAL_BASE + 0x0b20,
+  beamWord: P3_VIRTUAL_BASE + 0x0b40,
   beamPool: P3_VIRTUAL_BASE + 0x0c00,
+  positionHistory: P3_VIRTUAL_BASE + 0x1200,
+  imageHistory: P3_VIRTUAL_BASE + 0x1240,
   hyper: P3_VIRTUAL_BASE + 0x1300,
   score: P3_VIRTUAL_BASE + 0x1500,
   bomb: P3_VIRTUAL_BASE + 0x1600,
@@ -72,8 +82,10 @@ export const P3_VIRTUAL_RANGES = Object.freeze([
   Object.freeze({ name: 'p3-player', start: P3_VIRTUAL.player, length: P.stride }),
   Object.freeze({ name: 'p3-options', start: P3_VIRTUAL.options, length: OPT.stride }),
   Object.freeze({ name: 'p3-shots-reserved', start: P3_VIRTUAL.shots, length: 36 * 0x30 }),
-  Object.freeze({ name: 'p3-beam-record-reserved', start: P3_VIRTUAL.beamRecord, length: 0x40 }),
-  Object.freeze({ name: 'p3-beam-pool-reserved', start: P3_VIRTUAL.beamPool, length: 32 * 0x30 }),
+  Object.freeze({ name: 'p3-beam-controls', start: P3_VIRTUAL.beamControl, length: 0x42 }),
+  Object.freeze({ name: 'p3-beam-pool', start: P3_VIRTUAL.beamPool, length: 32 * 0x30 }),
+  Object.freeze({ name: 'p3-position-history', start: P3_VIRTUAL.positionHistory, length: 0x40 }),
+  Object.freeze({ name: 'p3-image-history', start: P3_VIRTUAL.imageHistory, length: 0x40 }),
   Object.freeze({ name: 'p3-hyper-reserved', start: P3_VIRTUAL.hyper, length: 0x0100 }),
   Object.freeze({ name: 'p3-score-reserved', start: P3_VIRTUAL.score, length: 0x20 }),
   Object.freeze({ name: 'p3-bomb-reserved', start: P3_VIRTUAL.bomb, length: 0x20 }),
@@ -128,7 +140,15 @@ const P3_BINDING = Object.freeze({
   player: P3_VIRTUAL.player,
   options: P3_VIRTUAL.options,
   shots: P3_VIRTUAL.shots,
-  beam: Object.freeze({ record: P3_VIRTUAL.beamRecord, pool: P3_VIRTUAL.beamPool }),
+  beam: Object.freeze({
+    control: P3_VIRTUAL.beamControl,
+    record: P3_VIRTUAL.beamControl,
+    draw: P3_VIRTUAL.beamDraw,
+    word: P3_VIRTUAL.beamWord,
+    pool: P3_VIRTUAL.beamPool,
+    positionHistory: P3_VIRTUAL.positionHistory,
+    imageHistory: P3_VIRTUAL.imageHistory,
+  }),
   hyper: P3_VIRTUAL.hyper,
   score: P3_VIRTUAL.score,
   bomb: P3_VIRTUAL.bomb,
@@ -346,9 +366,27 @@ function clearP3OptionState(state) {
   }
 }
 
+function clearP3BeamState(state) {
+  if (!state?.beam) return;
+  state.beam.requests.length = 0;
+  state.beam.actorId = 0;
+  state.beam.segmentCalls = 0;
+  state.beam.drawCalls = 0;
+  for (let offset = 0; offset < 0x42; offset++) {
+    state.memory.setU8(P3_BINDING.beam.control + offset, 0);
+  }
+  for (let offset = 0; offset < 32 * 0x30; offset++) {
+    state.memory.setU8(P3_BINDING.beam.pool + offset, 0);
+  }
+  for (const history of [P3_BINDING.beam.positionHistory, P3_BINDING.beam.imageHistory]) {
+    for (let offset = 0; offset < 0x40; offset++) state.memory.setU8(history + offset, 0);
+  }
+}
+
 function clearP3WeaponState(state) {
   clearP3ShotState(state);
   clearP3OptionState(state);
+  clearP3BeamState(state);
 }
 
 function bindP3ShotResources(state) {
@@ -406,6 +444,42 @@ function bindP3ShotResources(state) {
   });
 }
 
+function bindP3BeamResources(state) {
+  const presentationSink = (memory, rec) => {
+    state.beam.requests.push({
+      bucket: LASER.emitBucket,
+      bytes: encodeRecordRequest(memory, rec),
+    });
+    return state.beam.requests.length - 1;
+  };
+  state.beam.resources = Object.freeze({
+    scope: 'private',
+    ownerIndex: P3_BINDING.logicalIndex,
+    d7: 1,
+    segmentOwnerWord: 1,
+    slots: 32,
+    stride: 0x30,
+    player: P3_BINDING.player,
+    opt: P3_BINDING.options,
+    rec: P3_BINDING.beam.control,
+    blk: P3_BINDING.beam.draw,
+    word: P3_BINDING.beam.word,
+    pool: P3_BINDING.beam.pool,
+    head: P3_BINDING.beam.pool + 0x510,
+    muzzle: P3_BINDING.beam.pool + 0x540,
+    pair: P3_BINDING.beam.pool + 0x5a0,
+    posHistory: P3_BINDING.beam.positionHistory,
+    imgHistory: P3_BINDING.beam.imageHistory,
+    dispatch: LASER.dispatchP1,
+    drawBias: 0x180,
+    soundPolicy: 'silent',
+    effectPolicy: 'none',
+    presentationSink,
+    presentationBucket: LASER.emitBucket,
+  });
+  assertPrivateBeamCapabilities(state.beam.resources);
+}
+
 function initializeP3OptionState(state) {
   clearP3OptionState(state);
   state.memory.setU16(P3_BINDING.options + OPT.state, 0x8000);
@@ -417,14 +491,16 @@ function collectThreePilotSpriteRequests(state, game) {
     throw new Error('private P3 sprite hook is attached to a different Game');
   }
   if (state.lifecycle !== 'alive' || state.actorId === 0
+      || !liveNonDeath(state.memory, P3_BINDING)
       || game.ram.u16(STAGE_CLEAR) !== 0) {
     clearP3WeaponState(state);
     return renderThreePilotRequests(state, game);
   }
   const shotRequests = state.shots.requests.splice(0);
   const optionRequests = state.weapons.requests.splice(0);
+  const beamRequests = state.beam.requests.splice(0);
   const shipRequests = renderThreePilotRequests(state, game);
-  return shotRequests.concat(optionRequests, shipRequests);
+  return shotRequests.concat(optionRequests, beamRequests, shipRequests);
 }
 
 function p3OptionBlock(state) {
@@ -432,10 +508,10 @@ function p3OptionBlock(state) {
     ownerIndex: P3_BINDING.logicalIndex,
     opt: P3_BINDING.options,
     player: P3_BINDING.player,
-    laser: null,
-    beam: null,
+    laser: P3_BINDING.beam.draw,
+    beam: state.beam.resources,
     rampGuard: P3_BINDING.bomb,
-    allowLaser: false,
+    allowLaser: true,
     allowShots: true,
     virtualRequests: state.weapons.requests,
     shotResources: state.shots.resources.options,
@@ -450,20 +526,28 @@ function assertP3ShotInputAllowed(state) {
   }
 }
 
+function clearMismatchedWeaponIdentity(state) {
+  const ids = [state.shots.actorId, state.weapons.actorId, state.beam.actorId];
+  if (ids.some((id) => id !== 0 && id !== state.actorId)) {
+    clearP3WeaponState(state);
+    return true;
+  }
+  return false;
+}
+
 /** Run P3 cadence, private spawn, movement, expiry, and virtual shot drawing. */
 export function runThreePilotShotObject(game) {
   const state = ATTACHED.get(game);
   if (!state) return 0;
   if (state.lifecycle !== 'alive' || state.actorId === 0
+      || !liveNonDeath(state.memory, P3_BINDING)
       || game.ram.u16(STAGE_CLEAR) !== 0) {
     clearP3WeaponState(state);
     return 0;
   }
   assertP3ShotInputAllowed(state);
-  if (state.shots.actorId !== state.actorId) {
-    if (state.weapons.actorId !== state.actorId) clearP3WeaponState(state);
-    state.shots.actorId = state.actorId;
-  }
+  clearMismatchedWeaponIdentity(state);
+  state.shots.actorId = state.actorId;
   state.shots.requests.length = 0;
   const ctx = {
     rom: game.rom,
@@ -483,22 +567,74 @@ export function runThreePilotOptionObject(game) {
   const state = ATTACHED.get(game);
   if (!state) return 0;
   if (state.lifecycle !== 'alive' || state.actorId === 0
+      || !liveNonDeath(state.memory, P3_BINDING)
       || game.ram.u16(STAGE_CLEAR) !== 0) {
-    clearP3OptionState(state);
+    clearP3WeaponState(state);
     return 0;
   }
 
   const block = p3OptionBlock(state);
   assertOptionOwnerInputAllowed(state.memory, block);
+  clearMismatchedWeaponIdentity(state);
   state.weapons.requests.length = 0;
   if (state.weapons.actorId !== state.actorId
       || (state.memory.u16(P3_BINDING.options + OPT.state) & 0x8000) === 0) {
+    clearP3BeamState(state);
     initializeP3OptionState(state);
   }
 
   runOptionBlock(state.memory, game, block);
   state.weapons.calls++;
   return state.weapons.requests.length;
+}
+
+/** Run only P3's post-call-10 segment pool. */
+export function runThreePilotSegmentObject(game) {
+  const state = ATTACHED.get(game);
+  if (!state) return 0;
+  if (state.lifecycle !== 'alive' || state.actorId === 0
+      || !liveNonDeath(state.memory, P3_BINDING)
+      || game.ram.u16(STAGE_CLEAR) !== 0) {
+    clearP3WeaponState(state);
+    return 0;
+  }
+  assertP3ShotInputAllowed(state);
+  assertPrivateBeamCapabilities(state.beam.resources);
+  clearMismatchedWeaponIdentity(state);
+  state.beam.actorId = state.actorId;
+  state.beam.requests.length = 0;
+  const processed = runPrivateSegmentDriver(state.memory, {
+    rom: game.rom,
+    tables: game.tables,
+    unportedLog: game.unportedLog,
+    soundPost: game.soundPost,
+  }, state.beam.resources);
+  state.beam.segmentCalls++;
+  return processed;
+}
+
+/** Run only P3's post-call-11 beam draw. */
+export function runThreePilotBeamDrawObject(game) {
+  const state = ATTACHED.get(game);
+  if (!state) return 0;
+  if (state.lifecycle !== 'alive' || state.actorId === 0
+      || !liveNonDeath(state.memory, P3_BINDING)
+      || game.ram.u16(STAGE_CLEAR) !== 0) {
+    clearP3WeaponState(state);
+    return 0;
+  }
+  assertP3ShotInputAllowed(state);
+  assertPrivateBeamCapabilities(state.beam.resources);
+  clearMismatchedWeaponIdentity(state);
+  state.beam.actorId = state.actorId;
+  const emitted = runPrivateBeamDraw(state.memory, {
+    rom: game.rom,
+    tables: game.tables,
+    unportedLog: game.unportedLog,
+    soundPost: game.soundPost,
+  }, state.beam.resources);
+  state.beam.drawCalls++;
+  return emitted;
 }
 
 function activeLifecycle(lifecycle) {
@@ -722,6 +858,12 @@ export function attachThreePilotFoundation(game, options = {}) {
   if (game.privateShotObjectHook != null) {
     throw new Error('Game already has a privateShotObjectHook');
   }
+  if (game.privateSegmentDriverHook != null) {
+    throw new Error('Game already has a privateSegmentDriverHook');
+  }
+  if (game.privateBeamDrawHook != null) {
+    throw new Error('Game already has a privateBeamDrawHook');
+  }
   if (game.ram.u32(ALLOC.idCounter) === 0xffffffff) {
     throw new RangeError('P3 allocator ID would wrap to zero');
   }
@@ -739,9 +881,15 @@ export function attachThreePilotFoundation(game, options = {}) {
     lifecycle: 'staged',
     restagePending: false,
     inputSeeded: false,
-    render: createThreePilotRenderState(),
+    render: createThreePilotRenderState(memory, {
+      position: P3_BINDING.beam.positionHistory,
+      image: P3_BINDING.beam.imageHistory,
+    }),
     weapons: { requests: [], actorId: 0, calls: 0 },
     shots: { requests: [], actorId: 0, calls: 0, resources: null },
+    beam: {
+      requests: [], actorId: 0, segmentCalls: 0, drawCalls: 0, resources: null,
+    },
     runtime: {
       anchorX: clamp(game.ram.u16(RAM.player1 + P.posX) + OFFSET_X,
         ANCHOR.xMin, ANCHOR.xMax),
@@ -752,6 +900,7 @@ export function attachThreePilotFoundation(game, options = {}) {
     },
   };
   bindP3ShotResources(state);
+  bindP3BeamResources(state);
   cacheTargets(state);
   if (liveNonDeath(memory, P1_BINDING)) {
     state.runtime.lastP1Speed = memory.u8(P1_BINDING.player + P.speedIdx);
@@ -782,16 +931,32 @@ export function attachThreePilotFoundation(game, options = {}) {
     }
     return runThreePilotOptionObject(hookGame);
   };
+  const segmentHook = (hookGame) => {
+    if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
+      throw new Error('private P3 segment hook invoked for a different Game');
+    }
+    return runThreePilotSegmentObject(hookGame);
+  };
+  const beamDrawHook = (hookGame) => {
+    if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
+      throw new Error('private P3 beam-draw hook invoked for a different Game');
+    }
+    return runThreePilotBeamDrawObject(hookGame);
+  };
   state.objectDriverHook = hook;
   state.playerPositionTransform = positionTransform;
   state.virtualSpriteRequestHook = renderHook;
   state.privateShotObjectHook = shotHook;
   state.privateOptionObjectHook = optionHook;
+  state.privateSegmentDriverHook = segmentHook;
+  state.privateBeamDrawHook = beamDrawHook;
   game.objectDriverHook = hook;
   game.playerPositionTransform = positionTransform;
   game.virtualSpriteRequestHook = renderHook;
   game.privateShotObjectHook = shotHook;
   game.privateOptionObjectHook = optionHook;
+  game.privateSegmentDriverHook = segmentHook;
+  game.privateBeamDrawHook = beamDrawHook;
   ATTACHED.set(game, state);
   return state;
 }
@@ -841,6 +1006,9 @@ export function prepareThreePilotFrame(state, game, word) {
     clearP3WeaponState(state);
     runtime.rebasePending = true;
     return input;
+  }
+  if (state.lifecycle === 'alive' && !liveNonDeath(memory, P3_BINDING)) {
+    clearP3WeaponState(state);
   }
 
   const live = FORMATION_ACTOR_BINDINGS.map((binding) => bindingLive(state, binding));

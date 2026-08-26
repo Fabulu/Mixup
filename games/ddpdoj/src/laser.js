@@ -148,7 +148,8 @@ export const LASER = {
   ptrHead: 0x24d076,       //  2 longs -> $24D07E / $24D092
   ptrHeadAlt: 0x24d0a6,    //  2 longs -> $24D0AE / $24D0C2
   ptrHeadBombLaser: 0x24d0d6,
-  emitStub: 0x23f508,      // the segment/beam sprite stub (bucket resolved)
+  emitStub: 0x23f508,      // the segment/beam sprite stub (bucket 16)
+  emitBucket: 16,          // resolved from $23F508's buffer/counter pair
   fxLaserFire: 0x289f96,
   fxBeamP1: 0x289fc0,
   fxBeamP2: 0x289fda,
@@ -177,12 +178,20 @@ export const SEG = {
 // nor the record count would have shown it.  So the head is named PER ROW, by
 // address, rather than derived from a flag that means something else here.
 export const BEAM = [
-  { d7: 1, pool: 0x8112f2, rec: 0x811ef2, blk: 0x811f32, pair: 0x811892,
+  { scope: 'native', ownerIndex: 0, d7: 1, segmentOwnerWord: 1,
+    slots: 32, stride: 0x30,
+    pool: 0x8112f2, rec: 0x811ef2, blk: 0x811f32, pair: 0x811892,
     word: 0x812964, player: RAM.player1, opt: RAM.p1Options, impact: 0x289fc0,
-    dispatch: LASER.dispatchP1, sound2: 0x81294c, sound1: 0x81294e },
-  { d7: 0, pool: 0x8118f2, rec: 0x811f12, blk: 0x811f52, pair: 0x811e92,
+    dispatch: LASER.dispatchP1, sound2: 0x81294c, sound1: 0x81294e,
+    posHistory: 0x8127f4, imgHistory: 0x812874, drawBias: 0x180,
+    soundPolicy: 'native', effectPolicy: 'native', presentationSink: null },
+  { scope: 'native', ownerIndex: 1, d7: 0, segmentOwnerWord: 0,
+    slots: 32, stride: 0x30,
+    pool: 0x8118f2, rec: 0x811f12, blk: 0x811f52, pair: 0x811e92,
     word: 0x812966, player: RAM.player2, opt: RAM.p2Options, impact: 0x289fda,
-    dispatch: LASER.dispatchP2, sound2: 0x81294e, sound1: 0x81294c },
+    dispatch: LASER.dispatchP2, sound2: 0x81294e, sound1: 0x81294c,
+    posHistory: 0x812834, imgHistory: 0x8128b4, drawBias: 0,
+    soundPolicy: 'native', effectPolicy: 'native', presentationSink: null },
 ];
 
 /** One $30-byte segment record.  Every offset below is cited on its use. */
@@ -199,6 +208,74 @@ export const S = {
   script: 0x1e,    // long -- the per-type script pointer the handlers walk
   w22: 0x22, w24: 0x24, w26: 0x26, w28: 0x28, w2a: 0x2a, w2c: 0x2c,
 };
+
+/** Exact host-only P3 beam layout. It is not a third native BEAM row. */
+export const PRIVATE_BEAM_GEOMETRY = Object.freeze({
+  ownerIndex: 2,
+  player: 0x10000100,
+  opt: 0x10000200,
+  control: 0x10000b00,
+  draw: 0x10000b20,
+  word: 0x10000b40,
+  pool: 0x10000c00,
+  poolEnd: 0x10001200,
+  posHistory: 0x10001200,
+  imgHistory: 0x10001240,
+  historyBytes: 0x40,
+  head: 0x10001110,
+  muzzle: 0x10001140,
+  pair: 0x100011a0,
+  dispatch: LASER.dispatchP1,
+  drawBias: 0x180,
+});
+
+/** Refuse a mixed private capability before any sidecar byte can change. */
+export function assertPrivateBeamCapabilities(b) {
+  if (!b || typeof b !== 'object') {
+    throw new TypeError('private beam owner must supply an explicit capability');
+  }
+  const exact = {
+    ownerIndex: PRIVATE_BEAM_GEOMETRY.ownerIndex,
+    player: PRIVATE_BEAM_GEOMETRY.player,
+    opt: PRIVATE_BEAM_GEOMETRY.opt,
+    rec: PRIVATE_BEAM_GEOMETRY.control,
+    blk: PRIVATE_BEAM_GEOMETRY.draw,
+    word: PRIVATE_BEAM_GEOMETRY.word,
+    pool: PRIVATE_BEAM_GEOMETRY.pool,
+    pair: PRIVATE_BEAM_GEOMETRY.pair,
+    posHistory: PRIVATE_BEAM_GEOMETRY.posHistory,
+    imgHistory: PRIVATE_BEAM_GEOMETRY.imgHistory,
+    dispatch: PRIVATE_BEAM_GEOMETRY.dispatch,
+    drawBias: PRIVATE_BEAM_GEOMETRY.drawBias,
+    presentationBucket: LASER.emitBucket,
+    head: PRIVATE_BEAM_GEOMETRY.head,
+    muzzle: PRIVATE_BEAM_GEOMETRY.muzzle,
+  };
+  for (const [name, value] of Object.entries(exact)) {
+    if (!Number.isSafeInteger(b[name]) || b[name] !== value) {
+      throw new RangeError(`private beam ${name} must be exact $${value.toString(16)}`);
+    }
+  }
+  if (b.scope !== 'private' || b.d7 !== 1 || b.segmentOwnerWord !== 1) {
+    throw new RangeError('private beam must keep logical owner 2 and P1 cartridge polarity');
+  }
+  if (b.slots !== SEG.slots || b.stride !== SEG.stride
+      || b.pool + b.slots * b.stride !== PRIVATE_BEAM_GEOMETRY.poolEnd) {
+    throw new RangeError('private beam pool must be exactly 32 records of $30 bytes');
+  }
+  if (b.posHistory + PRIVATE_BEAM_GEOMETRY.historyBytes
+      !== b.imgHistory
+      || b.imgHistory + PRIVATE_BEAM_GEOMETRY.historyBytes > 0x10001300) {
+    throw new RangeError('private beam histories must be exact adjacent $40-byte rings');
+  }
+  if (b.soundPolicy !== 'silent' || b.effectPolicy !== 'none') {
+    throw new RangeError('private beam must use silent sound and no native effects');
+  }
+  if (typeof b.presentationSink !== 'function') {
+    throw new TypeError('private beam presentation sink must be a function');
+  }
+  return b;
+}
 
 // =========================================================== $2536FA
 /** `$2536FA` -- `($60,A4)` += 4, capped at $80.  Sixteen bytes, and its sibling
@@ -252,10 +329,13 @@ export function stepTemplate(ram, ctx, opt) {
  *  this initialises a position HISTORY to "the ship has been here all along".
  *  Called once, at `$24C298`, on the frame the arm completes. */
 export function seedPositionHistory(ram, d7) {
-  const a2 = d7 ? RAM.player1 : RAM.player2;                // $2536C6 / $2536E0
-  let a0 = d7 ? 0x8127f4 : 0x812834;                        // $2536BA / $2536D4
-  let a1 = d7 ? 0x812874 : 0x8128b4;                        // $2536C0 / $2536DA
-  const pos = ram.u32(a2 + 0x02), anim = ram.u32(a2 + 0x0a);
+  seedOwnedPositionHistory(ram, d7 ? BEAM[0] : BEAM[1]);
+}
+
+function seedOwnedPositionHistory(ram, b) {
+  const pos = ram.u32(b.player + 0x02), anim = ram.u32(b.player + 0x0a);
+  let a0 = b.posHistory;
+  let a1 = b.imgHistory;
   for (let k = 0; k <= 0xf; k++) {                          // $2536E6 moveq #$f
     ram.setU32(a0, pos); a0 += 4;                           // $2536E8 move.l
     ram.setU32(a1, anim); a1 += 4;                          // $2536EC move.l
@@ -271,29 +351,31 @@ export function seedPositionHistory(ram, d7) {
  * not smoothed.
  */
 export function seedSegmentFamily1(ram, ctx, b) {
-  const { player, d7 } = b;
-  const a1 = (d7 ? 0x811832 : 0x811e32);                    // $24CAAE / $24CAB8
+  const beam = b.pool ? b : b.beam;
+  const { player } = b;
+  const a1 = beam.pool + 28 * SEG.stride;                    // $24CAAE / $24CAB8
   let d0 = ram.u16(player + P.shipSel) ? 0x14 : 0;          // $24CABE..$24CAC4
   d0 = u16(d0 + u16(ram.u16(player + 0x22) * 2));           // $24CAC6..$24CACC
   const a0 = ctx.rom.u32(LASER.ptrFamily1 + i16(d0));       // $24CAD4 movea.l
-  copySeedRecord(ram, ctx, b, a1, a0);
+  copySeedRecord(ram, ctx, beam, a1, a0);
 }
 
 /** `$24CAFC` -- the same copy with the table already chosen by the caller
  *  (`$24C1CA`/`$24C1D8` pick `$24CFE2`, `$24C1E8` picks `$24D00A`) and the
  *  index `2*($22,A4)` alone. */
 export function seedSegmentFamily2(ram, ctx, b, table) {
-  const { player, d7 } = b;
-  const a1 = (d7 ? 0x811832 : 0x811e32);                    // $24CAFC / $24CB06
+  const beam = b.pool ? b : b.beam;
+  const { player } = beam;
+  const a1 = beam.pool + 28 * SEG.stride;                    // $24CAFC / $24CB06
   const d0 = u16(ram.u16(player + 0x22) * 2);               // $24CB0C add.w
   const a0 = ctx.rom.u32(table + i16(d0));                  // $24CB12 movea.l
-  copySeedRecord(ram, ctx, b, a1, a0);
+  copySeedRecord(ram, ctx, beam, a1, a0);
 }
 
 /** The 38 ($26) source bytes both seeds share, `$24CAD8..$24CAF8` verbatim.
  *  The holes at +$02..+$05 and +$0A..+$0D are `addq.w #4,A1`, NOT writes. */
 function copySeedRecord(ram, ctx, b, a1, src) {
-  const { player, d7 } = b;
+  const { player, segmentOwnerWord } = b;
   let s = src, a = a1;
   ram.setU16(a, ctx.rom.u16(s)); s += 2; a += 2;            // $24CAD8 the TYPE
   a += 4;                                                   // $24CADA addq.w #4
@@ -302,7 +384,7 @@ function copySeedRecord(ram, ctx, b, a1, src) {
   ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;            // $24CAE0
   ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;            // $24CAE2
   ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;            // $24CAE4
-  ram.setU16(a, d7); a += 2;                                // $24CAE6 move.w D7
+  ram.setU16(a, segmentOwnerWord); a += 2;                   // $24CAE6 move.w D7
   ram.setU16(a, ctx.rom.u16(s)); s += 2; a += 2;            // $24CAE8
   ram.setU8(a - 1, ram.u8(player + 0x56));                  // $24CAEA move.b
   ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;            // $24CAF0
@@ -373,6 +455,18 @@ export function wipeSegmentPool(ram, ctx, b) {
   }
 }
 
+/** Private release twin of `$25279A`, with no cartridge sound-table access. */
+export function wipePrivateSegmentPool(ram, b) {
+  assertPrivateBeamCapabilities(b);
+  ram.bclr8(b.opt + OPT.flags1, 7);
+  ram.setU16(b.rec, 0);
+  ram.setU16(b.blk, 0);
+  ram.setU16(b.blk + 0x16, 0);
+  for (let slot = 0; slot < b.slots; slot++) {
+    ram.setU16(b.pool + slot * b.stride, 0);
+  }
+}
+
 // =========================================================== $24C164
 /**
  * `$24C164..$24C29C` -- THE LASER GATE AND EVERYTHING BEHIND IT.
@@ -385,7 +479,7 @@ export function wipeSegmentPool(ram, ctx, b) {
  * @returns {'c310'|'c33a'} which of the two shared tails control falls into.
  */
 export function runLaserGate(ram, ctx, b) {
-  const { opt, player, d7 } = b;
+  const { opt, player } = b;
 
   if (ram.u8(opt + 0x3f) !== 0) {                           // $24C16E tst.b
     const v = (ram.u8(opt + 0x3f) - 1) & 0xff;              // $24C174 subq.b
@@ -466,7 +560,7 @@ export function runLaserGate(ram, ctx, b) {
   ram.setU16(opt + OPT.size, 0x418);                        // $24C274 move.w
   ram.setU32(opt + OPT.offLong, 0xfc00fd00);                // $24C27A move.l
   ram.setU8(player + P.dead, 1);                            // $24C282 move.b #1
-  seedPositionHistory(ram, d7);                             // $24C288..$24C298
+  seedOwnedPositionHistory(ram, b);                          // $24C288..$24C298
   return 'c33a';                                            // $24C29A bra
 }
 
@@ -484,7 +578,7 @@ export function runLaserGate(ram, ctx, b) {
  *   `$24D12E` ends with).
  */
 export function buildBeam(ram, ctx, b) {
-  const { opt, player, d7, pool, rec, blk, word } = b;
+  const { opt, player, pool, rec, blk, word } = b;
   if (!ram.btst8(opt + OPT.state, 5)) return 'tail';        // $24CB3A btst #5
 
   let d4 = ram.u16(player + P.velY);                        // $24CB5A / $24CB7C
@@ -574,7 +668,7 @@ function beamHeadWindow(ram, opt, rec, word) {
 
 /** `$24CC34..$24CC64` -- one segment written into a free pool slot. */
 function writeSegment(ram, ctx, b, a1, src, d4) {
-  const { opt, player, d7 } = b;
+  const { opt, player, segmentOwnerWord } = b;
   let s = src, a = a1;
   ram.setU16(a, ctx.rom.u16(s)); s += 2; a += 2;            // $24CC34 the TYPE
   ram.setU32(a, ram.u32(opt + OPT.posY));                   // $24CC36 move.l
@@ -586,7 +680,7 @@ function writeSegment(ram, ctx, b, a1, src, d4) {
   ram.setU32(a, ctx.rom.u32(a2 + i16(d1))); a += 4;         // $24CC46 move.l
   ram.setU16(a, ctx.rom.u16(s)); s += 2; a += 2;            // $24CC4A the SIZE
   a += 0x0a;                                                // $24CC4C lea
-  ram.setU16(a, d7); a += 2;                                // $24CC50 move.w D7
+  ram.setU16(a, segmentOwnerWord); a += 2;                   // $24CC50 move.w D7
   ram.setU8(a, 0); a += 1;                                  // $24CC52 clr.b
   ram.setU8(a, ram.u8(player + 0x56)); a += 1;              // $24CC54 move.b
   const lim = ctx.rom.u16(s);                               // $24CC58 move.w
@@ -605,7 +699,7 @@ function writeSegment(ram, ctx, b, a1, src, d4) {
  *   tail), false when it loops back to `$24CBEA`.
  */
 function layBeamHead(ram, ctx, b) {
-  const { opt, player, d7, pool, rec } = b;
+  const { opt, player, segmentOwnerWord, pool, rec } = b;
   let a = pool + SEG.headOffset;                            // $24CCD2 lea ($510
   const d3 = u16(ram.u16(player + P.shipSel) * 2);          // $24CCD6/$24CCDA
   let a0 = ram.btst8(player + 0x5b, 2)                      // $24CCE2 btst #2
@@ -628,7 +722,7 @@ function layBeamHead(ram, ctx, b) {
   ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;            // $24CD1E
   ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;            // $24CD20
   ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;            // $24CD22
-  ram.setU16(a, d7); a += 2;                                // $24CD24 move.w D7
+  ram.setU16(a, segmentOwnerWord); a += 2;                   // $24CD24 move.w D7
   ram.setU16(a, ctx.rom.u16(s)); s += 2; a += 2;            // $24CD26
   ram.setU8(a - 1, ram.u8(player + 0x56));                  // $24CD28 move.b
   ram.setU32(a, ctx.rom.u32(s)); s += 4; a += 4;            // $24CD2E
@@ -665,19 +759,34 @@ export function runSegmentDriver(ram, ctx) {
     // $25468E tst.w $8103E6 / bpl -- the player must EXIST (bit 15).
     if ((ram.u16(b.player) & 0x8000) === 0) continue;       // $25468E / $2546CE
     ram.setU16(0x81b6e6, ram.u16(b.d7 ? 0x81b63e : 0x81b640));   // $25469E
-    let a6 = b.pool;
-    for (let d7 = 0x1f; ; d7--) {                           // $25469C moveq #$1F
-      const d0 = ram.u16(a6);                               // $2546A8 move.w
-      if (d0 !== 0) {                                       // $2546AA beq
+    ran += runOneSegmentOwner(ram, ctx, b, true);
+  }
+  return ran;
+}
+
+/** Host-only call-10 twin. It runs one exact pool without native counters. */
+export function runPrivateSegmentDriver(ram, ctx, b) {
+  assertPrivateBeamCapabilities(b);
+  if ((ram.u16(b.player) & 0x8000) === 0) return 0;
+  return runOneSegmentOwner(ram, ctx, b, false);
+}
+
+function runOneSegmentOwner(ram, ctx, b, countNative) {
+  let ran = 0;
+  let a6 = b.pool;
+  for (let d7 = b.slots - 1; ; d7--) {                       // $25469C moveq #$1F
+    const d0 = ram.u16(a6);                                 // $2546A8 move.w
+    if (d0 !== 0) {                                         // $2546AA beq
+      if (countNative) {
         ram.setU16(0x81295e, u16(ram.u16(0x81295e) + 1));   // $2546AC addq.w
-        const idx = d0 & 0x1f;                              // $2546B2 moveq/and
-        const fn = ctx.rom.u32(b.dispatch + idx * 4);       // $2546C2 movea.l
-        runSegmentHandler(ram, ctx, b, a6, fn);             // $2546C4 jsr (A0)
-        ran++;
       }
-      a6 += SEG.stride;                                     // $2546C6 lea
-      if (d7 === 0) break;                                  // $2546CA dbra
+      const idx = d0 & 0x1f;                                // $2546B2 moveq/and
+      const fn = ctx.rom.u32(b.dispatch + idx * 4);         // $2546C2 movea.l
+      runSegmentHandler(ram, ctx, b, a6, fn);               // $2546C4 jsr (A0)
+      ran++;
     }
+    a6 += b.stride;                                         // $2546C6 lea
+    if (d7 === 0) break;                                    // $2546CA dbra
   }
   return ran;
 }
@@ -723,6 +832,19 @@ function runSegmentHandler(ram, ctx, b, a6, fn) {
   h(ram, ctx, b, a6, fn);
 }
 
+function beamSoundBlocked(ram, b) {
+  if (b.soundPolicy === 'silent') return false;
+  return ram.u16(b.sound2) !== 0;
+}
+
+function postBeamSound(ctx, b, sound) {
+  if (b.soundPolicy === 'native') ctx.soundPost?.(sound);
+}
+
+function beamEffectsAllowed(b) {
+  return b.effectPolicy === 'native';
+}
+
 // -------------------------------------------------- $2547B2 / $254B68 / $254B9E
 /** Types 0, 5, 10 and 15 -- STEP UP THE SCREEN, die at the top.
  *  `$254B68` and `$254B9E` are the same arithmetic in a different instruction
@@ -762,11 +884,11 @@ function hBody(ram, ctx, b, a6) {
       ram.setU8(a6 + 0x26, c);
       if (c === 0xff) {                                     // $254856 bcc
         ram.setU8(a6 + 0x26, ram.u8(a6 + 0x27));            // $254858 move.b
-        // W324 RUNS IT. This was a counted note for as long as the `$289xxx` effect family
-        // was unported; W53 and W90 ported three of its four heads, and this is the fourth.
-        // A6 here is the SEGMENT record, which is both the spawner and the source of the
-        // `($1A,A6)` the head picks its player half from -- so one argument, not two.
-        spawnBeamBody289F96(ram, ctx.rom, ctx, a6);          // $25485E jsr $289F96
+        // The private path keeps this authentic divider cadence but owns no
+        // spark or effect record. Only allocation is capability-gated.
+        if (beamEffectsAllowed(b)) {
+          spawnBeamBody289F96(ram, ctx.rom, ctx, a6);        // $25485E jsr $289F96
+        }
       }
     }
     // $254864 cmpi.w #$7800,($2,A6) / bcc $254894 -> $254E04
@@ -781,10 +903,8 @@ function hBody(ram, ctx, b, a6) {
     ram.bset8(a6 + S.type, 0);                              // $254876 bset #0
   }
   // $25487A..$2548A0 -- the per-player sound-queue gate, then the $80390C phase
-  if (ram.u16(a6 + S.player) !== 0) {                       // $254880 tst.w
-    if (ram.u16(0x81294c) !== 0) return null;               // $254886 tst.w/beq
-  } else if (ram.u16(0x81294e) !== 0) return null;          // $254898 tst.w/bne
-  return hPhaseEmit(ram, ctx, a6);                          // $2548A0
+  if (beamSoundBlocked(ram, b)) return null;                 // $254886/$254898
+  return hPhaseEmit(ram, ctx, b, a6);                        // $2548A0
 }
 
 // ------------------------ $2548C4 / $2548DA / $254986 / $2549A8 and P2's four
@@ -802,10 +922,13 @@ function hScript(ram, ctx, b, a6, fn) {
 /** Type 12 -- the same body with the sound chosen by `$81043E`/`$8104A0`. */
 function hScriptSel(ram, ctx, b, a6, fn) {
   ram.setU32(a6 + S.posY, ram.u32(b.opt + OPT.posY));       // $254986/$2549F0
-  const sel = ram.u16(b.d7 ? 0x81043e : 0x8104a0) !== 0;    // $254998/$2549CE
-  const snd = fn === 0x254986
-    ? (sel ? 0x28c468 : 0x28c408)                           // $2549A0 / $254992
-    : (sel ? 0x28c482 : 0x28c422);                          // $2549D6 / $2549C8
+  let snd = null;
+  if (b.soundPolicy === 'native') {
+    const sel = ram.u16(b.d7 ? 0x81043e : 0x8104a0) !== 0;  // $254998/$2549CE
+    snd = fn === 0x254986
+      ? (sel ? 0x28c468 : 0x28c408)                         // $2549A0 / $254992
+      : (sel ? 0x28c482 : 0x28c422);                        // $2549D6 / $2549C8
+  }
   return scriptBody(ram, ctx, b, a6, snd, fn);
 }
 
@@ -820,11 +943,8 @@ function scriptBody(ram, ctx, b, a6, snd, fn) {
       return null;                                          // $254932 rts
     }
     // $254934..$25494A -- the same two-word sound-queue gate as $25487A.
-    let doSound;
-    if (ram.u16(a6 + S.player) !== 0) doSound = ram.u16(0x81294c) === 0;
-    else doSound = ram.u16(0x81294e) === 0;
-    if (doSound) {
-      ctx.soundPost?.(snd);  // WAVE A: T2 SOUND ($25494C jsr (A3), the $28C074 family)
+    if (!beamSoundBlocked(ram, b)) {
+      postBeamSound(ctx, b, snd);                             // $25494C jsr (A3)
     }
     startBeamRecords(ram, ctx, b, a6);                      // $25494E bsr $254C1E
   }
@@ -832,7 +952,7 @@ function scriptBody(ram, ctx, b, a6, snd, fn) {
   ram.setU32(a6 + S.script, a0);                            // $254956 move.l A0
   ram.setU16(a6 + S.posY,
     u16(ram.u16(a6 + S.posY) + ram.u16(a6 + S.w26)));       // $25495A/$25495E
-  return hPhaseEmit(ram, ctx, a6);                          // $254962
+  return hPhaseEmit(ram, ctx, b, a6);                        // $254962
 }
 
 // -------------------------------------------------------------- $254A60/$254A68
@@ -847,10 +967,8 @@ function hOnShip(ram, ctx, b, a6) {
   ram.setU32(a6 + S.anim, ctx.rom.u32(a0 + i16(idx)));      // $254A8C move.l
   const nx = ram.u16(a6 + S.w24) - 4;                       // $254A92 subq.w #4
   ram.setU16(a6 + S.w24, nx < 0 ? ram.u16(a6 + S.w22) : u16(nx));  // $254A98
-  if (ram.u16(a6 + S.player) !== 0) {                       // $254A9E tst.w
-    if (ram.u16(0x81294c) !== 0) return null;               // $254AA4 tst.w/beq
-  } else if (ram.u16(0x81294e) !== 0) return null;          // $254AAE tst.w/bne
-  return emit(ram, ctx, a6);                                // $254AB6 jmp $23F508
+  if (beamSoundBlocked(ram, b)) return null;                 // $254AA4/$254AAE
+  return emit(ram, ctx, b, a6);                              // $254AB6 jmp $23F508
 }
 
 // -------------------------------------------------------------- $254ABE/$254ACC
@@ -878,10 +996,8 @@ function hOnPod(ram, ctx, b, a6) {
     const nx = ram.u16(a6 + S.w24) - 4;                     // $254B20 subq.w #4
     ram.setU16(a6 + S.w24, nx < 0 ? ram.u16(a6 + S.w26) : u16(nx));  // $254B26
   }
-  if (ram.u16(a6 + S.player) !== 0) {                       // $254B2C tst.w
-    if (ram.u16(0x81294c) !== 0) return null;               // $254B32 tst.w/beq
-  } else if (ram.u16(0x81294e) !== 0) return null;          // $254B3C tst.w/bne
-  return hPhaseEmit(ram, ctx, a6);                          // $254B44
+  if (beamSoundBlocked(ram, b)) return null;                 // $254B32/$254B3C
+  return hPhaseEmit(ram, ctx, b, a6);                        // $254B44
 }
 
 // =========================================================== the shared tails
@@ -889,16 +1005,19 @@ function hOnPod(ram, ctx, b, a6) {
  *  phase gate every emitting handler ends with.  `$81308C` non-zero skips the
  *  gate entirely; otherwise the segment draws only on its own half of
  *  `$80390C`'s per-frame alternation. */
-function hPhaseEmit(ram, ctx, a6) {
+function hPhaseEmit(ram, ctx, b, a6) {
   if (ram.u16(0x81308c) === 0) {                            // $2548A0 tst.w/bne
     const d2 = ram.u16(a6 + S.player) !== 0 ? 1 : 0;        // $2548A8..$2548B0
     if (d2 === ram.u16(0x80390c)) return null;              // $2548B2 cmp.w/beq
   }
-  return emit(ram, ctx, a6);                                // $2548BA jmp
+  return emit(ram, ctx, b, a6);                             // $2548BA jmp
 }
 
-function emit(ram, ctx, a6) {
-  return enqueueThroughStub(ram, ctx.rom, LASER.emitStub, a6);
+function emit(ram, ctx, b, a6) {
+  if (b.presentationSink == null) {
+    return enqueueThroughStub(ram, ctx.rom, LASER.emitStub, a6);
+  }
+  return b.presentationSink(ram, a6);
 }
 
 /** `$254E04` -- a segment reached the top of the playfield.  It sets the beam
@@ -943,10 +1062,8 @@ function hBeamTail(ram, ctx, b, a6, d0) {
 
 /** `$254FAA..$254FE4` -- the same sound-queue + phase gate, one more time. */
 function hDrawGate(ram, ctx, b, a6) {
-  if (ram.u16(a6 + S.player) !== 0) {                       // $254FAA tst.w
-    if (ram.u16(0x81294c) !== 0) return null;               // $254FB0 tst.w/beq
-  } else if (ram.u16(0x81294e) !== 0) return null;          // $254FBA tst.w/bne
-  return hPhaseEmit(ram, ctx, a6);                          // $254FC2
+  if (beamSoundBlocked(ram, b)) return null;                 // $254FB0/$254FBA
+  return hPhaseEmit(ram, ctx, b, a6);                        // $254FC2
 }
 
 /**
@@ -993,12 +1110,16 @@ function beamRequest(ram, ctx, b, a6, d1) {
  * middle.  It is NOT ported: `$245314`/`$2453AC` are W37's L3.
  */
 function startBeamRecords(ram, ctx, b, a6) {
-  const { opt } = b;
-  ram.bset8(opt + OPT.state, 5);                            // $254C1E bset #5
-  // $254C22..$254C58: A2/A3/A4/A5 are chosen by ($1a,A6), the segment's own
-  // player word -- NOT by the driver's loop variable.
-  const p = ram.u16(a6 + S.player) !== 0 ? BEAM[0] : BEAM[1];
-  const a2 = p.rec, a3 = p.pair, a5 = p.player;
+  // $254C22..$254C58 selects the native row from the segment owner word. A
+  // private owner carries the same P1 word but retains its explicit addresses.
+  const segmentOwnerWord = ram.u16(a6 + S.player);
+  let owner = b;
+  if (b.scope === 'native') owner = segmentOwnerWord !== 0 ? BEAM[0] : BEAM[1];
+  else if (segmentOwnerWord !== b.segmentOwnerWord) {
+    throw new RangeError('beam segment owner word does not match its capability');
+  }
+  ram.bset8(owner.opt + OPT.state, 5);                       // $254C1E bset #5
+  const a2 = owner.rec, a3 = owner.pair, a5 = owner.player;
 
   let a1 = ram.u32(a6 + S.w2c);                             // $254C58 movea.l
   ram.setU16(a2, ctx.rom.u16(a1)); a1 += 2;                 // $254C5C move.w
@@ -1067,64 +1188,62 @@ function startBeamRecords(ram, ctx, b, a6) {
 export function runBeamDraw(ram, ctx) {
   let emitted = 0, impacts = 0;
   for (const b of BEAM) {
-    const a6 = b.blk;
-    if ((ram.u16(a6) & 0x8000) === 0) continue;             // $255048 tst.w/bpl
-    // $25504E..$255066 -- the effect, on the OTHER half of $80390C from the
-    // draw and only while $81308C says the collision pass is live.
-    // WAVE 90 RUNS IT.  Three conditions, and the MIDDLE ONE IS THE OWNER'S
-    // "SOMETIMES": `$80390C` is the per-frame alternation word this port uses
-    // in eleven other places, so P1's block spawns the impact effect on the
-    // frames it is NON-zero and P2's on the frames it is zero.  The effect
-    // therefore fires on AT MOST EVERY OTHER FRAME while the beam is on, by the
-    // cartridge's own arithmetic -- it is not a defect and it is not tuned here.
-    //
-    // A6 at the `jsr` is the BEAM BLOCK, and it still holds LAST frame's +$2/+$4
-    // because `$255092`/`$255094` overwrite them twelve instructions later.
-    // That one-frame lag is the ROM's and is preserved by calling here.
-    const phase = ram.u16(0x80390c) !== 0;
-    if ((b.d7 ? phase : !phase) && ram.u16(0x81308c) !== 0
-        && ram.u16(b.sound2) === 0) {
-      spawnBeamImpact289FC0(ram, ctx.rom, ctx, a6, b.impact);  // $255066/$2550F0
-      impacts++;
-    }
-    // $25506C..$255084 -- the top of the drawn beam, clamped to the pod.
-    let d0 = u16(ram.u16(b.word) + (b.d7 ? 0x180 : 0));     // $255072 / $2550F6
-    const d1 = u16(ram.u16(b.opt + OPT.posY) + 0x400);      // $25507C / $255102
-    if (d0 < d1) d0 = d1;                                   // $255080 cmp.w/bcc
-
-    // $255086..$25509E -- five words built at ($2,A6) from the $24BB0A pair.
-    const src = ram.u32(a6 + 0x12) + i16(ram.u16(a6 + 0x10));  // $25508A/$25508E
-    ram.setU16(a6 + 0x02, d0);                              // $255092 move.w
-    ram.setU16(a6 + 0x04, ram.u16(b.player + P.posX));      // $255094 move.w
-    ram.setU32(a6 + 0x06, ctx.rom.u32(src));                // $25509A move.l
-    ram.setU32(a6 + 0x0a, ctx.rom.u32(src + 4));            // $25509C move.l
-    ram.setU16(a6 + 0x0e, ctx.rom.u16(src + 8));            // $25509E move.w
-
-    const nx = ram.u16(a6 + 0x10) - 0x0a;                   // $2550A0 subi.w
-    ram.setU16(a6 + 0x10, nx < 0 ? ram.u16(a6 + 0x18) : u16(nx));  // $2550A6/$2550A8
-
-    // $2550AE..$2550C6 -- the draw's own gate, and it is NOT the handlers'.
-    //
-    // **THE THIRD TEST IS MIRRORED BETWEEN THE PLAYERS AND THE PORT USED TO
-    // SHARE P1's.**  `$2550BE tst.w $80390C` is followed by `66 06` (`bne`,
-    // skip) and P2's `$255144 tst.w $80390C` by `67 08` (`beq`, skip) -- so
-    // when `$81308C` is zero P1 draws on the frames the alternation word is
-    // ZERO and P2 on the frames it is NON-zero, which is how the two beams
-    // share the budget instead of flickering together.  W411 read the bytes;
-    // `phase` above is exactly the term the impact gate already needed.
-    // UNEXERCISED ON EVERY BENCH IN THIS REPO: `$81308C` is the ONE-PLAYER flag
-    // (`machine.js onePlayerFlag`) and is 1 on all 5,400 frames of the lf2000
-    // laser-hold rung, so both arms of this line are the same there.
-    if (ram.u16(b.sound2) !== 0) continue;                  // $2550AE tst.w/bne
-    if (ram.u16(0x81308c) === 0                             // $2550B6 / $25513C
-        && (b.d7 ? phase : !phase)) continue;               // $2550BE / $255144
-    enqueueThroughStub(ram, ctx.rom, LASER.emitStub, a6);   // $2550C6 jsr
-    emitted++;
+    const result = runOneBeamDraw(ram, ctx, b);
+    emitted += result.emitted;
+    impacts += result.impacts;
   }
   // W90 telemetry, per frame, and the ROM returns nothing at all. `emitted`'s
   // meaning is unchanged because `ctx.laserDrawn` is a compared column.
   ctx.beamImpacts = impacts;
   return emitted;
+}
+
+/** Host-only call-11 twin, kept separate from the private call-10 driver. */
+export function runPrivateBeamDraw(ram, ctx, b) {
+  assertPrivateBeamCapabilities(b);
+  return runOneBeamDraw(ram, ctx, b).emitted;
+}
+
+function runOneBeamDraw(ram, ctx, b) {
+  let emitted = 0, impacts = 0;
+  const a6 = b.blk;
+  if ((ram.u16(a6) & 0x8000) === 0) return { emitted, impacts }; // $255048 tst.w/bpl
+  // $25504E..$255066 -- the effect, on the OTHER half of $80390C from the
+  // draw and only while $81308C says the collision pass is live.
+  // WAVE 90 RUNS IT.  Three conditions, and the MIDDLE ONE IS THE OWNER'S
+  // "SOMETIMES": `$80390C` is the per-frame alternation word this port uses
+  // in eleven other places, so P1's block spawns the impact effect on the
+  // frames it is NON-zero and P2's on the frames it is zero.
+  const phase = ram.u16(0x80390c) !== 0;
+  if (beamEffectsAllowed(b) && (b.d7 ? phase : !phase)
+      && ram.u16(0x81308c) !== 0 && !beamSoundBlocked(ram, b)) {
+    spawnBeamImpact289FC0(ram, ctx.rom, ctx, a6, b.impact);  // $255066/$2550F0
+    impacts++;
+  }
+  // $25506C..$255084 -- the top of the drawn beam, clamped to the pod.
+  let d0 = u16(ram.u16(b.word) + b.drawBias);                // $255072 / $2550F6
+  const d1 = u16(ram.u16(b.opt + OPT.posY) + 0x400);        // $25507C / $255102
+  if (d0 < d1) d0 = d1;                                     // $255080 cmp.w/bcc
+
+  // $255086..$25509E -- five words built at ($2,A6) from the $24BB0A pair.
+  const src = ram.u32(a6 + 0x12) + i16(ram.u16(a6 + 0x10)); // $25508A/$25508E
+  ram.setU16(a6 + 0x02, d0);                                // $255092 move.w
+  ram.setU16(a6 + 0x04, ram.u16(b.player + P.posX));        // $255094 move.w
+  ram.setU32(a6 + 0x06, ctx.rom.u32(src));                  // $25509A move.l
+  ram.setU32(a6 + 0x0a, ctx.rom.u32(src + 4));              // $25509C move.l
+  ram.setU16(a6 + 0x0e, ctx.rom.u16(src + 8));              // $25509E move.w
+
+  const nx = ram.u16(a6 + 0x10) - 0x0a;                     // $2550A0 subi.w
+  ram.setU16(a6 + 0x10, nx < 0 ? ram.u16(a6 + 0x18) : u16(nx)); // $2550A6/$2550A8
+
+  // $2550AE..$2550C6 -- the draw's own gate, mirrored by polarity.
+  if (beamSoundBlocked(ram, b)) return { emitted, impacts };
+  if (ram.u16(0x81308c) === 0 && (b.d7 ? phase : !phase)) {
+    return { emitted, impacts };
+  }
+  emit(ram, ctx, b, a6);                                    // $2550C6 jsr
+  emitted++;
+  return { emitted, impacts };
 }
 
 // =========================================================== the L3 boundary

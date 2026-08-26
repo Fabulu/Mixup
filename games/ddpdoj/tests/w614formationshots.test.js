@@ -202,7 +202,7 @@ test('W614 capabilities bind one exact 36 by $30 private pool',
       'malformed capabilities are rejected before private pool mutation');
   });
 
-test('W614 B1 makes ordinary ship and pod shots without entering laser or native RAM',
+test('W614 B1 makes ordinary shots before bootstrap, then enters the private laser',
   { skip: SKIP_ASSETS }, async () => {
     const { state, game } = await exactState();
     const liveCountBefore = game.ram.u16(SHOT.liveCount);
@@ -210,7 +210,7 @@ test('W614 B1 makes ordinary ship and pod shots without entering laser or native
     const soundBefore = ramBytes(game.ram, 0x81deb4, 0x10);
     const beamBefore = sidecarBytes(state.memory, P3_VIRTUAL.beamRecord, 0x40);
 
-    const { shipRequests } = produceB1(state, game);
+    const { nativeBefore, shipRequests } = produceB1(state, game);
     assert.deepEqual(activeSlots(state.memory), [0, 1, 14, 21],
       'style 6 uses authentic pod slots 0/1 and ship slots 14/21 in one pool');
     assert.equal(shipRequests.length, 2);
@@ -228,6 +228,18 @@ test('W614 B1 makes ordinary ship and pod shots without entering laser or native
       'B2 remains excluded');
     assert.equal(state.memory.u8(P3_VIRTUAL.player + P.dirByte) & 0x80, 0,
       'Start remains excluded');
+
+    for (let frame = 1; frame < 48; frame++) {
+      setP3Buttons(state, 0x10, 0);
+      runThreePilotOptionObject(game);
+    }
+    assert.notEqual(state.memory.u16(P3_VIRTUAL.beamPool + 28 * 0x30), 0,
+      'continued B1 hold authentically seeds the private laser muzzle');
+    assert.equal(sidecarBytes(state.memory, P3_VIRTUAL.positionHistory, 0x40)
+      .some((byte) => byte !== 0), true,
+      'ordinary shots compose with W615 laser history seeding');
+    assert.deepEqual(game.ram.b, nativeBefore,
+      'private laser bootstrap still leaves every native RAM byte unchanged');
   });
 
 test('W614 call 8 rejects B2 and Start before any private or native mutation',
@@ -256,7 +268,7 @@ test('W614 call 8 rejects B2 and Start before any private or native mutation',
     }
   });
 
-test('W614 laser-disabled options keep angle zero on the ordinary formation path',
+test('W614 idle laser-enabled options keep angle zero on the ordinary formation path',
   { skip: SKIP_ASSETS }, async () => {
     const { state, game } = await exactState();
     primeOptions(state, game);

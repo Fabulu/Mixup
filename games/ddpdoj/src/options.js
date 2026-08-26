@@ -49,7 +49,8 @@ import {
 } from './spritequeue.js';
 import { groundPlane, SHIP_MUTATE } from './shipsprite.js';
 import {
-  BEAM, runLaserGate, buildBeam, wipeSegmentPool, rampDown,
+  BEAM, PRIVATE_BEAM_GEOMETRY, assertPrivateBeamCapabilities, runLaserGate,
+  buildBeam, wipeSegmentPool, wipePrivateSegmentPool, rampDown,
 } from './laser.js';
 
 /** Explicit cartridge and pool capabilities for native pod-shot production. */
@@ -176,7 +177,15 @@ export function assertOptionOwnerInputAllowed(ram, b) {
   if (!Number.isSafeInteger(b?.ownerIndex) || !Number.isSafeInteger(b?.player)) {
     throw new TypeError('option owner must supply an exact logical owner and player record');
   }
-  if (b.allowLaser === false) {
+  if (b.ownerIndex !== 0 && b.ownerIndex !== 1 && b.ownerIndex !== 2) {
+    throw new RangeError(`unsupported logical option owner ${b.ownerIndex}`);
+  }
+  if (b.ownerIndex === 2) {
+    if (b.player !== PRIVATE_BEAM_GEOMETRY.player
+        || b.opt !== PRIVATE_BEAM_GEOMETRY.opt
+        || b.rampGuard !== 0x10001600) {
+      throw new RangeError('private option owner must supply exact player, option, and bomb guard');
+    }
     const excludedInput = ram.u8(b.player + P.dirByte)
       | ram.u8(b.player + P.btnByte);
     if ((excludedInput & 0xa0) !== 0) {
@@ -212,6 +221,7 @@ function optionShotResources(b) {
 function runOneBlock(ram, ctx, b) {
   const { opt, player } = b;
   assertOptionOwnerInputAllowed(ram, b);
+  if (b.ownerIndex === 2) beamOf(b);
 
   // $24C0C8 bset #0,($1,A6) / bne $24C134 -- the ONE-TIME INIT.  MEASURED: the
   // bit is already set at every sample point of every scenario in the corpus
@@ -279,8 +289,9 @@ export { runOneBlock as runOptionBlock };
 
 /** Resolve the beam resource `$24C096` names for this exact owner. */
 function beamOf(b) {
-  if (b.beam) return b.beam;
-  throw new TypeError(`option owner ${b.ownerIndex} has no laser resource`);
+  if (!b.beam) throw new TypeError(`option owner ${b.ownerIndex} has no laser resource`);
+  if (b.ownerIndex === 2) assertPrivateBeamCapabilities(b.beam);
+  return b.beam;
 }
 
 function emitRegisters(ram, b, bucket, d1, d2, d3, d4) {
@@ -331,7 +342,9 @@ function noLaser(ram, ctx, b) {
   for (const o of [0x2a, 0x2b, 0x34, 0x35, 0x3f]) {        // $24C2C4..$24C2D6
     ram.setU8(player + o, 0);
   }
-  wipeSegmentPool(ram, ctx, beamOf(b));                    // $24C2DE / $24C2E4
+  const beam = beamOf(b);
+  if (b.ownerIndex === 2) wipePrivateSegmentPool(ram, beam);
+  else wipeSegmentPool(ram, ctx, beam);                     // $24C2DE / $24C2E4
   ram.setU8(opt + 0x4a, 8);                                // $24C2E8 move.b #8
   ram.setU8(opt + OPT.reloadCount, 4);                     // $24C2EE move.b #4
   // `andi.w #$DFDB,(A6)` clears bit 5 of BOTH bytes and bit 2 of the low one:
@@ -1450,7 +1463,7 @@ function copyTemplate(ram, ctx, b) {
   const d0 = ram.u8(player + P.dirLatch);                  // $24C118 ($1d,A4)
   ram.setU8(opt + 0x1d, d0);                               // $24C11C
   ram.setU8(opt + 0x3d, d0);                               // $24C120
-  if (b.allowLaser !== false) {
+  if (b.allowLaser !== false && b.ownerIndex !== 2) {
     const pw = ram.u8(player + 0x56);                        // $24C124 ($56,A4)
     ram.setU8(laser + 0x1d, pw);                             // $24C128 ($1d,A2)
     ram.setU8(laser + 0x1e, pw);                             // $24C12C ($1e,A2)
