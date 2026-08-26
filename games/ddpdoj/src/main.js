@@ -527,7 +527,10 @@ export class Game {
 
   /** The context every ported routine gets.  No clock is reachable from it. */
   #ctx() {
-    const privateOptionObjectHook = /** @type {any} */ (this).privateOptionObjectHook;
+    const installedPrivateOptionHook = /** @type {any} */ (this).privateOptionObjectHook;
+    const privateOptionObjectHook = installedPrivateOptionHook
+      ? () => installedPrivateOptionHook(this)
+      : null;
     return {
       tables: this.tables,
       rom: this.rom,

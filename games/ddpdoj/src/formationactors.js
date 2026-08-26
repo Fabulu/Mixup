@@ -483,9 +483,7 @@ function initializeP3Record(state, alive) {
   memory.setU32(player + P.animA, romLong(rom, initial));
   memory.setU32(player + P.hitYPlus, romLong(rom, initial + 4));
   const speedIndex = (style - 2) * 2 + ship;
-  const speed = typeof rom.u8 === 'function'
-    ? rom.u8(0x255200 + speedIndex)
-    : memory.u8(P1_BINDING.player + P.speedIdx);
+  const speed = romByte(rom, 0x255200 + speedIndex);
   memory.setU8(player + P.speedIdx, speed);
   memory.setU8(player + P.baseSpeed, speed);
   memory.setU8(player + P.laserFloor, romByte(rom, 0x255201 + speedIndex));
@@ -498,6 +496,8 @@ function initializeP3Record(state, alive) {
   memory.setU16(player + P.posY, state.runtime.targets[2].y);
   memory.setU16(player + P.posX, state.runtime.targets[2].x);
   memory.setU16(player + P.state, alive ? 0x8000 : 0);
+  memory.setU8(player + P.dirByte, memory.u16(P3_BINDING.input.raw) & 0xff);
+  memory.setU8(player + P.btnByte, memory.u16(P3_BINDING.input.edge) & 0xff);
 }
 
 function stageP3Actor(state) {
@@ -637,7 +637,12 @@ export function attachThreePilotFoundation(game, options = {}) {
   const positionTransform = (ram, playerIdx) =>
     cachedPositionTransform(state, ram, playerIdx);
   const renderHook = (hookGame) => collectThreePilotSpriteRequests(state, hookGame);
-  const optionHook = () => runThreePilotOptionObject(game);
+  const optionHook = (hookGame) => {
+    if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
+      throw new Error('private P3 option hook invoked for a different Game');
+    }
+    return runThreePilotOptionObject(hookGame);
+  };
   state.objectDriverHook = hook;
   state.playerPositionTransform = positionTransform;
   state.virtualSpriteRequestHook = renderHook;

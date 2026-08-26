@@ -6,12 +6,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MACHINE, OPT, P, RAM } from '../src/machine.js';
+import { BIT, MACHINE, OPT, P, RAM } from '../src/machine.js';
+import { portWordFromBits } from '../src/input.js';
 import { commitCreates } from '../src/objalloc.js';
 import {
   P3_VIRTUAL, P3_VIRTUAL_RANGES, THREE_PILOT_SHARED_RANGES,
   THREE_PILOT_FORMATION_MODE, attachThreePilotFoundation,
-  runThreePilotOptionObject,
+  prepareThreePilotFrame, runThreePilotOptionObject,
 } from '../src/formationactors.js';
 import { OPTION_BLOCKS, runOptionBlock } from '../src/options.js';
 import { BUCKETS, NAMED_BUCKETS, RECORD_BYTES } from '../src/spritequeue.js';
@@ -150,6 +151,53 @@ test('W613 P3 player initialization comes from the selected cartridge rows',
     assert.equal(state.memory.u16(player + 0x36), game.rom.u16(0x2552d6));
     assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.options, OPT.stride),
       new Uint8Array(OPT.stride));
+  });
+
+test('W613 commit and restage preserve the current private input bytes',
+  { skip: SKIP_ASSETS }, async () => {
+    const bundle = await localBundle();
+    const demo = new Demo(fakeCanvas(), bundle, MACHINE.refreshHz,
+      undefined, null, null, null, THREE_PILOT_FORMATION_MODE.authenticSelection);
+    const { game } = demo;
+    const state = attachThreePilotFoundation(game, { inputWord: 0xffff });
+    const button1 = portWordFromBits([BIT.b1]);
+
+    prepareThreePilotFrame(state, game, button1);
+    assert.equal(state.memory.u8(P3_VIRTUAL.player + P.dirByte), 0x10);
+    assert.equal(state.memory.u8(P3_VIRTUAL.player + P.btnByte), 0x10);
+    activate(state);
+    assert.equal(state.memory.u8(P3_VIRTUAL.player + P.dirByte), 0x10);
+    assert.equal(state.memory.u8(P3_VIRTUAL.player + P.btnByte), 0x10);
+    assert.throws(() => runThreePilotOptionObject(game), /\$24C164/);
+
+    prepareThreePilotFrame(state, game, 0xffff);
+    state.lifecycle = 'detached';
+    state.restagePending = true;
+    prepareThreePilotFrame(state, game, button1);
+    assert.equal(state.lifecycle, 'staged');
+    activate(state);
+    assert.equal(state.memory.u8(P3_VIRTUAL.player + P.dirByte), 0x10);
+    assert.equal(state.memory.u8(P3_VIRTUAL.player + P.btnByte), 0x10);
+    assert.throws(() => runThreePilotOptionObject(game), /\$24C164/);
+  });
+
+test('W613 u16-only ROM adapters initialize P3 speed from the cartridge row',
+  { skip: SKIP_ASSETS }, async () => {
+    const bundle = await localBundle();
+    const demo = new Demo(fakeCanvas(), bundle, MACHINE.refreshHz,
+      undefined, null, null, null, THREE_PILOT_FORMATION_MODE.authenticSelection);
+    const { game } = demo;
+    const fullRom = game.rom;
+    const expected = fullRom.u8(0x255208);
+    game.ram.setU8(RAM.player1 + P.speedIdx, expected ^ 0xff);
+    game.rom = { u16: (address) => fullRom.u16(address) };
+
+    const state = attachThreePilotFoundation(game, { inputWord: 0xffff });
+    activate(state);
+    assert.equal(state.memory.u8(P3_VIRTUAL.player + P.speedIdx), expected);
+    assert.equal(state.memory.u8(P3_VIRTUAL.player + P.baseSpeed), expected);
+    assert.notEqual(state.memory.u8(P3_VIRTUAL.player + P.speedIdx),
+      game.ram.u8(RAM.player1 + P.speedIdx));
   });
 
 test('W613 style-6 deployment matches an isolated native owner and emits copied requests',
@@ -304,6 +352,23 @@ test('W613 virtual request hooks reject cross-Game use before draining their own
     assert.deepEqual(a.state.weapons.requests, before);
   });
 
+test('W613 copied option hooks reject the invoking Game before owner mutation',
+  { skip: SKIP_ASSETS }, async () => {
+    const a = await exactState();
+    const b = await exactState();
+    const optionsBefore = sidecarBytes(a.state.memory, P3_VIRTUAL.options, OPT.stride);
+    const callsBefore = a.state.weapons.calls;
+    const requestsBefore = a.state.weapons.requests.map(({ bucket, bytes }) =>
+      ({ bucket, bytes: bytes.slice() }));
+
+    b.game.privateOptionObjectHook = a.game.privateOptionObjectHook;
+    assert.throws(() => b.demo.step(), /different Game/);
+    assert.deepEqual(sidecarBytes(a.state.memory, P3_VIRTUAL.options, OPT.stride),
+      optionsBefore);
+    assert.equal(a.state.weapons.calls, callsBefore);
+    assert.deepEqual(a.state.weapons.requests, requestsBefore);
+  });
+
 test('W613 sidecars are per-Game and the private mode remains publicly closed',
   { skip: SKIP_ASSETS }, async () => {
     const a = await exactState();
@@ -337,4 +402,42 @@ test('W613 sidecars are per-Game and the private mode remains publicly closed',
     const privateCall = type5.indexOf('ctx.privateOptionObjectHook?.();');
     assert.ok(nativeCall >= 0 && privateCall > nativeCall,
       'type-5 call 9 runs native P1/P2 options before the attached P3 owner');
+  });
+
+test('W613 REC refuses a stale Game replaced by PLAY during its table fetch',
+  { skip: SKIP_ASSETS }, async () => {
+    const bundle = await localBundle();
+    const demo = new Demo(fakeCanvas(), bundle, MACHINE.refreshHz);
+    await demo.armRecording();
+    demo.step();
+    const replay = await demo.stopRecording();
+    assert.ok(replay);
+
+    let rejectFetch;
+    let markFetchStarted;
+    const fetchStarted = new Promise((resolve) => { markFetchStarted = resolve; });
+    const blockedFetch = new Promise((resolve, reject) => { rejectFetch = reject; });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = () => {
+      markFetchStarted();
+      return blockedFetch;
+    };
+    demo.assetBase = 'https://example.invalid/assets/';
+
+    try {
+      const oldGame = demo.game;
+      const arming = demo.armRecording();
+      await fetchStarted;
+      demo.playFrom(replay);
+      const state = attachThreePilotFoundation(demo.game, { inputWord: 0xffff });
+      assert.notStrictEqual(demo.game, oldGame);
+      rejectFetch(new Error('controlled table fetch failure'));
+
+      await assert.rejects(arming, /active Game changed while REC was arming/);
+      assert.equal(demo.recorder, null);
+      assert.ok(demo.playback);
+      assert.strictEqual(state.game, demo.game);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });

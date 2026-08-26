@@ -1216,8 +1216,16 @@ export class Demo {
     }
     const tablesB64 = recB64(tablesBytes);
 
-    // Attachment can occur while the asynchronous table hash is in flight.
-    assertPrivateFormationReplayCompatible(g, 'REC');
+    // The visible Game or replay mode can change while the asynchronous table
+    // hash is in flight. Never arm a recorder against a detached stale Game.
+    if (this.game !== g) {
+      throw new Error('cannot arm REC because the active Game changed while REC was arming.');
+    }
+    if (this.playback) {
+      throw new Error('cannot arm REC while a .replay is playing; stop PLAY first.');
+    }
+    assertPrivateFormationReplayCompatible(this.game, 'REC');
+    if (this.recorder) return this.recorder;
     const seeded = this.stats().seeded;
     this.recorder = armRecorder(g, {
       columns: CLAIMED,                 // a live recording freezes ALL of CLAIMED
