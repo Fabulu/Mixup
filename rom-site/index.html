@@ -28,12 +28,12 @@
 
       <div class="intake-grid">
         <label class="picker" for="files">
-          <strong>Choose ROM files</strong>
-          <span>Select one cartridge image or several extracted MAME members.</span>
+          <strong>Choose ROMs, ZIP, or 7z</strong>
+          <span>Select cartridge files, extracted MAME members, or a local archive.</span>
           <input id="files" type="file" multiple>
         </label>
-        <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop ROM files or folders">
-          <strong>Drop files or a folder</strong>
+        <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop ROM files, ZIP or 7z archives, or folders">
+          <strong>Drop ROMs, ZIP/7z, or a folder</strong>
           <span>Mixup checks them on this device.</span>
         </div>
       </div>
@@ -54,7 +54,7 @@
         </div>
       </details>
 
-      <p class="privacy">ROM bytes stay on this device. Mixup saves only a folder handle when you ask it to.</p>
+      <p class="privacy">ROM and archive bytes stay on this device. Mixup saves only a folder handle when you ask it to.</p>
       <p id="status" role="status" aria-live="polite">Ready for local validation. No files have been read.</p>
     </section>
 

@@ -2,6 +2,14 @@ import { GAME_CATALOGUE, GAME_IDS } from './catalogue.js';
 
 const ARCHIVE_RE = /\.(?:zip|7z|rar)$/i;
 
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  if (signal.reason) throw signal.reason;
+  const error = new Error('Local identity inspection was superseded.');
+  error.name = 'AbortError';
+  throw error;
+}
+
 function allKnown() {
   return GAME_IDS.flatMap((gameId) => {
     const game = GAME_CATALOGUE[gameId];
@@ -138,11 +146,9 @@ export function classifyMetadata(gameId, actual) {
 
   if (ARCHIVE_RE.test(actual.name)) {
     return result('unsupported-archive', normalized, {
-      knownIdentity: 'Archive container, contents not inspected',
-      likelyCauses: ['An archive container was selected instead of an extracted ROM file or MAME member.'],
-      correctiveAction: gameId === 'ddpdoj'
-        ? 'Extract the ddpdojblk ZIP or 7z locally, then select the ten listed members.'
-        : 'Extract the archive locally, then select the complete cartridge image listed below.',
+      knownIdentity: 'Archive container did not pass local expansion',
+      likelyCauses: ['The archive was passed to identity matching instead of yielding validated regular members.'],
+      correctiveAction: 'Use a valid, unencrypted ZIP or 7z archive, or select extracted ROM files. RAR is not supported.',
     });
   }
 
@@ -200,15 +206,20 @@ function knownBySha256(metadata) {
 export async function inspectInventory(files, options = {}) {
   const digest = options.digest;
   const items = [];
+  throwIfAborted(options.signal);
   for (const file of files) {
+    throwIfAborted(options.signal);
     const bytes = await file.arrayBuffer();
+    throwIfAborted(options.signal);
     const metadata = {
       name: file.name,
       size: file.size,
       sha256: await digestHex('SHA-256', bytes, digest),
     };
+    throwIfAborted(options.signal);
     if (!knownBySha256(metadata)) {
       metadata.sha1 = await digestHex('SHA-1', bytes, options.sha1Digest ?? digest);
+      throwIfAborted(options.signal);
     }
     items.push({ file, metadata });
   }

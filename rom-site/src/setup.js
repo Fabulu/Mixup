@@ -1,3 +1,4 @@
+import { expandArchives } from './archives.js';
 import { BUILD_ID } from './buildid.js';
 import { GAME_CATALOGUE, GAME_IDS } from './catalogue.js';
 import { inspectInventory, formatDiagnostic } from './diagnostics.js';
@@ -38,6 +39,26 @@ const selectedFilesByGame = new Map();
 let lastInventory = null;
 let activeRuntime = null;
 let launching = false;
+let intakeGeneration = 0;
+let intakeController = null;
+
+function beginIntake() {
+  intakeController?.abort();
+  const intake = {
+    generation: ++intakeGeneration,
+    controller: new AbortController(),
+  };
+  intakeController = intake.controller;
+  return intake;
+}
+
+function intakeIsCurrent(intake) {
+  return intake.generation === intakeGeneration && !intake.controller.signal.aborted;
+}
+
+function finishIntake(intake) {
+  if (intakeIsCurrent(intake)) intakeController = null;
+}
 
 build.textContent = BUILD_ID;
 
@@ -156,10 +177,12 @@ function resetInventory() {
   renderSelectedDiagnostic();
 }
 
-async function validate(files, source) {
+async function validate(files, source, intake = beginIntake()) {
+  if (!intakeIsCurrent(intake)) return;
   if (!files.length) {
     resetInventory();
     setStatus(`No files were found in ${source}. If a dropped folder was not exposed by this browser, use Choose a folder instead.`, 'bad');
+    finishIntake(intake);
     return;
   }
   const selection = describeSelection(files);
@@ -171,11 +194,23 @@ async function validate(files, source) {
     launcherState = applyValidation(launcherState, gameId, false);
   }
   renderLauncher();
-  setStatus(`Hashing ${selection.count} file${selection.count === 1 ? '' : 's'} once, then matching every game locally (${formatBytes(selection.totalBytes)} bytes)...`, 'working');
+  setStatus(`Checking ${selection.count} local file${selection.count === 1 ? '' : 's'} (${formatBytes(selection.totalBytes)} bytes)...`, 'working');
   report.textContent = '';
   copyReport.disabled = true;
   try {
-    const inventory = await inspectInventory(files);
+    const expanded = await expandArchives(files, {
+      signal: intake.controller.signal,
+      onProgress: (message) => {
+        if (intakeIsCurrent(intake)) setStatus(message, 'working');
+      },
+    });
+    if (!intakeIsCurrent(intake)) return;
+    const ready = describeSelection(expanded.files);
+    setStatus(`Hashing ${ready.count} ROM file${ready.count === 1 ? '' : 's'} once, then matching every game locally (${formatBytes(ready.totalBytes)} bytes)...`, 'working');
+    const inventory = await inspectInventory(expanded.files, {
+      signal: intake.controller.signal,
+    });
+    if (!intakeIsCurrent(intake)) return;
     lastInventory = inventory;
     for (const gameId of GAME_IDS) {
       const summary = inventory.games[gameId];
@@ -187,13 +222,19 @@ async function validate(files, source) {
     renderSelectedDiagnostic();
     const unlocked = GAME_IDS.filter((gameId) => inventory.games[gameId].complete)
       .map((gameId) => GAME_CATALOGUE[gameId].title);
+    const archiveNote = expanded.archives
+      ? ` Read ${expanded.members} member${expanded.members === 1 ? '' : 's'} from ${expanded.archives} local archive${expanded.archives === 1 ? '' : 's'}.`
+      : '';
     setStatus(unlocked.length
-      ? `Validated game cards: ${unlocked.join(', ')}. The identity selector changes the detailed report view; unrelated extras do not relock valid games.`
-      : 'No complete game identity set was found. Select a game above to inspect its missing, duplicate, and extra-file diagnostics.',
+      ? `Validated game cards: ${unlocked.join(', ')}.${archiveNote} Unrelated extras do not relock valid games.`
+      : `No complete game identity set was found.${archiveNote} Open Verification details to inspect missing, duplicate, and extra-file diagnostics.`,
     unlocked.length ? 'good' : 'bad');
   } catch (error) {
+    if (!intakeIsCurrent(intake)) return;
     resetInventory();
     setStatus(`Could not inspect the selection: ${error.message}`, 'bad');
+  } finally {
+    finishIntake(intake);
   }
 }
 
@@ -218,9 +259,14 @@ for (const eventName of ['dragleave', 'dragend']) {
 dropZone.addEventListener('drop', async (event) => {
   event.preventDefault();
   dropZone.dataset.active = 'false';
+  const intake = beginIntake();
   try {
-    await validate(await filesFromDataTransfer(event.dataTransfer), 'the dropped selection');
+    const files = await filesFromDataTransfer(event.dataTransfer);
+    if (!intakeIsCurrent(intake)) return;
+    await validate(files, 'the dropped selection', intake);
   } catch (error) {
+    if (!intakeIsCurrent(intake)) return;
+    finishIntake(intake);
     setStatus(`Could not read the dropped selection: ${error.message}. Use Choose a folder if folder dropping is unsupported.`, 'bad');
   }
 });
@@ -299,14 +345,21 @@ gameSelect.addEventListener('change', () => {
 
 chooseFolder.hidden = typeof globalThis.showDirectoryPicker !== 'function';
 chooseFolder.addEventListener('click', async () => {
+  let intake = null;
   try {
     const handle = await chooseDirectory();
+    intake = beginIntake();
     await saveDirectoryHandle(handle);
+    if (!intakeIsCurrent(intake)) return;
     savedHandle = handle;
     savedPermission = 'granted';
     updateSavedFolderControls();
-    await validate(await collectDirectoryFiles(handle), 'the selected folder');
+    const files = await collectDirectoryFiles(handle);
+    if (!intakeIsCurrent(intake)) return;
+    await validate(files, 'the selected folder', intake);
   } catch (error) {
+    if (intake && !intakeIsCurrent(intake)) return;
+    if (intake) finishIntake(intake);
     if (error.name === 'AbortError') {
       setStatus('Folder choice cancelled. No files were read.', '');
     } else {
@@ -326,6 +379,7 @@ function updateSavedFolderControls() {
 
 reuseFolder.addEventListener('click', async () => {
   if (!savedHandle) return;
+  let intake = null;
   try {
     let permission = await queryDirectoryPermission(savedHandle);
     if (permission === 'prompt') permission = await requestDirectoryPermission(savedHandle);
@@ -335,8 +389,13 @@ reuseFolder.addEventListener('click', async () => {
       updateSavedFolderControls();
       return;
     }
-    await validate(await collectDirectoryFiles(savedHandle), 'the saved folder');
+    intake = beginIntake();
+    const files = await collectDirectoryFiles(savedHandle);
+    if (!intakeIsCurrent(intake)) return;
+    await validate(files, 'the saved folder', intake);
   } catch (error) {
+    if (intake && !intakeIsCurrent(intake)) return;
+    if (intake) finishIntake(intake);
     setStatus(`The saved folder can no longer be used: ${error.message}`, 'bad');
   }
 });

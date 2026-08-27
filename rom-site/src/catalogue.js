@@ -21,7 +21,7 @@ const batman = Object.freeze({
   set: null,
   notes: [
     'The accepted region label is USA, Europe, as recorded by the verified cartridge identity and filename.',
-    'Supply the complete raw Game Boy cartridge image, not an archive.',
+    'Supply the complete raw Game Boy cartridge image directly or inside a ZIP or 7z archive.',
   ],
   accepted: Object.freeze([
     member('Batman - Return of the Joker (USA, Europe).gb', 131072,
@@ -42,7 +42,7 @@ const gradius = Object.freeze({
   revision: 'No separate revision marker is recorded',
   set: null,
   notes: [
-    'Supply the complete iNES file including its 16-byte header, not split PRG or CHR files.',
+    'Supply the complete iNES file directly or inside a ZIP or 7z archive, including its 16-byte header rather than split PRG or CHR files.',
     'The accepted image is mapper 3 CNROM with 32 KiB PRG, 32 KiB CHR, vertical mirroring, and no trainer.',
   ],
   accepted: Object.freeze([
@@ -130,7 +130,7 @@ const ddpdoj = Object.freeze({
   revision: 'Black Label Version B, 2002.10.07 BLACK VER',
   set: 'ddpdojblk',
   notes: [
-    'Supply the ten extracted MAME members listed below. ZIP and 7z containers are not accepted yet.',
+    'Supply the ten MAME members listed below directly, inside a ZIP, or inside a 7z archive.',
     'ddb10_10_8_434f.u45 is the raw encrypted program member. MAME loads it with 16-bit word swapping and decrypts it in place.',
     'The protection ROM is undumped. MAME simulates the protection device.',
     'This cartridge also contains Version A, 2002.04.05 MASTER VER. A Version A chooser result does not imply a different cartridge digest.',

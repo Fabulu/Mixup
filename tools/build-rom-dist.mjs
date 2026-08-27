@@ -2,6 +2,7 @@
 // This script uses a closed source allowlist. It never traverses a game assets/
 // tree, and it has no publication exceptions.
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,9 @@ export const DIST_ROM = path.join(ROOT, 'dist-rom');
 const SHELL_ALLOWLIST = Object.freeze([
   'rom-site/index.html',
   'rom-site/styles.css',
+  'rom-site/src/archive-policy.js',
+  'rom-site/src/archive-worker.js',
+  'rom-site/src/archives.js',
   'rom-site/src/buildid.js',
   'rom-site/src/catalogue.js',
   'rom-site/src/diagnostics.js',
@@ -24,11 +28,41 @@ const RUNTIME_ROOTS = Object.freeze([
   'rom-site/src/gradius-local.js',
   'rom-site/src/ddpdoj-local.js',
 ]);
+export const VENDOR_ALLOWLIST = Object.freeze([
+  Object.freeze({
+    source: 'node_modules/sevenzip-wasm/sevenzip-wasm.js',
+    output: 'src/vendor/sevenzip-wasm/sevenzip-wasm.js',
+    bytes: 80875,
+    sha256: 'c946e4285c76c92001331b6cc3e06ea96dc142917ded6ee5d80fafd5deffafed',
+  }),
+  Object.freeze({
+    source: 'node_modules/sevenzip-wasm/sevenzip-wasm.wasm',
+    output: 'src/vendor/sevenzip-wasm/sevenzip-wasm.wasm',
+    bytes: 1166682,
+    sha256: '4337675b39b12a8d358de471e6e33507d55d0471d1e02108fe5202c0a26c89d6',
+  }),
+  Object.freeze({
+    source: 'node_modules/sevenzip-wasm/LICENSE',
+    output: 'src/vendor/sevenzip-wasm/LICENSE',
+    bytes: 6288,
+    sha256: 'bbc7b2904d894e2d36d2c3a0ad75a3b39c019ae26c9b1afb01c2c689972c1608',
+  }),
+]);
 const FROM_MODULE_RE = /^\s*(?:import|export)\s+[^;]*?\bfrom\s*['"]([^'"]+)['"]/gm;
 const SIDE_EFFECT_MODULE_RE = /^\s*import\s*['"]([^'"]+)['"]/gm;
 const DYNAMIC_MODULE_RE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
 
 function posixPath(value) { return value.split(path.sep).join('/'); }
+function sha256(body) { return crypto.createHash('sha256').update(body).digest('hex'); }
+
+function verifiedVendor(vendor) {
+  const absolute = path.join(ROOT, vendor.source);
+  const body = fs.readFileSync(absolute);
+  if (body.length !== vendor.bytes || sha256(body) !== vendor.sha256) {
+    throw new Error(`asset-free build: pinned vendor file changed: ${vendor.source}`);
+  }
+  return body;
+}
 
 function resolveModule(source, specifier) {
   if (specifier.startsWith('/')) return specifier.slice(1);
@@ -95,7 +129,7 @@ function walk(directory, base = directory) {
 }
 
 function generatedHeaders() {
-  return `/*\n  Cache-Control: no-store, must-revalidate\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()\n  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'\n`;
+  return `/*\n  Cache-Control: no-store, must-revalidate\n  X-Content-Type-Options: nosniff\n  Referrer-Policy: no-referrer\n  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()\n  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; connect-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'\n\n/src/vendor/sevenzip-wasm/sevenzip-wasm.wasm\n  Content-Type: application/wasm\n`;
 }
 
 function cartridgeCandidates(root) {
@@ -117,6 +151,7 @@ function outputRelative(source) {
 
 export function auditAssetFreeOutput(directory, options = {}) {
   const expected = [...SOURCE_ALLOWLIST.map(outputRelative),
+    ...VENDOR_ALLOWLIST.map((vendor) => vendor.output),
     ...GENERATED_ALLOWLIST].sort();
   const actual = walk(directory);
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
@@ -134,7 +169,15 @@ export function auditAssetFreeOutput(directory, options = {}) {
     if (FORBIDDEN_EXTENSIONS.has(extension)) {
       throw new Error(`asset-free audit: cartridge/archive extension is forbidden: ${relative}`);
     }
-    const size = fs.statSync(path.join(directory, relative)).size;
+    const body = fs.readFileSync(path.join(directory, relative));
+    const vendor = VENDOR_ALLOWLIST.find((candidate) => candidate.output === relative);
+    if (vendor) {
+      if (body.length !== vendor.bytes || sha256(body) !== vendor.sha256) {
+        throw new Error(`asset-free audit: pinned vendor output changed: ${relative}`);
+      }
+      continue;
+    }
+    const size = body.length;
     const limit = path.extname(relative).toLowerCase() === '.js' ? 768 * 1024 : 256 * 1024;
     if (size > limit) {
       throw new Error(`asset-free audit: hand-authored shell file exceeds ${limit} bytes: ${relative} (${size} bytes)`);
@@ -176,6 +219,11 @@ export function buildAssetFreeSite(options = {}) {
     } else {
       fs.copyFileSync(sourcePath, destination);
     }
+  }
+  for (const vendor of VENDOR_ALLOWLIST) {
+    const destination = path.join(DIST_ROM, vendor.output);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, verifiedVendor(vendor));
   }
   fs.writeFileSync(path.join(DIST_ROM, '_headers'), generatedHeaders());
 

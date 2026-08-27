@@ -48,7 +48,7 @@ test('known archive, wrong bytes, and unknown digest stay evidence-bounded', () 
     name: 'ddpdojblk.zip', size: 123, sha256: '0'.repeat(64),
   });
   assert.equal(archive.status, 'unsupported-archive');
-  assert.match(archive.correctiveAction, /Extract/);
+  assert.match(archive.correctiveAction, /valid, unencrypted ZIP or 7z/);
 
   const expected = GAME_CATALOGUE.ddpdoj.accepted.find((entry) => entry.name === 'ddp3blk_defaults.nv');
   const wrong = classifyMetadata('ddpdoj', {

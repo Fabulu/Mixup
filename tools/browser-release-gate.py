@@ -4,10 +4,14 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import io
 import re
 import sys
 import threading
+import time
 import traceback
+import zipfile
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,6 +43,12 @@ DDPDOJ_ROM_NAMES = (
     "pgm_t01s.rom",
 )
 ROM_FIXTURES = tuple(ROOT / "games/ddpdoj/rip/rom" / name for name in DDPDOJ_ROM_NAMES)
+DDPDOJ_7Z_FIXTURE = Path("C:/oldpcsx2/ddpdojblk.7z")
+SYNTHETIC_7Z_FIXTURE = base64.b64decode(
+    "N3q8ryccAAR1baoBCAAAAAAAAABiAAAAAAAAAA+E0UQBAAMBAgMEAAEEBgABCQgABwsBAAEhIQEA"
+    "DAQACAoBzfs8tgAABQEZDAAAAAAAAAAAAAAAABEXAG0AZQBtAGIAZQByAC4AcgBvAG0AAAAZBAAA"
+    "AAAUCgEAQBCnDXw23QEVBgEAIIC2gQAA"
+)
 
 FORBIDDEN_CARTRIDGE_SEGMENTS = frozenset({
     "rip", "rom", "roms", "cartridge", "cartridges", "archives",
@@ -121,11 +131,54 @@ class GateFailure(RuntimeError):
         self.diagnostics = diagnostics
 
 
+def parse_release_headers(directory: str) -> tuple[tuple[str, dict[str, str]], ...]:
+    rules: list[tuple[str, dict[str, str]]] = []
+    current: dict[str, str] | None = None
+    for raw in (Path(directory) / "_headers").read_text(encoding="utf-8").splitlines():
+        if not raw.strip():
+            continue
+        if raw[0].isspace():
+            if current is None or ":" not in raw:
+                raise GateFailure(f"malformed generated _headers line: {raw!r}")
+            name, value = raw.strip().split(":", 1)
+            current[name] = value.strip()
+            continue
+        current = {}
+        rules.append((raw.strip(), current))
+    return tuple(rules)
+
+
 class NoCacheHandler(SimpleHTTPRequestHandler):
-    """Serve one build root without cache state or request logging."""
+    """Serve one build root with production headers and no request logging."""
+
+    def __init__(self, *args, directory: str, **kwargs) -> None:
+        self.release_headers = parse_release_headers(directory)
+        super().__init__(*args, directory=directory, **kwargs)
+
+    def production_headers(self) -> dict[str, str]:
+        request_path = unquote(urlsplit(self.path).path)
+        headers: dict[str, str] = {}
+        for pattern, values in self.release_headers:
+            matches = request_path == pattern
+            if pattern.endswith("*"):
+                matches = request_path.startswith(pattern[:-1])
+            if matches:
+                headers.update(values)
+        return headers
+
+    def guess_type(self, path: str) -> str:
+        supplied = self.production_headers().get("Content-Type")
+        return supplied if supplied else super().guess_type(path)
 
     def end_headers(self) -> None:
-        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        production = self.production_headers()
+        production.pop("Content-Type", None)
+        cache_control = production.pop("Cache-Control", "no-store, must-revalidate")
+        for name, value in production.items():
+            self.send_header(name, value)
+        self.send_header(
+            "Cache-Control", f"{cache_control}, no-cache, max-age=0"
+        )
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         super().end_headers()
@@ -239,6 +292,23 @@ class BrowserGate:
                 failures.append(f"cacheable response: {response.url}")
             if response.status >= 400:
                 failures.append(f"HTTP {response.status}: {response.url}")
+            if self.asset_free:
+                response_path = unquote(urlsplit(response.url).path)
+                if response_path in {"/", "/index.html"}:
+                    csp = headers.get("content-security-policy", "")
+                    for directive in (
+                        "script-src 'self' 'wasm-unsafe-eval'",
+                        "worker-src 'self'",
+                        "connect-src 'self'",
+                    ):
+                        if directive not in csp:
+                            failures.append(
+                                f"production CSP missing {directive}: {response.url}"
+                            )
+                if response_path.endswith("/sevenzip-wasm.wasm") \
+                        and headers.get("content-type", "").split(";", 1)[0] \
+                        != "application/wasm":
+                    failures.append(f"wrong WASM content type: {response.url}")
 
         def instrument_page(candidate) -> None:
             candidate.on("pageerror", lambda error: failures.append(f"page error: {error}"))
@@ -367,16 +437,39 @@ def open_page(page, origin: str, path: str) -> None:
     require(response is not None and response.ok, f"navigation failed for {path}")
 
 
+def wait_for_condition(page, predicate: str, *, arg=None,
+                       polling: int = 100, timeout: int = 30000) -> None:
+    deadline = time.monotonic() + timeout / 1000
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            ready = page.evaluate(predicate, arg) if arg is not None \
+                else page.evaluate(predicate)
+            if ready:
+                return
+            last_error = None
+        except Exception as error:
+            last_error = error
+        page.wait_for_timeout(polling)
+    failure = GateFailure(
+        f"browser condition did not become true within {timeout} ms: {predicate[:120]}"
+    )
+    if last_error is not None:
+        raise failure from last_error
+    raise failure
+
+
 def canvas_identity(page, selector: str, width: int, height: int,
                     timeout: int = 60000) -> dict:
     arguments = {"selector": selector, "width": width, "height": height}
     try:
-        page.wait_for_function(
+        wait_for_condition(
+            page,
             f"arguments => ({CANVAS_IDENTITY})(arguments).valid",
             arg=arguments,
             timeout=timeout,
         )
-    except PlaywrightTimeoutError as error:
+    except GateFailure as error:
         identity = page.evaluate(CANVAS_IDENTITY, arguments)
         raise GateFailure(
             f"{selector} did not become a visible diverse canvas: "
@@ -417,8 +510,10 @@ def wait_for_canvas_change(page, first: dict, selector: str, width: int, height:
       return changed >= 2;
     }}"""
     try:
-        page.wait_for_function(predicate, arg=arguments, polling=250, timeout=timeout)
-    except PlaywrightTimeoutError:
+        wait_for_condition(
+            page, predicate, arg=arguments, polling=250, timeout=timeout
+        )
+    except GateFailure:
         current = canvas_identity(page, selector, width, height)
         require_canvas_change(first, current, label)
         return current
@@ -432,7 +527,8 @@ def gate_asset_backed(browser, origin: str) -> None:
 
     def root_launcher(page):
         open_page(page, origin, "/")
-        page.wait_for_function(
+        wait_for_condition(
+            page,
             "document.querySelectorAll('#gamegrid .card.game').length === 3",
             timeout=30000,
         )
@@ -465,7 +561,7 @@ def gate_asset_backed(browser, origin: str) -> None:
         require(urlsplit(page.url).fragment
                 == "mods=invincibility&formation=fly-both-ships-side-by-side",
                 f"unexpected side-by-side launch URL {page.url}")
-        page.wait_for_function("window.__mixup !== undefined", timeout=180000)
+        wait_for_condition(page, "window.__mixup !== undefined", timeout=180000)
 
         def read_state() -> dict:
             return page.evaluate("""() => ({
@@ -485,7 +581,8 @@ def gate_asset_backed(browser, origin: str) -> None:
         initial = read_state()
         assert_state(initial)
         first_canvas = canvas_identity(page, "#screen", 224, 448)
-        page.wait_for_function(
+        wait_for_condition(
+            page,
             "minimum => window.__mixup.stats().logicFrame >= minimum",
             arg=initial["logicFrame"] + 8,
             timeout=30000,
@@ -517,7 +614,7 @@ def gate_asset_backed(browser, origin: str) -> None:
         page.locator("#formation-three").click()
         page.locator("#launch").click()
         page.wait_for_url("**/games/ddpdoj/index.html*", timeout=30000)
-        page.wait_for_function("window.__mixup !== undefined", timeout=180000)
+        wait_for_condition(page, "window.__mixup !== undefined", timeout=180000)
 
         def read_state() -> dict:
             return page.evaluate("""() => ({
@@ -535,7 +632,8 @@ def gate_asset_backed(browser, origin: str) -> None:
         initial = read_state()
         assert_state(initial)
         first_canvas = canvas_identity(page, "#screen", 224, 448)
-        page.wait_for_function(
+        wait_for_condition(
+            page,
             "minimum => window.__mixup.stats().logicFrame >= minimum",
             arg=initial["logicFrame"] + 8,
             timeout=30000,
@@ -611,6 +709,201 @@ def gate_asset_backed(browser, origin: str) -> None:
 def gate_asset_free(browser, origin: str) -> None:
     gate = BrowserGate(browser, origin, asset_free=True)
 
+    def zip_intake(page):
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as output:
+            for fixture in ROM_FIXTURES:
+                output.writestr(fixture.name, fixture.read_bytes())
+        open_page(page, origin, "/")
+        page.locator("#files").set_input_files({
+            "name": "ddpdojblk.zip",
+            "mimeType": "application/zip",
+            "buffer": archive.getvalue(),
+        })
+        wait_for_condition(
+            page,
+            "document.querySelector('#status').dataset.kind === 'good'",
+            timeout=300000,
+        )
+        card = page.locator('.game-card[data-game-id="ddpdoj"]')
+
+        def assert_zip_ready() -> None:
+            status = page.locator("#status").inner_text()
+            require("Read 10 members from 1 local archive." in status,
+                    f"ZIP intake status is not exact: {status!r}")
+            require(not card.is_disabled(), "ZIP intake left DaiOuJou locked")
+            require(card.locator(".card-state").inner_text() == "Identity validated",
+                    "ZIP intake did not validate exact DaiOuJou identities")
+
+        assert_zip_ready()
+        return assert_zip_ready
+
+    gate.run("asset-free ZIP intake", zip_intake)
+
+    def seven_zip_intake(page):
+        open_page(page, origin, "/")
+        page.locator("#files").set_input_files({
+            "name": "synthetic.7z",
+            "mimeType": "application/x-7z-compressed",
+            "buffer": SYNTHETIC_7Z_FIXTURE,
+        })
+        wait_for_condition(
+            page,
+            "() => { const status = document.querySelector('#status'); "
+            "return status.dataset.kind === 'bad' "
+            "&& status.textContent.includes('Read 1 member from 1 local archive.'); }",
+            timeout=120000,
+        )
+        card = page.locator('.game-card[data-game-id="ddpdoj"]')
+
+        def assert_7z_read() -> None:
+            status = page.locator("#status").inner_text()
+            require("No complete game identity set was found." in status,
+                    f"synthetic 7z status is not exact: {status!r}")
+            require("Read 1 member from 1 local archive." in status,
+                    f"synthetic 7z was not expanded: {status!r}")
+            require(card.is_disabled(), "synthetic 7z unlocked DaiOuJou")
+
+        assert_7z_read()
+        return assert_7z_read
+
+    gate.run("asset-free 7z intake", seven_zip_intake)
+
+    def archive_rejections(page):
+        def zipped(entries, compression=zipfile.ZIP_STORED):
+            body = io.BytesIO()
+            with zipfile.ZipFile(body, "w", compression=compression) as output:
+                for name, data in entries:
+                    output.writestr(name, data)
+            return body.getvalue()
+
+        open_page(page, origin, "/")
+        cases = (
+            ("malformed.zip", b"not a zip", "extension does not match"),
+            ("traversal.zip", zipped((("../member.rom", b"safe"),)),
+             "Unsafe archive path"),
+            ("nested.zip", zipped((("nested.zip", zipped((("member.rom", b"safe"),))),)),
+             "nested archives are not accepted"),
+            ("duplicate.zip", zipped((("a/member.rom", b"one"),
+                                       ("b/member.rom", b"two"))),
+             "duplicate basename"),
+            ("many-entries.zip", zipped(tuple(
+                (f"member-{index:03}.rom", b"x") for index in range(300)
+            )), "decoder output exceeded"),
+            ("ratio.zip", zipped((("large.rom", bytes(1024 * 1024)),),
+                                  zipfile.ZIP_DEFLATED),
+             "expansion ratio exceeds"),
+        )
+        card = page.locator('.game-card[data-game-id="ddpdoj"]')
+        for name, body, expected in cases:
+            page.locator("#files").set_input_files({
+                "name": name,
+                "mimeType": "application/zip",
+                "buffer": body,
+            })
+            try:
+                wait_for_condition(
+                    page,
+                    "expected => { const status = document.querySelector('#status'); "
+                    "return status.dataset.kind === 'bad' "
+                    "&& status.textContent.includes(expected); }",
+                    arg=expected,
+                    timeout=120000,
+                )
+            except GateFailure as error:
+                status = page.locator("#status").inner_text()
+                raise GateFailure(
+                    f"archive {name} did not report {expected!r}: {status!r}"
+                ) from error
+            require(card.is_disabled(), f"rejected archive {name} unlocked DaiOuJou")
+
+        def assert_rejected() -> None:
+            require(card.is_disabled(), "rejected archive gate left DaiOuJou unlocked")
+            require("expansion ratio exceeds" in page.locator("#status").inner_text(),
+                    "final bomb-like archive rejection was not retained")
+
+        assert_rejected()
+        return assert_rejected
+
+    gate.run("asset-free archive rejection policy", archive_rejections)
+
+    def latest_selection_wins(page):
+        page.add_init_script("""
+        (() => {
+          const workers = [];
+          class DelayedArchiveWorker {
+            constructor() {
+              this.listeners = new Map();
+              this.terminated = false;
+              workers.push(this);
+            }
+            addEventListener(name, listener) {
+              this.listeners.set(name, listener);
+            }
+            postMessage(message) {
+              if (message.action !== 'list') return;
+              setTimeout(() => {
+                this.listeners.get('message')?.({
+                  data: { ok: false, error: 'stale archive worker failure' },
+                });
+              }, 750);
+            }
+            terminate() {
+              this.terminated = true;
+            }
+          }
+          Object.defineProperty(globalThis, '__mixupDelayedArchiveWorkers', {
+            value: workers,
+          });
+          Object.defineProperty(globalThis, 'Worker', {
+            configurable: true,
+            writable: true,
+            value: DelayedArchiveWorker,
+          });
+        })();
+        """)
+        open_page(page, origin, "/")
+        page.locator("#files").set_input_files({
+            "name": "pending.zip",
+            "mimeType": "application/zip",
+            "buffer": b"PK\x03\x04pending",
+        })
+        wait_for_condition(
+            page,
+            "globalThis.__mixupDelayedArchiveWorkers.length === 1",
+            timeout=30000,
+        )
+        page.locator("#files").set_input_files({
+            "name": "newer.rom",
+            "mimeType": "application/octet-stream",
+            "buffer": b"newer selection",
+        })
+        wait_for_condition(
+            page,
+            "() => { const status = document.querySelector('#status'); "
+            "return status.dataset.kind === 'bad' "
+            "&& status.textContent.includes('No complete game identity set was found.'); }",
+            timeout=30000,
+        )
+        page.wait_for_timeout(1000)
+        card = page.locator('.game-card[data-game-id="ddpdoj"]')
+
+        def assert_latest() -> None:
+            status = page.locator("#status").inner_text()
+            require("No complete game identity set was found." in status,
+                    f"stale archive replaced newer selection status: {status!r}")
+            require("stale archive worker failure" not in status,
+                    "stale archive error escaped intake generation guard")
+            require(card.is_disabled(), "stale archive unlocked DaiOuJou")
+            require(page.evaluate("""() =>
+              globalThis.__mixupDelayedArchiveWorkers.every((worker) => worker.terminated)
+            """), "superseded archive worker was not terminated")
+
+        assert_latest()
+        return assert_latest
+
+    gate.run("asset-free latest selection wins", latest_selection_wins)
+
     def local_ddpdoj(page):
         page.add_init_script("""
         (() => {
@@ -634,11 +927,19 @@ def gate_asset_free(browser, origin: str) -> None:
         """)
         open_page(page, origin, "/")
         baseline_globals = page.evaluate("() => Object.getOwnPropertyNames(window)")
-        page.locator("#files").set_input_files([str(path) for path in ROM_FIXTURES])
-        page.wait_for_function(
+        using_7z = DDPDOJ_7Z_FIXTURE.is_file()
+        inputs = [str(DDPDOJ_7Z_FIXTURE)] if using_7z \
+            else [str(path) for path in ROM_FIXTURES]
+        page.locator("#files").set_input_files(inputs)
+        wait_for_condition(
+            page,
             "document.querySelector('#status').dataset.kind === 'good'",
-            timeout=240000,
+            timeout=300000,
         )
+        if using_7z:
+            archive_status = page.locator("#status").inner_text()
+            require("Read 10 members from 1 local archive." in archive_status,
+                    f"7z intake status is not exact: {archive_status!r}")
         card = page.locator('.game-card[data-game-id="ddpdoj"]')
         require(not card.is_disabled(), "validated DaiOuJou card remains disabled")
         require(card.locator(".card-state").inner_text() == "Identity validated",
@@ -648,7 +949,8 @@ def gate_asset_free(browser, origin: str) -> None:
                 == "DoDonPachi DaiOuJou Black Label",
                 "DaiOuJou is not the selected primary world")
         page.locator("#launch-game").click()
-        page.wait_for_function(
+        wait_for_condition(
+            page,
             "expected => document.querySelector('#boot-status').textContent === expected",
             arg=RUNNING_DDPDOJ,
             timeout=300000,
@@ -771,6 +1073,10 @@ def main() -> int:
         (
             supplied_root / "index.html",
             supplied_root / "src/setup.js",
+            supplied_root / "src/archive-worker.js",
+            supplied_root / "src/vendor/sevenzip-wasm/sevenzip-wasm.js",
+            supplied_root / "src/vendor/sevenzip-wasm/sevenzip-wasm.wasm",
+            supplied_root / "src/vendor/sevenzip-wasm/LICENSE",
             supplied_root / "src/ddpdoj-local.js",
             supplied_root / "src/buildid.js",
         ) if asset_free else (
