@@ -456,17 +456,12 @@ export function httpReader(base, onProgress) {
         + 'starfield. Hence this check.');
     }
     const total = +(r.headers.get('content-length') || 0);
-    if (!r.body || !total) return new Uint8Array(await r.arrayBuffer());
-    const reader = r.body.getReader();
-    const out = new Uint8Array(total);
-    let n = 0;
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      out.set(value, n);
-      n += value.length;
-      onProgress?.(name, n, total);
-    }
+    // Keep Fetch in charge of the body until Chrome marks the request finished.
+    // The manual stream reader intermittently ended deferred transfers as
+    // net::ERR_ABORTED after their 200 headers; the release gate caught random
+    // missing shards even though boot itself had already completed.
+    const out = new Uint8Array(await r.arrayBuffer());
+    onProgress?.(name, out.length, total || out.length);
     return out;
   };
 }

@@ -23,6 +23,7 @@ function run(label, command, args, options = {}) {
     return output;
   } catch (error) {
     process.stdout.write((error.stdout || '').split('\n').slice(-30).join('\n') + '\n');
+    process.stderr.write((error.stderr || '').split('\n').slice(-30).join('\n') + '\n');
     console.error(`REFUSING ASSET-FREE PUBLISH: ${label} failed.`);
     process.exit(1);
   }
@@ -56,6 +57,9 @@ if (!buildId) {
   console.error('REFUSING ASSET-FREE PUBLISH: the builder did not report a 14-digit build id.');
   process.exit(1);
 }
+
+run('asset-free browser release gate', 'python',
+  ['tools/browser-release-gate.py', '--dist-rom', 'dist-rom']);
 
 if (dry) {
   console.log(`\n--dry: asset-free build ${buildId} audited, not deployed.`);

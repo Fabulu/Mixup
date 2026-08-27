@@ -43,6 +43,7 @@ function run(label, cmd, cmdArgs, opts = {}) {
     return out;
   } catch (e) {
     process.stdout.write((e.stdout || '').split('\n').slice(-30).join('\n') + '\n');
+    process.stderr.write((e.stderr || '').split('\n').slice(-30).join('\n') + '\n');
     process.stderr.write(`\nREFUSING TO PUBLISH: "${label}" failed.\n`);
     process.exit(1);
   }
@@ -122,6 +123,9 @@ if (!/^\d{14}$/.test(buildId)) {
   process.exit(1);
 }
 console.log(`\nbuild id ${buildId}`);
+
+run('browser release gate', 'python',
+  ['tools/browser-release-gate.py', '--dist', 'dist']);
 
 if (dry) { console.log('\n--dry: built and gated, not deployed.'); process.exit(0); }
 

@@ -29,7 +29,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BgShards, AssetError } from '../src/web/assets.js';
+import { BgShards, AssetError, httpReader } from '../src/web/assets.js';
 import { streamColumnOf } from '../src/web/app.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -73,6 +73,40 @@ function fakeBin(manifest, opts = {}) {
     throw new AssetError(`assets/${name}: HTTP 404.`);
   };
 }
+
+// =========================================== 0. HTTP BODY COMPLETION IS EXACT
+
+test('httpReader leaves body completion to Fetch before reporting progress', async (t) => {
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let bodyReads = 0;
+  let arrayBufferReads = 0;
+  globalThis.fetch = async (url) => ({
+    ok: true,
+    status: 200,
+    headers: { get: (name) => (name === 'content-length' ? '4' : null) },
+    get body() {
+      bodyReads++;
+      throw new Error('httpReader must not take ownership of the response stream');
+    },
+    async arrayBuffer() {
+      arrayBufferReads++;
+      return Uint8Array.from([1, 2, 3, 4]).buffer;
+    },
+    url,
+  });
+  const progress = [];
+  const bytes = await httpReader('https://release.invalid/assets/',
+    (...entry) => progress.push(entry))('one.bin');
+
+  assert.deepEqual([...bytes], [1, 2, 3, 4]);
+  assert.equal(bodyReads, 0, 'manual stream ownership can end Chrome requests as aborted');
+  assert.equal(arrayBufferReads, 1, 'Fetch must consume the response exactly once');
+  assert.deepEqual(progress, [
+    ['one.bin', 0, 0],
+    ['one.bin', 4, 4],
+  ]);
+});
 
 // ============================================ 1. THE SLOT SPACE MUST TILE
 
