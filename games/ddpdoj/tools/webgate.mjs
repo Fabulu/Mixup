@@ -1442,7 +1442,11 @@ try {
         // 6 MB image passes D0 = $14 or $44 to any of the six pool-A allocator
         // entries, so a kind-5 record cannot exist on this bench at all and this
         // window cannot draw one of the eight.  See w422poolakind5.test.js.
-        11: { streams: 870, records: 15903, distinct: 127, first: 315,
+        //
+        // W621 assigns ten streams shared with the fighter-selector family to
+        // boot shard 0. Their packed mappings remain present, while this shard's
+        // ownership count becomes 860; the gameplay witnesses remain unchanged.
+        11: { streams: 860, records: 15903, distinct: 127, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };
