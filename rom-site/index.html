@@ -13,118 +13,106 @@
   <header class="hero">
     <p class="eyebrow">MIXUP / ASSET-FREE ARCADE</p>
     <h1>Mixup</h1>
-    <p class="lede">A browser arcade for faithful ports of Batman, Gradius, and DoDonPachi DaiOuJou. Add your own cartridge files, choose a world, and play locally.</p>
+    <p class="lede">Play faithful ports of Batman, Gradius, and DoDonPachi DaiOuJou with your own local ROMs.</p>
   </header>
 
   <main>
     <section class="panel setup" aria-labelledby="setup-title">
       <div class="section-heading">
         <div>
-          <p class="step">01 / SELECT</p>
-          <h2 id="setup-title">Add your local ROMs</h2>
+          <p class="step">01 / ADD ROMS</p>
+          <h2 id="setup-title">Choose files or drop them here</h2>
         </div>
         <span class="local-badge">LOCAL ONLY</span>
       </div>
 
-      <label class="field" for="game">
-        <span>Identity details and diagnostic view</span>
-        <small>Every selected file is hashed once and matched against all three games. This selector changes only the table and report shown below.</small>
-        <select id="game">
-          <option value="batman">Batman: Return of the Joker</option>
-          <option value="gradius">Gradius</option>
-          <option value="ddpdoj">DoDonPachi DaiOuJou Black Label</option>
-        </select>
-      </label>
-
-      <div class="picker-grid">
+      <div class="intake-grid">
         <label class="picker" for="files">
-          <strong>Choose individual files</strong>
-          <span>One cartridge image or multiple extracted MAME members</span>
+          <strong>Choose ROM files</strong>
+          <span>Select one cartridge image or several extracted MAME members.</span>
           <input id="files" type="file" multiple>
         </label>
-        <label class="picker" for="folder-files">
-          <strong>Choose a folder</strong>
-          <span>Compatible fallback for browsers without saved folder access</span>
-          <input id="folder-files" type="file" webkitdirectory multiple>
-        </label>
-      </div>
-
-      <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop ROM files or folders">
-        <strong>Drop files or folders here</strong>
-        <span>Folder dropping works in browsers that expose directory entries. Otherwise use Choose a folder above.</span>
-      </div>
-
-      <div class="actions">
-        <button id="choose-folder" type="button">Choose and remember folder</button>
-        <button id="reuse-folder" type="button" class="secondary" hidden>Reuse saved folder</button>
-        <button id="forget-folder" type="button" class="quiet" hidden>Forget saved folder</button>
-      </div>
-
-      <p class="privacy"><strong>Privacy:</strong> ROM bytes are read only for local validation and are not uploaded, logged, placed in URLs, cached by the service worker, or saved in IndexedDB. Where supported, only the folder handle is saved. The browser can revoke it at any time.</p>
-    </section>
-
-    <section class="panel" aria-labelledby="identity-title">
-      <div class="section-heading">
-        <div>
-          <p class="step">02 / VERIFY</p>
-          <h2 id="identity-title">Exact accepted identities</h2>
+        <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop ROM files or folders">
+          <strong>Drop files or a folder</strong>
+          <span>Mixup checks them on this device.</span>
         </div>
       </div>
-      <div id="identities"></div>
-    </section>
 
-    <section class="panel report-panel" aria-labelledby="report-title">
-      <div class="section-heading">
-        <div>
-          <p class="step">03 / DIAGNOSE</p>
-          <h2 id="report-title">Local checksum report</h2>
+      <details class="folder-options">
+        <summary>Folder options</summary>
+        <div class="folder-content">
+          <label class="picker compact-picker" for="folder-files">
+            <strong>Choose a folder</strong>
+            <span>Fallback for browsers without saved folder access.</span>
+            <input id="folder-files" type="file" webkitdirectory multiple>
+          </label>
+          <div class="actions">
+            <button id="choose-folder" type="button">Choose and remember folder</button>
+            <button id="reuse-folder" type="button" class="secondary" hidden>Reuse saved folder</button>
+            <button id="forget-folder" type="button" class="quiet" hidden>Forget saved folder</button>
+          </div>
         </div>
-        <button id="copy-report" type="button" class="secondary" disabled>Copy report</button>
-      </div>
+      </details>
+
+      <p class="privacy">ROM bytes stay on this device. Mixup saves only a folder handle when you ask it to.</p>
       <p id="status" role="status" aria-live="polite">Ready for local validation. No files have been read.</p>
-      <pre id="report">Choose files or a folder to calculate local checksums.</pre>
     </section>
 
     <section class="panel launcher" aria-labelledby="launcher-title">
       <div class="section-heading">
         <div>
-          <p class="step">04 / MIXUP LAUNCHER</p>
-          <h2 id="launcher-title">Choose the world to play</h2>
+          <p class="step">02 / PLAY</p>
+          <h2 id="launcher-title">Choose a game</h2>
         </div>
       </div>
-      <p class="launcher-help">Game cards stay locked until that game's exact local identity set validates. The primary game supplies the world being played. Secondary games will later supply characters or a character roster, but cross-game combination is future functionality and is not faked here.</p>
-      <div id="game-cards" class="game-cards" aria-label="Primary game selection">
+      <p class="launcher-help">A game unlocks as soon as its exact local ROM set is ready.</p>
+      <div id="game-cards" class="game-cards" aria-label="Game selection">
         <button type="button" class="game-card" data-game-id="batman" disabled>
-          <span class="card-role">PRIMARY WORLD</span><strong>Batman</strong><span class="card-state">ROM required</span>
+          <span class="card-role">GAME</span><strong>Batman</strong><span class="card-state">ROM required</span>
         </button>
         <button type="button" class="game-card" data-game-id="gradius" disabled>
-          <span class="card-role">PRIMARY WORLD</span><strong>Gradius</strong><span class="card-state">ROM required</span>
+          <span class="card-role">GAME</span><strong>Gradius</strong><span class="card-state">ROM required</span>
         </button>
         <button type="button" class="game-card" data-game-id="ddpdoj" disabled>
-          <span class="card-role">PRIMARY WORLD</span><strong>DaiOuJou</strong><span class="card-state">ROM set required</span>
+          <span class="card-role">GAME</span><strong>DaiOuJou</strong><span class="card-state">ROM set required</span>
         </button>
       </div>
-      <div class="role-preview">
-        <div><span>Primary world</span><strong id="primary-world">None selected</strong></div>
-        <div aria-disabled="true"><span>Secondary characters</span><strong>Future Mixup functionality</strong></div>
-      </div>
-    </section>
 
-    <section class="panel boot" aria-labelledby="boot-title">
-      <p class="step">05 / BOOT</p>
-      <h2 id="boot-title">Launch a validated local game</h2>
-      <p id="boot-help">Select an unlocked primary world. Batman, Gradius, and DaiOuJou boot directly from validated local input with no captures, seeds, generated cartridge tables, or game-data requests.</p>
-      <button id="launch-game" type="button" disabled>Choose an unlocked primary world</button>
+      <div class="launch-row">
+        <p>Selected: <strong id="primary-world">None selected</strong></p>
+        <button id="launch-game" type="button" disabled>Choose an unlocked game</button>
+      </div>
       <p id="boot-status" role="status" aria-live="polite"></p>
+
       <div id="game-screen" class="game-screen" hidden>
         <canvas id="game-canvas" tabindex="0" aria-label="Local game screen"></canvas>
-        <p>Batman: arrows or WASD move, X jumps, Y/Z/C attacks, and Enter starts. Gradius: arrows or WASD fly, X/Space fires, Y/Z/C selects power-ups, and Enter starts. DaiOuJou: arrows or WASD move, Y/Z/Space shoots, X bombs, C auto, Enter starts, and 5 inserts a coin. Gamepads are supported where the runtime provides them.</p>
+        <p>Batman: arrows or WASD move, X jumps, Y/Z/C attacks, Enter starts. Gradius: arrows or WASD fly, X/Space fires, Y/Z/C selects power-ups, Enter starts. DaiOuJou: arrows or WASD move, Y/Z/Space shoots, X bombs, C auto, Enter starts, and 5 inserts a coin. Gamepads are supported.</p>
       </div>
+
+      <details class="verification-details">
+        <summary>Verification details</summary>
+        <div class="verification-content">
+          <label class="field" for="game">
+            <span>Game report</span>
+            <select id="game">
+              <option value="batman">Batman: Return of the Joker</option>
+              <option value="gradius">Gradius</option>
+              <option value="ddpdoj">DoDonPachi DaiOuJou Black Label</option>
+            </select>
+          </label>
+          <div id="identities"></div>
+          <div class="report-heading">
+            <h3>Local checksum report</h3>
+            <button id="copy-report" type="button" class="secondary" disabled>Copy report</button>
+          </div>
+          <pre id="report">Choose files or a folder to calculate local checksums.</pre>
+        </div>
+      </details>
     </section>
   </main>
 
   <footer>
-    <span>Mixup asset-free setup</span>
+    <span>Mixup</span>
     <span>Build <code id="build">development</code></span>
   </footer>
 </body>

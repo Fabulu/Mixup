@@ -128,7 +128,7 @@ function renderLauncher() {
       ? `Launch ${selectedTitle} from local ROM${launcherState.primary === 'ddpdoj' ? 's' : ''}`
       : (launcherState.primary
         ? `${selectedTitle} launch path pending`
-        : 'Choose an unlocked primary world'));
+        : 'Choose an unlocked game'));
 }
 
 function renderSelectedDiagnostic() {
