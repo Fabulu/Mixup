@@ -409,6 +409,36 @@ export const HUDRAM = {
   },
 };
 
+export const HUDRESET = Object.freeze({
+  site: 0x2884e2,
+  base: 0x81b440,
+  wordsMinusOne: 0x0162,
+});
+
+/** `$2884E2` clears 355 HUD words from `$81B440`, repeats the cartridge's
+ * score-state stores, then initializes the two cursor records. */
+export function resetHud2884E2(ram) {
+  for (let d0 = HUDRESET.wordsMinusOne, a0 = HUDRESET.base; d0 >= 0; d0--, a0 += 2) {
+    ram.setU16(a0, 0);
+  }
+  ram.setU32(HUDRAM.totalP1, 0);
+  ram.setU32(HUDRAM.totalP2, 0);
+  ram.setU32(HUDRAM.total2P1, 0);
+  ram.setU32(HUDRAM.total2P2, 0);
+  ram.setU16(HUDRAM.ovfP1, 0);
+  ram.setU16(HUDRAM.ovfP2, 0);
+  ram.setU16(HUDRAM.ovf2P1, 0);
+  ram.setU16(HUDRAM.ovf2P2, 0);
+  ram.setU16(HUDRAM.digitStateP1, 0);
+  ram.setU16(HUDRAM.digitStateP2, 0);
+  ram.setU8(0x81b596, 0);
+  ram.setU8(0x81b597, 0);
+  ram.setU16(HUDRAM.cursorTickB, 0x0001);
+  ram.setU16(HUDRAM.cursorIdxB, 0x0038);
+  ram.setU16(0x81b5a0, 0x0000);
+  ram.setU16(0x81b5a2, 0x0054);
+}
+
 /** `$2926E2`'s UNPORTED TAIL, and what it costs THIS file.  Stated here rather
  *  than only in the worklog, because a reader has to know why one of the two
  *  banner gates can never fire.

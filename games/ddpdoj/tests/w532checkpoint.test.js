@@ -65,6 +65,8 @@ test('W532 exact checkpoint restore matches uninterrupted progression',
   assert.deepEqual(serialized.probeOnly, { invulnerable: true });
   assert.match(serialized.ramSha256, /^[0-9a-f]{64}$/);
   assert.match(serialized.gameSha256, /^[0-9a-f]{64}$/);
+  assert.equal(Object.hasOwn(serialized.game.props, 'slotTable'), false,
+    '$907000 is reconstructed board scratch and must not perturb historical Game-state hashes');
   assert.equal(serialized.raw.stage, uninterrupted.ram.u16(0x813092));
   assert.equal(serialized.raw.loop, uninterrupted.ram.u16(0x813098));
 

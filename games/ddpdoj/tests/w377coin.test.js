@@ -73,15 +73,8 @@ const coinWord = (...names) => {
 const NO_PLAYER = 0xffff;
 const CREDITS = COIN.creditA + 2;                 // $80395A
 
-/**
- * `$803957` -- THE COINAGE BYTE, AND WHY IT IS SEEDED RATHER THAN "FIXED".
- *
- * On zeroed RAM it is 0, `coinage13CE22` divides by it, and a coin is worth NOTHING. That is
- * FAITHFUL: a real board's `$803957` comes out of the settings block, and a cold cartridge with
- * no settings really does eat coins. `rip/web/seed.bin` carries 1 because the board it was
- * ripped from had been configured. So the test seeds the dip -- one coin, one credit -- exactly
- * as a service menu would, and does not touch `coinage13CE22`.
- */
+/** `$803957` is initialized by the cartridge's `$23C6FA` reset call from the zeroed
+ * operator DIP byte. Cold-boot tests must observe that result rather than write the byte. */
 const COINAGE = 0x803957;
 
 /** Run `n` logic frames with `word` on the coin port and nothing on the player port. */
@@ -115,7 +108,7 @@ const noted = (g, addr) =>
 test('W425 a cold boot SURVIVES a coin, and arm 3 POSTS $28C170 rather than throwing', () => {
   const g = coldGame();
   g.boot();
-  g.ram.setU8(COINAGE, 1);                        // the service-menu dip; see COINAGE above
+  assert.equal(g.ram.u8(COINAGE), 1, '$23C6FA installed one credit per coin');
 
   assert.equal(g.ram.u8(CREDITS), 0, 'a cold board starts with no credits');
 
@@ -155,7 +148,7 @@ test('W425 a cold boot SURVIVES a coin, and arm 3 POSTS $28C170 rather than thro
 test('W425 the surviving run POSTS $15000000 for $25A962 and counts nothing', () => {
   const g = coldGame();
   g.boot();
-  g.ram.setU8(COINAGE, 1);
+  assert.equal(g.ram.u8(COINAGE), 1, '$23C6FA installed one credit per coin');
   run(g, COIN.idle, 305);
 
   assert.deepEqual(noted(g, 0x28c170), [],
@@ -266,7 +259,7 @@ for (const [name, seed, site] of [
   test(`W377 a coin taken through ${name} survives and counts $28C0FC`, () => {
     const g = coldGame();
     g.boot();
-    g.ram.setU8(COINAGE, 1);
+    assert.equal(g.ram.u8(COINAGE), 1, '$23C6FA installed one credit per coin');
     run(g, COIN.idle, 305);
     seed(g);                                    // SCAFFOLDING -- see the block comment above
 
@@ -292,13 +285,8 @@ test('W567 $28C0FC stays outside both sound tables and direct-posts its preservi
 });
 
 // ===============================================================================================
-// UNIT B (HALF) -- `$25AFD8`, THE BLINK MESSAGE'S **OFF** SIDE.
-//
-// The brief called `$25AD02`/`$25AFD8` "a prompt that blinks. Port both." They are not a pair of
-// comparable routines. `$25AFD8` is ELEVEN instructions ending in a tail `jmp`; `$25AD02` runs
-// from `$25AD02` to `$25B3DB` -- 1,754 bytes, two embedded data blocks, two coordinate
-// conventions and a whole second copy for separate credit pools. So this wave ports `$25AFD8`
-// whole and leaves `$25AD02` a counted deferral with its map written down in `fronttext.js`.
+// UNIT B -- `$25AFD8` blanks the prompt and `$25AD02` draws the cartridge-selected ON message.
+// Both paths are live and share `$25A14C` for the final TX blit.
 // ===============================================================================================
 
 const IMGPATH = fileURLToPath(new URL('../rip/sound/maincpu.bin', import.meta.url));
@@ -430,35 +418,36 @@ test('W377 the $25AD3E window: ablation names the byte, and the control shows it
   assert.equal(txColumn(tx, 0x13), ' '.repeat(28) + '....', 'and the window really serves it');
 });
 
-test('W377 the DRIVER runs $25AFD8: a cold boot blanks on the OFF phase and not on the ON', () => {
+test('W621 the DRIVER alternates the real $25AD02 ON prompt with $25AFD8 OFF', () => {
   const g = coldGame();
-  g.boot();
-  run(g, COIN.idle, 305);                     // past the warning screen -- state 13 skips the tail
+  g.boot({ cabinetFrontend: true });
+  run(g, COIN.idle, 305);
   assert.equal(g.ram.u16(SCREEN8.state), 0x0002, 'the tail is running');
 
   const CELL = 0x904000 + ((0 * 64 + 0x13) << 2);
   const POISON = 0x11223344;
   let blanked = 0;
-  let left = 0;
+  let drawn = 0;
   for (let i = 0; i < 48; i++) {
     g.txvram.setLong(CELL, POISON);           // re-poisoned every frame
     g.step(NO_PLAYER);
-    const cell = g.txvram.long(CELL) >>> 0;
-    // The EXPECTED phase comes from the counter the cartridge itself keeps, not from the loop
-    // index: $812E58 only advances on frames the tail runs, and state 13 skipped 301 of them,
-    // so this run does NOT start on a phase boundary. $25A838 addq.w #1 happens BEFORE
-    // $25A844 andi.w #$10, so the value read back here is the one that chose this frame's half.
+    // The expected phase comes from the counter the cartridge keeps. `$25A838 addq.w #1`
+    // happens before `$25A844 andi.w #$10`.
     const off = (g.ram.u16(SCREEN8.blink) & 0x10) === 0;
-    if (off) { assert.equal(cell, 0xc0200000, `frame ${i} is OFF and must be blanked`); blanked++; }
-    else { assert.equal(cell, POISON, `frame ${i} is ON and must be left alone`); left++; }
+    const line = txColumn(g.txvram, 0x13);
+    if (off) {
+      assert.equal(line, ' '.repeat(28) + '....', `frame ${i} is OFF`);
+      blanked++;
+    } else {
+      assert.equal(line, '         INSERT COIN        ....', `frame ${i} is ON`);
+      drawn++;
+    }
   }
-  // $25A844 andi.w #$10 -- 16 on, 16 off. BOTH halves must be non-empty: a port that blanked
-  // every frame, or none, would pass a one-sided check.
-  assert.equal(blanked + left, 48);
-  assert.ok(blanked >= 16 && left >= 16,
-    `48 frames must cross the $10 boundary both ways (blanked ${blanked}, left ${left})`);
-  assert.ok(g.unportedLog.report().some((s) => s.includes('$25AD02')),
-    'the ON half is still a COUNTED deferral, not a silent skip');
+  assert.equal(blanked + drawn, 48);
+  assert.ok(blanked >= 16 && drawn >= 16,
+    `48 frames must cross the $10 boundary both ways (blanked ${blanked}, drawn ${drawn})`);
+  assert.ok(!g.unportedLog.report().some((s) => s.includes('$25AD02')),
+    'the ON dispatcher is live, so it must not be counted');
   assert.ok(!g.unportedLog.report().some((s) => s.includes('$25AFD8')),
-    'and the OFF half is NOT -- a note beside a live call would claim a gap that is closed');
+    'the OFF path is live, so it must not be counted');
 });

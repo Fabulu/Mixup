@@ -424,21 +424,19 @@ test('W443 (was W442 test 8): bucket 16 -- THE LASER BEAM -- now has ZERO '
     + 'this the hyper\'s power slot and only the hyper\'s');
 
   // WHAT IS LEFT, counted rather than waved at. The fourteen HUD frames are a
-  // separate gap W443 deliberately did not touch. W479 later adds one bonus
-  // follower stream, also separate from the beam.
+  // separate gap W443 deliberately did not touch. W621's complete cabinet range
+  // now includes W479's bonus follower stream.
   const only = [...hyper.missing.keys()].filter((o) => !plain.missing.has(o));
   const records = only.reduce((n, o) => n + hyper.missing.get(o), 0);
-  assert.equal(only.length, 15,
-    'the four beam streams remain fixed; W479 adds one separately missing bonus '
-    + 'follower stream to the fourteen pre-existing HUD streams');
-  assert.equal(records, 110,
-    '110 records remain missing: the historical 109 plus one bonus follower');
+  assert.equal(only.length, 14,
+    'the four beam streams stay fixed and W621 resolves the bonus follower');
+  assert.equal(records, 109,
+    'the historical 109 HUD records remain missing');
   const b25 = hyper.missingBucket.get(25);
   assert.ok(b25, 'bucket 25 -- the HUD -- still carries missing art');
   const hudOnly = [...b25.keys()].filter((o) => !plain.missing.has(o));
   assert.equal(hudOnly.length, 14,
-    'bucket 25 still owns the same fourteen HUD streams; the fifteenth current '
-    + 'gap is W479\'s separate bonus follower, not the beam');
+    'bucket 25 still owns the same fourteen HUD streams');
 
   // ---- RED. Take the four back OUT of the resolved map and the defect
   // returns, to the record. A zero measured by a counter that stopped counting
@@ -454,10 +452,10 @@ test('W443 (was W442 test 8): bucket 16 -- THE LASER BEAM -- now has ZERO '
     assert.equal(red.missing.get(o), 22, `${hx(o)} on 22 of 100 frames`);
   }
   const redOnly = [...red.missing.keys()].filter((o) => !plain.missing.has(o));
-  assert.equal(redOnly.length, 19,
-    'the current fifteen plus the four deliberately removed beam streams');
-  assert.equal(redOnly.reduce((n, o) => n + red.missing.get(o), 0), 198,
-    'the current 110 missing records plus the restored 88-record beam defect');
+  assert.equal(redOnly.length, 18,
+    'the current fourteen plus the four deliberately removed beam streams');
+  assert.equal(redOnly.reduce((n, o) => n + red.missing.get(o), 0), 197,
+    'the current 109 missing records plus the restored 88-record beam defect');
   // The stride, which is what says these are four frames of one animation.
   for (let i = 1; i < BEAM_FOUR.length; i++) {
     assert.equal(BEAM_FOUR[i] - BEAM_FOUR[i - 1], 0x1e4,
@@ -502,7 +500,7 @@ test('W443 (was W442 test 8b): the hyper beam still takes its art from $24BAE2 '
 // 9. The standing tripwire. This wave declares no window.
 // ===========================================================================
 test('W442 adds no ROM window and later waves reconcile the exact registry', () => {
-  assert.equal(ROM_WINDOW_COUNT, 936,
+  assert.equal(ROM_WINDOW_COUNT, 941,
     'W551-W598 add later live-path gameplay, menu, slot-[7], ending, and hyper data');
   assert.equal(ROM_OVERLAP_PAIRS, 77,
     'W518 vertical glyph data overlaps W23 slot-[14] init data by ten exact bytes');

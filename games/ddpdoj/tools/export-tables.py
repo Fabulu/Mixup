@@ -4150,6 +4150,23 @@ SHOT_WINDOWS.extend([
                        "same $001F. Contiguous at stride $40, which is why they are one "
                        "window and not three"),
 
+    # `$25BB6C` copies 14 columns by 7 rows, one longword per cell, from `$2302E0`.
+    # Its nested DBRA constants are $0D and $06, so the exact source span is 14*7*4 = $188 bytes.
+    (0x2302E0, 0x0188, "W621: $25BB6C shared front-end BG plane, 14 columns x 7 rows x four bytes, "
+                       "bounded by its nested DBRA constants $0D and $06"),
+    # The three operator-setting routines index tables at $25C042/$25C0D2/$25C1E2. The first
+    # has four $20-byte strings, the second four $40-byte two-line records, and the third two
+    # $20-byte strings. Together with their pointer tables, these exactly fill $25C042..$25C229;
+    # `$25C22A` is the first routine's opening instruction.
+    (0x25C042, 0x01E8, "W621: arm-1 operator-setting pointer tables and cartridge strings for "
+                       "$25C22A, $25C252 and $25C286, ending exactly at $25C22A code"),
+
+    # ---- W621: THE COLD-BOOT COIN/DIP TABLES -----------------------------------------------
+    # `$23C6FA` reads DIP byte `$803808`, indexes two contiguous 20-byte tables, and writes
+    # `$803956` / `$803957`. The 40-byte window ends exactly where the routine begins.
+    (0x23C6D2, 0x0028, "W621: $23C6FA cold-boot coin/DIP lookup tables at $23C6D2 and $23C6E6, "
+                       "20 bytes each; the contiguous window ends at routine entry $23C6FA"),
+
     # ---- W376: THE WARNING SCREEN AND THE CREDIT LINE ---------------------------------------
     #
     # Six windows, and every extent below comes from an INSTRUCTION -- a count word, a
@@ -4240,6 +4257,10 @@ SHOT_WINDOWS.extend([
                        "$25AFEE/$25AFFA adda.w; THREE lines because $25AFE8/$25AFF4/$25B000 are "
                        "written out with no counter; each ends at $25A15A tst.b/beq, the "
                        "reader's terminator. $25AD3E+$5A == $25AD98, the NEXT group's lea target"),
+    (0x25AD98, 0x0240, "W621: $25AD02 shared-pool blink-ON strings, six three-line records at "
+                       "$60-byte stride through $25AFD7; the window ends exactly at $25AFD8"),
+    (0x25B1E0, 0x00C0, "W621: $25AD02 separate-pool blink-ON strings, six two-line records at "
+                       "$20-byte stride with $10-byte lines; ends exactly at $25B2A0 code"),
 ])
 
 # ==============================================================================================

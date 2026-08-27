@@ -105,9 +105,9 @@ const CALLER_SPANS = Object.freeze([
 ]);
 
 const SOURCE_CALLER_SITES = Object.freeze([
-  0x25a7c6, 0x25a956, 0x25a9b8, 0x288a48, 0x288c52, 0x28d578, 0x28d5fa,
+  0x23bf3e, 0x25a7c6, 0x25a956, 0x25a9b8, 0x288a48, 0x288c52, 0x28d578, 0x28d5fa,
 ]);
-const SOURCE_GAPS = Object.freeze([0x23bf3e, 0x256db0]);
+const SOURCE_GAPS = Object.freeze([0x256db0]);
 
 function bytes(at, count) { return IMG.subarray(at, at + count); }
 function signed8(value) { return (value & 0x80) !== 0 ? value - 0x100 : value; }
@@ -500,14 +500,14 @@ test('SECTION 4: the six W460 caller fixtures clear dirty edges and reach their 
 
 // ---------------------------------------------------------------- SECTION 5
 
-test('SECTION 5: source has one body, seven direct caller bodies and no optional ctx gate', () => {
+test('SECTION 5: source has one body, eight direct caller bodies and no optional ctx gate', () => {
   const sourceMap = new Map(sources());
   const allCode = [...sourceMap.values()].join('\n')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   const declarations = allCode.match(/\bfunction\s+clear24631C\s*\(/g) ?? [];
   const calls = allCode.match(/\bclear24631C\s*\(/g) ?? [];
   assert.equal(declarations.length, 1, 'one canonical production declaration remains');
-  assert.equal(calls.length, 8, 'seven calls plus the one declaration are present');
+  assert.equal(calls.length, 9, 'eight calls plus the one declaration are present');
   assert.doesNotMatch(allCode, /ctx(?:\?\.)?\.clear24631C|clear24631C\?\./,
     'the cartridge call cannot degrade to an optional production no-op');
 
@@ -521,6 +521,7 @@ test('SECTION 5: source has one body, seven direct caller bodies and no optional
     }
   }
   assert.deepEqual(heads.sort(), [
+    'frontend.js resetPrologue23BEEA',
     'objslot13.js state4',
     'objslot14.js state2',
     'objslot8.js arm3',
@@ -540,6 +541,10 @@ test('SECTION 5: source has one body, seven direct caller bodies and no optional
 
 test('SECTION 5b: source caller ordering matches each cartridge context, not one invented order', () => {
   const sourceMap = new Map(sources());
+  assertOrder(functionText(sourceMap.get('frontend.js'), 'resetPrologue23BEEA'), [
+    'case 0x2412fe: resetPalette2412FE(ram, pal)', 'case 0x24631c: clear24631C(ram)',
+    'case 0x23d1f2: inputAuxReset23D1F2(ram)',
+  ], 'reset prologue');
   assertOrder(functionText(sourceMap.get('objslot8.js'), 'coinTeardown25A7C0'), [
     'objTableInit24107C(ram)', 'clear24631C(ram)', 'clear25C57E(ram)',
   ], 'coin teardown');
@@ -569,14 +574,14 @@ test('SECTION 5b: source caller ordering matches each cartridge context, not one
 test('SECTION 5c: cartridge and source reachability remain separate and dynamic indirects unproved',
   { skip: SKIP_IMAGE }, () => {
     assert.deepEqual(EXTERNAL_CALLERS.filter((at) => SOURCE_CALLER_SITES.includes(at)),
-      SOURCE_CALLER_SITES, 'seven cartridge sites have direct source caller bodies after W503');
+      SOURCE_CALLER_SITES, 'eight cartridge sites have direct source caller bodies after W621');
     assert.deepEqual(EXTERNAL_CALLERS.filter((at) => !SOURCE_CALLER_SITES.includes(at)),
-      SOURCE_GAPS, 'only reset prologue and main-loop call 1 remain source gaps');
+      SOURCE_GAPS, 'only main-loop call 1 remains a source gap');
 
     const frontend = readFileSync(join(SRC, 'frontend.js'), 'utf8');
     const main = readFileSync(join(SRC, 'main.js'), 'utf8');
-    assert.match(frontend, /23BF3E jsr \$24631C[\s\S]*runs NONE of them/,
-      'reset prologue documents why the cartridge call is not source-executed');
+    assert.match(frontend, /case 0x24631c: clear24631C\(ram\); break;/,
+      'reset prologue executes the canonical source body in cartridge order');
     assert.match(main, /unportedLog\.note\(ROM\.call1, 'main-loop call #1 \(\$256D5A\)'\)/,
       'main-loop call 1 remains explicitly unported');
     assert.equal(SOURCE_CALLER_SITES.includes(0x28d5fa), true,

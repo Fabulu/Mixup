@@ -601,10 +601,17 @@
 // spawn-table longwords those scripts read. Measured: 911 -> 936 windows,
 // 454,759 -> 455,371 bytes, 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 936;
+// ---------------------------------------------------------------------------
+// W621 ADDED FIVE DISJOINT CABINET FRONT-END WINDOWS.
+// ---------------------------------------------------------------------------
+// Reset coinage, the title BG plane, operator strings, and both credit-prompt
+// families are read only by the authentic cabinet lifecycle. Measured:
+// 936 -> 941 windows, 455,371 -> 457,059 bytes, 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 941;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 455371;
+export const ROM_WINDOW_BYTES = 457059;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -637,6 +644,33 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W621_WINDOWS = Object.freeze([
+  Object.freeze(['$2302E0', 0x0188]), Object.freeze(['$25C042', 0x01e8]),
+  Object.freeze(['$23C6D2', 0x0028]), Object.freeze(['$25AD98', 0x0240]),
+  Object.freeze(['$25B1E0', 0x00c0]),
+]);
+
+/** Reconstruct the exact W598 table by removing W621's cabinet-only windows. */
+export function tableBeforeW621(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const found = copy.rom.windows.filter((window) =>
+    W621_WINDOWS.some(([base]) => window.base === base));
+  if (found.length === 0) return copy;
+  if (found.length !== W621_WINDOWS.length) {
+    throw new Error('the W621 cabinet front-end windows are only partially present');
+  }
+  for (const [base, len] of W621_WINDOWS) {
+    const matches = found.filter((window) => window.base === base);
+    if (matches.length !== 1 || matches[0].len !== len
+        || matches[0].hex.length !== len * 2 || !matches[0].why.startsWith('W621:')) {
+      throw new Error(`${base} is not the exact W621 additive shape`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((window) =>
+    !W621_WINDOWS.some(([base]) => window.base === base));
+  return copy;
+}
+
 const W598_WINDOWS = Object.freeze([
   Object.freeze(['$291BAE', 0x005e]), Object.freeze(['$291C0C', 0x0064]),
   Object.freeze(['$291C70', 0x0034]), Object.freeze(['$291CA4', 0x006a]),
@@ -655,7 +689,7 @@ const W598_WINDOWS = Object.freeze([
 
 /** Reconstruct the exact W597 table by removing only W598's additive windows. */
 export function tableBeforeW598(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW621(tables);
   const found = copy.rom.windows.filter((window) =>
     W598_WINDOWS.some(([base]) => window.base === base));
   if (found.length === 0) return copy;

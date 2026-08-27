@@ -566,6 +566,28 @@ export async function loadBundle(readRaw, opts = {}) {
     const slot = new Int32Array(0x10000).fill(-1);
     for (let i = 0; i < nos.length; i++) slot[nos[i]] = i;
     sheets.tx = { pixels, nos, slot, tileBytes: TX_TILE_BYTES, count: size.tiles };
+
+    const required = size.requiredColdBoot;
+    if (!Array.isArray(required) || required.length === 0) {
+      throw new AssetError('assets/manifest.json: gfx.tx.requiredColdBoot must be a non-empty '
+        + 'array of cartridge-derived tile numbers');
+    }
+    const seen = new Set();
+    for (const tile of required) {
+      if (!Number.isInteger(tile) || tile < 0 || tile > 0xffff || seen.has(tile)) {
+        throw new AssetError('assets/manifest.json: gfx.tx.requiredColdBoot must contain unique '
+          + `u16 tile numbers; found ${JSON.stringify(tile)}`);
+      }
+      seen.add(tile);
+    }
+    if (opts.dropTxTile !== undefined) slot[opts.dropTxTile & 0xffff] = -1;
+    const absent = required.filter((tile) => slot[tile] < 0);
+    if (absent.length) {
+      throw new AssetError('assets/gfx/tx.tiles.u8.gz is missing required cold-front-end tile'
+        + `${absent.length === 1 ? '' : 's'} ${absent.map((tile) => `$${
+          tile.toString(16).toUpperCase()}`).join(', ')}; regenerate the cartridge TX sheet`);
+    }
+    sheets.tx.requiredColdBoot = Object.freeze([...required]);
   }
 
   // --- WAVE 14: the BG sheet, SHARDED --------------------------------------
@@ -600,7 +622,30 @@ export async function loadBundle(readRaw, opts = {}) {
     pixels: bg.pixels, nos: bg.nos, slot: bg.slot,
     tileBytes: BG_TILE_BYTES, count: bg.count, shards: bg,
   };
-  if (opts.dropTile !== undefined) bg.slot[opts.dropTile] = -1;
+  if (opts.dropTile !== undefined) bg.slot[opts.dropTile & 0xffff] = -1;
+
+  // W621. `$25BB6C`'s 14-by-7 cabinet plane is not part of a stage map or the
+  // old capture, so ordinary coverage cannot protect it. Require its complete
+  // cartridge-derived tile set in a loaded boot shard before the first screen.
+  const requiredBg = manifest.gfx.bg.requiredColdBoot;
+  if (!Array.isArray(requiredBg) || requiredBg.length === 0) {
+    throw new AssetError('assets/manifest.json: gfx.bg.requiredColdBoot must be a non-empty '
+      + 'array of cartridge-derived tile numbers');
+  }
+  const requiredBgSeen = new Set();
+  for (const tile of requiredBg) {
+    if (!Number.isInteger(tile) || tile < 0 || tile > 0xffff || requiredBgSeen.has(tile)) {
+      throw new AssetError('assets/manifest.json: gfx.bg.requiredColdBoot must contain unique '
+        + `u16 tile numbers; found ${JSON.stringify(tile)}`);
+    }
+    requiredBgSeen.add(tile);
+    const shard = bg.shardOfTile[tile];
+    if (shard < 0 || !bg.boot.includes(shard) || bg.slot[tile] < 0) {
+      throw new AssetError(`required cold-front-end BG tile $${tile.toString(16).toUpperCase()} `
+        + `is absent or unavailable in boot shard ${shard}; regenerate the cartridge BG sheet`);
+    }
+  }
+  sheets.bg.requiredColdBoot = Object.freeze([...requiredBg]);
 
   // WAVE 13/14.  A tile the sheet does not hold used to be an unconditional
   // AssetError, and until wave 13 that was exactly right: every tile the page
@@ -712,6 +757,70 @@ export async function loadBundle(readRaw, opts = {}) {
   }
 
   const spr = new SprShards(manifest, bin);
+  const requiredColdBootStreams = manifest.spr.requiredColdBootStreams;
+  if (!Array.isArray(requiredColdBootStreams) || requiredColdBootStreams.length === 0) {
+    throw new AssetError('assets/manifest.json: spr.requiredColdBootStreams must be a non-empty '
+      + 'array of cartridge sprite-stream offsets');
+  }
+  const requiredSeen = new Set();
+  const streamByRom = new Map(manifest.spr.streams.map((row) => [row[0], row]));
+  if (opts.dropRequiredSprite !== undefined) streamByRom.delete(opts.dropRequiredSprite);
+  for (const offs of requiredColdBootStreams) {
+    if (!Number.isInteger(offs) || offs <= 0 || offs > 0x7fffff || requiredSeen.has(offs)) {
+      throw new AssetError('assets/manifest.json: spr.requiredColdBootStreams must contain unique '
+        + `23-bit positive offsets; found ${JSON.stringify(offs)}`);
+    }
+    requiredSeen.add(offs);
+    const row = streamByRom.get(offs);
+    if (!row) {
+      throw new AssetError(`required cold-front-end sprite stream $${offs.toString(16).toUpperCase()} `
+        + 'has no packed mapping; regenerate the cartridge sprite harvest');
+    }
+    const shard = spr.shardOfBase(row[1]);
+    if (shard < 0 || !spr.boot.includes(shard)) {
+      throw new AssetError(`required cold-front-end sprite stream $${offs.toString(16).toUpperCase()} `
+        + `maps to shard ${shard}, which is not a boot shard`);
+    }
+  }
+
+  // W621: the exact seven arm-1 records above stay separately named. The rest
+  // of the cabinet shell is represented as complete cartridge stream ranges so
+  // the manifest stays small while a missing high-score glyph or selector frame
+  // still fails at load, before it can become a transparent hole on canvas.
+  const requiredCabinetRanges = manifest.spr.requiredCabinetRanges;
+  if (!Array.isArray(requiredCabinetRanges) || requiredCabinetRanges.length === 0) {
+    throw new AssetError('assets/manifest.json: spr.requiredCabinetRanges must be a non-empty '
+      + 'array of [first stream, exclusive end, exact count] rows');
+  }
+  let priorEnd = 0;
+  for (const range of requiredCabinetRanges) {
+    if (!Array.isArray(range) || range.length !== 3) {
+      throw new AssetError('assets/manifest.json: each spr.requiredCabinetRanges row must have '
+        + 'exactly three numbers');
+    }
+    const [base, endsAt, count] = range;
+    if (!Number.isInteger(base) || !Number.isInteger(endsAt) || !Number.isInteger(count)
+        || base <= 0 || endsAt <= base || endsAt > 0x800000 || count <= 0 || base < priorEnd) {
+      throw new AssetError('assets/manifest.json: invalid or overlapping cabinet sprite range '
+        + JSON.stringify(range));
+    }
+    priorEnd = endsAt;
+    const rows = [...streamByRom.values()]
+      .filter(([rom]) => rom >= base && rom < endsAt)
+      .sort((a, b) => a[0] - b[0]);
+    if (rows.length !== count || rows[0]?.[0] !== base) {
+      throw new AssetError(`required cabinet sprite range $${base.toString(16).toUpperCase()}..$${
+        endsAt.toString(16).toUpperCase()} has ${rows.length} packed mappings starting at $${(
+        rows[0]?.[0] ?? 0).toString(16).toUpperCase()}; expected ${count} mappings starting at its base`);
+    }
+    for (const [rom, packed] of rows) {
+      const shard = spr.shardOfBase(packed);
+      if (shard < 0 || !spr.boot.includes(shard)) {
+        throw new AssetError(`required cabinet sprite stream $${rom.toString(16).toUpperCase()} `
+          + `maps to shard ${shard}, which is not a boot shard`);
+      }
+    }
+  }
   // EVERY stream must land inside SOME shard's range. A stream outside them all
   // would be words nothing ever fills -- a permanent rectangle of pen 0 with no
   // message. This is the sprite analogue of `BgShards.loadIndex`'s disjointness
@@ -816,6 +925,12 @@ export async function loadBundle(readRaw, opts = {}) {
     // could not supply -- now almost always "a shard that has not landed yet",
     // which `bg.status().waiting` names.
     missingBgTiles,
+    missingTxTiles,
+    requiredColdBootBg: sheets.bg.requiredColdBoot,
+    requiredColdBootTx: sheets.tx.requiredColdBoot,
+    requiredColdBootStreams: Object.freeze([...requiredColdBootStreams]),
+    requiredCabinetRanges: Object.freeze(requiredCabinetRanges.map((range) =>
+      Object.freeze([...range]))),
   };
   verifyCoverage(bundle, opts);
   return bundle;

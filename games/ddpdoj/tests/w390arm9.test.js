@@ -66,6 +66,7 @@ const noteCtx = () => {
   const notes = [];
   return { notes,
     ctx: {
+      cabinetFrontend: true,
       unported: { note: (a, t) => notes.push(`${a}:${t}`) },
       unportedLog: { note: (a, t) => notes.push(`${a}:${t}`) },
       soundPost: () => {},
@@ -127,7 +128,7 @@ test('W390 SECTION 1: arm 9\'s init is $25C3E8..$25C423 with the `rts` AT $25C42
     assert.equal(w(0x25c410), 0x641a, '  ...$24641A -- `loadAnimObjects246410` with mode 0');
     assert.equal(l(0x25c414), ARM9SCREEN.handle, '$25C412 move.l D0,$812E7E');
     assert.equal(l(0x25c418), 0x4eb90025, '$25C418 jsr abs.l...');
-    assert.equal(w(0x25c41c), 0xbb6c, '  ...$25BB6C -- counted, the same $900000 TX block arm 12 '
+    assert.equal(w(0x25c41c), 0xbb6c, '  ...$25BB6C, the same live $900000 BG block arm 12 '
       + 'calls from $25C2DE');
     assert.equal(ARM9SCREEN.txBlock, SCREEN12.txBlock, 'literally the same routine');
 
@@ -159,8 +160,9 @@ test('W390 SECTION 1: the init writes the triple and NOTHING of arm 12\'s', { sk
   }
   assert.equal(SCREEN12.state + 8, ARM9SCREEN.state,
     'and the two blocks ABUT: $812E72+8 is $812E7A exactly');
-  assert.equal(notes.filter((n) => n.startsWith(`${ARM9SCREEN.txBlock}:`)).length, 1,
-    '$25BB6C is counted exactly once');
+  const missingOwners = notes.map((n) => Number(n.split(':')[0]));
+  assert.deepEqual(missingOwners, [0x23c608, 0x23c638],
+    '$25BB6C ran, while this bare unit context counted its two absent video owners');
 });
 
 // ===============================================================================================
@@ -297,8 +299,8 @@ test('W390 SECTION 2: the body emits TWO records a frame while it runs, and NONE
 
 async function coldBootTrace(frames) {
   const g = new Game(new Uint8Array(0x20000), tablesJson, { palCatchUp: false });
-  g.boot();
-  g.ram.setU8(0x803957, 1);                 // the boot-complete flag every attract test sets
+  g.boot({ cabinetFrontend: true });
+  assert.equal(g.ram.u8(0x803957), 1, '$23C6FA initialized the coinage byte');
   const arms = [];
   const screen = [];
   let prevArm = -1, prevSt = -1;
@@ -348,11 +350,11 @@ test('W390 SECTION 3: the exit is 271 frames AFTER the init chain drained, which
 // **W391 WIDENS THIS RUN FROM 1,400 TO 2,200 FRAMES.** The arm the machine parks on is now arm
 // 5, reached at +1,918, and a 1,400-frame run cannot see its note at all -- trap 16 again, in
 // the smallest possible form.
-test('W390 SECTION 3: arm 9 raises exactly one counted note, and it is NOT its own halves',
+test('W621 SECTION 3: arm 9 leaves no note for its live BG plane or its own halves',
   { skip: SKIP_T }, async () => {
     const { g } = await coldBootTrace(2200);
     const report = g.unportedLog.report().join('\n');
-    assert.ok(/\$25BB6C/.test(report), '$25BB6C is still counted -- it is a $900000 TX block');
+    assert.equal(/\$25BB6C/.test(report), false, '$25BB6C runs with production video owners');
     assert.equal(/\$25C3E8/.test(report), false,
       '$25C3E8 is NOT counted any more; a note beside a live call is a lie about the port');
     assert.equal(/\$25C424/.test(report), false, '...and neither is $25C424');
@@ -397,8 +399,8 @@ test('W390 SECTION 3 ABLATION: hold the `$F0` timer and the screen never leaves 
     // Now the same run with $812E7C pinned once arm 9 owns it. If the port had read arm 12's
     // $812E74 instead, pinning $812E7C would change nothing and this assertion would fail.
     const g = new Game(new Uint8Array(0x20000), tablesJson, { palCatchUp: false });
-    g.boot();
-    g.ram.setU8(0x803957, 1);
+    g.boot({ cabinetFrontend: true });
+    assert.equal(g.ram.u8(0x803957), 1, '$23C6FA initialized the coinage byte');
     for (let f = 1; f <= 1200; f++) {
       g.step(0xffff);
       if (g.ram.u16(SCREEN8.state) === 9) g.ram.setU16(ARM9SCREEN.timer, 0x0100);

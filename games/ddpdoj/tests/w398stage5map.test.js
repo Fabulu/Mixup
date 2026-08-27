@@ -467,7 +467,7 @@ test('W398 SECTION 4: truncated to the columns -- the palette half of the window
 // ===============================================================================================
 
 test('W398 SECTION 5: the window set, an overlap count this wave does not move, and the '
-  + 'span abuts W211 exactly',
+  + 'span now abuts W211 and W621 exactly',
   { skip: SKIP }, () => {
     const ws = WINDOWS();
     // W399 and then W400 moved this ONE number and nothing else in this file: W399 declared
@@ -486,15 +486,19 @@ test('W398 SECTION 5: the window set, an overlap count this wave does not move, 
       '...and the SAME count without it: this window overlaps nothing. Only W428\'s '
       + 'four cue scripts have ever deliberately overlapped, and they are not this one.');
 
-    // Both ends. W211's stage-4 span ends exactly where this one begins -- abutting is not
-    // overlapping -- and above it there is a genuine GAP up to the stage-1 spawn script.
+    // Both ends. W211's stage-4 span ends exactly where this one begins, and W621's reset-prologue
+    // code window starts exactly where this one ends. The W621 window leaves the original four-byte
+    // gap before W391's arm-1 fade target.
     const w211 = ws.find(([a]) => a === 0x22b1e8);
     assert.deepEqual(w211, [0x22b1e8, 0x2588], 'W211 declared $22B1E8 + $2588');
     assert.equal(w211[0] + w211[1], STAGE5_COLS, '  ...which ends AT $22D770');
-    const above = Math.min(...ws.filter(([a]) => a >= STAGE5_COLS + WINDOW_LEN).map(([a]) => a));
+    const w621 = ws.find(([a]) => a === 0x2302e0);
+    assert.deepEqual(w621, [0x2302e0, 0x188], 'W621 declared reset code $2302E0 + $188');
+    assert.equal(STAGE5_COLS + WINDOW_LEN, w621[0],
+      '  ...so the stage-5 span now abuts W621 exactly');
+    const above = Math.min(...ws.filter(([a]) => a >= w621[0] + w621[1]).map(([a]) => a));
     assert.equal(above, 0x23046c,
-      'the next declared window above $2302E0 is W391\'s arm-1 fade target $23046C, $18C bytes '
-      + 'clear of it -- the span ends in a GAP, not against a neighbour');
+      'W391\'s arm-1 fade target $23046C remains four bytes beyond W621\'s $230468 end');
 
     // The five column streams, as the set now holds them.
     for (const [i, a] of [0x225b78, 0x228658, 0x22a5f8, 0x22b1e8, 0x22d770].entries()) {

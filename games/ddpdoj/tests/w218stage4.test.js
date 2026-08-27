@@ -107,7 +107,7 @@ test('W218 pins the type-$9F/$A4 closures and complete live art set',
     // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
     // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
     // shard 9 at 313/166,218.
-    assert.equal(manifest.spr.streamCount, 5274,
+    assert.equal(manifest.spr.streamCount, 5636,
       'W220 adds 64 live boss-part streams after the arrival body; W275 adds the 50 '
       + 'of the ship\'s dying animation. W497 then adds 543 authentic Type-B/selection '
       + 'streams, W498 adds nine Game Over streams, W589 adds 105 slot-7 list-B streams, '

@@ -32,11 +32,9 @@
 //   23BF56 jsr $240B0E   23BF5C jsr $259C4A   23BF62 jsr $24A810
 //   23BF68 jsr $25C57E   23BF6E jsr $2884E2
 //
-// `bootFrontEnd23BF74` runs NONE of them and says so with one counted note. Four
-// ARE already ported under other names (`$24107C` objTableInit24107C, `$240B0E`
-// camReset, `$25C57E` clear25C57E, `$24631C` clear24631C) and running them from
-// here would be this wave choosing an execution order the sweep has not verified
-// past `$23BEEA`'s own callees. The block this file owns is the block it decodes.
+// `resetPrologue23BEEA` preserves all twenty-three calls in this verified order. Calls with a
+// modeled board-side owner execute there; each remaining target is retained as its own counted
+// reset gap. `Game.boot()` completes this prologue before entering `$23BF74`.
 //
 // ===========================================================================
 // 2. `$23BF74`'s SIX CALLS, VERBATIM
@@ -145,8 +143,13 @@
 import { u16 } from './ram.js';
 import { hiscoreDefaults28841E } from './hiscore.js';
 import { sectionFlagSet23C194 } from './displaylist.js';
-import { install2414BE } from './palette.js';
-import { stageCreate } from './objalloc.js';
+import { install2414BE, resetPalette2412FE } from './palette.js';
+import { stageCreate, objTableInit24107C } from './objalloc.js';
+import { camReset, screenWipe23C6C6 } from './background.js';
+import { clear24631C } from './stageend.js';
+import { clearPlayerRam24A810, clearRankRam2603DA } from './objslot12.js';
+import { clear25C57E } from './objslot9.js';
+import { resetHud2884E2 } from './hud.js';
 
 export const BOOT = Object.freeze({
   reset: 0x23beea,          // the routine $23BF74 lives inside
@@ -177,15 +180,136 @@ export const BOOT = Object.freeze({
   dispatch: 0x240f62,       // $241182 takes the priority from here, never a literal
 });
 
-/** The twenty-three calls of `$23BEEA..$23BF73` this block does not run, and the
- *  four of them this port already has under another name. Listed so the note
- *  below can name them rather than say "some". */
+/** The twenty-three calls of `$23BEEA..$23BF73`, in cartridge order. */
 export const RESET_PROLOGUE = Object.freeze([
   0x256e18, 0x23c106, 0x247374, 0x23c586, 0x23be0c, 0x245c8e, 0x245cba,
   0x23c1ec, 0x23c5c8, 0x23c6c6, 0x28b8ae, 0x23c6fa, 0x23d0d2, 0x2412fe,
   0x24631c, 0x23d1f2, 0x24107c, 0x2603d4, 0x240b0e, 0x259c4a, 0x24a810,
   0x25c57e, 0x2884e2,
 ]);
+
+export const COIN_DIP_RESET = Object.freeze({
+  site: 0x23c6fa,
+  dip: 0x803808,
+  coinsPerCreditTable: 0x23c6d2,
+  creditsPerCoinTable: 0x23c6e6,
+  coinsPerCredit: 0x803956,
+  creditsPerCoin: 0x803957,
+  debounce: 0x803964,
+  debounceRecords: 2,
+  debounceStride: 6,
+});
+
+/** `$23C6FA` initializes coinage from the operator DIP byte. Store widths and
+ * ordering follow the cartridge, including the two six-byte debounce records. */
+export function coinDipInit23C6FA(ram, rom) {
+  ram.setU16(0x803948, 0);
+  ram.setU8(0x80394a, 0);
+  for (let a = 0x80394b; a <= 0x80394f; a++) ram.setU8(a, 0);
+  ram.setU16(0x803950, 0);
+  ram.setU16(0x803952, 0);
+  ram.setU16(0x803954, 0);
+  for (const a of [0x803958, 0x80395a, 0x80395b, 0x80395c, 0x80395e,
+    0x803960, 0x803961, 0x803962]) ram.setU8(a, 0);
+
+  const dip = ram.u8(COIN_DIP_RESET.dip);
+  ram.setU8(COIN_DIP_RESET.coinsPerCredit,
+    rom.u8(COIN_DIP_RESET.coinsPerCreditTable + dip));
+  ram.setU8(COIN_DIP_RESET.creditsPerCoin,
+    rom.u8(COIN_DIP_RESET.creditsPerCoinTable + dip));
+
+  ram.setU8(0x803959, 2);       // $23C97A
+  ram.setU8(0x80395f, 2);       // $23C984
+  for (let i = 0; i < COIN_DIP_RESET.debounceRecords; i++) {
+    const a = COIN_DIP_RESET.debounce + i * COIN_DIP_RESET.debounceStride;
+    ram.setU8(a, 0);
+    ram.setU8(a + 1, 0);
+    ram.setU16(a + 2, 0);
+    ram.setU16(a + 4, 0);
+  }
+}
+
+/** `$23D0D2` clears the six player-input mirror and edge words. */
+export function inputReset23D0D2(ram) {
+  for (let a = 0x803970; a <= 0x80397a; a += 2) ram.setU16(a, 0);
+}
+
+const INPUT_AUX_RESET_ORDER = Object.freeze([
+  0x80afc0, 0x80afc2, 0x80afc4, 0x80afc6, 0x80afc8, 0x80afca, 0x80afcc,
+  0x80afce, 0x80afd0, 0x80afd2, 0x80afd4, 0x80afde, 0x80afe0, 0x80afe2,
+  0x80afd6, 0x80afd8, 0x80afda, 0x80afdc, 0x80afe4, 0x80afe6, 0x80afe8,
+  0x80afea, 0x80afec, 0x80afee, 0x80aff0, 0x80aff2, 0x80aff4, 0x80aff6,
+  0x80aff8, 0x80affa, 0x80affc,
+]);
+
+/** `$23D1F2` clears the auxiliary input-history words in cartridge store order. */
+export function inputAuxReset23D1F2(ram) {
+  for (const a of INPUT_AUX_RESET_ORDER) ram.setU16(a, 0);
+}
+
+/** `$259C4A` clears the front-end draw records and its four-word helper tail. */
+export function frontDrawReset259C4A(ram) {
+  ram.setU16(0x81e0da, 0);
+  for (let a = 0x812e08; a <= 0x812e24; a += 4) ram.setU32(a, 0);
+  ram.setU16(0x812e28, 0);
+  for (let a = 0x812e4c; a <= 0x812e52; a += 2) ram.setU16(a, 0);
+  ram.setU16(0x812e48, 0);
+  ram.setU16(0x812e4a, 0);
+}
+
+/** `$23C1EC` resets the two IRQ bytes, then calls `$23C47A` to clear six words. */
+export function irqStateReset23C1EC(ram) {
+  ram.setU8(0x803940, 0);
+  ram.setU8(0x803942, 0);
+  for (let a = 0x80392e; a <= 0x803938; a += 2) ram.setU16(a, 0);
+}
+
+/**
+ * `$23BEEA..$23BF73`, all 23 reset calls in cartridge order. A call is either
+ * executed through its modeled owner or logged under its own target address.
+ */
+export function resetPrologue23BEEA(ram, rom, pal, ctx) {
+  const calls = [];
+  for (const site of RESET_PROLOGUE) {
+    let modeled = true;
+    switch (site) {
+      case 0x245c8e: ram.setU8(0x80fa80, 0); break;
+      case 0x245cba:
+        ram.setU16(0x80fa84, 0);
+        ram.setU16(0x80fa82, 0);
+        break;
+      case 0x23c1ec: irqStateReset23C1EC(ram); break;
+      case 0x23c6c6: screenWipe23C6C6(ram, ctx); break;
+      case 0x23c6fa: coinDipInit23C6FA(ram, rom); break;
+      case 0x23d0d2: inputReset23D0D2(ram); break;
+      case 0x2412fe: resetPalette2412FE(ram, pal); break;
+      case 0x24631c: clear24631C(ram); break;
+      case 0x23d1f2: inputAuxReset23D1F2(ram); break;
+      case 0x24107c: objTableInit24107C(ram); break;
+      case 0x2603d4: clearRankRam2603DA(ram); break;
+      case 0x240b0e: camReset(ram); break;
+      case 0x259c4a: frontDrawReset259C4A(ram); break;
+      case 0x24a810: clearPlayerRam24A810(ram); break;
+      case 0x25c57e: clear25C57E(ram); break;
+      case 0x2884e2: resetHud2884E2(ram); break;
+      default:
+        modeled = false;
+        ctx?.unported?.note(site,
+          `$${site.toString(16).toUpperCase()} -- reset call from $23BEEA..$23BF73 `
+          + 'has no modeled board-side owner; retained explicitly in cartridge order');
+        break;
+    }
+    calls.push(Object.freeze({ site, modeled }));
+  }
+  const modeled = calls.reduce((n, call) => n + Number(call.modeled), 0);
+  return Object.freeze({
+    calls: Object.freeze(calls),
+    modeled,
+    unported: calls.length - modeled,
+    coinsPerCredit: ram.u8(COIN_DIP_RESET.coinsPerCredit),
+    creditsPerCoin: ram.u8(COIN_DIP_RESET.creditsPerCoin),
+  });
+}
 
 /**
  * `$23C1B2` -- the shared tail. Sets the 68000 interrupt priority mask to `d0`
@@ -230,16 +354,14 @@ export function interruptEnable23C1C2(ram, ctx) {
  * @returns {{hiscore:boolean, sectionFlag:number, ctrl:number, banks:number,
  *            skipped:number, made:object, state:number}}
  */
-export function bootFrontEnd23BF74(ram, rom, pal, ctx) {
-  // The twenty-three calls ahead of this block. ONE note, not twenty-three: the
-  // gap is "this port enters $23BEEA at $23BF74", which is a single fact.
-  ctx?.unported?.note(BOOT.reset,
+export function bootFrontEnd23BF74(ram, rom, pal, ctx, resetDone = false) {
+  // A direct caller may still begin at the middle of `$23BEEA`. Production Game.boot()
+  // executes `resetPrologue23BEEA` first, so only the diagnostic half-entry gets this note.
+  if (!resetDone) ctx?.unported?.note(BOOT.reset,
     `$23BEEA..$23BF73 -- the ${RESET_PROLOGUE.length} jsr's the reset routine `
     + `runs BEFORE $23BF74 (`
     + RESET_PROLOGUE.map((a) => `$${a.toString(16).toUpperCase()}`).join(' ')
-    + '). This port enters the straight line at $23BF74. $24107C, $240B0E, '
-    + '$25C57E and $24631C are ported under other names and the rest are not; '
-    + 'running only the four would be an execution order nothing has verified');
+    + '). This direct caller entered the straight line at $23BF74');
 
   hiscoreDefaults28841E(ram, rom);                    // $23BF74 jsr $28841E
   // $23BF7A jsr $23C194 -- and its `bra.w $23C008` tail, which is why this

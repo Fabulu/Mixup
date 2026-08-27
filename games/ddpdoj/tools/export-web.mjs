@@ -916,6 +916,16 @@ const W560_IMMEDIATES = Object.freeze([
   [17, 0x11796c, 'Hibachi A2 object 13 fixed centre-part stream'],
 ]);
 
+// W621. Type-8 arm 1 emits these four operator-settings descriptors directly.
+// Together with the three `$25BC26` records above, this is the exact seven-record
+// dependency family measured on the first front-end screen after timeout.
+const W621_IMMEDIATES = Object.freeze([
+  [0, 0x3344f8, 'type-8 arm 1 direct operator-settings stream 0'],
+  [0, 0x334f60, 'type-8 arm 1 direct operator-settings stream 1'],
+  [0, 0x334494, 'type-8 arm 1 direct operator-settings stream 2'],
+  [0, 0x334efc, 'type-8 arm 1 direct operator-settings stream 3'],
+]);
+
 /** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
  *  boot and promoted by the page's miss guard. */
 // ------------------------------------------------------------------- WAVE 52
@@ -1227,6 +1237,36 @@ const romBe32 = (a) => (((cpuBytes[a] << 24) | (cpuBytes[a + 1] << 16)
   | (cpuBytes[a + 2] << 8) | cpuBytes[a + 3]) >>> 0);
 const romBe16 = (a) => (cpuBytes[a] << 8) | cpuBytes[a + 1];
 
+const W621_TABLE_STREAMS = Object.freeze(Array.from({ length: 3 }, (_, i) =>
+  romBe32(0x25bc26 + i * 0x10 + 8) & 0x7fffff));
+const W621_TABLE_EXPECTED = Object.freeze([0x000b20, 0x000b34, 0x000fbc]);
+if (W621_TABLE_STREAMS.some((offs, i) => offs !== W621_TABLE_EXPECTED[i])) {
+  throw new Error(`$25BC26 front-end descriptors resolve to ${W621_TABLE_STREAMS.map((offs) =>
+    `$${offs.toString(16)}`).join(', ')}, expected $B20, $B34, $FBC`);
+}
+const ARM1_REQUIRED_STREAMS = Object.freeze([
+  ...W621_IMMEDIATES.map(([, offs]) => offs),
+  ...W621_TABLE_STREAMS,
+]);
+
+// W621. These are complete cartridge mask-directory families, not a list copied
+// from a browser trace. Each range starts at a code-reachable stream and closes
+// exactly on the next family boundary in the mask ROM. Walking the chain packs
+// every selectable fighter variant and every high-score glyph, not only the
+// factory-default route used by the production acceptance.
+const W621_CABINET_RANGES = Object.freeze([
+  Object.freeze({ base: 0x19485c, endsAt: 0x1b8318, count: 193,
+    why: 'fighter-selector descriptor family used by $25E220..$25F1EC' }),
+  Object.freeze({ base: 0x1c3c5c, endsAt: 0x1c4410, count: 17,
+    why: 'seventeen-frame attract-player family selected by the cabinet path' }),
+  Object.freeze({ base: 0x3216c0, endsAt: 0x322f44, count: 1,
+    why: '$25B4D6 high-score frame immediate' }),
+  Object.freeze({ base: 0x3316f0, endsAt: 0x334224, count: 151,
+    why: '$25B492 high-score labels, fonts, digits and furniture family' }),
+  Object.freeze({ base: 0x336164, endsAt: 0x336990, count: 3,
+    why: 'type-8 state 9 and state 1 transition immediates' }),
+]);
+
 /** THE END OF A TABLE IS A CLAIM AND IT IS CHECKED.  Every extent in `HARVEST`
  *  is pinned by code in the listing; this asserts the cartridge agrees, from the
  *  other side: entry `n-1` must be a stream start and entry `n` must NOT be.
@@ -1531,6 +1571,68 @@ for (const [shard, offs, why] of W560_IMMEDIATES) {
   shardOfStream.set(offs, shard);
   harvested++;
   void why;
+}
+for (const [shard, offs, why] of W621_IMMEDIATES) {
+  if (streams.has(offs)) {
+    shardOfStream.set(offs, shard);
+    harvestAlready++;
+    continue;
+  }
+  streams.set(offs, romExtent(offs));
+  shardOfStream.set(offs, shard);
+  harvested++;
+  void why;
+}
+// `$25BC26` is not a conventional pointer table: each `$10`-byte record carries D1 at +0 and
+// the sprite stream in D2 at +8. Harvest the three derived streams explicitly into boot shard 0.
+for (const offs of W621_TABLE_STREAMS) {
+  if (streams.has(offs)) harvestAlready++;
+  else {
+    streams.set(offs, romExtent(offs));
+    harvested++;
+  }
+  shardOfStream.set(offs, 0);
+}
+for (const offs of ARM1_REQUIRED_STREAMS) {
+  if (!streams.has(offs) || shardOfStream.get(offs) !== 0) {
+    throw new Error(`required arm-1 stream $${offs.toString(16).toUpperCase()} `
+      + 'must have one packed mapping in boot shard 0');
+  }
+}
+
+// The cabinet shell precedes any deferred gameplay fetch. Walk each complete
+// mask-ROM chain into shard 0 and make boot ownership win when an older gameplay
+// harvest already named the same stream. The exact close and count checks make
+// both an over-wide family and a truncated family stop the export.
+for (const range of W621_CABINET_RANGES) {
+  let a = range.base;
+  let n = 0;
+  let added = 0;
+  let already = 0;
+  let prev = a;
+  while (a < range.endsAt) {
+    const w = romExtent(a);
+    if (streams.has(a)) already++;
+    else {
+      streams.set(a, w);
+      harvested++;
+      added++;
+    }
+    shardOfStream.set(a, 0);
+    prev = a;
+    a += w.stride;
+    n++;
+    if (n > range.count) break;
+  }
+  if (a !== range.endsAt || n !== range.count) {
+    throw new Error(`W621 cabinet range $${range.base.toString(16).toUpperCase()} `
+      + `walked ${n} streams and stepped from $${prev.toString(16).toUpperCase()} `
+      + `to $${a.toString(16).toUpperCase()}; expected ${range.count} streams `
+      + `closing exactly on $${range.endsAt.toString(16).toUpperCase()} (${range.why})`);
+  }
+  harvestAlready += already;
+  harvestReport.push({ shard: 0, base: range.base, entries: n, stride: 0,
+    runsTo: n, endsAt: range.endsAt, distinct: n, added, already, why: range.why });
 }
 
 // W161 -- THE HUD SPRITE INVENTORY, ENUMERATED FROM THE COMPLETE ROM TABLES.
@@ -4504,6 +4606,32 @@ if (captureExtras.length > 32) {
     + 'stage 1, or the map is being decoded wrongly.');
 }
 
+// W621. `$25BB6C` copies this exact 14-by-7 cartridge plane into BG VRAM before
+// the title and selector. It is separate from every stage map, so derive its
+// final tile words from the same `$2302E0` longwords the live routine reads and
+// pin them to boot shard 0. A cold cabinet cannot wait for stage scrolling to
+// discover that its title furniture was omitted.
+const frontEndBgRequired = new Set();
+for (let i = 0; i < 14 * 7; i++) {
+  const value = (be32(0x2302e0 + i * 4) + 0x36a90000) >>> 0;
+  frontEndBgRequired.add(value >>> 16);
+}
+const frontBgSorted = [...frontEndBgRequired].sort((a, b) => a - b);
+if (frontBgSorted.length !== 98 || frontBgSorted[0] !== 0x36aa
+    || frontBgSorted.at(-1) !== 0x370b) {
+  throw new Error(`$25BB6C's cartridge plane resolved to ${frontBgSorted.length} distinct BG `
+    + `tiles $${(frontBgSorted[0] ?? 0).toString(16)}..$${
+      (frontBgSorted.at(-1) ?? 0).toString(16)}; expected 98 tiles $36AA..$370B`);
+}
+for (const tile of frontEndBgRequired) {
+  const owner = shardOfTile.get(tile);
+  if (owner !== undefined && !bootSet.has(owner)) {
+    throw new Error(`required cabinet BG tile $${tile.toString(16)} is owned by deferred `
+      + `shard ${owner}, not a boot shard`);
+  }
+  if (owner === undefined) shardOfTile.set(tile, 0);
+}
+
 const shardTiles = [];
 for (let s = 0; s < BG_SHARDS; s++) shardTiles.push([]);
 for (const [t, s] of shardOfTile) shardTiles[s].push(t);
@@ -4576,6 +4704,144 @@ const smapPairs = new Uint16Array(STAGE1.nsmap * COL_ROWS * 2);
   let k = 0;
   for (const col of secondMap) for (const [t, a] of col) { smapPairs[k++] = t; smapPairs[k++] = a; }
 }
+
+// W621 -- COLD-BOOT TX IS REQUIRED, NOT A TRANSPARENT FALLBACK.
+// Arm 13 walks fourteen fixed `$20`-byte records at `$25AA36`. `$259FF8` resolves
+// each character through the 96-word font table at `$25A042` and prints the two
+// tagged tiles `$C000+T` and `$C010+T`.
+const frontEndTxRequired = new Set();
+for (let line = 0; line < 14; line++) {
+  const start = 0x25aa36 + line * 0x20;
+  let terminated = false;
+  for (let i = 0; i < 0x20; i++) {
+    const ch = cpuBytes[start + i];
+    if (ch === 0) { terminated = true; break; }
+    if (ch < 0x20 || ch > 0x7f) {
+      throw new Error(`warning string $${start.toString(16)} has unsupported byte `
+        + `$${ch.toString(16)} at +$${i.toString(16)}`);
+    }
+    const tile = romBe16(0x25a042 + (ch - 0x20) * 2);
+    frontEndTxRequired.add((0xc000 + tile) & 0xffff);
+    frontEndTxRequired.add((0xc010 + tile) & 0xffff);
+  }
+  if (!terminated) throw new Error(`warning string $${start.toString(16)} has no NUL in $20 bytes`);
+}
+// `$23CFDE` uses bytes directly as tile numbers before `$240CF0` adds its
+// mandatory `$C000` tile tag. Include every label plus all ten credit digits,
+// so a cold machine and a newly credited machine are both required.
+const requireDirectTx = (tile) => frontEndTxRequired.add((0xc000 + tile) & 0xffff);
+const requireDirectString = (at, limit, why) => {
+  for (let n = 0; n < limit; n++) {
+    const ch = cpuBytes[at + n];
+    if (ch === 0) return;
+    requireDirectTx(ch);
+  }
+  throw new Error(`${why} string $${at.toString(16)} has no NUL in $${limit.toString(16)} bytes`);
+};
+for (const at of [0x23cdac, 0x23cdf0, 0x23ce6a, 0x23ce7a, 0x23ce83, 0x23cf68]) {
+  for (let a = at; cpuBytes[a]; a++) requireDirectTx(cpuBytes[a]);
+}
+for (let i = 0; i < 10; i++) requireDirectTx(0x30 + i);
+// `$25AD02` selects six shared-pool three-line records and six separate-pool two-line records.
+// All use character bytes directly through `$25A14C`; require every legal cabinet branch.
+for (const [base, records, lines, stride] of [
+  [0x25ad98, 6, 3, 0x20], [0x25b1e0, 6, 2, 0x10],
+]) {
+  for (let record = 0; record < records; record++) {
+    const recordAt = base + record * lines * stride;
+    for (let line = 0; line < lines; line++) {
+      const at = recordAt + line * stride;
+      let terminated = false;
+      for (let n = 0; n < stride; n++) {
+        const ch = cpuBytes[at + n];
+        if (ch === 0) { terminated = true; break; }
+        requireDirectTx(ch);
+      }
+      if (!terminated) throw new Error(`blink string $${at.toString(16)} has no NUL in $${stride.toString(16)} bytes`);
+    }
+  }
+}
+// `$25C22A/$25C252/$25C286` use character bytes directly. Resolve every pointer from the
+// cartridge tables, including `$25C252`'s second line at +$20, so every legal DIP selection is
+// fail-closed rather than only the zeroed-RAM default.
+for (const [table, count, twoLines] of [
+  [0x25c042, 4, false], [0x25c0d2, 4, true], [0x25c1e2, 2, false],
+]) {
+  for (let i = 0; i < count; i++) {
+    const pointer = romBe32(table + i * 4);
+    for (const at of twoLines ? [pointer, pointer + 0x20] : [pointer]) {
+      let terminated = false;
+      for (let n = 0; n < 0x20; n++) {
+        const ch = cpuBytes[at + n];
+        if (ch === 0) { terminated = true; break; }
+        requireDirectTx(ch);
+      }
+      if (!terminated) throw new Error(`operator string $${at.toString(16)} has no NUL in $20 bytes`);
+    }
+  }
+}
+
+// Selector state 2/state 5, the two side labels, and all three credit-offset
+// branches also tail through `$25A14C`. Their fixed cartridge records complete
+// the credited selector path instead of relying on whichever letters happened
+// to occur in the warning text.
+for (const at of [0x25d1ca, 0x25d3f6]) requireDirectString(at, 0x20, 'selector');
+for (const at of [0x25f1f0, 0x25f200]) requireDirectString(at, 0x10, 'side-label');
+for (const base of [0x25f270, 0x25f290, 0x25f2b0]) {
+  requireDirectString(base, 0x10, 'credit-offset');
+  requireDirectString(base + 0x10, 0x10, 'credit-offset');
+}
+// `$25FBF2` draws two fixed 16-byte `$256F14` control streams. Parse their
+// positioned runs exactly: three header bytes, glyph bytes, `$7F` for another
+// run and `$FF` for the end. Coordinates are controls, never tile numbers.
+const requireTxControl = (start, bytes) => {
+  let at = start;
+  const end = start + bytes;
+  for (;;) {
+    if (at + 3 > end) throw new Error(`TX control stream $${start.toString(16)} lacks a run header`);
+    at += 3;
+    for (;;) {
+      if (at >= end) throw new Error(`TX control stream $${start.toString(16)} lacks $FF in $${bytes.toString(16)} bytes`);
+      const glyph = cpuBytes[at++];
+      if (glyph === 0x7f) break;
+      if (glyph === 0xff) return;
+      requireDirectTx(glyph);
+    }
+  }
+};
+for (const at of [0x25fc68, 0x25fc78]) requireTxControl(at, 0x10);
+
+// The cold cabinet reaches two deferred-TX machines before and during its first
+// attract stage. Derive every legal frame from their cartridge pointer tables,
+// not from one browser trace. `$240DC2` adds `$C000` and then advances one tile
+// per cell, so each table longword plus the code-stated DBRA dimensions closes
+// one exact rectangular family.
+const requireTxGrid = (word, d2, d3) => {
+  const first = ((word >>> 16) + 0xc000) & 0xffff;
+  const cells = (d2 + 1) * (d3 + 1);
+  for (let i = 0; i < cells; i++) frontEndTxRequired.add((first + i) & 0xffff);
+};
+// `$25C6D4`: four 6-by-28 attract panels selected at `$25C808`.
+for (let i = 0; i < 4; i++) requireTxGrid(romBe32(0x25c808 + i * 4), 5, 0x1b);
+// `$260B30`: all legal announcement states. The first and third lists contain
+// sixteen animation entries. State 2 has separate eight-entry P1 and P2 lists.
+for (let i = 0; i < 16; i++) requireTxGrid(romBe32(0x260c28 + i * 4), 1, 0x0b);
+for (const table of [0x260d22, 0x260d42]) {
+  for (let i = 0; i < 8; i++) requireTxGrid(romBe32(table + i * 4), 0, 6);
+}
+for (let i = 0; i < 16; i++) requireTxGrid(romBe32(0x260df6 + i * 4), 1, 9);
+frontEndTxRequired.add(0xc000); // `$260A34`'s cartridge blank-tile immediate
+
+// These two adjacent machines deliberately close one continuous mask-ROM TX
+// family. Pinning the endpoints and exact count catches a wrong table width,
+// wrong DBRA +1, or omitted legal animation branch during export.
+const cabinetTransitionTx = [...frontEndTxRequired]
+  .filter((tile) => tile >= 0xc62f && tile <= 0xca66);
+if (new Set(cabinetTransitionTx).size !== 0x438) {
+  throw new Error(`cabinet announcement/attract tables resolved ${
+    new Set(cabinetTransitionTx).size} tiles in $C62F..$CA66; expected $438 contiguous tiles`);
+}
+for (const tile of frontEndTxRequired) txUsed.add(tile);
 
 // W161 -- THE TX INVENTORY IS THE ROM'S TABLES, NOT THE 161-FRAME CAPTURE.
 // The capture still supplies the ordinary text. These additional families are
@@ -5186,6 +5452,7 @@ const manifest = {
       },
       shards: shardMeta,
       boot: BOOT_SHARDS,
+      requiredColdBoot: frontBgSorted,
       captureExtras,
       note: 'DECODED, one byte per pixel, exactly the transformation '
         + 'src/render/tiles.js bgTile() performs. Slot i holds tile number '
@@ -5203,8 +5470,10 @@ const manifest = {
         at: `$${s.at.toString(16).toUpperCase()}`, entries: s.count, name: s.name,
       })),
       scoreGlyphs: ['$C030', '$C03F'],
-      note: 'Capture text plus complete W161 table-derived HUD families. '
-        + 'All values are tile numbers decoded from the IGS023 mask ROM.',
+      requiredColdBoot: [...frontEndTxRequired].sort((a, b) => a - b),
+      note: 'Capture text plus complete W161 table-derived HUD families and the required '
+        + 'cartridge-derived cold-boot warning, credit, high-score, title, announcement and '
+        + 'attract glyphs. All values are tile numbers decoded from the IGS023 mask ROM.',
     },
   },
   spr: {
@@ -5256,6 +5525,9 @@ const manifest = {
     streamCount: sprStreamList.length,
     streamsFile: 'spr/streams.u32.gz',
     streamsFormat: SPR_STREAMS_FORMAT,
+    requiredColdBootStreams: ARM1_REQUIRED_STREAMS,
+    requiredCabinetRanges: W621_CABINET_RANGES.map(({ base, endsAt, count }) =>
+      [base, endsAt, count]),
     // WAVE 47 -- THE SHARDS.  `shards[i]` owns `mask[maskFrom, maskFrom+maskLen)`
     // and `col[colFrom, colFrom+colLen)`; the page allocates both arrays at full
     // size at boot and drops each shard's words in as it lands.  `boot` is the

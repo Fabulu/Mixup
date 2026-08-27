@@ -42,11 +42,10 @@
 //     13 -> 2 -> 12 -> 9 -> 1 -> 5 -> 2 -> 12 -> 9 -> 1 -> 5 -> 2 -> ...
 //     +1  +302 +574 +878 +1182 +1918 +4334 +4606 +4910 +5214 +5950 +8366
 //
-// Arms 0, 1, 2, 3, 5, 9, 12, 13 and 14 are complete and `3 -> 14 -> gameplay` is live too. What
-// is left NOTED in this file is presentation and sound, not a screen: `$25AD02` (the blink
-// message's ON half, a 1,754-byte dispatcher), the three `$28C0FC` cue posts, and arm 12's
-// `$25BB6C` TX plane block and `$28CAE2`. NONE of them gates the state machine. **W425 took
-// arm 3's `$28C170` off this list -- it POSTS now (D58); see `arm3`.**
+// Arms 0, 1, 2, 3, 5, 9, 12, 13 and 14 are complete and `3 -> 14 -> gameplay` is live too. The
+// shared `$25BB6C` BG plane, `$25AD02` ON prompt, and arm-1 operator-setting TX lines are live.
+// What remains noted here is individually attributed sound work, not a screen or input gate.
+// **W425 took arm 3's `$28C170` off this list; it posts now (D58); see `arm3`.**
 //
 // **W393 CORRECTION: arm 5's `$26070C` IS NO LONGER NOTED.** It is a real `jsr` now (see
 // `handoffCall`), so the attract loop's three demos BOOT A STAGE and play. W392 had to count it
@@ -61,10 +60,9 @@
 // either THREW. On a cold boot the first one killed the run one frame after a coin credited.
 // **W425 (D58) SPLIT THAT PAIR.** `sound.js` grew the `$28BBAC` tier, so arm 3's `$28C170` POSTS
 // again ($15000000, no `WRAPPERS` row, no gate). The three `$28C0FC` are `$28BB76` -- a third
-// packer -- and stay counted directly at their three call sites. `$25AFD8`, the OFF half of
-// the blink message, is ported in `fronttext.js` and called for real from the tail. `$25AD02`,
-// the ON half, is NOT the mirror of it -- it is a 1,754-byte dispatcher through $25B3DB with two
-// embedded data blocks and a second copy for separate credit pools -- and stays noted.
+// packer and stay counted directly at their three call sites. `$25AFD8`, the OFF half of
+// the blink message, and `$25AD02`, the full shared/separate ON dispatcher, are both live in
+// `fronttext.js`.
 //
 // **W376 CLOSED THE TWO THAT MADE THE LOOP SILENT AND BLANK.** `$259FF8` (arm 13's string
 // emitter, the warning screen) and `$23CFDE` (the credit / FREE PLAY line) are ported in
@@ -73,7 +71,9 @@
 // beside a live call would make the unported report claim a gap this port no longer has.
 
 import { u16 } from './ram.js';
-import { clearTx23C622, clearSlotTable23C668, camReset } from './background.js';
+import {
+  clearTx23C622, clearSlotTable23C668, camReset, resetBgScrolls23C608,
+} from './background.js';
 import { install2414BE, install24150A, install2415E8 } from './palette.js';
 import { stageCreate, objTableInit24107C } from './objalloc.js';
 import { clear23C47A, clear24631C } from './stageend.js';
@@ -90,7 +90,10 @@ import { txPrint240DC2 } from './hud.js';
 import {
   enqueueRegistersThroughStub, enqueueZoomedRegistersThroughStub,
 } from './spritequeue.js';
-import { txFontString259FF8, creditLine23CFDE, blinkOff25AFD8 } from './fronttext.js';
+import {
+  txFontString259FF8, creditLine23CFDE, blinkOn25AD02, blinkOff25AFD8,
+  operatorSettings25C22A,
+} from './fronttext.js';
 import { handoff26070C } from './objslot17.js';
 
 export const SCREEN8 = Object.freeze({
@@ -887,6 +890,46 @@ export function screen5Body25C6D4(ram, rom, ctx) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// `$25BB6C` -- THE SHARED FRONT-END BG PLANE BLOCK.
+// ---------------------------------------------------------------------------------------------
+
+export const FRONT_BG_PLANE = Object.freeze({
+  site: 0x25bb6c,
+  source: 0x2302e0,
+  sourceLongs: 14 * 7,
+  columns: 14,
+  rows: 7,
+  rowStride: 0x100,
+  tileAdd: 0x36a90000,
+});
+
+/**
+ * `$25BB6C..$25BBB3` in full. It resets only the BG scroll pair, clears BG VRAM, resets the
+ * cameras, then copies a 14 x 7 cartridge tile block from `$2302E0` into `$900000`.
+ *
+ * The cartridge walks source longwords column-major. Destination rows are `$100` bytes apart,
+ * exactly 64 BG longwords, while each outer pass advances the base by four bytes. `addi.l` is a
+ * 32-bit add, so tile and attribute carries are preserved rather than split into words.
+ */
+export function frontBgPlane25BB6C(ram, rom, ctx) {
+  const A = FRONT_BG_PLANE;
+  if (ctx?.videoRegs) resetBgScrolls23C608(ctx.videoRegs);        // $25BB6C jsr $23C608
+  else ctx?.unported?.note(0x23c608, '$25BB6C jsr $23C608 with no VideoRegs on this chain');
+  if (ctx?.bgVram) ctx.bgVram.clear23C638();                      // $25BB72 jsr $23C638
+  else ctx?.unported?.note(0x23c638, '$25BB72 jsr $23C638 with no BgVram on this chain');
+  camReset(ram);                                                  // $25BB78 jsr $240B0E
+
+  let source = A.source;                                         // $25BB7E lea $2302E0,A1
+  for (let col = 0; col < A.columns; col++) {                    // $25BB8A moveq #$D,D6 / dbra
+    for (let row = 0; row < A.rows; row++) {                     // $25BB8E moveq #$6,D7 / dbra
+      const tile = (rom.u32(source) + A.tileAdd) >>> 0;           // $25BB90/$25BB92 move.l / addi.l
+      source += 4;
+      ctx?.bgVram?.setLong(row, col, tile);                       // $25BB98 move.l D4,(A2)
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // W389 -- ARM 12'S SCREEN, `$25C2AE` (init) AND `$25C2EA` (body). ARM 2'S TWIN, EXACTLY.
 // ---------------------------------------------------------------------------------------------
 //
@@ -911,9 +954,7 @@ export function screen5Body25C6D4(ram, rom, ctx) {
 // on `$25C3D6`; `$25C3D6` is `count 2` and `2 + 2*8 = $12` lands on `$25C3E8`, which is `48E7`,
 // the `movem.l` opening ARM 9's init -- a routine this file already names.
 //
-// TWO CALLEES STAY COUNTED, and neither can hold the machine:
-//   `$25BB6C` -- 19 instructions writing `$900000`, the TX tile plane. Presentation, unclaimed by
-//                any file in the port, and the same tier as arm 1/3's `$25BBB4` next door.
+// `$25BB6C` is live and copies the shared cartridge BG plane. One callee stays counted:
 //   `$28CAE2` -- `move.w #$44,D0 / #$FF,D1 / #$14,D2 / bsr $28C02A`, a sound post through a
 //                different packer than `sound.js`'s `WRAPPERS` describes. Counted because
 //                posting it would THROW. (W425: this used to say "for the same reason arm 3's
@@ -929,7 +970,7 @@ export const SCREEN12 = Object.freeze({
   initScript: 0x25c3b8,                // $25C2CC lea ($EA,PC),A0 -- $24641A's, 14 bytes/entry
   loadScript: 0x25c3d6,                // $25C334 lea ($A0,PC),A0 -- $246710's, 8 bytes/entry
   scriptNodes: 2,                      // both count words
-  txBlock: 0x25bb6c,                   // $25C2DE jsr $25BB6C -- counted
+  txBlock: 0x25bb6c,                   // $25C2DE jsr $25BB6C -- live cartridge BG plane
   cue: 0x28cae2,                       // $25C318 jsr $28CAE2 -- counted
   draw: 0x25c39c,                      // $25C374 bsr.w -> $25C376 + $26
   emit: 0x23dece,                      // $25C3B0 jmp $23DECE -- a TAIL jump out of the draw
@@ -945,7 +986,9 @@ export function screen12Init25C2AE(ram, rom, ctx) {
   ram.setU16(SCREEN12.timer, SCREEN12.timerInit);              // $25C2C4
   // $25C2D2 jsr $24641A -- `$246410` with D6 = 0, which `animobjects.js` already ports.
   ram.setU32(SCREEN12.handle, loadAnimObjects246410(ram, rom, SCREEN12.initScript, 0) >>> 0);
-  ctx?.unported?.note(SCREEN12.txBlock, '$25C2DE jsr $25BB6C -- arm 12\'s TX plane block, 19 '
+  if (ctx?.cabinetFrontend) frontBgPlane25BB6C(ram, rom, ctx);    // $25C2DE jsr $25BB6C
+  else ctx?.unported?.note(SCREEN12.txBlock,
+    '$25C2DE jsr $25BB6C -- arm 12\'s TX plane block, 19 '
     + 'instructions writing $900000 through a $2302E0 table. Presentation; it cannot gate the '
     + 'screen, whose only exit is the $246710 chain state 2 waits on');
 }
@@ -1026,7 +1069,7 @@ function arm12(ram, rom, a5, ctx) {
 //   25C40A  4e71                      nop                       <- arm 12 has this too, at $25C2D0
 //   25C40C  4eb9 0024641a             jsr $24641A               <- $246410 with D6 = 0
 //   25C412  23c0 00812e7e             move.l D0,$812E7E
-//   25C418  4eb9 0025bb6c             jsr $25BB6C               <- the TX plane block, counted
+//   25C418  4eb9 0025bb6c             jsr $25BB6C               <- the live BG plane block
 //
 // THE BODY, `$25C424..$25C4BC` -- the three fall-through states, and WHICH CHAIN THE EXIT WAITS
 // ON, which the brief asked to be checked rather than assumed:
@@ -1075,9 +1118,8 @@ function arm12(ram, rom, a5, ctx) {
 // `$225A38 + $40` is `$225A78` exactly, so the two windows ABUT and do not overlap. Entry [1] is
 // `$246BF8`, already inside W91's `$246BB8+$80`, and is not re-declared.
 //
-// ONE CALLEE STAYS COUNTED, and it cannot hold the machine:
-//   `$25BB6C` -- the same 19-instruction TX plane block arm 12 counts, called from the same place.
-// **THERE IS NO `$28CAE2` HERE.** Arm 12 posts a cue at `$25C318` on the 0 -> 1 edge; arm 9's
+// `$25BB6C` is the same live BG plane block arm 12 calls. **THERE IS NO `$28CAE2` HERE.**
+// Arm 12 posts a cue at `$25C318` on the 0 -> 1 edge; arm 9's
 // `$25C44A` writes the state and falls straight through. Confirmed from the bytes: `$25C44A
 // 33fc 0001 00812e7a` is immediately followed by `$25C452 0c79`, with no `4EB9` between them.
 export const ARM9SCREEN = Object.freeze({
@@ -1092,7 +1134,7 @@ export const ARM9SCREEN = Object.freeze({
   loadScript: 0x25c530,                // $25C468 lea ($C6,PC),A0 -- $246710's, 8 bytes/entry
   scriptNodes: 2,                      // both count words
   fadeTarget: 0x225a78,                // $25C512 entry [0]'s longword
-  txBlock: 0x25bb6c,                   // $25C418 jsr $25BB6C -- counted
+  txBlock: 0x25bb6c,                   // $25C418 jsr $25BB6C -- live cartridge BG plane
   draw: 0x25c4d0,                      // $25C4A8 bsr.w -> $25C4AA + $26
   emit: 0x23dece,                      // $25C4EA / $25C50A jsr $23DECE -- TWICE, and jsr not jmp
   // The two enqueues, each `move.l #base,D1` then `addi.l #add,D1`. Kept unfolded on purpose.
@@ -1112,7 +1154,9 @@ export function screen9Init25C3E8(ram, rom, ctx) {
   // $25C40C jsr $24641A -- `$246410` with D6 = 0, which `animobjects.js` already ports.
   ram.setU32(ARM9SCREEN.handle,
     loadAnimObjects246410(ram, rom, ARM9SCREEN.initScript, 0) >>> 0);   // $25C412
-  ctx?.unported?.note(ARM9SCREEN.txBlock, '$25C418 jsr $25BB6C -- arm 9\'s TX plane block, the '
+  if (ctx?.cabinetFrontend) frontBgPlane25BB6C(ram, rom, ctx);    // $25C418 jsr $25BB6C
+  else ctx?.unported?.note(ARM9SCREEN.txBlock,
+    '$25C418 jsr $25BB6C -- arm 9\'s TX plane block, the '
     + 'same 19 instructions writing $900000 that arm 12 calls from $25C2DE. Presentation; it '
     + 'cannot gate the screen, whose only exit is the $246710 chain state 2 waits on');
 }
@@ -1186,7 +1230,7 @@ function arm9(ram, rom, a5, ctx) {
 //                                     $68, $6A, $6C, $6E, $70. The last two ARE the handle
 //                                     long at $812E6E (trap 3, a third time).
 //   25BBCA  33fc 01e0 00812e6c        move.w #$1E0,$812E6C     <- 480, not arm 9/12's $F0
-//   25BBD2  6198                      bsr.s $25BB6C            <- the TX plane block, counted
+//   25BBD2  6198                      bsr.s $25BB6C            <- live BG plane block
 //   25BBD4  6100 0654                 bsr.w $25C22A            <- ext at $25BBD6 + $654
 //   25BBD8  6100 0678                 bsr.w $25C252            <- ext at $25BBDA + $678
 //   25BBDC  6100 06a8                 bsr.w $25C286            <- ext at $25BBDE + $6A8
@@ -1296,19 +1340,17 @@ function arm9(ram, rom, a5, ctx) {
 //     `$FFFFFFFF` sits at `$25BC56` -- three `$10`-byte entries, $34 bytes with the terminator.
 //   * The five fade targets: `$2259B8 + $80` runs up to `$225A38`, which is W389's arm-12
 //     target, so the two ABUT. `$25BAEC + $80` runs up to `$25BB6C`, the `jsr $23C608` opening
-//     the TX plane block -- pinned by the CODE that follows it.
+//     the BG plane block -- pinned by the CODE that follows it.
 //
-// FOUR CALLEES STAY COUNTED, and not one of them can gate the machine, whose only exit is the
-// `$246710` chain `$25BE2E` waits on:
-//   `$25BB6C` -- the same 19-instruction TX plane block arms 9 and 12 count.
-//   `$25C22A` / `$25C252` / `$25C286` -- three TX STRING draws in the init, each
+// All four presentation callees are live in production:
+//   `$25BB6C` copies the 14 x 7 cartridge BG plane after resetting its owned video state.
+//   `$25C22A` / `$25C252` / `$25C286` select and draw TX strings in the init, each
 //     `lea (table,PC),A0 / moveq #0,D0 / move.b $80380x,D0 / add.w D0,D0 / add.w D0,D0 /
 //     movea.l (0,A0,D0.w),A0 / move.w #$0,D0 / move.w #$D-$10-$B,D1 / move.w #$0,D2` into
 //     `$25A14C` (`txString25A14C`, which IS ported). They are the operator-settings lines
 //     ("RANK: ..." at `$25C052`), indexed by the DIP bytes `$80380C`/`$80380D`/`$80380F`, and
-//     they run ONCE in the init. Counted rather than ported because each needs its own pointer
-//     table plus four 32-byte strings exported, and `$80380D`/`$80380F` have no model in this
-//     port at all -- `machine.js` names only `$80380C`. A DECLARED HOLD, not an oversight.
+//     they run once in the init. Their cartridge pointer tables and strings are exported, and
+//     the zeroed reset DIP bytes select the board defaults without a host model or clamp.
 export const ARM1SCREEN = Object.freeze({
   init: 0x25bbb4, initEnd: 0x25bbe6,   // $25BBB4..$25BBE5 -- 50 bytes, `rts` AT $25BBE4
   body: 0x25bd7c, bodyEnd: 0x25be72,   // $25BD7C..$25BE71 -- two exits, `rts` AT $25BE68/$25BE70
@@ -1324,8 +1366,8 @@ export const ARM1SCREEN = Object.freeze({
   loadScript: 0x25c010,                // $25BE1A lea ($1F4,PC) -- $246710's, 8 bytes/entry
   scriptNodes: 6,                      // both count words -- SIX, where arms 9/12 have two
   initScriptBytes: 0x56, loadScriptBytes: 0x32,
-  txBlock: 0x25bb6c,                   // $25BBD2 bsr.s $25BB6C -- counted
-  txLines: Object.freeze([0x25c22a, 0x25c252, 0x25c286]),   // $25BBD4/$25BBD8/$25BBDC -- counted
+  txBlock: 0x25bb6c,                   // $25BBD2 bsr.s $25BB6C -- live BG plane
+  txLines: Object.freeze([0x25c22a, 0x25c252, 0x25c286]),   // live TX draws in ROM order
   dipBytes: Object.freeze([0x80380c, 0x80380d, 0x80380f]),  // what each of the three indexes on
   draw: 0x25be48,                      // the tail BOTH arms branch to
   emit: 0x23dece,                      // $25BF48 etc -- the plain register enqueue
@@ -1359,25 +1401,37 @@ export const ARM1SCREEN = Object.freeze({
 });
 
 /** `$25BBB4` -- the init BOTH arm 1 and arm 3 run. SIX words cleared (not four), the `$1E0`
- *  timer armed, and four counted presentation calls. It loads NO chain: arm 1's body does that
- *  itself on its first frame, behind the `bset #0` latch. */
+ *  timer armed, and four live cartridge presentation calls. It loads NO chain: arm 1's body does
+ *  that itself on its first frame, behind the `bset #0` latch. */
 export function screen1Init25BBB4(ram, rom, ctx) {
-  void rom;
   for (let i = 0; i < ARM1SCREEN.clearWords; i++) {            // $25BBBE #$5 + dbra = SIX
     ram.setU16(ARM1SCREEN.flags + i * 2, 0);                   // $25BBC4 move.w D1,(A0)+
   }
   ram.setU16(ARM1SCREEN.timer, ARM1SCREEN.timerInit);          // $25BBCA move.w #$1E0
-  ctx?.unported?.note(ARM1SCREEN.txBlock, '$25BBD2 bsr.s $25BB6C -- the same 19-instruction TX '
-    + 'plane block arms 9 and 12 count from $25C418 and $25C2DE. Presentation; it cannot gate '
-    + 'the screen, whose only exit is the $246710 chain $25BE2E waits on');
-  for (let i = 0; i < ARM1SCREEN.txLines.length; i++) {
-    const site = 0x25bbd4 + i * 4;                             // $25BBD4 / $25BBD8 / $25BBDC
-    ctx?.unported?.note(ARM1SCREEN.txLines[i], `$${site.toString(16).toUpperCase()} bsr.w $${
-      ARM1SCREEN.txLines[i].toString(16).toUpperCase()} -- an operator-settings TX line, a `
-      + `longword pointer table indexed by the DIP byte $${
-        ARM1SCREEN.dipBytes[i].toString(16).toUpperCase()} and drawn through $25A14C. Runs `
-      + 'ONCE in the init and writes only the TX plane. Counted: the strings need their own '
-      + 'export and this port models no DIP byte but $80380C');
+  if (ctx?.cabinetFrontend) {
+    frontBgPlane25BB6C(ram, rom, ctx);                            // $25BBD2 bsr.s $25BB6C
+    if (ctx.tx) operatorSettings25C22A(ram, rom, ctx.tx);         // $25BBD4/$25BBD8/$25BBDC
+    else {
+      for (let i = 0; i < ARM1SCREEN.txLines.length; i++) {
+        const site = 0x25bbd4 + i * 4;
+        ctx?.unported?.note(ARM1SCREEN.txLines[i], `$${site.toString(16).toUpperCase()} calls `
+          + `$${ARM1SCREEN.txLines[i].toString(16).toUpperCase()} with no TxVram on this chain`);
+      }
+    }
+  } else {
+    ctx?.unported?.note(ARM1SCREEN.txBlock,
+      '$25BBD2 bsr.s $25BB6C -- the same 19-instruction TX '
+      + 'plane block arms 9 and 12 count from $25C418 and $25C2DE. Presentation; it cannot gate '
+      + 'the screen, whose only exit is the $246710 chain $25BE2E waits on');
+    for (let i = 0; i < ARM1SCREEN.txLines.length; i++) {
+      const site = 0x25bbd4 + i * 4;
+      ctx?.unported?.note(ARM1SCREEN.txLines[i], `$${site.toString(16).toUpperCase()} bsr.w $${
+        ARM1SCREEN.txLines[i].toString(16).toUpperCase()} -- an operator-settings TX line, a `
+        + `longword pointer table indexed by the DIP byte $${
+          ARM1SCREEN.dipBytes[i].toString(16).toUpperCase()} and drawn through $25A14C. Runs `
+        + 'ONCE in the init and writes only the TX plane. Counted: the strings need their own '
+        + 'export and this port models no DIP byte but $80380C');
+    }
   }
 }
 
@@ -1652,7 +1706,9 @@ function dispatchTail25A82C(ram, rom, a5, ctx) {
     ram.setU16(SCREEN8.blink, n);                              // ...to $812E58
     if ((n & SCREEN8.blinkMask) !== 0) {                       // $25A844 andi.w #$10 / beq
       // $25A84C jsr ($25AD02,PC) -- EA = $25A84E + $4B4, the extension word plus the disp.
-      ctx?.unported?.note(SCREEN8.blinkOn, '$25A84C jsr $25AD02 -- the blink message, ON');
+      if (ctx?.cabinetFrontend) blinkOn25AD02(ram, rom, ctx.tx);   // $25A84C jsr $25AD02
+      else ctx?.unported?.note(SCREEN8.blinkOn,
+        '$25A84C jsr $25AD02 -- the blink message, ON');
     } else {
       // $25A856 jsr ($25AFD8,PC) -- EA = $25A858 + $780. W377: PORTED, in fronttext.js. Like
       // `$23CFDE` below it this is a DIRECT blit through $25A14C, so its blanks land on this

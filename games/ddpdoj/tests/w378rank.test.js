@@ -143,7 +143,7 @@ test('W378 the gate the INIT raises is the SAME word the per-frame body tests', 
 // replaced by its inverse -- the census must carry NO note for $25FE42 -- so this test still fails
 // if the wiring is ever backed out, rather than quietly agreeing with either state. Nothing else
 // in the list moved.
-test('W378 the state-0 INIT does its own writes and counts its SIX remaining unread callees',
+test('W378 the state-0 INIT does its own writes and counts four unread plus two compatibility resets',
   () => {
     const g = coldToStart();
     for (let i = 0; i < 30; i++) g.step(NO_PLAYER);
@@ -181,10 +181,10 @@ test('W378 the state-0 INIT does its own writes and counts its SIX remaining unr
         `$${target.toString(16).toUpperCase()} is a CALL now (${where}), not a deferral`);
     }
 
-    // The SIX calls that are still deferred on the loop-1 arm ($2606E8..$2606FA run because
-    // $813098 is 0 on a cold board, so all six are reached). None of the six has a port in
-    // src/ under either naming convention -- tests/w444deferrals.test.js SECTION 3 is what
-    // keeps that true.
+    // Four calls are still genuinely deferred. `$259C4A` and `$2884E2` are now ports too, but a
+    // direct legacy `Game.boot()` keeps their exact counted notes and state; the production Demo
+    // opts into the cabinet chain and runs both. All six sites are reached on this compatibility
+    // fixture's loop-1 arm because `$813098` is zero.
     for (const [site, target] of [
       [0x2605ce, 0x259c4a], [0x2606d2, 0x28d552],
       [0x2606d8, 0x28ebfe], [0x2606ee, 0x2884e2],
@@ -214,8 +214,9 @@ test('W378 the state-0 INIT does its own writes and counts its SIX remaining unr
 // too. Painted with $A5A5 / $5A5A they cannot: only $27F87C and $24A810 write those spans, and
 // nothing else in the port zeroes 1,767 and 4,809 consecutive words.
 //
-// The lives pair needs no paint -- $2603DA WRITES $FFFF into $8130BE/$8130C0, and a cold board
-// reads 0 there. A write of a specific nonzero value is the strongest witness of the three.
+// The reset prologue now runs the cartridge's own $2603DA, so the lives pair enters the front
+// end as $FFFF. Repaint both words to zero on every approach frame. That makes the later $2603DA
+// call visible again without contradicting the authentic reset order.
 // =================================================================================================
 
 const POOL_A = { base: 0x8171be, words: 0x6e7 };      // $27F87C lea $8171BE,A0 / #$6E6 + dbra
@@ -242,6 +243,8 @@ test('W445 [M] the INIT frame clears pool A and the player block and stamps the 
     while (g.ram.u16(RANK.gate813082) === 0 && frames < 200) {
       paint(g.ram, POOL_A, 0xa5a5);
       paint(g.ram, PLAYER_BLOCK, 0x5a5a);
+      g.ram.setU16(0x8130be, 0);
+      g.ram.setU16(0x8130c0, 0);
       before = {
         poolA: nonzero(g.ram, POOL_A), player: nonzero(g.ram, PLAYER_BLOCK),
         livesP1: g.ram.u16(0x8130be), livesP2: g.ram.u16(0x8130c0),

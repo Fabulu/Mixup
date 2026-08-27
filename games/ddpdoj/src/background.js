@@ -244,6 +244,12 @@ export class BgVram {
  * credits, chain high-water) still goes through the unported `$240DC2` /
  * `$141258` path, so those cells stay blank in this map until Wave C'.
  */
+/** `$23C608` -- RESET THE BG SCROLL PAIR ONLY. */
+export function resetBgScrolls23C608(regs) {
+  regs.bg_yscroll = 0;
+  regs.bg_xscroll = 0;
+}
+
 /** `$23C61E` -- RESET BOTH SCROLLS. Two instructions: `bsr $23C5F2` then `bra $23C608`, so it is
  *  composition rather than a routine, which is why it stayed unported while both its halves were
  *  already modelled by `VideoRegs`.
@@ -257,8 +263,7 @@ export class BgVram {
 export function resetScrolls23C61E(regs) {
   regs.tx_yscroll = 0;                                       // $23C5F2 lea $B05000 / move.w #$0
   regs.tx_xscroll = 1;                                       // $23C5FC lea $B06000 / move.w #$1
-  regs.bg_yscroll = 0;                                       // $23C608, reached by the bra
-  regs.bg_xscroll = 0;
+  resetBgScrolls23C608(regs);                                // $23C608, reached by the bra
 }
 
 /** `$23C622` -- CLEAR THE TX LAYER. Twenty-two bytes, and three dispatch slots call it ([7], [8] and

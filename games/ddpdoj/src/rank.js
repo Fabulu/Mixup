@@ -58,7 +58,7 @@ import { tallyDriver25FF7A } from './tally.js';
 import { DISP_288610_TARGETS } from './continuescreen.js';
 import { armRequest25FF38 } from './player.js';
 import {
-  txPrint240DC2, txPrint240EBC, scoreDrainInit287084, slideArm287A5E,
+  txPrint240DC2, txPrint240EBC, scoreDrainInit287084, slideArm287A5E, resetHud2884E2,
 } from './hud.js';
 import { install2414BE } from './palette.js';
 import { writeStage25FD0C, wipeStageBlock25FD24 } from './stageend.js';
@@ -69,6 +69,7 @@ import { writeStage25FD0C, wipeStageBlock25FD24 } from './stageend.js';
 // the same shape as the `rank.js <-> tally.js` cycle that has stood since W289.
 import { clearPoolA } from './bee.js';
 import { clearPlayerRam24A810, clearRankRam2603DA } from './objslot12.js';
+import { frontDrawReset259C4A } from './frontend.js';
 import { u16, i16 } from './ram.js';
 
 /** ROM and RAM addresses the rank object speaks in, each cited at the line that
@@ -598,20 +599,12 @@ const INIT_LOOP2_LONGS = Object.freeze([0x813144, 0x813148, 0x81314c, 0x813150, 
 /** The calls `$2605C8` makes that no wave has read, in ROM order: call site ->
  *  target. Each is counted at its OWN site so the report says which one.
  *
- *  **W444 (D66): THREE OF THESE `why` STRINGS ARE STALE AND THE TARGETS ARE
- *  PORTED.** Exported this wave so `tests/w444deferrals.test.js` can READ this
- *  table back -- nothing did, which is why the rot went unseen. See that file's
- *  STALE REGISTER for `$2603DA`, `$24A810` and `$27F87C`; the deferral at THIS
- *  call site is still real (nobody has wired `$2605C8`'s teardown), but the
- *  stated reason "not implemented / unread" is false for those three. */
+ *  W621 removed `$259C4A` and `$2884E2`: both now run on the authentic cabinet chain. Seeded
+ *  compatibility chains retain their exact historical notes instead of taking new reset writes. */
 export const INIT_UNREAD = Object.freeze([
-  Object.freeze([0x2605ce, 0x259c4a, 'a reset-prologue routine ($23BEEA\'s 20th call, '
-    + 'frontend.js RESET_PROLOGUE)']),
   Object.freeze([0x2606d2, 0x28d552, 'stageend.js has it as the module-private '
     + 'clear28D552 and does not export it']),
   Object.freeze([0x2606d8, 0x28ebfe, 'unread anywhere in this port']),
-  Object.freeze([0x2606ee, 0x2884e2, 'a reset-prologue routine (frontend.js '
-    + 'RESET_PROLOGUE)']),
   Object.freeze([0x2606f4, 0x287024, 'unread anywhere in this port']),
   Object.freeze([0x260704, 0x288574, 'unread anywhere in this port']),
 ]);
@@ -647,9 +640,9 @@ export const INIT_UNREAD = Object.freeze([
 //                         made the body unavailable: objslot12.js EXPORTS
 //                         `clearPlayerRam24A810` and W388 calls it from $28F368.
 //
-// **$2606EE ($2884E2) AND $2606F4 ($287024) STAY.** They sit between the two that were
-// wired, on the same `$813098`-gated run, and a scan for either name in `src/` finds
-// nothing -- no port under either convention. They are still genuinely out.
+// **$287024 STAYS.** It sits on the same `$813098`-gated run, and a scan for its name in
+// `src/` finds no port. W621 wires its `$2884E2` neighbour only on the authentic cabinet chain;
+// seeded compatibility retains the earlier counted note and does not take the new reset writes.
 
 // ===========================================================================
 // W385 -- `$25FE42`, THE ROUTINE THAT GIVES BOTH SIDES A PLAYER TO BE
@@ -806,12 +799,21 @@ export function playerRecords25FE42(ram, rom, ctx) {
 function rankInit2605C8(ram, rom, a5, ctx) {
   ram.setU8(a5 + RANK.stateOff, 1);                         // $2605C8 move.b #$1,($2,A5)
   const unread = new Map(INIT_UNREAD.map(([site, tgt, why]) => [site, [tgt, why]]));
-  const defer = (site) => {
-    const [tgt, why] = unread.get(site);
+  const countDeferred = (site, tgt, why) => {
     note(ctx, tgt, `${hexA(tgt)} -- reached from ${hexA(site)}, inside the $2605C8 `
       + `state-0 INIT of object type $A. ${why}. Not run`);
   };
-  defer(0x2605ce);                                          // $2605CE jsr $259C4A
+  const defer = (site) => {
+    const [tgt, why] = unread.get(site);
+    countDeferred(site, tgt, why);
+  };
+  const cabinetReset = (site, tgt, why, run) => {
+    if (ctx?.cabinetFrontend) run();
+    else countDeferred(site, tgt, why);
+  };
+  cabinetReset(0x2605ce, 0x259c4a,
+    'a reset-prologue routine ($23BEEA\'s 20th call, frontend.js RESET_PROLOGUE)',
+    () => frontDrawReset259C4A(ram));                       // $2605CE jsr $259C4A
   for (const [site, bank, src] of INIT_TX_INSTALLS) {        // $2605D4..$260660
     if (!ctx?.palette) {
       note(ctx, site, `${hexA(site)} jsr $2414BE -- TEXT bank ${bank} <- ${hexA(src)}, `
@@ -839,7 +841,9 @@ function rankInit2605C8(ram, rom, a5, ctx) {
   defer(0x2606d8);                                          // $2606D8 jsr $28EBFE
   if (ram.u16(RANK.loopWord) === 0) {                       // $2606DE tst.w / $2606E4 bne
     clearPoolA(ram);                                        // $2606E8 jsr $27F87C
-    defer(0x2606ee);                                        // $2606EE jsr $2884E2
+    cabinetReset(0x2606ee, 0x2884e2,
+      'a reset-prologue routine (frontend.js RESET_PROLOGUE)',
+      () => resetHud2884E2(ram));                           // $2606EE jsr $2884E2
     defer(0x2606f4);                                        // $2606F4 jsr $287024
     clearPlayerRam24A810(ram);                              // $2606FA jsr $24A810
   }

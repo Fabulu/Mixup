@@ -902,7 +902,6 @@ export class Demo {
     // and the page owns presentation.
     this.playback = null;
     this.onPlaybackUpdate = null;
-    this.seedLf = rung ? rung.lf : this.cap.frames[0].lf;
     // WAVE 13.  THE PORT NOW OWNS THE BACKGROUND'S MOTION.  Two things go in
     // and one comes out:
     //   IN  `bgSeed` -- the board's own $900000 ring at the capture's first
@@ -916,13 +915,19 @@ export class Demo {
     //       in place of the capture's, which is what takes L5 and L6's program
     //       half off the CAPTURE LEDGER.
     this.soundController = soundController;
-    const launchSeed = launchSeedForBrowser(rung ? rung.seed : bundle.seed, rung, modState);
+    const coldBoot = !rung && !modState && !this.formation && authenticSelection == null;
+    this.coldBoot = coldBoot;
+    this.seedLf = coldBoot ? 0 : (rung ? rung.lf : this.cap.frames[0].lf);
+    const launchSeed = coldBoot
+      ? new Uint8Array(MACHINE.ramSize)
+      : launchSeedForBrowser(rung ? rung.seed : bundle.seed, rung, modState);
     const gameMods = modGameOptions(modState);
     const gameFormation = this.formation ? formationGameOptions(this.formation) : null;
     this.game = new Game(launchSeed, bundle.tables, {
       logicFrame: this.seedLf,
-      videoFrame: rung ? rung.vf : this.cap.frames[0].vf,
-      bgSeed: rung ? rung.bgSeed : this.cap.part(0, 'bg'),
+      videoFrame: coldBoot ? 0 : (rung ? rung.vf : this.cap.frames[0].vf),
+      bgSeed: coldBoot ? undefined : (rung ? rung.bgSeed : this.cap.part(0, 'bg')),
+      ...(coldBoot ? { palCatchUp: false, seedArm: 0 } : {}),
       soundSink: soundController,
       ...(gameMods ?? {}),
       ...(gameFormation ?? {}),
@@ -934,6 +939,7 @@ export class Demo {
       // See `Demo#coinTick`.
       coinTick: () => this.coinTick(),
     });
+    if (coldBoot) this.game.boot({ cabinetFrontend: true });
     if (authentic) applyAuthenticSelection(this.game, authentic);
     if (this.formation) initializeFormation(this.formation, this.game);
     this.hitboxRam = modState?.loadout.presentation.hitboxes

@@ -131,6 +131,15 @@ export const PALSTAGE = {
   tx: { stage: 0x80f886, dirty: 0x80fa6a, dst: 0x800, words: 0x0f0, bankWords: 16 },
 };
 
+export const PALRESET = Object.freeze({
+  site: 0x2412fe,
+  stage: 0x80e886,
+  wordsMinusOne: 0x08f5,
+  fadeStep: 0x80fa6c,
+  fadeDir: 0x80fa6e,
+  fadeTicks: 0x80fa70,
+});
+
 /** `$24150A`'s own arithmetic: 32 words per bank, 32 banks in the region. */
 export const SPR_BANKS = 32;
 export const BANK_WORDS = 32;
@@ -208,6 +217,23 @@ export class PaletteState {
     return [...this.installs.entries()]
       .sort((a, b) => b[1].n - a[1].n)
       .map(([k, v]) => `${String(v.n).padStart(5)} x ${k}`);
+  }
+}
+
+/** `$2412FE` clears all 2,294 palette-staging words, including the dirty flags, then
+ * initializes the fade cadence words. `wordsMinusOne` is a DBRA count, so the loop
+ * performs 2,294 stores. */
+export function resetPalette2412FE(ram, pal = null) {
+  for (let d0 = PALRESET.wordsMinusOne, a0 = PALRESET.stage; d0 >= 0; d0--, a0 += 2) {
+    ram.setU16(a0, 0);
+  }
+  ram.setU16(PALRESET.fadeTicks, 0x0101);
+  ram.setU16(PALRESET.fadeDir, 0x0001);
+  ram.setU16(PALRESET.fadeStep, 0x0020);
+  if (pal?.stageSourced) {
+    pal.stageSourced.spr.fill(0);
+    pal.stageSourced.bg.fill(0);
+    pal.stageSourced.tx.fill(0);
   }
 }
 

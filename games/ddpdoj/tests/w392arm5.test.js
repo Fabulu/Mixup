@@ -681,10 +681,8 @@ test('W392 SECTION 5c: ...and W393 makes $26070C a REAL CALL, so arm 5 has NO de
     assert.equal(w(0x25c798), 0x7801, '$25C798 moveq #$1,D4 -- where a human hands 0');
     assert.equal(ARM5SCREEN.handoffD4, 1);
     // A note beside a live call would be a lie (trap 14), so none of arm 5's callees may be
-    // KEYED in the report. Keyed, not merely mentioned: `$240B0E` is named inside
-    // `bootFrontEnd23BF74`'s `$23BEEA` note, which lists the twenty-three jsr's the RESET
-    // routine runs -- a different call site, and matching on substring would have called that
-    // a lie when it is not one.
+    // KEYED in the report. $240B0E is now modeled on both the reset and arm-5 call sites, so it
+    // must be absent rather than merely mentioned.
     const keyed = (a) => new RegExp(`^\\s*\\d+ x \\$${a}\\b`, 'm').test(report);
     for (const live of ['28E7F8', '28E7A2', '28E7DC', '23BDDA', '240DC2', '23C608', '23C638',
       '240B0E', '241182', '25C57E', '26070C']) {
@@ -697,8 +695,8 @@ test('W392 SECTION 5c: ...and W393 makes $26070C a REAL CALL, so arm 5 has NO de
     assert.ok(/function handoffCall/.test(src), '  ...and handoffCall calls $26070C for real');
     assert.equal(/ONLY counted deferral in the pair/.test(src), false,
       'and the sentence calling it the only counted deferral is gone with it');
-    assert.ok(/\$240B0E/.test(report), 'while $240B0E is still MENTIONED, by the reset-prologue '
-      + 'note -- which is exactly the distinction the keyed check above draws');
+    assert.equal(/\$240B0E/.test(report), false,
+      '$240B0E is modeled on the reset and arm-5 paths, so neither site leaves a note');
   });
 
 test('W392 SECTION 5d: the codec $25C60C has ONE caller and it is not arm 5', { skip: SKIP },

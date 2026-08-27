@@ -43,7 +43,7 @@ const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W588_TABLE = SKIP ? null : tableBeforeW589(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
-const LIVE_TABLE_HASH = '46ba8b0d7905479b87eb586fc966323fcae7523e77fe66bc38ba7265b6f6b5f6';
+const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
 const W588_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
 const FAMILY_HASH = '5ac350be51f40c6d0714f82ec621cb1288ea2dce91f8a8e8a17c974837d8ac9b';
 const SPARSE_HASH = '47546e70b923a30e3285d74367a803b10f7433027e59807b8edafc52d30d5e2a';
@@ -261,7 +261,7 @@ test('W589 registry is exact, reconstructs W588 strictly, and stops at $291B3A',
         Number.parseInt(window.base.slice(1), 16), window.len,
       ])),
       canonicalHash(TABLE_JSON),
-    ], [936, 77, 936, 455371, 77, LIVE_TABLE_HASH]);
+    ], [941, 77, 941, 457059, 77, LIVE_TABLE_HASH]);
     assert.deepEqual([
       W588_TABLE.rom.windows.length,
       W588_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
@@ -416,7 +416,7 @@ test('W589 browser bundle packs every list-B picture and banner in shard 17',
       manifest.spr.streamCount, shard.streams,
       manifest.spr.maskUsed, manifest.spr.colUsed,
       shard.maskLen, shard.colLen,
-    ], [5274, 1516, 2694852, 6637085, 851232, 2149650]);
+    ], [5636, 1516, 2868952, 7163964, 851232, 2149650]);
     const absent = [...streams].filter((offs) => !byRom.has(offs));
     assert.deepEqual(absent, []);
     for (const offs of streams) {

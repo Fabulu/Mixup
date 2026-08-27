@@ -332,6 +332,10 @@ const W589 = Object.freeze({
 });
 const W597 = Object.freeze({ streams: 82, maskWords: 3620 });
 const W598 = Object.freeze({ streams: 101, maskWords: 15850 });
+const W621 = Object.freeze({
+  streams: 362, maskWords: 174100,
+  shard11Streams: -10, shard11MaskWords: -100, shard11ColWords: -245,
+});
 
 test('W395 SECTION 4: the bundle grew by exactly these fourteen and by nothing else',
   { skip: SKIP }, () => {
@@ -340,29 +344,30 @@ test('W395 SECTION 4: the bundle grew by exactly these fourteen and by nothing e
       BEFORE.streamCount + 14 + W396.streams + W397.streams
         + W414.streams + W417.streams + W419.streams + W422.streams + W443.streams
         + W497.streams + W498.streams + W555.streams + W556.streams + W557.streams
-        + W558.streams + W560.streams + W589.streams + W597.streams + W598.streams,
+        + W558.streams + W560.streams + W589.streams + W597.streams + W598.streams
+        + W621.streams,
       'W555 adds six Hibachi frames, W556/W557 add one fixed stream each, W558 adds 64, '
       + 'W560 adds seven, W589 adds 105 list-B streams, W597 adds 82 hyper streams, and '
-      + 'W598 adds 101 complete-ending streams. The current 5,274-stream bundle '
-      + 'total is exact, never a floor');
+      + 'W598 adds 101 complete-ending streams and W621 adds 362 cabinet streams. The current '
+      + '5,636-stream bundle total is exact, never a floor');
     assert.equal(shard.streams,
       BEFORE.shard11Streams + 14 + W396.streams + W397.streams
-        + W414.streams + W417.streams + W422.streams,
-      '799 -> 813 -> 818 -> 822 -> 846 -> 862 -> 870 streams on shard 11');
+        + W414.streams + W417.streams + W422.streams + W621.shard11Streams,
+      '799 -> 813 -> 818 -> 822 -> 846 -> 862 -> 870 -> 860 streams on shard 11');
     assert.equal(shard.maskLen,
       BEFORE.shard11MaskLen + 86476 + W396.maskWords + W397.maskWords
-        + W414.maskWords + W417.maskWords + W422.maskWords,
+        + W414.maskWords + W417.maskWords + W422.maskWords + W621.shard11MaskWords,
       '1,051,702 -> 1,138,178 -> 1,153,740 -> 1,166,372 -> 1,167,700 -> 1,170,804 mask words');
     assert.equal(shard.colLen,
       BEFORE.shard11ColLen + 315707 + W396.colWords + W397.colWords
-        + W414.colWords + W417.colWords + W422.colWords,
+        + W414.colWords + W417.colWords + W422.colWords + W621.shard11ColWords,
       '2,868,034 -> 3,183,741 -> 3,219,388 -> 3,260,515 -> 3,262,842 -> 3,272,730 colour words');
     assert.equal(manifest.spr.maskUsed,
       BEFORE.maskUsed + 86476 + W396.maskWords + W397.maskWords
         + W414.maskWords + W417.maskWords + W419.maskWords + W422.maskWords
         + W443.maskWords + W497.maskWords + W498.maskWords + W555.maskWords + W556.maskWords
         + W557.maskWords + W558.maskWords + W560.maskWords + W589.maskWords
-        + W597.maskWords + W598.maskWords,
+        + W597.maskWords + W598.maskWords + W621.maskWords,
       'W555 adds 7,404 mask words, W556 adds 4,610, W557 adds 338, W558 adds 35,968, '
       + 'W560 adds 9,326, W589 adds 9,778, W597 adds 3,620, and W598 adds 15,850');
 
@@ -372,7 +377,7 @@ test('W395 SECTION 4: the bundle grew by exactly these fourteen and by nothing e
     // the shared 64-frame part table, W560 adds seven streams, W597 adds 82 streams to shard 0,
     // and W598 adds 101 complete-ending streams to shard 17. Keep every current shard exact so
     // the global total cannot hide a misplaced stream.
-    const SIZES = [359, 67, 32, 54, 17, 70, 313, 298, 72, 313, 451, 870, 139, 412, 90, 4, 37,
+    const SIZES = [731, 67, 32, 54, 17, 70, 313, 298, 72, 313, 451, 860, 139, 412, 90, 4, 37,
       1516, 160];
     assert.deepEqual(manifest.spr.shards.map((s) => s.streams), SIZES,
       'the exact current stream membership of every shard');
@@ -388,8 +393,9 @@ test('W395 SECTION 4: the bundle grew by exactly these fourteen and by nothing e
         sum += r.maskWords; n++;
       }
     }
-    assert.equal(n, 822 + W414.streams + W417.streams + W422.streams,
-      'all 870 of shard 11\'s streams are in the published list');
+    assert.equal(n, 822 + W414.streams + W417.streams + W422.streams
+      + W621.shard11Streams,
+      'all 860 of shard 11\'s streams are in the published list');
     assert.equal(sum, shard.maskLen,
       'and their extents sum to the span exactly -- every stream owns its own mask block, which '
       + 'is what makes rewriting each header safe');

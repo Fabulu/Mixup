@@ -5,7 +5,7 @@
   "selection": {"ship":0,"style":6},
   "probe": {"invulnerable":true,"inputStateMachine":"tools/progression-probe.mjs round2Input","cadence":500,"startInputWord":65499},
   "seed": {"bytes":131072,"sha256":"6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb"},
-  "tables": {"sha256":"46ba8b0d7905479b87eb586fc966323fcae7523e77fe66bc38ba7265b6f6b5f6","windows":936,"bytes":455371,"overlapPairs":77},
+  "tables": {"sha256":"1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9","windows":941,"bytes":457059,"overlapPairs":77},
   "preW596Tables": {"sha256":"18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8","windows":906,"bytes":453757,"overlapPairs":77},
   "start": [0,2000,2036,0,0,0,0,65499,"430589a366a486cdb76a64176ad274eee3240f27f31adcae4efbc1fcc411471f","674ff2d33ab73a2b3a7c150949b8f5f2cf4065a08bdfb02cddc3c24f9cc21a4d"],
   "firstFrontier": {"attempted":150593,"successful":150592,"logicFrame":152592,"videoFrame":163138,"raw":{"stage":4,"stageX2":8,"stageX4":16,"loop":1},"inputWord":65499,"address":2691228,"beforeIdentity":[150592,152592,163137,4,8,16,1,65499,"89425c86dc8a3f6eb850475dede609b79afeb9a2dee5720a0f1583bc88a2f145","54864e90b6e3d7fb25b6ab96eab192559927e22c4a4a0adad90d5ab45246fbbc"]},

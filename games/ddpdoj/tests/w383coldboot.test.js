@@ -114,7 +114,7 @@ const SOAK = process.env.DDPDOJ_SOAK === '1';
 // --------------------------------------------------------------------------------------------
 const STATE = SCREEN8.state;              // $812E56 -- slot [8]'s arm
 const CREDITS = COIN.creditA + 2;         // $80395A -- the credit count
-const COINAGE = 0x803957;                 // the service-menu coinage dip
+const COINAGE = 0x803957;                 // credits-per-coin set by cartridge reset
 const RANKGATE = RANK.gate813082;         // $813082 -- set = skip the rank body
 const RANKPTR = RANKBASE.ptrOut;          // $81315C -- the per-stage base table pointer
 const SCROLLODO = 0x8130ce;               // the scroll distance odometer (background.js BGRAM.clock)
@@ -192,11 +192,10 @@ function bootToGameplay() {
   const g = coldGame();
   g.boot();
 
-  // -- THE COINAGE DIP. On zeroed RAM `$803957` is 0, `coinage13CE22` divides by it, and a coin
-  // is worth NOTHING. That is FAITHFUL -- a real cartridge with no settings block really does
-  // eat coins -- so the test seeds the dip exactly as a service menu would, and touches nothing
-  // else. This is the ONLY byte this function writes by hand.
-  g.ram.setU8(COINAGE, 1);
+  // `$23C6FA` read the zeroed operator DIP through the cartridge tables during reset.
+  // This path does not patch the coinage byte after boot.
+  assert.equal(g.ram.u8(COINAGE), 1,
+    'MILESTONE 0: $23C6FA installed one credit per coin from cartridge data');
   assert.equal(g.ram.u8(CREDITS), 0, 'MILESTONE 0: a cold board starts with no credits');
 
   // -- MILESTONE 1: THE WARNING SCREEN DRAWS. 14 ROM lines x 28 characters x 2 cells per glyph.

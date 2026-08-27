@@ -59,6 +59,7 @@ export const FRONTTEXT = Object.freeze({
   coinsPerCredit: 0x803956,
   coinA: 0x803958, creditA: 0x80395a,
   coinB: 0x80395e, creditB: 0x803960,
+  coinNeedA: 0x803959, coinNeedB: 0x80395f,
 
   // The six strings, every one NUL-terminated and every one read by `$25A15A tst.b D4 / beq`.
   strFreePlay: 0x23cdac,      // $23CDBE / $23CDE0 lea -- "FREE PLAY"
@@ -76,6 +77,20 @@ export const FRONTTEXT = Object.freeze({
   blinkRow0: 0x0000,          // $25AFDC move.w #$0,D0
   blinkCol0: 0x0013,          // $25AFE0 move.w #$13,D1, then subq.w #1 twice
   blinkAttr: 0x0000,          // $25AFE4 move.w #$0,D2
+  blinkShared: Object.freeze({
+    press: 0x25ad98, twoCoins: 0x25adf8, oneMore: 0x25ae58,
+    coins: 0x25aeb8, moreCoins: 0x25af18, insertCoin: 0x25af78,
+  }),
+  blinkSeparate: Object.freeze({
+    pressP1: 0x25b1e0, pressP2: 0x25b200, twoCoins: 0x25b220,
+    oneMore: 0x25b240, insertCoin: 0x25b260, moreCoins: 0x25b280,
+  }),
+  blinkSharedStride: 0x20, blinkSeparateStride: 0x10,
+
+  // `$25C22A`, `$25C252`, `$25C286`: the three operator-setting lines arm 1/3 initialise.
+  operatorTables: Object.freeze([0x25c042, 0x25c0d2, 0x25c1e2]),
+  operatorDips: Object.freeze([0x80380c, 0x80380d, 0x80380f]),
+  operatorCols: Object.freeze([0x000d, 0x0010, 0x000b]),
 });
 
 // -------------------------------------------------------------------------------------------
@@ -362,6 +377,157 @@ export function creditLine23CFDE(ram, rom, tx) {
 }
 
 // -------------------------------------------------------------------------------------------
+// `$25AD02` -- THE BLINK MESSAGE'S ON HALF.
+
+function frontCredits(ram) {
+  if (ram.u8(FRONTTEXT.dip) === FRONTTEXT.freePlay) return [0, 0];
+  return [ram.u8(FRONTTEXT.creditA), ram.u8(FRONTTEXT.creditB)];
+}
+
+function frontCoins(ram) {
+  if (ram.u8(FRONTTEXT.dip) === FRONTTEXT.freePlay) return [0, 0];
+  return [ram.u8(FRONTTEXT.coinA), ram.u8(FRONTTEXT.coinB)];
+}
+
+// Reduce the cartridge's two coin-progress entries to the zero-extended words used by the
+// blink dispatcher. The entries are $23C838 and $23C874.
+function frontCoinProgress(ram, side) {
+  const F = FRONTTEXT;
+  const dip = ram.u8(F.dip);
+  if (dip === F.freePlay) return [0, 0];
+  if (dip === F.coinMode) {
+    if (side === 0) return [ram.u8(F.coinNeedA), ram.u8(F.coinA)];
+    return [ram.u8(F.coinNeedB), ram.u8(F.coinB)];
+  }
+  return [ram.u8(F.coinsPerCredit), ram.u8(side === 0 ? F.coinA : F.coinB)];
+}
+
+function blinkShared3(tx, rom, addr) {
+  let d1 = FRONTTEXT.blinkCol0;
+  for (let i = 0; i < 3; i++) {
+    txString25A14C(tx, rom, 0, d1, 0, addr + i * FRONTTEXT.blinkSharedStride);
+    if (i !== 2) d1 = u16(d1 - 1);
+  }
+  return d1;
+}
+
+function blinkSeparate2(tx, rom, addr, d7) {
+  let d1 = 0x000a;
+  txString25A14C(tx, rom, d7, d1, 0, addr);
+  d1 = u16(d1 - 1);
+  txString25A14C(tx, rom, d7, d1, 0, addr + FRONTTEXT.blinkSeparateStride);
+  return d1;
+}
+
+function blinkShared25AD10(ram, rom, tx) {
+  const F = FRONTTEXT;
+  const [credits] = frontCredits(ram);                      // $25AD10 jsr $23C932
+  const dip = ram.u8(F.dip);
+  if (credits !== 0 || dip === F.freePlay) {                      // $25AD16 / $25AD22
+    blinkShared3(tx, rom, F.blinkShared.press);                   // $25B008
+    return;
+  }
+  if (dip === F.coinMode) {                                      // $25AD2A
+    const [coins] = frontCoins(ram);                        // $25B0FA
+    if (coins === 1) blinkShared3(tx, rom, F.blinkShared.oneMore);       // $25B140
+    else if (((coins << 16) >> 16) >= 2) blinkShared3(tx, rom, F.blinkShared.press);
+    else blinkShared3(tx, rom, F.blinkShared.twoCoins);           // $25B110
+    return;
+  }
+  if (dip < 9) {                                                 // $25AD32/$25AD36, signed and positive
+    blinkShared3(tx, rom, F.blinkShared.insertCoin);              // $25B038
+    return;
+  }
+
+  const [needed, coins] = frontCoinProgress(ram, 0);              // $25B068 jsr $23C838
+  if (coins === 0) {
+    const d1 = blinkShared3(tx, rom, F.blinkShared.coins);         // $25B076
+    hexDigit23CD80(tx, 0x000e, u16(d1 + 2), 0, needed);           // $25B0A4/$25B0AA
+    return;
+  }
+  const remain = u16(needed - coins);                             // $25B0B2 sub.w D1,D0
+  if (remain === 1) {
+    blinkShared3(tx, rom, F.blinkShared.oneMore);                 // $25B140
+    return;
+  }
+  const d1 = blinkShared3(tx, rom, F.blinkShared.moreCoins);      // $25B0BE
+  hexDigit23CD80(tx, 0x000c, u16(d1 + 2), 0, remain);             // $25B0EC/$25B0F2
+}
+
+function blinkSeparateSide25B180(ram, rom, tx, side, d7) {
+  const F = FRONTTEXT;
+  const S = F.blinkSeparate;
+  const [creditA, creditB] = frontCredits(ram);             // $25B182/$25B1B2
+  const credit = side === 0 ? creditA : creditB;
+  const press = side === 0 ? S.pressP1 : S.pressP2;
+  const dip = ram.u8(F.dip);
+  if (credit !== 0 || dip === F.freePlay) {                       // $25B188/$25B198, P2 twin
+    blinkSeparate2(tx, rom, press, d7);                           // $25B2A0/$25B2A8
+    return;
+  }
+  if (dip === F.coinMode) {                                      // $25B19C/$25B1CC
+    const counts = frontCoins(ram);                         // $25B36A/$25B384
+    const coins = counts[side];
+    if (coins === 1) blinkSeparate2(tx, rom, S.oneMore, d7);      // $25B3BC
+    else if (((coins << 16) >> 16) >= 2) blinkSeparate2(tx, rom, press, d7);
+    else blinkSeparate2(tx, rom, S.twoCoins, d7);                 // $25B39C
+    return;
+  }
+  if (dip < 9) {                                                 // $25B1A4/$25B1D4
+    blinkSeparate2(tx, rom, S.insertCoin, d7);                    // $25B2C8
+    return;
+  }
+
+  const [needed, coins] = frontCoinProgress(ram, side);           // $25B2E8/$25B2F8
+  if (coins === 0) {
+    const d1 = blinkSeparate2(tx, rom, S.twoCoins, d7);           // $25B304
+    hexDigit23CD80(tx, u16(0x0003 + d7), d1, 0, needed);          // $25B324/$25B32A
+    return;
+  }
+  const remain = u16(needed - coins);                             // $25B332
+  if (remain === 1) {
+    blinkSeparate2(tx, rom, S.oneMore, d7);                       // $25B3BC
+    return;
+  }
+  const d1 = blinkSeparate2(tx, rom, S.moreCoins, d7);            // $25B33E
+  hexDigit23CD80(tx, u16(0x0002 + d7), d1, 0, remain);            // $25B35C/$25B362
+}
+
+/**
+ * `$25AD02..$25B3DB`: select and draw the blinking START/coin prompt. Shared-pool messages use
+ * three `$20`-stride rows. Separate pools call the two `$10`-stride player-panel copies in order,
+ * preserving the cartridge's P1 then P2 overwrite order and digit patch positions.
+ */
+export function blinkOn25AD02(ram, rom, tx) {
+  if (ram.u8(FRONTTEXT.dipSlot2) !== FRONTTEXT.separate) {        // $25AD02/$25AD0C
+    blinkShared25AD10(ram, rom, tx);
+    return;
+  }
+  blinkSeparateSide25B180(ram, rom, tx, 0, 0x0000);              // $25B170/$25B172
+  blinkSeparateSide25B180(ram, rom, tx, 1, 0x000e);              // $25B178 -> $25B1B0
+}
+
+// -------------------------------------------------------------------------------------------
+// `$25C22A`, `$25C252`, `$25C286` -- ARM 1/3'S OPERATOR-SETTING LINES.
+
+/**
+ * Draw the three cartridge-selected operator-setting labels used by the title and credit screen.
+ * Each DIP byte is zero-extended, multiplied by four, and used without a clamp to load a string
+ * pointer. `$25C252` alone draws two consecutive `$20`-byte lines and decrements D1 between them.
+ */
+export function operatorSettings25C22A(ram, rom, tx) {
+  const F = FRONTTEXT;
+  const pointer = (i) => rom.u32(F.operatorTables[i] + ram.u8(F.operatorDips[i]) * 4);
+
+  txString25A14C(tx, rom, 0x0000, F.operatorCols[0], 0x0000, pointer(0));   // $25C24A jmp
+  const extend = pointer(1);
+  txString25A14C(tx, rom, 0x0000, F.operatorCols[1], 0x0000, extend);      // $25C272 jsr
+  txString25A14C(tx, rom, 0x0000, u16(F.operatorCols[1] - 1), 0x0000,
+    extend + 0x20);                                                        // $25C27E jmp
+  txString25A14C(tx, rom, 0x0000, F.operatorCols[2], 0x0000, pointer(2));   // $25C2A6 jmp
+}
+
+// -------------------------------------------------------------------------------------------
 // `$25AFD8` -- THE BLINK MESSAGE'S **OFF** HALF. W377.
 
 /**
@@ -401,12 +567,9 @@ export function creditLine23CFDE(ram, rom, tx) {
  * character keep whatever was there. That is the cartridge's behaviour, not an approximation,
  * and `w377coin.test.js` pins it so nobody "fixes" it into symmetry.
  *
- * WHAT IS STILL NOTED. `$25AD02`, the ON half, is NOT here. It is not the mirror image of this
- * routine: it is a `$25AD02..$25B3DB` dispatcher, 1,754 bytes, with TWO embedded data blocks
- * (`$25AD3E..$25AFD7` and `$25B1E0..$25B29F`), two coordinate conventions ($20-stride three-line
- * messages off `#$13`, and $10-stride lines off the caller's D6/D7), a second whole copy for
- * SEPARATE credit pools entered by `$25B172 bsr $25B180`, and digit patching through `$23CD80`
- * and `$23C838`/`$23C874`. It is a wave, not a tail, and it stays a counted deferral.
+ * `$25AD02` is ported above as the complete ON dispatcher. Its shared and separate data windows
+ * use different strides and coordinate conventions; `$25AFD8` remains the cartridge's dedicated
+ * three-line blanking path rather than being folded into that dispatcher.
  *
  * @param tx   the TxVram the blit writes ($904000)
  * @param rom  the ROM reader -- `$25AD3E..$25AD97`, its own window in export-tables.py

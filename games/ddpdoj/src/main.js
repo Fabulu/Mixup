@@ -71,10 +71,10 @@ import { buildDisplayList } from './displaylist.js';
 // W375 -- `$23BF74`, THE FRONT-END BOOT BLOCK.  See `boot()` below and
 // src/frontend.js's header for the four places the disassembly it was ported
 // from had to be corrected.
-import { bootFrontEnd23BF74 } from './frontend.js';
+import { bootFrontEnd23BF74, resetPrologue23BEEA } from './frontend.js';
 import { ProtLatch } from './protsim.js';
 import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
-import { makeBackground, BgVram, TxVram, VideoRegs } from './background.js';
+import { makeBackground, BgVram, TxVram, VideoRegs, SlotTable907000 } from './background.js';
 import { makeStageClear, makeStage5Ending } from './stageend.js';
 import { makeHudObject } from './hud.js';
 import { makeRankObject, announce260B30 } from './rank.js';
@@ -314,6 +314,8 @@ function slotObject(fn, rom) {
 }
 
 export class Game {
+  #cabinetFrontend = false;
+
   /**
    * @param seed     Uint8Array(0x20000) -- a snapshot of the board's main RAM
    *                 at a sample point, taken by `frame.lua`'s PROBE_RAMDUMP.
@@ -344,6 +346,7 @@ export class Game {
     // own ring at the seed frame: without it the port would draw fifteen
     // columns into an empty ring and the other forty-nine would be blank.
     this.vram = new BgVram(opts.bgSeed);
+    this.slotTable = new SlotTable907000();
     // W115: `$904000`, the TX (text) tilemap.  Starts BLANK -- the score-digit
     // flush `$185DC4` (ISR6-gated) writes the P1/P2 score cells into it each
     // frame; the OTHER text (lives, bombs, credits, chain-high-water) still
@@ -617,6 +620,13 @@ export class Game {
       // are the pair with the same name and different signatures; nothing on this
       // path touches either.
       bgVram: this.vram,
+      // The newly modeled $907000 table and full cabinet presentation belong to a real
+      // $23BEEA boot lifecycle. Seeded probes and replays never executed that reset and retain
+      // their exact pre-W621 front-end contract when an ending later hands back to type 8.
+      ...(this.#cabinetFrontend ? {
+        cabinetFrontend: true,
+        slotTable: this.slotTable,
+      } : {}),
       // W115: the TX tilemap, because the ISR6-gated score-digit flush
       // `$185DC4` writes the P1/P2 score cells into it.  A caller that omits
       // it (every main-loop handler) does not reach the flush; the flush is
@@ -954,7 +964,7 @@ export class Game {
    * @returns the frontend.js result record: which banks installed, what the
    *   section flag and the control register ended at, and the staged record.
    */
-  boot() {
+  boot({ cabinetFrontend = false } = {}) {
     /*
      * `$23BF74..$23BFDB` -- THE FRONT-END BOOT BLOCK, and the gap it closes.
      *
@@ -972,7 +982,9 @@ export class Game {
      * seed happens to hold the factory table (hiscore.js:355 measured exactly
      * that); on a seed taken after somebody scored it would silently rewrite the
      * board's own high scores and every column downstream of them. `boot()` is for
-     * a caller that starts from ZEROED RAM, which is what a cold boot is.
+     * a caller that starts from ZEROED RAM, which is what a cold boot is. The production browser
+     * passes `cabinetFrontend: true`; direct legacy fixtures omit it so their seeded presentation
+     * and counted compatibility notes remain unchanged while still running this reset prologue.
      *
      * THE FALL-THROUGH IS `step()`. The block does not return on the board: it runs
      * off the end of `$23BFDB` into `$23BFDC`, the seven-call main loop, whose last
@@ -980,8 +992,13 @@ export class Game {
      * IS `$23BF74`, whole, and the object it stages -- dispatch type 8 at state
      * `$D` -- is picked up by the very next `step()`'s `commitCreates`.
      */
-    this.bootResult = bootFrontEnd23BF74(this.ram, this.rom, this.palette,
-      this.#ctx());
+    this.#cabinetFrontend = cabinetFrontend;
+    const ctx = this.#ctx();
+    const reset = resetPrologue23BEEA(this.ram, this.rom, this.palette, ctx);
+    this.bootResult = {
+      ...bootFrontEnd23BF74(this.ram, this.rom, this.palette, ctx, true),
+      reset,
+    };
     return this.bootResult;
   }
 

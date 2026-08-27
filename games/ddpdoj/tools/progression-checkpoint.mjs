@@ -17,7 +17,7 @@ const RAW = Object.freeze({
 });
 
 const RECONSTRUCTED = new Set([
-  'ram', 'rom', 'tables', 'gov', 'handlers',
+  'ram', 'rom', 'tables', 'gov', 'handlers', 'slotTable',
   'bgMutate', 'coinTick', 'soundSink',
 ]);
 const HOST_SEAMS = new Set(['bgMutate', 'coinTick', 'soundSink']);

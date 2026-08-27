@@ -71,6 +71,7 @@ const noteCtx = () => {
   const notes = [];
   return { notes,
     ctx: {
+      cabinetFrontend: true,
       unported: { note: (a, t) => notes.push(`${a}:${t}`) },
       unportedLog: { note: (a, t) => notes.push(`${a}:${t}`) },
       soundPost: () => {},
@@ -135,7 +136,7 @@ test('W391 SECTION 1: the init loads NO chain -- its four `bsr`s are all present
     // extension. $25BBD4 - 104 = $25BB6C.
     assert.equal(w(0x25bbd2), 0x6198, '$25BBD2 bsr.s -104');
     assert.equal(0x25bbd4 - 104, ARM1SCREEN.txBlock, '  ...= $25BB6C, the TX plane block');
-    assert.equal(ARM1SCREEN.txBlock, ARM9SCREEN.txBlock, 'literally the routine arm 9 counts');
+    assert.equal(ARM1SCREEN.txBlock, ARM9SCREEN.txBlock, 'literally the routine arm 9 runs');
 
     // TRAP 4 on three `bsr.w`s: the target is the EXTENSION WORD's address plus the disp.
     for (const [at, want] of [[0x25bbd4, 0x25c22a], [0x25bbd8, 0x25c252], [0x25bbdc, 0x25c286]]) {
@@ -146,8 +147,7 @@ test('W391 SECTION 1: the init loads NO chain -- its four `bsr`s are all present
     }
     assert.deepEqual([...ARM1SCREEN.txLines], [0x25c22a, 0x25c252, 0x25c286]);
 
-    // And each of the three really is a TX string draw through $25A14C, not a loader. This is
-    // what makes "counted presentation" a reading of the bytes rather than a convenience.
+    // Each of the three is a live TX string draw through $25A14C, not a loader.
     for (const [head, dip, d1, tail] of [[0x25c22a, 0x80380c, 0x0d, 0x25c24a],
       [0x25c252, 0x80380d, 0x10, 0x25c272], [0x25c286, 0x80380f, 0x0b, 0x25c2a6]]) {
       assert.equal(w(head), 0x41fa, `$${head.toString(16).toUpperCase()} lea (d16,PC),A0`);
@@ -186,8 +186,8 @@ test('W391 SECTION 1: running the init clears all six words and arms the $1E0 ti
     assert.equal(ram.u32(ARM1SCREEN.handle), 0, '$812E6E the handle LONG, both halves -- words 5-6');
 
     const at = notes.map((n) => Number(n.split(':')[0]));
-    assert.deepEqual(at, [ARM1SCREEN.txBlock, ...ARM1SCREEN.txLines],
-      'four counted deferrals, all presentation, in ROM order');
+    assert.deepEqual(at, [0x23c608, 0x23c638, ...ARM1SCREEN.txLines],
+      '$25BB6C ran; the bare context counts two absent video owners and three absent TX owners');
   });
 
 // ===============================================================================================
@@ -439,8 +439,8 @@ test('W391 SECTION 3: the draw emits SEVEN sprites -- COUNTED, not assumed', { s
 
 async function coldBootTrace(frames) {
   const g = new Game(new Uint8Array(0x20000), tablesJson, { palCatchUp: false });
-  g.boot();
-  g.ram.setU8(0x803957, 1);                 // the boot-complete flag every attract test sets
+  g.boot({ cabinetFrontend: true });
+  assert.equal(g.ram.u8(0x803957), 1, '$23C6FA initialized the coinage byte');
   const arms = [];
   const screen = [];
   let prevArm = -1, prevSt = -1;
@@ -507,8 +507,8 @@ test('W391 SECTION 4: $25BE26 is a VALUE-IDENTICAL store, which is why the ablat
     // second loader hands back the SAME ROOT ADDRESS the first one did, and `$25BE26` writes a
     // value that is already there. The two chains differ in CONTENT, not in handle.
     const g = new Game(new Uint8Array(0x20000), tablesJson, { palCatchUp: false });
-    g.boot();
-    g.ram.setU8(0x803957, 1);
+    g.boot({ cabinetFrontend: true });
+    assert.equal(g.ram.u8(0x803957), 1, '$23C6FA initialized the coinage byte');
     let initRoot = 0, secondRoot = 0;
     for (let f = 1; f <= 2000; f++) {
       g.step(0xffff);
@@ -527,20 +527,15 @@ test('W391 SECTION 4: $25BE26 is a VALUE-IDENTICAL store, which is why the ablat
       + 'frame the phase was set on, which is the frame the second loader runs');
   });
 
-test('W391 SECTION 4: neither half of arm 1 is counted any more, and the four holds are',
+test('W621 SECTION 4: arm 1 and all four production presentation calls are live',
   { skip: SKIP_T }, async () => {
     const { g } = await coldBootTrace(2200);
     const report = g.unportedLog.report().join('\n');
-    for (const a of ['$25BBB4', '$25BD7C', '$25BDE0']) {
+    for (const a of ['$25BBB4', '$25BD7C', '$25BDE0',
+      '$25BB6C', '$25C22A', '$25C252', '$25C286']) {
       assert.equal(report.includes(a), false,
-        `${a} is NOT counted any more; a note beside a live call is a lie about the port`);
+        `${a} is live in the production context and must not be counted`);
     }
-    for (const a of ['$25BB6C', '$25C22A', '$25C252', '$25C286']) {
-      assert.ok(report.includes(a), `${a} IS counted -- presentation, and a declared hold`);
-    }
-    // $25BB6C is raised by arms 9, 12 AND 1 in the same boot. What matters is that arm 1's own
-    // site is attributed, so the report names $25BBD2 and not only the other two.
-    assert.ok(/\$25BBD2/.test(report), 'and arm 1\'s own call site $25BBD2 is named');
   });
 
 test('W391 SECTION 4: 8,000 frames of the real machine and the sprite queue never overflows',
@@ -625,8 +620,8 @@ test('W391 SECTION 5: $25BE72 installs the SAME five blocks the init script fade
 test('W391 SECTION 5: arm 3 really runs on the real coin path, and installs six banks',
   { skip: SKIP_T }, async () => {
     const g = new Game(new Uint8Array(0x20000), tablesJson, { palCatchUp: false });
-    g.boot();
-    g.ram.setU8(0x803957, 1);
+    g.boot({ cabinetFrontend: true });
+    assert.equal(g.ram.u8(0x803957), 1, '$23C6FA initialized the coinage byte');
     for (let f = 1; f <= 400; f++) g.step(0xffff);
     assert.equal(g.ram.u16(SCREEN8.state), 2, 'at +400 the machine is on arm 2');
     const before = g.palette.installCount;
