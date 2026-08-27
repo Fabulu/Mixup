@@ -21,7 +21,7 @@ import { TALLY, tally2600D8, bonusLine125FFA8, bonusLine2260056,
   bonusLine6260348, bonusLine726035A, bonusLine826037C,
   tallyDriver25FF7A } from '../src/tally.js';
 import { PaletteState } from '../src/palette.js';
-import { ALLOC, resolveHandle241298 } from '../src/objalloc.js';
+import { ALLOC, commitCreates, resolveHandle241298 } from '../src/objalloc.js';
 import { RAM as MACHINE } from '../src/machine.js';
 import { setPanelBody2532B6 } from '../src/player.js';
 import { HISCORE, HISCORE_SIDES } from '../src/hiscore.js';
@@ -634,7 +634,10 @@ test('W290 type $B is object dispatch [11], the screen W276 ported', { skip: SKI
   f.ram.setU16(0x803926, 0);
   f.ram.setU8(TALLY.side0 + TALLY.row, 1);
   const r = bonusLine2260056(f.ram, ROM, f.ctx, TALLY.side0);
-  assert.equal(f.ram.u8(r.objB + 0x07), 1, '($7,A0) carries the side into [11]');
+  commitCreates(f.ram);
+  const slot = resolveHandle241298(f.ram, r.objB);
+  assert.equal(slot.found, true, 'the stored allocator ID resolves to object [11]');
+  assert.equal(f.ram.u8(slot.rec + 0x07), 1, '($7,A0) carries the side into [11]');
 });
 
 test('W290 the $803926 gate does nothing but re-post', { skip: SKIP }, () => {

@@ -49,6 +49,7 @@ import { txPrint240DC2, txPrint240E1A, HUDRAM } from './hud.js';
 import { announcePost, announceChoose260ACA } from './rank.js';
 import { tally2600D8, TALLY } from './tally.js';
 import { armRequest25FF38 } from './player.js';
+import { creditTake23C98E, creditTake23C9F0 } from './objslot8.js';
 
 /** `$24018C`'s bucket: `lea $80AD14,A0 / adda.w $80AFEE,A0` is `BUCKETS[26]`, ten records of
  *  twelve. Declared in `spritequeue.js` since W30 and unused by anything until W328. */
@@ -831,6 +832,17 @@ export function tallyScreen25DBB4(ram, slot, slotIndex, ctx) {
     return;                                                // $25DCE8 rts
   }
 
+  // $25DCEA -- PHASE 2 is the three-entry Y cursor. Its confirm tail is `$25DB7C`,
+  // which posts the selection through `$2600D8` and kills this object.
+  if (ram.u8(slot + SCREEN11.phase) === 2) {
+    const a4 = ram.u32(slot + SCREEN11.desc);
+    if (tallyYCursor25DEAE(ram, slot, a4, side, ctx)) {
+      screenState2_25DB7C(ram, ctx.rom, ctx, slot);
+    }
+    void slotIndex;
+    return;
+  }
+
   // $25DC2C -- PHASE 0's ARM. W344 RUNS IT: START advances the phase, loads the cursor and announces.
   // Reached here because state 1's cascade falls through to it, exactly as `$25DBCE bne $25DC2C` does.
   if (tallyPhase0Arm25DC2C(ram, ctx?.rom, slot, ctx)) {
@@ -933,11 +945,10 @@ export function pickFreeYRow25DA94(ram, rom, a5, ctx) {
  * stage test and runs the arm; only rank non-zero AND stage index 4 abandons it. So on stage 5 at rank the
  * tally cannot be advanced by START at all -- worth knowing before wondering why it never responds there.
  *
- * **THE ONE THING STILL MISSING IS `($C,A4)`**, the descriptor's third code pointer (`$23C98E` for side 0,
- * `$23C9F0` for side 1). It is substantial -- it opens by reading `$803808`, the same dip-config byte
- * `menuDips23C932` tests against `$12`, and runs past `$23CAAC` -- so it is a wave of its own. It gates the
- * advance through carry, so the port NOTES it and treats it as passing: that is the choice that makes START
- * work rather than silently never advancing, and it is recorded as an assumption rather than a transcription.
+ * **THE CREDIT CALL IS THE DESCRIPTOR'S `($C,A4)` SLOT.** Side 0's descriptor points at
+ * `$23C98E`; side 1's points at `$23C9F0`. Both are shared with the front-end join gate and return
+ * `true` for carry set/refused. The call commits the credit before the saved cursors are restored,
+ * exactly where `$25DC78 bcs` can abandon the START press.
  */
 export function tallyPhase0Arm25DC2C(ram, rom, a5, ctx) {
   if (ram.u8(a5 + SCREEN11.phase) !== 0) return false;      // $25DC30 -- phase 0 only
@@ -948,14 +959,11 @@ export function tallyPhase0Arm25DC2C(ram, rom, a5, ctx) {
   const d0 = readInput23D186(ram, ram.u8(a5 + SCREEN11.side));   // $25DC5A jsr ($4,A4)
   if ((d0 & 0x8000) === 0) return false;                    // $25DC60 btst #$F -- START
   if (menuCarry28D53C(ram)) return false;                   // $25DC68 jsr $28D53C / bcs
-  // $25DC72 -- the descriptor's ($C,A4) slot. UNPORTED and it gates on carry; treated as passing.
-  ctx?.unportedLog?.note(0x25dc72, `$25DC72 calls the descriptor's THIRD slot through ($C,A4) -- $23C98E `
-    + `for side 0, $23C9F0 for side 1 -- and abandons the START press on carry set. Neither is `
-    + `transcribed: they open by reading $803808, the dip-config byte menuDips23C932 tests against $12, `
-    + `and run past $23CAAC, so each is its own wave. The port treats the call as PASSING, which is an `
-    + `assumption and not a transcription: it makes START advance the tally, where refusing would make `
-    + `phase 0 silently never complete. MEASUREMENT THAT REMOVES THE ASSUMPTION: read $23C98E to its rts `
-    + `and find what sets its carry`);
+  const side = ram.u8(a5 + SCREEN11.side);
+  const refused = side === 0
+    ? creditTake23C98E(ram, ctx)
+    : creditTake23C9F0(ram, ctx);                            // $25DC72 jsr ($C,A4) / $25DC78 bcs
+  if (refused) return false;
   loadSavedCursor25DA60(ram, rom, a5);                      // $25DC7C bsr $25DA60
   pickFreeYRow25DA94(ram, rom, a5, ctx);                    // $25DC80 bsr $25DA94
   ram.setU8(a5 + SCREEN11.phase, 1);                        // $25DC84 -- PHASE 0 -> 1

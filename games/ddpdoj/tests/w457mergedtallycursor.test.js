@@ -90,6 +90,7 @@ function readyPhase0(ram, side, x, y) {
   ram.setU16(0x813092, 3);
   ram.setU16(0x803926, 0);
   ram.setU16(SCREEN11.carryWord, 0);
+  ram.setU8(0x803808, 0x12); // free play lets this compatibility fixture pass the credit gate
   ram.setU16(side === 0 ? 0x803972 : 0x803978, 0x8000);
   ram.setU16(side === 0 ? SAVED.x0 : SAVED.x1, x);
   ram.setU16(side === 0 ? SAVED.y0 : SAVED.y1, y);

@@ -36,6 +36,7 @@ function ready(ram) {
   ram.setU16(0x813098, 0);                                 // rank zero -> the stage test is SKIPPED
   ram.setU16(0x803926, 0);
   ram.setU16(SCREEN11.carryWord, 0);                       // $28D53C not busy
+  ram.setU8(SCREEN11.dipA, 1);                             // the descriptor's credit call accepts
   ram.setU16(0x813084, 0x00ff);                            // saved cursor = the sentinel
   ram.setU8(SCREEN11.savedA + 1, 0xff);
   ram.setU8(SCREEN11.savedB + 1, 0xff);
@@ -59,6 +60,15 @@ test('W344 START with every gate satisfied advances the phase', { skip: SKIP }, 
   assert.equal(ram.u8(SLOT + SCREEN11.phase), 1, 'phase 0 -> 1');
   assert.equal(ram.u16(0x813162), 1, 'and it announced -- postAnnounce260A88 for side 0');
   assert.equal(ram.u8(SLOT + SCREEN11.xCur), 0, 'the cursor was loaded');
+  assert.equal(ram.u8(SCREEN11.dipA), 0, 'the descriptor call spent exactly one P1 credit');
+});
+
+test('W344 START without a credit is refused before the cursor advances', { skip: SKIP }, () => {
+  const ram = new Ram(); ready(ram);
+  ram.setU8(SCREEN11.dipA, 0);
+  assert.equal(tallyPhase0Arm25DC2C(ram, ROM, SLOT, ctx()), false, 'carry set refuses START');
+  assert.equal(ram.u8(SLOT + SCREEN11.phase), 0, 'the continue choice remains in phase 0');
+  assert.equal(ram.u16(0x813162), 0, 'nothing was announced');
 });
 
 test('W344 without START it does nothing at all', { skip: SKIP }, () => {
@@ -99,11 +109,11 @@ test('W344 a non-zero phase means the arm is not phase 0\'s at all', { skip: SKI
   assert.equal(tallyPhase0Arm25DC2C(ram, ROM, SLOT, ctx()), false);
 });
 
-test('W344 the three unported dependencies are NOTED, not silently skipped', { skip: SKIP }, () => {
+test('W344 the remaining unported dependencies are NOTED, not silently skipped', { skip: SKIP }, () => {
   const ram = new Ram(); ready(ram);
   const c = ctx();
   tallyPhase0Arm25DC2C(ram, ROM, SLOT, c);
   const addrs = c.unportedLog.entries ? c.unportedLog.entries.map((e) => e.addr ?? e[0]) : null;
-  assert.ok(addrs === null || addrs.length >= 3,
-    'the ($C,A4) slot, the ($14,A4) palette bank and the $907000 clear are each counted');
+  assert.ok(addrs === null || addrs.length >= 2,
+    'the ($14,A4) palette bank and the $907000 clear are each counted');
 });

@@ -312,7 +312,10 @@ export function bonusLine2260056(ram, rom, ctx, a6) {
   // $26009A / $2600AE -- BOTH objects, and the handles land in different fields.
   for (const o of [BONUS2.objA, BONUS2.objB]) {
     const made = stageCreate(ram, o.type, (t) => rom.u16(DISPATCH + t * 8 + 4));
-    ram.setU32(a6 + o.handle, made.ok ? made.addr : 0);    // $2600A4 / $2600B8
+    ram.setU32(
+      a6 + o.handle,
+      made.ok ? ram.u32(made.addr + ALLOC.idOff) : 0,
+    );                                                       // $2600A4 / $2600B8
     if (made.ok) {
       ram.setU8(made.addr + 0x07, ram.u8(a6 + TALLY.row)); // $2600A8 / $2600BC
     }
