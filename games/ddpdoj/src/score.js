@@ -400,6 +400,182 @@ export function abcd(dst, src, x) {
   return { v: r & 0xff, x: carry };
 }
 
+/** Fixed offsets for a private score ledger. No field aliases cartridge RAM. */
+export const PRIVATE_SCORE_LAYOUT = Object.freeze({
+  length: 0x20,
+  total: 0x00,
+  overflow: 0x04,
+  pending: 0x06,
+  meter: 0x0a,
+  chain: 0x0c,
+  hiwater: 0x0e,
+  prior: 0x10,
+  accA: 0x14,
+  accB: 0x18,
+  specialCadence: 0x1c,
+});
+
+/** Add one packed-BCD long without using the cartridge's `$81B5AA` scratch. */
+export function privateBcdAdd(memory, accEnd, addend) {
+  const value = addend >>> 0;
+  let x = 0;
+  for (let i = 1; i <= 4; i++) {
+    const src = (value >>> ((i - 1) * 8)) & 0xff;
+    const r = abcd(memory.u8(accEnd - i), src, x);
+    memory.setU8(accEnd - i, r.v);
+    x = r.x;
+  }
+  return x;
+}
+
+function privateChainIncrement(memory, p, repeats) {
+  for (let n = 0; n < repeats; n++) {
+    const hi = memory.u8(p.chain);
+    const lo = memory.u8(p.chain + 1);
+    const r0 = abcd(lo, 1, 0);
+    const r1 = abcd(hi, 0, r0.x);
+    memory.setU8(p.chain, r1.v);
+    memory.setU8(p.chain + 1, r0.v);
+  }
+  if (memory.u16(p.hiwater) < memory.u16(p.chain)) {
+    memory.setU16(p.hiwater, memory.u16(p.chain));
+  }
+}
+
+function privateSeedChain(memory, p, d3) {
+  privateBcdAdd(memory, p.pendingEnd, d3);
+  memory.setU32(p.prior, d3);
+  memory.setU32(p.accA, 0);
+  memory.setU32(p.accB, 0);
+}
+
+function privateRefillMeter(memory, rom, p, d1) {
+  const loop = memory.u16(SCORE.loop);
+  const cap = rom.u16(SCORE.capTable + u16(loop + loop));
+  if ((d1 & 0x04) === 0 && loop !== 0) {
+    memory.setU16(p.meter, cap);
+    return;
+  }
+  const selector = memory.u16(p.weaponSel);
+  const refill = rom.u16(SCORE.refillTable + selector);
+  const meter = u16(memory.u16(p.meter) + refill);
+  memory.setU16(p.meter, meter < cap ? meter : cap);
+}
+
+function privateContinueChain(memory, rom, p, d3, d1) {
+  if (memory.u32(p.prior) !== 0) {
+    const prior = memory.u32(p.prior);
+    memory.setU32(p.accA, prior);
+    memory.setU32(p.accB, prior);
+    memory.setU16(p.chain, 1);
+    memory.setU32(p.prior, 0);
+  }
+  privateChainIncrement(memory, p, 1);
+  privateBcdAdd(memory, p.accA + 4, d3);
+  privateBcdAdd(memory, p.accB + 4, memory.u32(p.accA));
+  privateRefillMeter(memory, rom, p, d1);
+  privateBcdAdd(memory, p.pendingEnd, memory.u32(p.accA));
+}
+
+/** P3's ordinary kill projection, with no rank or presentation. */
+export function privateScoreKill(memory, rom, p, d0, d1) {
+  const d3 = d0 >>> 0;
+  memory.setU16(p.specialCadence, 0x1e);
+  if (memory.u16(p.meter) !== 0) {
+    privateContinueChain(memory, rom, p, d3, d1);
+    return d3;
+  }
+  privateRefillMeter(memory, rom, p, d1);
+  memory.setU16(p.chain, 0);
+  privateSeedChain(memory, p, d3);
+  return d3;
+}
+
+function privateSpecialCadence(memory, p, starting) {
+  let cadence = u16(8 - memory.u16(p.power));
+  cadence = u16(cadence + ((cadence & 0xffff) >>> 1));
+  cadence = u16(cadence + 0x12);
+  if (!starting && memory.u16(p.formation) !== 2) cadence = u16(cadence - 3);
+  return cadence;
+}
+
+/** P3's score-and-chain-only projection of the raw special hit arm. */
+function privateSpecialScoreHit(memory, p, d0, d1) {
+  const d3 = d0 >>> 0;
+  if (memory.u16(p.meter) === 0) {
+    memory.setU32(p.prior, 0);
+    memory.setU32(p.accA, 0);
+    memory.setU32(p.accB, 0);
+    memory.setU16(p.chain, 0);
+    memory.setU16(p.meter, 0x0a);
+    memory.setU16(p.specialCadence, privateSpecialCadence(memory, p, true));
+    return;
+  }
+  const cadence = u16(memory.u16(p.specialCadence) - 1);
+  memory.setU16(p.specialCadence, cadence);
+  if (cadence !== 0xffff) {
+    if (memory.u16(p.meter) < 0x0a) memory.setU16(p.meter, 0x0a);
+    return;
+  }
+  memory.setU16(p.specialCadence, privateSpecialCadence(memory, p, false));
+  if (memory.u32(p.prior) !== 0) {
+    const prior = memory.u32(p.prior);
+    memory.setU32(p.accA, prior);
+    memory.setU32(p.accB, prior);
+    memory.setU16(p.chain, 1);
+    memory.setU32(p.prior, 0);
+  }
+  privateChainIncrement(memory, p, (d1 & 0x40) !== 0 ? 2 : 1);
+  privateBcdAdd(memory, p.accA + 4, d3);
+  privateBcdAdd(memory, p.accB + 4, memory.u32(p.accA));
+  privateBcdAdd(memory, p.pendingEnd, memory.u32(p.accA));
+  if (memory.u16(p.meter) < 0x0a) memory.setU16(p.meter, 0x0a);
+}
+
+/** Credit one receipt-backed P3 hit without touching a native ledger. */
+export function privateScoreHit(memory, p, d1) {
+  if ((d1 & 0x04) !== 0) {
+    privateSpecialScoreHit(memory, p, 1, d1);
+    return;
+  }
+  privateBcdAdd(memory, p.pendingEnd, 1);
+}
+
+/** Drain P3 pending score into its private packed-BCD total. */
+export function privateScoreDrain(memory, p) {
+  const pending = memory.u32(p.pending);
+  if (pending === 0) return;
+  const carry = privateBcdAdd(memory, p.total + 4, pending);
+  if (carry !== 0) {
+    const overflow = u16(memory.u16(p.overflow) + 1);
+    if (overflow === 0x0a) {
+      memory.setU32(p.total, 0x99999999);
+      memory.setU16(p.overflow, 9);
+    } else {
+      memory.setU16(p.overflow, overflow);
+    }
+  }
+  memory.setU32(p.pending, 0);
+}
+
+/** Expire P3's non-hyper chain meter at an eligible HUD player boundary. */
+export function privateScoreMeterFrame(memory, p) {
+  const meter = memory.u16(p.meter);
+  if (meter === 0) return;
+  const next = u16(meter - 1);
+  memory.setU16(p.meter, next);
+  if (next === 0) {
+    memory.setU32(p.accA, 0);
+    memory.setU32(p.accB, 0);
+  }
+}
+
+/** Run one eligible private score frame in cartridge order. */
+export function privateScoreFrame(memory, p) {
+  privateScoreDrain(memory, p);
+  privateScoreMeterFrame(memory, p);
+}
+
 /**
  * `$286626` -- THE ONE ADDER.  `A0` is the byte ONE PAST the accumulator.
  *
@@ -983,17 +1159,32 @@ function privateScoreOwnership(ram, ctx, phase, d1, a6 = null) {
   const resolved = hook({ phase, ram, d1, ...(a6 == null ? {} : { a6 }) });
   if (resolved == null) return { receipt: false, mask: d1, privateOnly: false };
   if (resolved.receipt !== true || !Number.isSafeInteger(resolved.mask)
+      || !Number.isSafeInteger(resolved.rawMask)
+      || !Number.isSafeInteger(resolved.privateMask)
+      || !Number.isSafeInteger(resolved.privateScoreMask)
       || typeof resolved.privateOnly !== 'boolean') {
     throw new TypeError('private damage score receipt resolution is malformed');
   }
   return resolved;
 }
 
+function creditPrivateScore(ctx, phase, ram, ownership, d0) {
+  if (ownership.receipt !== true) return;
+  ctx?.privateScoreEventHook?.({
+    phase,
+    ram,
+    receipt: true,
+    d0: d0 >>> 0,
+    d1: ownership.privateScoreMask,
+  });
+}
+
 export function scoreHit(ram, ctx, a6, d1, receiptRecord = a6) {
   const ownership = privateScoreOwnership(ram, ctx, 'score-hit', d1, receiptRecord);
-  if (ownership.privateOnly) return;
   d1 = ownership.mask;
   if ((ram.u8(a6) & 0x02) !== 0) return;              // $286096 btst #1,(A6)
+  creditPrivateScore(ctx, 'score-hit', ram, ownership, 1);
+  if (ownership.privateOnly) return;
   let skipP1 = false;
   if ((ram.u8(SCORE.g30f8) & 0x04) !== 0) {           // $28609E btst #2,$8130F8
     const d2 = ram.u16(SCORE.laserRec);               // $2860A8 move.w $811F72,D2
@@ -1055,6 +1246,7 @@ export function scoreHit(ram, ctx, a6, d1, receiptRecord = a6) {
 export function scoreKill(ram, rom, ctx, d0, d1) {
   const ownership = privateScoreOwnership(ram, ctx, 'score-kill', d1);
   d1 = ownership.mask;
+  creditPrivateScore(ctx, 'score-kill', ram, ownership, d0);
   // The one hook this file offers a runner: every `$28615E` with its D0 (the
   // enemy's score value, from the call site) and its D1 (which player).  A
   // KILL is the thing a damage wave has to be able to count, and counting

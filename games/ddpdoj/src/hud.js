@@ -2312,6 +2312,7 @@ export function gates2844A6(ram, ctx, rom = null) {
     }
     // $284B72 bmi.w $2844BE -- REJOIN the skeleton at the P1 block.
   }
+  ctx?.privateScoreFrameHook?.({ phase: 'meter', ctx });
   if (i16(ram.u16(HUDRAM.aliveP1)) >= 0) {              // $2844BE tst.w $8130BE / bmi
     playerBlock(ram, rom, ctx, HUDRAM.p1);               // $2844C8..$28465A
   }
@@ -2360,6 +2361,7 @@ export function makeHudObject(rom) {
       return;
     }
     drain2842B0(ram, rom, ctx);                         // $28D52E jsr $2842B0
+    ctx?.privateScoreFrameHook?.({ phase: 'drain', ctx });
     perFrame28444E(ram, rom, ctx);                      // $28D534 jsr $28444E
     void slot;
   };

@@ -551,6 +551,14 @@ export class Game {
     const privateDamageReceiptHook = installedPrivateReceiptHook
       ? (event) => installedPrivateReceiptHook(this, event)
       : null;
+    const installedPrivateScoreEventHook = /** @type {any} */ (this).privateScoreEventHook;
+    const privateScoreEventHook = installedPrivateScoreEventHook
+      ? (event) => installedPrivateScoreEventHook(this, event)
+      : null;
+    const installedPrivateScoreFrameHook = /** @type {any} */ (this).privateScoreFrameHook;
+    const privateScoreFrameHook = installedPrivateScoreFrameHook
+      ? (event) => installedPrivateScoreFrameHook(this, event)
+      : null;
     return {
       tables: this.tables,
       rom: this.rom,
@@ -577,6 +585,8 @@ export class Game {
       ...(privateBeamDrawHook ? { privateBeamDrawHook } : {}),
       ...(privateDamageTailHook ? { privateDamageTailHook } : {}),
       ...(privateDamageReceiptHook ? { privateDamageReceiptHook } : {}),
+      ...(privateScoreEventHook ? { privateScoreEventHook } : {}),
+      ...(privateScoreFrameHook ? { privateScoreFrameHook } : {}),
       ...(this.enemyDeathHook ? { enemyDeathHook: this.enemyDeathHook } : {}),
       ...(this.friendlyBulletConvertHook
         ? { friendlyBulletConvertHook: this.friendlyBulletConvertHook } : {}),

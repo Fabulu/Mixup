@@ -1,9 +1,10 @@
 // Private three-pilot formation actors.
 //
 // This remains a private foundation. P3 has an allocator identity, independent
-// host memory, ordinary shots, option pods, an independently owned laser, and
-// outgoing enemy collision and damage. Incoming collision, P3 rewards, death,
-// lives, HUD, and public activation remain excluded.
+// host memory, ordinary shots, option pods, an independently owned laser,
+// outgoing enemy damage, and a private score and chain ledger. Incoming
+// collision, item and hyper rewards, death, lives, HUD presentation, and public
+// activation remain excluded.
 
 import { mirrorsFromPort } from './input.js';
 import { MACHINE, OPT, P, RAM } from './machine.js';
@@ -27,6 +28,10 @@ import {
   DMG, PRIVATE_DAMAGE_GEOMETRY, privateOutgoingDamagePass,
 } from './damage.js';
 import { ENEMY } from './enemies.js';
+import {
+  PRIVATE_SCORE_LAYOUT, privateScoreDrain, privateScoreHit, privateScoreKill,
+  privateScoreMeterFrame,
+} from './score.js';
 import { encodeRecordRequest } from './spritequeue.js';
 
 const THREE_PILOT_ID = 'all-three-pilots-each-piloting-a-ship';
@@ -84,6 +89,26 @@ export const P3_VIRTUAL = Object.freeze({
   tally: P3_VIRTUAL_BASE + 0x1800,
 });
 
+/** The complete private score reservation, kept outside cartridge RAM. */
+export const P3_PRIVATE_SCORE_LEDGER = Object.freeze({
+  base: P3_VIRTUAL.score,
+  length: PRIVATE_SCORE_LAYOUT.length,
+  total: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.total,
+  overflow: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.overflow,
+  pending: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.pending,
+  pendingEnd: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.pending + 4,
+  meter: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.meter,
+  chain: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.chain,
+  hiwater: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.hiwater,
+  prior: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.prior,
+  accA: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.accA,
+  accB: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.accB,
+  specialCadence: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.specialCadence,
+  weaponSel: P3_VIRTUAL.player + P.shipSel,
+  power: P3_VIRTUAL.player + 0x22,
+  formation: P3_VIRTUAL.player + P.optFormation,
+});
+
 export const P3_VIRTUAL_RANGES = Object.freeze([
   Object.freeze({ name: 'p3-input', start: P3_VIRTUAL.input.raw, length: 0x06 }),
   Object.freeze({ name: 'p3-player', start: P3_VIRTUAL.player, length: P.stride }),
@@ -98,7 +123,8 @@ export const P3_VIRTUAL_RANGES = Object.freeze([
   Object.freeze({ name: 'p3-damage-hyper-shadows', start: P3_VIRTUAL.damageHyperShadows,
     length: 0x04 }),
   Object.freeze({ name: 'p3-damage-receipts', start: P3_VIRTUAL.damageReceipts, length: 150 }),
-  Object.freeze({ name: 'p3-score-reserved', start: P3_VIRTUAL.score, length: 0x20 }),
+  Object.freeze({ name: 'p3-score', start: P3_VIRTUAL.score,
+    length: PRIVATE_SCORE_LAYOUT.length }),
   Object.freeze({ name: 'p3-bomb-reserved', start: P3_VIRTUAL.bomb, length: 0x20 }),
   Object.freeze({ name: 'p3-lives-reserved', start: P3_VIRTUAL.lives, length: 0x02 }),
   Object.freeze({ name: 'p3-tally-reserved', start: P3_VIRTUAL.tally, length: 0x24 }),
@@ -569,6 +595,8 @@ class PrivateDamageMemory {
           preMask,
           baseWord: oldWord & ~0x5c00,
           postMask: newMask,
+          privateMask: required,
+          privateScoreMask: this.#state.damage.source.scoreMask,
           sources: new Set(),
           committed: false,
         };
@@ -576,6 +604,8 @@ class PrivateDamageMemory {
         this.#state.damage.receiptMeta[index] = meta;
       }
       meta.postMask = newMask;
+      meta.privateMask |= required;
+      meta.privateScoreMask |= this.#state.damage.source.scoreMask;
       meta.sources.add(this.#state.damage.source.name);
       return { index, meta, record, offset };
     }
@@ -629,7 +659,8 @@ class PrivateDamageMemory {
         || rawMask !== expected || this.#state.damage.source != null) {
       throw new TypeError('private damage source or transient mask is invalid');
     }
-    this.#state.damage.source = { name, rawMask };
+    const scoreMask = name === 'ordinary' ? 0 : name === 'slot-30' ? 0x44 : 0x04;
+    this.#state.damage.source = { name, rawMask, scoreMask };
   }
 
   endPrivateDamageSource() {
@@ -705,6 +736,12 @@ function clearP3BeamState(state) {
   }
   for (const history of [P3_BINDING.beam.positionHistory, P3_BINDING.beam.imageHistory]) {
     for (let offset = 0; offset < 0x40; offset++) state.memory.setU8(history + offset, 0);
+  }
+}
+
+function clearP3ScoreState(state) {
+  for (let offset = 0; offset < P3_PRIVATE_SCORE_LEDGER.length; offset++) {
+    state.memory.setU8(P3_PRIVATE_SCORE_LEDGER.base + offset, 0);
   }
 }
 
@@ -1046,6 +1083,8 @@ function storedReceiptSnapshot(state, index) {
   return Object.freeze({
     preMask: meta.preMask,
     postMask: meta.postMask,
+    privateMask: meta.privateMask,
+    privateScoreMask: meta.privateScoreMask,
     rec: meta.rec,
   });
 }
@@ -1053,10 +1092,14 @@ function storedReceiptSnapshot(state, index) {
 function resolveReceiptSnapshots(snapshots, rawMask) {
   let savedNative = 0;
   let introduced = 0;
+  let privateMask = 0;
+  let privateScoreMask = 0;
   const subrecords = [];
   for (const snapshot of snapshots) {
     savedNative |= snapshot.preMask;
     introduced |= snapshot.postMask & ~snapshot.preMask;
+    privateMask |= snapshot.privateMask;
+    privateScoreMask |= snapshot.privateScoreMask;
     subrecords.push(snapshot.rec);
   }
   const nativeRemainder = rawMask & ~introduced & 0x5c;
@@ -1066,6 +1109,8 @@ function resolveReceiptSnapshots(snapshots, rawMask) {
     mask,
     privateOnly: mask === 0,
     rawMask,
+    privateMask: privateMask & 0x5c,
+    privateScoreMask: privateScoreMask & 0x44,
     subrecord: subrecords[0],
     subrecords: Object.freeze(subrecords),
   });
@@ -1109,6 +1154,46 @@ function receiptResolution(state, event) {
   return resolveReceiptSet(state, indices, rawMask);
 }
 
+function privateScoreEvent(state, game, event) {
+  if (game !== state.game || ATTACHED.get(game) !== state
+      || event?.ram !== game.ram) {
+    throw new Error('private P3 score hook invoked for a different Game');
+  }
+  if (event.receipt !== true || !Number.isSafeInteger(event.d0)
+      || event.d0 < 0 || event.d0 > 0xffffffff
+      || !Number.isSafeInteger(event.d1) || event.d1 < 0 || event.d1 > 0xffff) {
+    throw new TypeError('private P3 score event is malformed');
+  }
+  if (event.phase === 'score-hit') {
+    privateScoreHit(state.memory, P3_PRIVATE_SCORE_LEDGER, event.d1);
+    return;
+  }
+  if (event.phase === 'score-kill') {
+    privateScoreKill(state.memory, game.rom, P3_PRIVATE_SCORE_LEDGER, event.d0, event.d1);
+    return;
+  }
+  throw new RangeError(`unknown private P3 score phase ${event.phase}`);
+}
+
+function privateScoreFrameEvent(state, game, event) {
+  if (game !== state.game || ATTACHED.get(game) !== state
+      || event?.ctx?.rom !== game.rom) {
+    throw new Error('private P3 score frame hook invoked for a different Game');
+  }
+  if (event.phase === 'drain') {
+    privateScoreDrain(state.memory, P3_PRIVATE_SCORE_LEDGER);
+    return;
+  }
+  if (event.phase === 'meter') {
+    if (state.lifecycle !== 'alive' || state.actorId === 0
+        || !liveNonDeath(state.memory, P3_BINDING)
+        || refreshLifecycle(state, false) == null) return;
+    privateScoreMeterFrame(state.memory, P3_PRIVATE_SCORE_LEDGER);
+    return;
+  }
+  throw new RangeError(`unknown private P3 score frame phase ${event.phase}`);
+}
+
 function privateDamageReceiptEvent(state, game, event) {
   if (game !== state.game || ATTACHED.get(game) !== state
       || event?.ram !== game.ram) {
@@ -1116,6 +1201,7 @@ function privateDamageReceiptEvent(state, game, event) {
   }
   if (event.phase === 'allocator-reset') {
     clearAllDamageReceipts(state);
+    clearP3ScoreState(state);
     return null;
   }
   if (event.phase === 'enter-enemy') {
@@ -1452,6 +1538,12 @@ export function attachThreePilotFoundation(game, options = {}) {
   if (game.privateDamageReceiptHook != null) {
     throw new Error('Game already has a privateDamageReceiptHook');
   }
+  if (game.privateScoreEventHook != null) {
+    throw new Error('Game already has a privateScoreEventHook');
+  }
+  if (game.privateScoreFrameHook != null) {
+    throw new Error('Game already has a privateScoreFrameHook');
+  }
   if (game.ram.u32(ALLOC.idCounter) === 0xffffffff) {
     throw new RangeError('P3 allocator ID would wrap to zero');
   }
@@ -1502,6 +1594,7 @@ export function attachThreePilotFoundation(game, options = {}) {
     },
   };
   state.damage.memory = new PrivateDamageMemory(state);
+  clearP3ScoreState(state);
   bindP3ShotResources(state);
   bindP3BeamResources(state);
   cacheTargets(state);
@@ -1554,6 +1647,10 @@ export function attachThreePilotFoundation(game, options = {}) {
   };
   const receiptHook = (hookGame, event) =>
     privateDamageReceiptEvent(state, hookGame, event);
+  const scoreEventHook = (hookGame, event) =>
+    privateScoreEvent(state, hookGame, event);
+  const scoreFrameHook = (hookGame, event) =>
+    privateScoreFrameEvent(state, hookGame, event);
   state.objectDriverHook = hook;
   state.playerPositionTransform = positionTransform;
   state.virtualSpriteRequestHook = renderHook;
@@ -1563,6 +1660,8 @@ export function attachThreePilotFoundation(game, options = {}) {
   state.privateBeamDrawHook = beamDrawHook;
   state.privateDamageTailHook = damageHook;
   state.privateDamageReceiptHook = receiptHook;
+  state.privateScoreEventHook = scoreEventHook;
+  state.privateScoreFrameHook = scoreFrameHook;
   game.objectDriverHook = hook;
   game.playerPositionTransform = positionTransform;
   game.virtualSpriteRequestHook = renderHook;
@@ -1572,6 +1671,8 @@ export function attachThreePilotFoundation(game, options = {}) {
   game.privateBeamDrawHook = beamDrawHook;
   game.privateDamageTailHook = damageHook;
   game.privateDamageReceiptHook = receiptHook;
+  game.privateScoreEventHook = scoreEventHook;
+  game.privateScoreFrameHook = scoreFrameHook;
   ATTACHED.set(game, state);
   return state;
 }

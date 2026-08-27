@@ -596,8 +596,13 @@ test('W616 Stage-4 deferred mixed side hit restores native ownership on frame N+
     assert.deepEqual(deferred?.snapshots.map((snapshot) => ({
       preMask: snapshot.preMask,
       postMask: snapshot.postMask,
+      privateMask: snapshot.privateMask,
+      privateScoreMask: snapshot.privateScoreMask,
       rec: snapshot.rec,
-    })), [{ preMask: 0x10, postMask: 0x54, rec: side }]);
+    })), [{
+      preMask: 0x10, postMask: 0x54, privateMask: 0x44,
+      privateScoreMask: 0x04, rec: side,
+    }]);
 
     const oracle = game.ram.clone();
     oracle.setU16(0x8130ea, 0x0010);
@@ -692,6 +697,8 @@ test('W616 old deferred side ownership cannot consume a simultaneous mixed body 
       mask: 0x10,
       privateOnly: false,
       rawMask: 0x54,
+      privateMask: 0x44,
+      privateScoreMask: 0x04,
       subrecord: body,
       subrecords: [body],
     }, 'the body generation remains independently resolvable');
