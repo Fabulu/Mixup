@@ -563,8 +563,11 @@ def gate_asset_backed(browser, origin: str) -> None:
     gate.run("asset-backed three-ship formation", three_ship)
 
     def menu_conflict(page):
-        open_page(page, origin, "/games/ddpdoj/start.html")
-        page.locator("#join-p2").click()
+        open_page(
+            page,
+            origin,
+            "/games/ddpdoj/start.html?p2=1&p2ship=2&p2style=6",
+        )
         page.locator("#formation-side-by-side").click()
 
         def assert_menu_conflict() -> None:
