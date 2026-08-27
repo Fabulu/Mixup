@@ -21,6 +21,9 @@ const NO_PLAYER = 0xffff;
 const COIN1 = (0xffff & ~(1 << COIN_BITS.COIN1)) & 0xffff;
 const START = portWordFromBits([BIT.start]);
 const BUTTON1 = portWordFromBits([BIT.b1]);
+const MASH = portWordFromBits([
+  BIT.up, BIT.down, BIT.left, BIT.right, BIT.b1, BIT.b2, BIT.b3, BIT.start,
+]);
 
 function active(game) {
   const out = [];
@@ -96,3 +99,59 @@ test('W622 natural death accepts a credited continue and resumes the same run', 
   assert.ok(active(game).some((o) => o.type === 0x02), 'the cartridge respawned P1 into gameplay');
   assert.notEqual(game.ram.u16(0x8130be), 0xffff, 'the continued run owns a live reserve counter');
 });
+
+test('W622 button mashing cannot skip an uncredited timeout, Game Over, or cabinet restart',
+  { skip: SKIP }, () => {
+    const game = bootToGameplay();
+
+    let countdownFrame = 0;
+    for (let frame = 1; frame <= 5000; frame++) {
+      game.step(NO_PLAYER);
+      if (active(game).some((o) => o.type === 0x0d)) {
+        countdownFrame = frame;
+        break;
+      }
+    }
+    assert.ok(countdownFrame > 0, 'natural final-life death reached the continue countdown');
+    assert.equal(game.ram.u8(0x80395a), 0, 'the first run has no credit left to accept START');
+
+    const screenId = game.ram.u32(TALLY.side0 + 0x1c);
+    let firstE = 0;
+    let firstC = 0;
+    let firstEight = 0;
+    let mashFrames = 0;
+    for (let frame = 1; frame <= 2000; frame++) {
+      const player = (frame & 1) === 0 ? MASH : NO_PLAYER;
+      run(game, 1, COIN.idle, player);
+      mashFrames++;
+      const live = active(game);
+      const types = new Set(live.map((o) => o.type));
+      const screen = resolveHandle241298(game.ram, screenId);
+      if (screen.found) {
+        assert.equal(game.ram.u8(screen.rec + SCREEN11.phase), 0,
+          'direction, three fire buttons, and START cannot advance an uncredited choice');
+      }
+      if (!firstE && types.has(0x0e)) firstE = frame;
+      if (!firstC && types.has(0x0c)) firstC = frame;
+      if (firstC && !firstEight && types.has(0x08)) {
+        firstEight = frame;
+        break;
+      }
+    }
+
+    assert.ok(mashFrames >= 300,
+      `${mashFrames} alternating press/release frames exercised every direction, fire, and START`);
+    assert.ok(firstE > 0, 'the nine-second continue choice ran out into visible Game Over');
+    assert.ok(firstC > firstE, 'Game Over handed to the score/name-entry object');
+    assert.ok(firstC - firstE >= 300,
+      'button mashing did not shorten the cartridge Game Over screen timer');
+    assert.ok(firstEight > firstC, 'name-entry skip returned to the cartridge attract sequencer');
+    assert.equal(game.ram.u8(0x80395a), 0, 'mashing never invented a credit');
+
+    run(game, 20, COIN1);
+    run(game, 10);
+    assert.equal(game.ram.u8(0x80395a), 1, 'a real post-Game-Over coin credited the cabinet');
+    run(game, 20, COIN.idle, START);
+    assert.equal(game.ram.u16(0x812e56), 0x000e,
+      'START began another playable run on the same Game without a reload');
+  });
