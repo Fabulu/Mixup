@@ -329,14 +329,17 @@ test('W613 clears option requests at lifecycle, stage, and allocator boundaries'
     assert.equal(state.weapons.actorId, state.actorId);
     assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.options, OPT.stride), fresh);
 
-    state.lifecycle = 'detached';
+    for (const companion of state.manager.companions) companion.lifecycle = 'detached';
     assert.equal(runThreePilotOptionObject(game), 0);
     assert.deepEqual(sidecarBytes(state.memory, P3_VIRTUAL.options, OPT.stride),
       new Uint8Array(OPT.stride));
-    state.lifecycle = 'dropped';
-    state.weapons.requests.push({ bucket: 5, bytes: new Uint8Array(RECORD_BYTES) });
+    for (const companion of state.manager.companions) {
+      companion.lifecycle = 'dropped';
+      companion.weapons.requests.push({ bucket: 5, bytes: new Uint8Array(RECORD_BYTES) });
+    }
     assert.equal(runThreePilotOptionObject(game), 0);
-    assert.equal(state.weapons.requests.length, 0);
+    assert.deepEqual(state.manager.companions.map((companion) =>
+      companion.weapons.requests.length), [0, 0]);
   });
 
 test('W613 real Game steps invoke the private owner at call 9 and publish its pods',
@@ -380,7 +383,7 @@ test('W613 copied option hooks reject the invoking Game before owner mutation',
     assert.deepEqual(a.state.weapons.requests, requestsBefore);
   });
 
-test('W613 sidecars are per-Game and the private mode remains publicly closed',
+test('W613 sidecars are per-Game and the public formation remains outside mods',
   { skip: SKIP_ASSETS }, async () => {
     const a = await exactState();
     const b = await exactState();
@@ -391,9 +394,12 @@ test('W613 sidecars are per-Game and the private mode remains publicly closed',
     assert.equal(MOD_IDS.length, 32);
     assert.equal(MOD_IDS.includes(THREE_PILOT_FORMATION_MODE.id), false);
     assert.equal(Object.hasOwn(MODS, THREE_PILOT_FORMATION_MODE.id), false);
-    assert.equal(formationMode(THREE_PILOT_FORMATION_MODE.id), null);
-    assert.equal(hashToFormation(`#formation=${THREE_PILOT_FORMATION_MODE.id}`), null);
-    assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE), '');
+    assert.strictEqual(formationMode(THREE_PILOT_FORMATION_MODE.id),
+      THREE_PILOT_FORMATION_MODE);
+    assert.strictEqual(hashToFormation(`#formation=${THREE_PILOT_FORMATION_MODE.id}`),
+      THREE_PILOT_FORMATION_MODE);
+    assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE),
+      `formation=${THREE_PILOT_FORMATION_MODE.id}`);
 
     await assert.rejects(() => a.demo.armRecording(),
       /REC is unavailable while private three-pilot formation state is active.*Replay v1/);

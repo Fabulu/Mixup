@@ -411,7 +411,7 @@ test('W614 native collision scans consume neither private slots nor private owne
     assert.deepEqual([DMG.p1shots, DMG.p2shots], [SHOT.p1Table, SHOT.p2Table]);
   });
 
-test('W614 stage clear, detach, drop, allocator change, and restage clear all weapon state',
+test('W614 stage clear, detach, allocator change, and restage clear all weapon state',
   { skip: SKIP_ASSETS }, async () => {
     const { state, game } = await exactState();
     state.memory.setU16(P3_VIRTUAL.shots, 0x8040);
@@ -482,7 +482,7 @@ test('W614 stage clear, detach, drop, allocator change, and restage clear all we
     dropped.state.objectDriverHook({
       phase: 'after-driver', ram: dropped.game.ram, created: 0, killed: 0,
     });
-    assert.equal(dropped.state.lifecycle, 'dropped');
+    assert.equal(dropped.state.lifecycle, 'detached');
     assert.deepEqual(sidecarBytes(dropped.state.memory, P3_VIRTUAL.shots, 36 * 0x30),
       new Uint8Array(36 * 0x30));
     assert.deepEqual(sidecarBytes(dropped.state.memory, P3_VIRTUAL.options, OPT.stride),
@@ -521,20 +521,18 @@ test('W614 copied hooks reject cross-Game calls before mutation and Games stay i
     assert.equal(b.state.shots.requests.length, 0);
   });
 
-test('W614 call-8 and call-9 hooks remain private, ordered, replay-closed, and 32-mod closed',
+test('W614 call-8 and call-9 hooks remain private, ordered, replay-closed, and outside mods',
   async () => {
     const id = THREE_PILOT_FORMATION_MODE.id;
-    assert.equal(formationMode(id), null);
-    assert.equal(hashToFormation(`#formation=${id}`), null);
-    assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE), '');
+    assert.strictEqual(formationMode(id), THREE_PILOT_FORMATION_MODE);
+    assert.strictEqual(hashToFormation(`#formation=${id}`), THREE_PILOT_FORMATION_MODE);
+    assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE), `formation=${id}`);
     assert.equal(MOD_IDS.length, 32);
     assert.equal(MOD_IDS.includes(id), false);
     assert.equal(Object.hasOwn(MODS, id), false);
-    for (const page of ['../start.html', '../index.html']) {
-      const source = readFileSync(new URL(page, import.meta.url), 'utf8');
-      assert.equal(source.includes(id), false);
-      assert.equal(source.includes(THREE_PILOT_FORMATION_MODE.name), false);
-    }
+    const start = readFileSync(new URL('../start.html', import.meta.url), 'utf8');
+    assert.match(start, /id="formation-three"/);
+    assert.match(start, /All Three Ships/);
 
     const type5 = readFileSync(new URL('../src/type5.js', import.meta.url), 'utf8');
     const shot = type5.indexOf('ctx.shotsProcessed = runShotDriver');

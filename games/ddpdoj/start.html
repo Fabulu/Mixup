@@ -70,6 +70,19 @@
     </button>
   </div>
 
+  <h2>Edition</h2>
+  <div class="grid" id="editions">
+    <button class="card" id="edition-black-label" type="button" aria-pressed="true">
+      <div class="name"><span>Black Label</span><span class="mark">ON</span></div>
+      <div class="blurb">Current functional edition. Formation, loop 2, and release gates target this edition.</div>
+    </button>
+    <button class="card" id="edition-white-label" type="button" aria-pressed="false"
+      aria-disabled="true" disabled>
+      <div class="name"><span>White Label</span><span class="mark">ON</span></div>
+      <div class="blurb">Unavailable. White Label remains non-selectable until its gameplay routes are functional and gated.</div>
+    </button>
+  </div>
+
   <h2>Authentic cartridge selection</h2>
   <div class="sub">Each player gets an original Version-B ship and pilot/style pair, not a mod.
     The listing proves selector values 2, 4, and 6 but does not prove which human-readable
@@ -133,12 +146,16 @@
   </div>
 
   <h2>Formation</h2>
-  <div class="sub">A separate synchronized authentic two-ship launch mode. It is not one of
-    the mod catalogue entries. P1 steers both ships and owns manual Button 2.</div>
+  <div class="sub">Synchronized P1-owned ship formations. Companion ships behave like
+    options: P1 steers them and owns all score, chain, and progression.</div>
   <div class="grid" id="formations">
     <button class="card" id="formation-side-by-side" type="button" aria-pressed="false">
       <div class="name"><span>Fly Both Ships Side by Side</span><span class="mark">ON</span></div>
-      <div class="blurb">Autojoins genuine P2 request 4 beside P1. Default pair: P1 Type-A style 2 and P2 Type-B style 2.</div>
+      <div class="blurb">P1 Type-A style 2 with one private Type-B style-2 companion. Native P2 remains unjoined.</div>
+    </button>
+    <button class="card" id="formation-three" type="button" aria-pressed="false">
+      <div class="name"><span>All Three Ships</span><span class="mark">ON</span></div>
+      <div class="blurb">P1 plus two private companion ships. All three weapons, hits, kills, score, and chain belong to P1.</div>
     </button>
   </div>
 
@@ -148,7 +165,7 @@
   <h2>Presentation</h2><div class="grid" data-category="presentation"></div>
 
   <div class="policy">Replay v1 does not carry formation state or simulation mods. REC and PLAY
-    are refused while Fly Both Ships Side by Side or any survival, arsenal, challenge, input,
+    are refused while a ship formation or any survival, arsenal, challenge, input,
     or timing mod is active. Invert Colors, Monochrome, Ghost Trail, Drop the Sprite Hold, and
     Show Hitboxes remain replay-compatible because they change only the displayed frame or its
     finished RGB.</div>
@@ -169,12 +186,12 @@ import {
   authenticSelectionFromParams, authenticSelectionQuery,
 } from './src/authentic.js';
 import {
-  FORMATION_MODE, formationAuthenticOverridesFromParams, formationToHash,
-  hashToFormation, resolveFormationAuthenticSelection,
+  FORMATION_MODE, FORMATION_THREE_MODE, formationAuthenticOverridesFromParams,
+  formationToHash, hashToFormation, resolveFormationAuthenticSelection,
 } from './src/formation.js';
 
 const selected = new Set();
-let formationActive = false;
+let formationActive = null;
 let authenticShip = 0;
 let authenticStyle = 2;
 let authenticShipExplicit = false;
@@ -187,58 +204,45 @@ let authenticP2StyleExplicit = false;
 const cards = new Map();
 let lastConflicts = [];
 
-function hasOwn(value, name) {
-  return Object.prototype.hasOwnProperty.call(value ?? {}, name);
-}
-
 function restoreStateFromLocation() {
   const loadout = hashToLoadout(location.hash);
   selected.clear();
   for (const id of loadout.ids) selected.add(id);
-  formationActive = !!hashToFormation(location.hash);
+  formationActive = hashToFormation(location.hash);
 
   const params = new URLSearchParams(location.search);
   const overrides = formationAuthenticOverridesFromParams(params);
   const ordinary = authenticSelectionFromParams(params);
+  const p1Override = overrides ?? (ordinary
+    ? { ship: ordinary.ship, style: ordinary.style }
+    : null);
   const formation = formationActive
-    ? resolveFormationAuthenticSelection(FORMATION_MODE, overrides)
-      ?? resolveFormationAuthenticSelection(FORMATION_MODE)
+    ? resolveFormationAuthenticSelection(formationActive, p1Override)
+      ?? resolveFormationAuthenticSelection(formationActive)
     : null;
   const effective = formation ?? ordinary;
   authenticShip = effective?.ship ?? 0;
   authenticStyle = effective?.style ?? 2;
-  authenticShipExplicit = hasOwn(overrides, 'ship');
-  authenticStyleExplicit = hasOwn(overrides, 'style');
+  authenticShipExplicit = params.has('ship');
+  authenticStyleExplicit = params.has('style');
 
-  explicitP2Joined = hasOwn(overrides, 'p2');
+  explicitP2Joined = params.has('p2');
   authenticP2Ship = ordinary?.p2?.ship ?? 0;
   authenticP2Style = ordinary?.p2?.style ?? 2;
-  authenticP2ShipExplicit = hasOwn(overrides?.p2, 'ship');
-  authenticP2StyleExplicit = hasOwn(overrides?.p2, 'style');
+  authenticP2ShipExplicit = params.has('p2ship');
+  authenticP2StyleExplicit = params.has('p2style');
 }
 
 function effectiveP2Selection() {
-  if (!formationActive) {
-    return explicitP2Joined
-      ? { ship: authenticP2Ship, style: authenticP2Style }
-      : null;
-  }
-  const defaults = FORMATION_MODE.authenticSelection.p2;
-  return {
-    ship: authenticP2ShipExplicit ? authenticP2Ship : defaults.ship,
-    style: authenticP2StyleExplicit ? authenticP2Style : defaults.style,
-  };
+  return explicitP2Joined
+    ? { ship: authenticP2Ship, style: authenticP2Style }
+    : null;
 }
 
 function formationAuthenticQuery() {
   const params = new URLSearchParams();
   if (authenticShipExplicit) params.set('ship', String(authenticShip));
   if (authenticStyleExplicit) params.set('style', String(authenticStyle));
-  if (explicitP2Joined) {
-    params.set('p2', '1');
-    if (authenticP2ShipExplicit) params.set('p2ship', String(authenticP2Ship));
-    if (authenticP2StyleExplicit) params.set('p2style', String(authenticP2Style));
-  }
   const text = params.toString();
   return text ? `?${text}` : '';
 }
@@ -332,7 +336,9 @@ function sync({ writeHistory = true } = {}) {
   document.getElementById('vanilla').setAttribute('aria-pressed',
     String(!resolved.ids.length && !formationActive));
   document.getElementById('formation-side-by-side').setAttribute(
-    'aria-pressed', String(formationActive));
+    'aria-pressed', String(formationActive?.id === FORMATION_MODE.id));
+  document.getElementById('formation-three').setAttribute(
+    'aria-pressed', String(formationActive?.id === FORMATION_THREE_MODE.id));
   for (const button of document.querySelectorAll('[data-auth-ship]')) {
     button.setAttribute('aria-pressed', String(Number(button.dataset.authShip) === authenticShip));
   }
@@ -341,15 +347,15 @@ function sync({ writeHistory = true } = {}) {
   }
   const effectiveP2 = effectiveP2Selection();
   const joinP2 = document.getElementById('join-p2');
-  joinP2.disabled = formationActive;
+  joinP2.disabled = !!formationActive && !explicitP2Joined;
   joinP2.setAttribute('aria-pressed', String(!!effectiveP2));
   for (const button of document.querySelectorAll('[data-auth-p2-ship]')) {
-    button.disabled = !effectiveP2;
+    button.disabled = !!formationActive || !effectiveP2;
     button.setAttribute('aria-pressed', String(
       !!effectiveP2 && Number(button.dataset.authP2Ship) === effectiveP2.ship));
   }
   for (const button of document.querySelectorAll('[data-auth-p2-style]')) {
-    button.disabled = !effectiveP2;
+    button.disabled = !!formationActive || !effectiveP2;
     button.setAttribute('aria-pressed', String(
       !!effectiveP2 && Number(button.dataset.authP2Style) === effectiveP2.style));
   }
@@ -361,47 +367,54 @@ function sync({ writeHistory = true } = {}) {
     main.innerHTML = `<b>${resolved.ids.length}</b> active: `;
     main.append(document.createTextNode(resolved.ids.map((id) => MODS[id].name).join(', ')));
   } else if (formationActive) {
-    main.innerHTML = '<b>Formation active</b>: Fly Both Ships Side by Side';
+    main.innerHTML = `<b>Formation active</b>: ${formationActive.name}`;
   } else {
     main.innerHTML = '<b>Original Game</b>: nothing selected';
   }
   summary.appendChild(main);
   if (formationActive && resolved.ids.length) {
     const formation = document.createElement('span');
-    formation.textContent = ' | Formation: Fly Both Ships Side by Side';
+    formation.textContent = ` | Formation: ${formationActive.name}`;
     summary.appendChild(formation);
   }
   const authentic = document.createElement('span');
   const p1 = `P1 Type-${authenticShip === 0 ? 'A' : 'B'}, pilot/style selector ${authenticStyle}`;
-  const p2 = effectiveP2
-    ? ` | P2 Type-${effectiveP2.ship === 0 ? 'A' : 'B'}, pilot/style selector ${effectiveP2.style}`
-    : ' | P2 not joined';
+  const p2 = formationActive
+    ? ` | ${formationActive.companions.length} P1-owned companion${formationActive.companions.length === 1 ? '' : 's'} | Native P2 not joined`
+    : effectiveP2
+      ? ` | P2 Type-${effectiveP2.ship === 0 ? 'A' : 'B'}, pilot/style selector ${effectiveP2.style}`
+      : ' | P2 not joined';
   authentic.textContent = ` | ${p1}${p2}`;
   summary.appendChild(authentic);
-  if (lastConflicts.length) {
+  const formationP2Conflict = !!formationActive && explicitP2Joined;
+  if (lastConflicts.length || formationP2Conflict) {
     const warning = document.createElement('span');
     warning.id = 'conflict';
-    const text = lastConflicts.map((c) =>
-      `${c.dropped.map((id) => MODS[id].name).join(', ')} ignored; ${MODS[c.winner].name} wins`)
-      .join(' | ');
-    warning.textContent = ` | ${text}`;
+    const messages = lastConflicts.map((c) =>
+      `${c.dropped.map((id) => MODS[id].name).join(', ')} ignored; ${MODS[c.winner].name} wins`);
+    if (formationP2Conflict) {
+      messages.push('Formation cannot be combined with an explicit native P2 selection');
+    }
+    warning.textContent = ` | ${messages.join(' | ')}`;
     summary.appendChild(warning);
   }
+  document.getElementById('launch').disabled = formationP2Conflict;
   const launchHash = [
     loadoutToHash(resolved.ids),
-    formationToHash(formationActive ? FORMATION_MODE : null),
+    formationToHash(formationActive),
   ].filter(Boolean).join('&');
   if (writeHistory) pushStateUrl(launchHash);
 }
 
-document.getElementById('formation-side-by-side').addEventListener('click', () => {
-  if (!formationActive && explicitP2Joined) {
-    // A P2 chosen before formation is an explicit pair, not a formation default.
-    authenticP2ShipExplicit = true;
-    authenticP2StyleExplicit = true;
-  }
-  formationActive = !formationActive;
+function toggleFormation(mode) {
+  formationActive = formationActive?.id === mode.id ? null : mode;
   sync();
+}
+document.getElementById('formation-side-by-side').addEventListener('click', () => {
+  toggleFormation(FORMATION_MODE);
+});
+document.getElementById('formation-three').addEventListener('click', () => {
+  toggleFormation(FORMATION_THREE_MODE);
 });
 
 for (const button of document.querySelectorAll('[data-auth-ship]')) {
@@ -419,7 +432,7 @@ for (const button of document.querySelectorAll('[data-auth-style]')) {
   });
 }
 document.getElementById('join-p2').addEventListener('click', () => {
-  if (formationActive) return;
+  if (formationActive && !explicitP2Joined) return;
   explicitP2Joined = !explicitP2Joined;
   if (explicitP2Joined) {
     authenticP2ShipExplicit = true;
@@ -446,12 +459,12 @@ for (const button of document.querySelectorAll('[data-auth-p2-style]')) {
 
 document.getElementById('vanilla').addEventListener('click', () => {
   selected.clear();
-  formationActive = false;
+  formationActive = null;
   sync();
 });
 document.getElementById('clear').addEventListener('click', () => {
   selected.clear();
-  formationActive = false;
+  formationActive = null;
   authenticShip = 0;
   authenticStyle = 2;
   authenticShipExplicit = false;
@@ -462,9 +475,10 @@ document.getElementById('games').addEventListener('click', () => {
   location.href = '../../index.html';
 });
 document.getElementById('launch').addEventListener('click', () => {
+  if (formationActive && explicitP2Joined) return;
   const hash = [
     loadoutToHash([...selected]),
-    formationToHash(formationActive ? FORMATION_MODE : null),
+    formationToHash(formationActive),
   ].filter(Boolean).join('&');
   const query = launchAuthenticQuery();
   location.href = `./index.html${query}${hash ? `#${hash}` : ''}`;

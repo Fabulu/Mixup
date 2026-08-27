@@ -860,14 +860,18 @@ export class Demo {
     // A recognized mode owns exactly one mutable state object for this Demo.
     // Missing and unknown formation ids produce null and add no Game callback.
     this.formation = createFormationState(formationModeValue);
-    // Authentic cartridge content is not a mod. A formation always resolves a
-    // complete pair and therefore always arms genuine P2 request 4. Invalid
-    // selector overrides fall back to that pair rather than disabling its P2.
-    // Labelled rungs otherwise retain their exact RAM snapshot.
+    // Authentic cartridge content is not a mod. Formation resolves only P1;
+    // every additional ship is a private P1-owned companion. Native P2 fields
+    // are incompatible and must fail before Game construction or RAM mutation.
     const formationAuthentic = this.formation
       ? resolveFormationAuthenticSelection(this.formation.mode, authenticSelection)
-        ?? resolveFormationAuthenticSelection(this.formation.mode)
       : null;
+    if (this.formation && authenticSelection?.p2 != null) {
+      throw new Error('formation mode cannot be combined with a native P2 selection');
+    }
+    if (this.formation && authenticSelection != null && formationAuthentic == null) {
+      throw new Error('formation mode received an invalid P1 selection');
+    }
     const ordinaryAuthentic = rung
       ? null
       : normalizeAuthenticSelection(authenticSelection);
@@ -1612,7 +1616,8 @@ export class Demo {
       formationId: this.formation?.mode.id ?? null,
       formationName: this.formation?.mode.name ?? null,
       formationControl: this.formation
-        ? 'P1 steers both ships and owns manual Button 2.' : null,
+        ? `P1 steers ${this.formation.mode.companions.length + 1} ships and owns all score, chain, and progression.`
+        : null,
       spliced: this.spliced,
       // WAVE 37.  The page must keep SAYING what it is: `stripped` is how many
       // of the recording's own display-list records were thrown away this

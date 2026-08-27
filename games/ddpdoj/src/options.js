@@ -49,7 +49,7 @@ import {
 } from './spritequeue.js';
 import { groundPlane, SHIP_MUTATE } from './shipsprite.js';
 import {
-  BEAM, PRIVATE_BEAM_GEOMETRY, assertPrivateBeamCapabilities, runLaserGate,
+  BEAM, assertPrivateBeamCapabilities, runLaserGate,
   buildBeam, wipeSegmentPool, wipePrivateSegmentPool, rampDown,
 } from './laser.js';
 
@@ -181,10 +181,10 @@ export function assertOptionOwnerInputAllowed(ram, b) {
     throw new RangeError(`unsupported logical option owner ${b.ownerIndex}`);
   }
   if (b.ownerIndex === 2) {
-    if (b.player !== PRIVATE_BEAM_GEOMETRY.player
-        || b.opt !== PRIVATE_BEAM_GEOMETRY.opt
-        || b.rampGuard !== 0x10001600) {
-      throw new RangeError('private option owner must supply exact player, option, and bomb guard');
+    const base = b.player - 0x0100;
+    if (!Number.isSafeInteger(base) || base < 0x1000000 || (base & 0xffff) !== 0
+        || b.opt !== base + 0x0200 || b.rampGuard !== base + 0x1600) {
+      throw new RangeError('private option owner must supply exact sidecar-relative player, option, and bomb guard');
     }
     const excludedInput = ram.u8(b.player + P.dirByte)
       | ram.u8(b.player + P.btnByte);

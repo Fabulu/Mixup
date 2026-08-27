@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { Ram, u16 } from '../src/ram.js';
+import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { MoveTables } from '../src/vectors.js';
 import { PaletteState } from '../src/palette.js';
@@ -12,7 +12,7 @@ import { UnportedLog } from '../src/unported.js';
 import { ProtLatch } from '../src/protsim.js';
 import { Game } from '../src/main.js';
 import { playerObject2491C0, updatePlayer } from '../src/player.js';
-import { ALLOC } from '../src/objalloc.js';
+import { ALLOC, commitCreates } from '../src/objalloc.js';
 import { MACHINE, P, RAM, BIT } from '../src/machine.js';
 import {
   portWordFromPlayerBits, mirrorsFromPort,
@@ -38,12 +38,6 @@ const TABLES = JSON.parse(readFileSync(
 const ROM = new RomWindows(TABLES.rom);
 const MOVE = new MoveTables(TABLES, ROM);
 const ID = 'fly-both-ships-side-by-side';
-const POSITIONS = [
-  RAM.player1 + P.posY,
-  RAM.player1 + P.posX,
-  RAM.player2 + P.posY,
-  RAM.player2 + P.posX,
-];
 
 function activeState() {
   return createFormationState(formationMode(ID));
@@ -87,35 +81,25 @@ function fakeGame(options = {}) {
       return vectors[angle] ?? { dy: 0, dx: 0 };
     },
   };
-  return { game: { ram, tables }, calls };
-}
-
-function trackWordWrites(ram, fn) {
-  const writes = [];
-  const original = ram.setU16.bind(ram);
-  ram.setU16 = (addr, value) => {
-    writes.push(addr);
-    return original(addr, value);
+  const game = {
+    ram,
+    rom: {
+      u16(address) {
+        if (address >= ALLOC.dispatch && address < ALLOC.dispatch + 0x40) return 0x10;
+        return 0;
+      },
+    },
+    tables,
   };
-  try {
-    const result = fn();
-    return { writes, result };
-  } finally {
-    ram.setU16 = original;
-  }
+  return { game, calls };
 }
 
-function assertOnlyPositionBytesChanged(before, ram) {
-  const allowed = new Set();
-  for (const addr of POSITIONS) {
-    const offset = addr - MACHINE.ramBase;
-    allowed.add(offset);
-    allowed.add(offset + 1);
-  }
-  for (let i = 0; i < before.length; i++) {
-    if (!allowed.has(i)) assert.equal(ram.b[i], before[i],
-      `unexpected RAM change at $${(MACHINE.ramBase + i).toString(16)}`);
-  }
+function activate(state) {
+  const manager = state.foundation;
+  const created = commitCreates(manager.game.ram);
+  manager.objectDriverHook({
+    phase: 'after-commit', ram: manager.game.ram, killed: 0, created,
+  });
 }
 
 function playerSlot(ram, { y = 0x1000, x = 0x0e00 } = {}) {
@@ -160,31 +144,22 @@ test('W608 formation lookup, hash, selection, and catalogue separation are exact
   assert.equal(hashToFormation('#formation=unknown-formation'), null);
 
   assert.deepEqual(resolveFormationAuthenticSelection(FORMATION_MODE), {
-    ship: 0, style: 2, p2: { ship: 2, style: 2 },
+    ship: 0, style: 2,
   });
-  const explicit = { ship: 2, style: 6, p2: { ship: 0, style: 4 } };
-  assert.deepEqual(resolveFormationAuthenticSelection(FORMATION_MODE, explicit), explicit);
   assert.deepEqual(resolveFormationAuthenticSelection(FORMATION_MODE,
-    { ship: 2, style: 4 }), {
-    ship: 2, style: 4, p2: { ship: 2, style: 2 },
-  }, 'a P1-only override keeps the required default P2 pair');
+    { ship: 2, style: 6 }), { ship: 2, style: 6 });
   assert.deepEqual(resolveFormationAuthenticSelection(FORMATION_MODE,
-    { ship: 2 }), {
-    ship: 2, style: 2, p2: { ship: 2, style: 2 },
-  }, 'a partial P1 override keeps the missing style and default P2');
+    { ship: 2 }), { ship: 2, style: 2 });
   assert.deepEqual(resolveFormationAuthenticSelection(FORMATION_MODE,
-    { p2: { style: 6 } }), {
-    ship: 0, style: 2, p2: { ship: 2, style: 6 },
-  }, 'a partial P2 override keeps the formation Type-B default');
-  assert.deepEqual(resolveFormationAuthenticSelection(FORMATION_MODE,
-    { p2: { ship: 0, style: 6 } }), {
-    ship: 0, style: 2, p2: { ship: 0, style: 6 },
-  }, 'a P2-only override keeps the default P1 pair');
+    { style: 4 }), { ship: 0, style: 4 });
   assert.equal(resolveFormationAuthenticSelection(FORMATION_MODE,
-    { ship: 9, style: 2, p2: { ship: 2, style: 2 } }), null);
+    { ship: 0, style: 2, p2: { ship: 2, style: 2 } }), null);
   assert.equal(resolveFormationAuthenticSelection(FORMATION_MODE,
-    { p2: 'invalid' }), null);
-  assert.deepEqual(resolveFormationAuthenticSelection(null, explicit), explicit);
+    { ship: 9, style: 2 }), null);
+  assert.deepEqual(resolveFormationAuthenticSelection(null,
+    { ship: 2, style: 6 }), { ship: 2, style: 6 });
+  assert.equal(resolveFormationAuthenticSelection(null,
+    { ship: 2, style: 6, p2: { ship: 0, style: 4 } }), null);
 
   assert.equal(MOD_IDS.length, 32);
   assert.equal(MOD_IDS.includes(ID), false);
@@ -220,31 +195,39 @@ test('W608 formation runtime is isolated per Game', () => {
   assert.equal(stateB.runtime.rebasePending, beforeB.rebasePending);
 });
 
-test('W608 active-low input copies movement, B1, and B3 but never P1 B2', () => {
+test('W608 physical input and genuine P2 stay exact while the companion gets P1 controls', () => {
+  const { game } = fakeGame({ p2State: 0x8123, p2Y: 0x3456, p2X: 0x4567 });
+  game.ram.setU16(RAM.p2raw, 0x1357);
+  game.ram.setU16(RAM.p2prev, 0x2468);
+  game.ram.setU16(RAM.p2edge, 0x369c);
   const state = activeState();
-  const p1 = [BIT.up, BIT.left, BIT.b1, BIT.b2, BIT.b3, BIT.start];
-  const p2 = [BIT.down, BIT.right, BIT.b1, BIT.b2, BIT.b3, BIT.start];
-  const raw = portWordFromPlayerBits(p1, p2);
-  const transformed = transformFormationInput(state, raw);
-  const before = mirrorsFromPort(raw);
-  const after = mirrorsFromPort(transformed);
+  initializeFormation(state, game, {
+    inputWord: portWordFromPlayerBits([], [BIT.left, BIT.b1]),
+  });
+  const p2Before = game.ram.b.slice(
+    RAM.player2 - MACHINE.ramBase,
+    RAM.player2 - MACHINE.ramBase + P.stride,
+  );
+  const raw = portWordFromPlayerBits([
+    BIT.up, BIT.left, BIT.b1, BIT.b2, BIT.b3, BIT.start,
+  ], [BIT.down, BIT.right, BIT.b1, BIT.b2, BIT.b3, BIT.start]);
 
-  assert.equal(transformed & 0x00ff, raw & 0x00ff, 'the complete P1 byte is preserved');
-  assert.equal(transformed & 0x0100, raw & 0x0100, 'P2 Start is preserved');
-  assert.equal(after.p1 & 0x807f, before.p1 & 0x807f,
-    'all P1 direction, button, and Start bits are unchanged');
-  assert.equal(after.p2 & 0x0f, after.p1 & 0x0f, 'all four directions copy');
-  assert.equal(after.p2 & (1 << BIT.b1), after.p1 & (1 << BIT.b1));
-  assert.equal(after.p2 & (1 << BIT.b3), after.p1 & (1 << BIT.b3));
-  assert.equal(after.p2 & (1 << BIT.b2), 0, 'P2 Button 2 is released');
-  assert.equal(after.p2 & (1 << BIT.start), before.p2 & (1 << BIT.start));
-
-  const p2Only = portWordFromPlayerBits([], [
-    BIT.up, BIT.down, BIT.left, BIT.right, BIT.b1, BIT.b2, BIT.b3, BIT.start,
-  ]);
-  const released = mirrorsFromPort(transformFormationInput(state, p2Only));
-  assert.equal(released.p2 & 0x7f, 0, 'old P2 direction and button holds are released');
-  assert.notEqual(released.p2 & (1 << BIT.start), 0, 'P2 Start still survives release');
+  assert.equal(transformFormationInput(state, raw), raw & 0xffff);
+  assert.equal(prepareFormationFrame(state, game, raw), raw & 0xffff);
+  const expected = mirrorsFromPort(raw).p1 & 0x005f;
+  const companion = state.foundation.companions[0];
+  assert.equal(companion.memory.u16(companion.binding.input.raw), expected);
+  assert.equal(companion.memory.u16(companion.binding.input.previous), expected);
+  assert.equal(companion.memory.u16(companion.binding.input.edge), expected);
+  assert.equal(companion.memory.u16(companion.binding.input.raw) & (1 << BIT.b2), 0);
+  assert.equal(companion.memory.u16(companion.binding.input.raw) & (1 << BIT.start), 0);
+  assert.deepEqual([
+    game.ram.u16(RAM.p2raw), game.ram.u16(RAM.p2prev), game.ram.u16(RAM.p2edge),
+  ], [0x1357, 0x2468, 0x369c]);
+  assert.deepEqual(game.ram.b.slice(
+    RAM.player2 - MACHINE.ramBase,
+    RAM.player2 - MACHINE.ramBase + P.stride,
+  ), p2Before);
 });
 
 test('W608 geometry consumes the final input after catalogue mod transformation', () => {
@@ -261,66 +244,73 @@ test('W608 geometry consumes the final input after catalogue mod transformation'
   assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], [0x2000, 0x1400]);
 });
 
-test('W608 pre-frame moves one anchor and writes exactly four position words', () => {
+test('W608 pre-frame moves P1 and its sidecar companion without writing native P2', () => {
+  const angle = 1 << BIT.right;
   const { game, calls } = fakeGame({
     p1Y: 0x2000, p1X: 0x1000, p2Y: 0x3333, p2X: 0x2f00,
-    vectors: { 8: { dy: 0x0080, dx: 0x0100 } },
+    vectors: { [angle]: { dy: 0x0080, dx: 0x0100 } },
   });
-  // Sentinels throughout both records make any whole-record copy visible.
-  for (const rec of [RAM.player1, RAM.player2]) {
-    for (let offset = 6; offset < P.stride; offset++) {
-      game.ram.setU8(rec + offset, (offset * 13 + (rec & 0xff)) & 0xff);
-    }
-  }
   game.ram.setU8(RAM.player1 + P.speedIdx, 0x17);
   const state = activeState();
   initializeFormation(state, game);
-  assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], [0x2000, 0x1400]);
-  const before = game.ram.b.slice();
+  activate(state);
+  const p2Before = game.ram.b.slice(
+    RAM.player2 - MACHINE.ramBase,
+    RAM.player2 - MACHINE.ramBase + P.stride,
+  );
 
   const raw = portWordFromPlayerBits([BIT.right], [BIT.left, BIT.b2]);
-  const { writes, result } = trackWordWrites(game.ram,
-    () => prepareFormationFrame(state, game, raw));
-  assert.equal(result, transformFormationInput(state, raw));
-  assert.deepEqual(calls.angles, [1 << BIT.right]);
-  assert.deepEqual(calls.vectors, [[0x17, 1 << BIT.right]]);
-  assert.deepEqual(writes, POSITIONS);
+  assert.equal(prepareFormationFrame(state, game, raw), raw & 0xffff);
+  assert.deepEqual(calls.angles, [angle]);
+  assert.deepEqual(calls.vectors, [[0x17, angle]]);
   assert.deepEqual([
     game.ram.u16(RAM.player1 + P.posY), game.ram.u16(RAM.player1 + P.posX),
-    game.ram.u16(RAM.player2 + P.posY), game.ram.u16(RAM.player2 + P.posX),
-  ], [0x2080, 0x1100, 0x2080, 0x1900]);
-  assert.equal(game.ram.u16(RAM.player2 + P.posX)
-    - game.ram.u16(RAM.player1 + P.posX), 0x0800);
-  const callback = formationGameOptions(state).playerPositionTransform;
-  assert.deepEqual(callback(game.ram, 0, 0, 0), { y: 0x2080, x: 0x1100 });
-  assert.deepEqual(callback(game.ram, 1, 0, 0), { y: 0x2080, x: 0x1900 });
-  assertOnlyPositionBytesChanged(before, game.ram);
+  ], [0x2080, 0x1100]);
+  const companion = state.foundation.companions[0];
+  assert.deepEqual([
+    companion.memory.u16(companion.binding.player + P.posY),
+    companion.memory.u16(companion.binding.player + P.posX),
+  ], [0x2080, 0x1900]);
+  assert.deepEqual(game.ram.b.slice(
+    RAM.player2 - MACHINE.ramBase,
+    RAM.player2 - MACHINE.ramBase + P.stride,
+  ), p2Before);
+  assert.deepEqual(game.playerPositionTransform(game.ram, 0, 0, 0),
+    { y: 0x2080, x: 0x1100 });
+  assert.equal(game.playerPositionTransform(game.ram, 1, 0, 0), null);
+  assert.equal(formationGameOptions(state), null);
 });
 
-test('W608 anchor clamps at all four walls and honors movement disable', () => {
+test('W608 anchor clamps both P1-owned ships at all four walls and honors movement disable', () => {
   const cases = [
     { input: BIT.left, p1Y: 0x2000, p1X: 0x0300,
       vectors: { 4: { dy: 0, dx: -0x900 } }, anchor: [0x2000, 0x0700],
-      positions: [0x2000, 0x0300, 0x2000, 0x0b00] },
+      p1: [0x2000, 0x0300], companion: [0x2000, 0x0b00] },
     { input: BIT.right, p1Y: 0x2000, p1X: 0x3500,
       vectors: { 8: { dy: 0, dx: 0x900 } }, anchor: [0x2000, 0x3100],
-      positions: [0x2000, 0x2d00, 0x2000, 0x3500] },
+      p1: [0x2000, 0x2d00], companion: [0x2000, 0x3500] },
     { input: BIT.down, p1Y: 0x0800, p1X: 0x1000,
       vectors: { 2: { dy: -0x900, dx: 0 } }, anchor: [0x0800, 0x1400],
-      positions: [0x0800, 0x1000, 0x0800, 0x1800] },
+      p1: [0x0800, 0x1000], companion: [0x0800, 0x1800] },
     { input: BIT.up, p1Y: 0x6500, p1X: 0x1000,
       vectors: { 1: { dy: 0x900, dx: 0 } }, anchor: [0x6500, 0x1400],
-      positions: [0x6500, 0x1000, 0x6500, 0x1800] },
+      p1: [0x6500, 0x1000], companion: [0x6500, 0x1800] },
   ];
   for (const c of cases) {
     const { game } = fakeGame(c);
     const state = activeState();
     initializeFormation(state, game);
+    activate(state);
     prepareFormationFrame(state, game, portWordFromPlayerBits([c.input], []));
     assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], c.anchor);
-    assert.deepEqual(POSITIONS.map((addr) => game.ram.u16(addr)), c.positions);
-    assert.equal(game.ram.u16(RAM.player2 + P.posX)
-      - game.ram.u16(RAM.player1 + P.posX), 0x0800);
+    assert.deepEqual([
+      game.ram.u16(RAM.player1 + P.posY), game.ram.u16(RAM.player1 + P.posX),
+    ], c.p1);
+    const companion = state.foundation.companions[0];
+    assert.deepEqual([
+      companion.memory.u16(companion.binding.player + P.posY),
+      companion.memory.u16(companion.binding.player + P.posX),
+    ], c.companion);
   }
 
   const { game, calls } = fakeGame();
@@ -332,78 +322,46 @@ test('W608 anchor clamps at all four walls and honors movement disable', () => {
   assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], [0x2000, 0x1400]);
 });
 
-test('W608 caches P1 speed through death, freezes with neither live, and skips death records', () => {
-  const { game, calls } = fakeGame({ speed: 0x22 });
+test('W608 P1 death and stage clear suspend the companion without a live-P2 fallback', () => {
+  const { game, calls } = fakeGame({ p2State: 0x8123, speed: 0x22 });
   const state = activeState();
   initializeFormation(state, game);
+  activate(state);
+  const companion = state.foundation.companions[0];
+  const p2Before = game.ram.b.slice(
+    RAM.player2 - MACHINE.ramBase,
+    RAM.player2 - MACHINE.ramBase + P.stride,
+  );
   prepareFormationFrame(state, game, portWordFromPlayerBits([BIT.right], []));
   assert.deepEqual(calls.vectors.at(-1), [0x22, 8]);
 
   game.ram.setU16(RAM.player1 + P.state, 0x0100);
-  game.ram.setU8(RAM.player1 + P.speedIdx, 0x77);
-  const deathPosition = [0x4444, 0x5555];
-  game.ram.setU16(RAM.player1 + P.posY, deathPosition[0]);
-  game.ram.setU16(RAM.player1 + P.posX, deathPosition[1]);
-  const { writes } = trackWordWrites(game.ram,
-    () => prepareFormationFrame(state, game, portWordFromPlayerBits([BIT.right], [])));
-  assert.deepEqual(calls.vectors.at(-1), [0x22, 8], 'dead P1 cannot replace cached speed');
-  assert.deepEqual(writes, [RAM.player2 + P.posY, RAM.player2 + P.posX]);
-  assert.deepEqual([
-    game.ram.u16(RAM.player1 + P.posY), game.ram.u16(RAM.player1 + P.posX),
-  ], deathPosition);
-  assert.equal(formationGameOptions(state).playerPositionTransform(
-    game.ram, 0, deathPosition[0], deathPosition[1]), null);
+  const frozenAnchor = [state.runtime.anchorY, state.runtime.anchorX];
+  const vectorCount = calls.vectors.length;
+  prepareFormationFrame(state, game, portWordFromPlayerBits([BIT.left], []));
+  assert.equal(companion.memory.u16(companion.binding.player + P.state), 0);
+  assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], frozenAnchor);
+  assert.equal(calls.vectors.length, vectorCount);
+  assert.equal(game.playerPositionTransform(game.ram, 0, 0, 0), null);
+  assert.equal(game.playerPositionTransform(game.ram, 1, 0, 0), null);
 
-  game.ram.setU16(RAM.player2 + P.state, 0);
-  const anchor = [state.runtime.anchorY, state.runtime.anchorX];
-  const callsBefore = calls.vectors.length;
-  const frozen = trackWordWrites(game.ram,
-    () => prepareFormationFrame(state, game, portWordFromPlayerBits([BIT.left], [])));
-  assert.deepEqual(frozen.writes, []);
-  assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], anchor);
-  assert.equal(calls.vectors.length, callsBefore);
-});
-
-test('W608 stage-clear suspends geometry and rebases from P1, then live P2 fallback', () => {
-  const { game } = fakeGame();
-  const state = activeState();
-  initializeFormation(state, game);
-  const callback = formationGameOptions(state).playerPositionTransform;
-  const initialAnchor = [state.runtime.anchorY, state.runtime.anchorX];
-
-  game.ram.setU16(0x812972, 1);
+  game.ram.setU16(RAM.player1 + P.state, 0x8000);
   game.ram.setU16(RAM.player1 + P.posY, 0x2400);
   game.ram.setU16(RAM.player1 + P.posX, 0x1800);
-  game.ram.setU16(RAM.player2 + P.posY, 0x3300);
-  game.ram.setU16(RAM.player2 + P.posX, 0x2a00);
-  const suspended = trackWordWrites(game.ram,
-    () => prepareFormationFrame(state, game, 0xffff));
-  assert.deepEqual(suspended.writes, []);
-  assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], initialAnchor);
-  assert.equal(callback(game.ram, 0, 0x2400, 0x1800), null);
-
-  game.ram.setU16(0x812972, 0);
-  const p1Rebase = trackWordWrites(game.ram,
-    () => prepareFormationFrame(state, game, 0xffff));
-  assert.deepEqual(p1Rebase.writes, POSITIONS);
-  assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], [0x2400, 0x1c00]);
-  assert.deepEqual(POSITIONS.map((addr) => game.ram.u16(addr)),
-    [0x2400, 0x1800, 0x2400, 0x2000]);
+  prepareFormationFrame(state, game, 0xffff);
+  assert.equal(companion.memory.u16(companion.binding.player + P.state), 0x8000);
 
   game.ram.setU16(0x812972, 1);
   prepareFormationFrame(state, game, 0xffff);
-  game.ram.setU16(RAM.player1 + P.state, 0x0100);
-  game.ram.setU16(RAM.player2 + P.state, 0x8000);
-  game.ram.setU16(RAM.player2 + P.posY, 0x3000);
-  game.ram.setU16(RAM.player2 + P.posX, 0x2200);
+  assert.equal(companion.memory.u16(companion.binding.player + P.state), 0);
   game.ram.setU16(0x812972, 0);
-  const p2Rebase = trackWordWrites(game.ram,
-    () => prepareFormationFrame(state, game, 0xffff));
-  assert.deepEqual(p2Rebase.writes, [RAM.player2 + P.posY, RAM.player2 + P.posX]);
-  assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], [0x3000, 0x1e00]);
-  assert.deepEqual([
-    game.ram.u16(RAM.player2 + P.posY), game.ram.u16(RAM.player2 + P.posX),
-  ], [0x3000, 0x2200]);
+  prepareFormationFrame(state, game, 0xffff);
+  assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], [0x2400, 0x1c00]);
+  assert.equal(companion.memory.u16(companion.binding.player + P.state), 0x8000);
+  assert.deepEqual(game.ram.b.slice(
+    RAM.player2 - MACHINE.ramBase,
+    RAM.player2 - MACHINE.ramBase + P.stride,
+  ), p2Before);
 });
 
 test('W608 Game owns and forwards the optional callback only when supplied', () => {

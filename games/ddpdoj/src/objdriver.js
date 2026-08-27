@@ -109,10 +109,10 @@ export function runObjectDriver(ram, handlers, ctx) {
       phase: 'before-dispatch', ram, slot, slotIndex: i,
       type: t, typeWord: type, marker,
     }) === true;
-    // Native type 3 treats every nonzero marker as P2. Marker 2 belongs only to
-    // the host-backed P3 controller and must never reach that boolean fallback.
-    if (t === 3 && marker === 2 && !intercepted) {
-      throw new Error(`marker-2 type-3 object in slot ${i} was not intercepted`);
+    // Native type 3 treats every nonzero marker as P2. Markers 2 and 3 belong
+    // only to host-backed P1 companions and must never reach that fallback.
+    if (t === 3 && (marker === 2 || marker === 3) && !intercepted) {
+      throw new Error(`marker-${marker} type-3 object in slot ${i} was not intercepted`);
     }
     const h = handlers.get(t);
     if (!intercepted && h) h(ram, slot, i, ctx);

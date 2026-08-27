@@ -234,22 +234,33 @@ export function assertPrivateBeamCapabilities(b) {
   if (!b || typeof b !== 'object') {
     throw new TypeError('private beam owner must supply an explicit capability');
   }
+  const base = b.player - 0x0100;
+  const relative = {
+    player: 0x0100,
+    opt: 0x0200,
+    rec: 0x0b00,
+    blk: 0x0b20,
+    word: 0x0b40,
+    pool: 0x0c00,
+    pair: 0x11a0,
+    posHistory: 0x1200,
+    imgHistory: 0x1240,
+    head: 0x1110,
+    muzzle: 0x1140,
+  };
+  if (!Number.isSafeInteger(base) || base < 0x1000000 || (base & 0xffff) !== 0) {
+    throw new RangeError('private beam sidecar base must be aligned outside cartridge memory');
+  }
+  for (const [name, offset] of Object.entries(relative)) {
+    if (!Number.isSafeInteger(b[name]) || b[name] !== base + offset) {
+      throw new RangeError(`private beam ${name} must match its exact sidecar offset`);
+    }
+  }
   const exact = {
     ownerIndex: PRIVATE_BEAM_GEOMETRY.ownerIndex,
-    player: PRIVATE_BEAM_GEOMETRY.player,
-    opt: PRIVATE_BEAM_GEOMETRY.opt,
-    rec: PRIVATE_BEAM_GEOMETRY.control,
-    blk: PRIVATE_BEAM_GEOMETRY.draw,
-    word: PRIVATE_BEAM_GEOMETRY.word,
-    pool: PRIVATE_BEAM_GEOMETRY.pool,
-    pair: PRIVATE_BEAM_GEOMETRY.pair,
-    posHistory: PRIVATE_BEAM_GEOMETRY.posHistory,
-    imgHistory: PRIVATE_BEAM_GEOMETRY.imgHistory,
     dispatch: PRIVATE_BEAM_GEOMETRY.dispatch,
     drawBias: PRIVATE_BEAM_GEOMETRY.drawBias,
     presentationBucket: LASER.emitBucket,
-    head: PRIVATE_BEAM_GEOMETRY.head,
-    muzzle: PRIVATE_BEAM_GEOMETRY.muzzle,
   };
   for (const [name, value] of Object.entries(exact)) {
     if (!Number.isSafeInteger(b[name]) || b[name] !== value) {
@@ -260,12 +271,11 @@ export function assertPrivateBeamCapabilities(b) {
     throw new RangeError('private beam must keep logical owner 2 and P1 cartridge polarity');
   }
   if (b.slots !== SEG.slots || b.stride !== SEG.stride
-      || b.pool + b.slots * b.stride !== PRIVATE_BEAM_GEOMETRY.poolEnd) {
+      || b.pool + b.slots * b.stride !== base + 0x1200) {
     throw new RangeError('private beam pool must be exactly 32 records of $30 bytes');
   }
-  if (b.posHistory + PRIVATE_BEAM_GEOMETRY.historyBytes
-      !== b.imgHistory
-      || b.imgHistory + PRIVATE_BEAM_GEOMETRY.historyBytes > 0x10001300) {
+  if (b.posHistory + PRIVATE_BEAM_GEOMETRY.historyBytes !== b.imgHistory
+      || b.imgHistory + PRIVATE_BEAM_GEOMETRY.historyBytes > base + 0x1300) {
     throw new RangeError('private beam histories must be exact adjacent $40-byte rings');
   }
   if (b.soundPolicy !== 'silent' || b.effectPolicy !== 'none') {

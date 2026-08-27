@@ -257,14 +257,14 @@ test('W601 start page restores, scopes, preserves, and serializes explicit P2 se
   assert.match(start, /data-auth-p2-style="2"/);
   assert.match(start, /data-auth-p2-style="4"/);
   assert.match(start, /data-auth-p2-style="6"/);
-  assert.match(start, /explicitP2Joined = hasOwn\(overrides, 'p2'\)/,
-    'the query restores explicit P2 separately from derived formation state');
+  assert.match(start, /explicitP2Joined = params\.has\('p2'\)/,
+    'the query restores explicit P2 separately from formation state');
   assert.match(start,
     /\.\.\.\(explicitP2Joined\s*\? \{ p2: \{ ship: authenticP2Ship, style: authenticP2Style \} \}\s*: \{\}\)/,
     'ordinary launches serialize the complete explicit P2 pair');
   const clear = start.slice(start.indexOf("document.getElementById('clear').addEventListener"),
     start.indexOf("document.getElementById('games').addEventListener"));
-  assert.match(clear, /formationActive = false/);
+  assert.match(clear, /formationActive = null/);
   assert.doesNotMatch(clear, /explicitP2Joined\s*=/,
-    'CLEAR drops any formation-derived P2 without erasing an explicit join');
+    'CLEAR resets the formation without erasing an explicit native P2 join');
 });

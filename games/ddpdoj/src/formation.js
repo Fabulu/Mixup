@@ -1,41 +1,37 @@
-// Optional synchronized two-ship formations.
+// Optional synchronized P1-owned ship formations.
 //
 // Formations are deliberately separate from the mod catalogue. An absent or
 // unknown mode creates no runtime state, no Game callback, and no RAM writes.
-// Every mutable value below belongs to one createFormationState() result.
+// Companion ships are private outgoing-only actors. They never join native P2.
 
 import {
-  AUTHENTIC_SHIPS, AUTHENTIC_STYLES, normalizeAuthenticSelection,
+  AUTHENTIC_SHIPS, AUTHENTIC_STYLES,
 } from './authentic.js';
-import { mirrorsFromPort } from './input.js';
-import { P, RAM } from './machine.js';
+import {
+  THREE_PILOT_FORMATION_MODE, attachFormationCompanions,
+  prepareFormationCompanionFrame,
+} from './formationactors.js';
 
 const SIDE_BY_SIDE_ID = 'fly-both-ships-side-by-side';
-const OFFSET_X = 0x0400;
-const ANCHOR = Object.freeze({
-  xMin: 0x0700,
-  xMax: 0x3100,
-  yMin: 0x0800,
-  yMax: 0x6500,
-});
-const STAGE_CLEAR = 0x812972;
-const MOVEMENT_DISABLE = 0x8130d2;
 
-const DEFAULT_SELECTION = Object.freeze({
-  ship: 0,
-  style: 2,
-  p2: Object.freeze({ ship: 2, style: 2 }),
-});
+const DEFAULT_SELECTION = Object.freeze({ ship: 0, style: 2 });
+const DEFAULT_COMPANIONS = Object.freeze([
+  Object.freeze({ ship: 2, style: 2 }),
+]);
 
 export const FORMATION_MODE = Object.freeze({
   id: SIDE_BY_SIDE_ID,
   name: 'Fly Both Ships Side by Side',
   authenticSelection: DEFAULT_SELECTION,
+  companions: DEFAULT_COMPANIONS,
 });
+export const FORMATION_THREE_MODE = THREE_PILOT_FORMATION_MODE;
 
-/** Look up the one recognized formation. Null and unknown ids mean off. */
+/** Look up either recognized P1-owned formation. Null and unknown ids mean off. */
 export function formationMode(id) {
-  return id === SIDE_BY_SIDE_ID ? FORMATION_MODE : null;
+  if (id === SIDE_BY_SIDE_ID) return FORMATION_MODE;
+  if (id === FORMATION_THREE_MODE.id) return FORMATION_THREE_MODE;
+  return null;
 }
 
 function resolveMode(value) {
@@ -56,16 +52,13 @@ export function hashToFormation(hash = '') {
 }
 
 /**
- * Read only selector fields that were actually present in a launch query. The
- * ordinary authentic parser intentionally fills cartridge defaults, which is
- * right for a normal launch but would overwrite the formation's Type-B P2 when
- * a link specifies only `p2style`. Invalid and orphaned P2 fields are ignored as
- * one invalid override set; the active mode will retain its complete defaults.
+ * Read only P1 selector fields present in a formation launch query. Native P2
+ * fields are incompatible with formation mode and are rejected as one set.
  */
 export function formationAuthenticOverridesFromParams(params) {
   const has = (name) => params?.has?.(name) ?? false;
-  const any = ['ship', 'style', 'p2', 'p2ship', 'p2style'].some(has);
-  if (!any) return null;
+  if (['p2', 'p2ship', 'p2style'].some(has)) return null;
+  if (!has('ship') && !has('style')) return null;
 
   const selected = {};
   if (has('ship')) {
@@ -78,60 +71,36 @@ export function formationAuthenticOverridesFromParams(params) {
     if (!AUTHENTIC_STYLES.map(String).includes(text)) return null;
     selected.style = Number(text);
   }
-
-  const hasP2Ship = has('p2ship');
-  const hasP2Style = has('p2style');
-  if ((hasP2Ship || hasP2Style) && !has('p2')) return null;
-  if (has('p2')) {
-    if (params.get('p2') !== '1') return null;
-    selected.p2 = {};
-    if (hasP2Ship) {
-      const text = params.get('p2ship');
-      if (!AUTHENTIC_SHIPS.map(String).includes(text)) return null;
-      selected.p2.ship = Number(text);
-    }
-    if (hasP2Style) {
-      const text = params.get('p2style');
-      if (!AUTHENTIC_STYLES.map(String).includes(text)) return null;
-      selected.p2.style = Number(text);
-    }
-  }
   return selected;
 }
 
-/**
- * Resolve the authentic two-player selection used to launch a formation.
- * Explicit fields override their side of the mode's pair. Missing fields keep
- * the formation defaults, including its required P2. Off mode leaves ordinary
- * authentic selection normalization alone.
- */
+/** Resolve the authentic P1 selection used to launch a formation. */
 export function resolveFormationAuthenticSelection(modeValue, explicitSelection = null) {
   const mode = resolveMode(modeValue);
-  if (!mode || explicitSelection == null) {
-    return normalizeAuthenticSelection(mode?.authenticSelection ?? explicitSelection);
+  if (!mode) {
+    if (explicitSelection == null || typeof explicitSelection !== 'object') return null;
+    const ship = explicitSelection.ship ?? 0;
+    const style = explicitSelection.style ?? 2;
+    if (!AUTHENTIC_SHIPS.includes(ship) || !AUTHENTIC_STYLES.includes(style)
+        || explicitSelection.p2 != null) return null;
+    return Object.freeze({ ship, style });
   }
-  if (typeof explicitSelection !== 'object'
-      || (explicitSelection.p2 != null && typeof explicitSelection.p2 !== 'object')) {
+  if (explicitSelection != null
+      && (typeof explicitSelection !== 'object' || explicitSelection.p2 != null)) {
     return null;
   }
-
-  const defaults = mode.authenticSelection;
-  const candidate = {
-    ship: explicitSelection.ship ?? defaults.ship,
-    style: explicitSelection.style ?? defaults.style,
-    p2: {
-      ship: explicitSelection.p2?.ship ?? defaults.p2.ship,
-      style: explicitSelection.p2?.style ?? defaults.p2.style,
-    },
-  };
-  return normalizeAuthenticSelection(candidate);
+  const ship = explicitSelection?.ship ?? mode.authenticSelection.ship;
+  const style = explicitSelection?.style ?? mode.authenticSelection.style;
+  if (!AUTHENTIC_SHIPS.includes(ship) || !AUTHENTIC_STYLES.includes(style)) return null;
+  return Object.freeze({ ship, style });
 }
 
-/** Replay v1 has no field for the active formation or its input transform. */
+/** Replay v1 has no field for the active formation or its private actors. */
 export function assertFormationReplayCompatible(state, action = 'replay') {
-  if (state?.mode && resolveMode(state.mode) === FORMATION_MODE) {
+  const mode = resolveMode(state?.mode);
+  if (mode) {
     throw new Error(`${action} is unavailable while formation mode is active: `
-      + `${FORMATION_MODE.name}. Replay v1 cannot encode formation state.`);
+      + `${mode.name}. Replay v1 cannot encode formation state.`);
   }
   return true;
 }
@@ -140,152 +109,39 @@ export function assertFormationReplayCompatible(state, action = 'replay') {
 export function createFormationState(modeValue) {
   const mode = resolveMode(modeValue);
   if (!mode) return null;
-  return {
-    mode,
-    runtime: {
-      initialized: false,
-      anchorX: 0,
-      anchorY: 0,
-      lastP1Speed: null,
-      targets: [{ y: 0, x: 0 }, { y: 0, x: 0 }],
-      rebasePending: false,
-    },
-  };
+  return { mode, foundation: null, runtime: null };
 }
 
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function playerRecord(playerIdx) {
-  return playerIdx === 0 ? RAM.player1 : playerIdx === 1 ? RAM.player2 : null;
-}
-
-function liveNonDeathPlayer(ram, playerIdx) {
-  const rec = playerRecord(playerIdx);
-  if (rec == null) return false;
-  const state = ram.u16(rec + P.state);
-  return (state & 0x8000) !== 0 && (state & 0x0100) === 0;
-}
-
-function cacheTargets(runtime) {
-  runtime.targets[0].y = runtime.anchorY;
-  runtime.targets[0].x = runtime.anchorX - OFFSET_X;
-  runtime.targets[1].y = runtime.anchorY;
-  runtime.targets[1].x = runtime.anchorX + OFFSET_X;
-}
-
-function rebaseFromPlayer(runtime, ram, playerIdx) {
-  const rec = playerRecord(playerIdx);
-  const anchorX = ram.u16(rec + P.posX) + (playerIdx === 0 ? OFFSET_X : -OFFSET_X);
-  runtime.anchorX = clamp(anchorX, ANCHOR.xMin, ANCHOR.xMax);
-  runtime.anchorY = clamp(ram.u16(rec + P.posY), ANCHOR.yMin, ANCHOR.yMax);
-  cacheTargets(runtime);
-}
-
-function cachedPositionTransform(state, ram, playerIdx) {
-  const runtime = state.runtime;
-  if (!runtime.initialized || runtime.rebasePending || ram.u16(STAGE_CLEAR) !== 0
-      || !liveNonDeathPlayer(ram, playerIdx)) return null;
-  const target = runtime.targets[playerIdx];
-  return target ? { y: target.y, x: target.x } : null;
-}
-
-/** Per-Game callback options, or null when formation mode is off. */
+/** Formation no longer installs a native P2 player-position callback. */
 export function formationGameOptions(state) {
-  if (!state?.mode || resolveMode(state.mode) !== FORMATION_MODE) return null;
-  return Object.freeze({
-    playerPositionTransform: (ram, playerIdx, y, x) => {
-      void y; void x;
-      return cachedPositionTransform(state, ram, playerIdx);
-    },
-  });
+  void state;
+  return null;
 }
 
-/**
- * Seed the per-Game anchor from the existing P1 position. This does not write
- * RAM; the first active prepareFormationFrame() owns the geometry writes.
- */
-export function initializeFormation(state, game) {
-  if (!state?.mode || resolveMode(state.mode) !== FORMATION_MODE) return null;
-  const runtime = state.runtime;
-  if (runtime.initialized) return state;
-
-  rebaseFromPlayer(runtime, game.ram, 0);
-  if (liveNonDeathPlayer(game.ram, 0)) {
-    runtime.lastP1Speed = game.ram.u8(RAM.player1 + P.speedIdx);
-  }
-  runtime.rebasePending = game.ram.u16(STAGE_CLEAR) !== 0;
-  runtime.initialized = true;
+/** Attach private P1-owned companions after P1 selection is applied. */
+export function initializeFormation(state, game, options = {}) {
+  const mode = resolveMode(state?.mode);
+  if (!mode) return null;
+  if (state.foundation) return state;
+  state.foundation = attachFormationCompanions(game, {
+    mode,
+    companions: mode.companions,
+    layout: mode.companions.length === 2 ? 'three' : 'two',
+    ...(Object.hasOwn(options, 'inputWord') ? { inputWord: options.inputWord } : {}),
+  });
+  state.runtime = state.foundation.runtime;
   return state;
 }
 
-/**
- * Copy the leader controls to P2 in the active-low packed cabinet word. P1's
- * complete byte and both physical Start bits remain untouched. P2 Button 2 is
- * always released, leaving manual bomb and hyper ownership with P1.
- */
+/** Formation leaves the physical cabinet word byte-exact. */
 export function transformFormationInput(state, word) {
-  const input = word & 0xffff;
-  if (!state?.mode || resolveMode(state.mode) !== FORMATION_MODE) return input;
-
-  // In each panel byte, physical bits 1..4 are directions, 5 is B1, 6 is
-  // B2, and 7 is B3. Physical bit 0 is Start. The port is active-low.
-  const p1 = input & 0x00ff;
-  const p2Start = input & 0x0100;
-  const copied = p1 & 0x00be;
-  return (p1 | p2Start | 0x4000 | (copied << 8)) & 0xffff;
+  void state;
+  return word & 0xffff;
 }
 
-/**
- * Prepare one active frame and return the final packed input word. The caller
- * passes input after any catalogue mod transform. Geometry derives from that
- * same final word, moves the shared anchor once, and writes only live players'
- * two position words.
- */
+/** Move P1 and its private companion from P1's final transformed input. */
 export function prepareFormationFrame(state, game, word) {
-  const input = transformFormationInput(state, word);
-  if (!state?.mode || resolveMode(state.mode) !== FORMATION_MODE
-      || !state.runtime.initialized) return input;
-
-  const { ram, tables } = game;
-  const runtime = state.runtime;
-  if (ram.u16(STAGE_CLEAR) !== 0) {
-    runtime.rebasePending = true;
-    return input;
-  }
-
-  const liveP1 = liveNonDeathPlayer(ram, 0);
-  const liveP2 = liveNonDeathPlayer(ram, 1);
-  if (!liveP1 && !liveP2) return input;
-
-  if (runtime.rebasePending) {
-    rebaseFromPlayer(runtime, ram, liveP1 ? 0 : 1);
-    runtime.rebasePending = false;
-  }
-
-  if (liveP1) runtime.lastP1Speed = ram.u8(RAM.player1 + P.speedIdx);
-
-  let dy = 0;
-  let dx = 0;
-  const angle = tables.angleFor(mirrorsFromPort(input).p1 & 0x0f);
-  if (ram.u16(MOVEMENT_DISABLE) === 0 && (angle & 0x80) === 0
-      && runtime.lastP1Speed != null) {
-    const vector = tables.vector(runtime.lastP1Speed, angle);
-    dy = vector.dy;
-    dx = vector.dx;
-  }
-
-  runtime.anchorX = clamp(runtime.anchorX + dx, ANCHOR.xMin, ANCHOR.xMax);
-  runtime.anchorY = clamp(runtime.anchorY + dy, ANCHOR.yMin, ANCHOR.yMax);
-  cacheTargets(runtime);
-
-  for (let playerIdx = 0; playerIdx < 2; playerIdx++) {
-    if (!liveNonDeathPlayer(ram, playerIdx)) continue;
-    const rec = playerRecord(playerIdx);
-    const target = runtime.targets[playerIdx];
-    ram.setU16(rec + P.posY, target.y);
-    ram.setU16(rec + P.posX, target.x);
-  }
-  return input;
+  const input = word & 0xffff;
+  if (!state?.foundation || state.foundation.game !== game) return input;
+  return prepareFormationCompanionFrame(state.foundation, game, input);
 }

@@ -546,13 +546,12 @@ export function enqueueZoomedThroughStub(ram, rom, stub, rec, flags) {
  *                        (grow bit 15, zoom bits 14..11), low word = short axis
  * @param {number} bucket which member of the family; 0 is `$23D9E2`'s own
  */
-export function enqueueZoomedRequest(ram, rec, flags, bucket = 0) {
+export function encodeZoomedRecordRequest(ram, rec, flags) {
   const d6 = flags >>> 0;
   const sizeWord = ram.u16(rec + 0x0e);
-  const height = sizeWord & 0x1ff;                            // $23D9F6
-  const widthByte = (sizeWord >> 8) & 0xff;                   // $23DA12 and.b
+  const height = sizeWord & 0x1ff;
+  const widthByte = (sizeWord >> 8) & 0xff;
 
-  // (b) above.  `lsr.w #1` then `adda.w` -- an entry boundary needs height≡0(8).
   if (height & 7) {
     unreached(0x23d9fa, `$23D9E2's first scale dispatch indexes $23E54A with `
       + `height/2 = ${height >> 1} as a BYTE offset into a 4-byte table; height `
@@ -562,41 +561,37 @@ export function enqueueZoomedRequest(ram, rec, flags, bucket = 0) {
       + `reaches this routine, so nothing here is measured; port it with a `
       + `producer that can be gated`);
   }
-  const scaleShort = SCALE_TABLE[(height >> 1) >> 2];         // $23D9FA..$23DA00
-  // W81 -- A DEFECT, AND IT SURVIVED BECAUSE NOTHING REACHED THIS ROUTINE.
-  // This line read `SCALE_TABLE[(widthByte & 0x3e) >> 1]`.  `$23DA16` is
-  // `lsl.w #$2,D0` (`E548`), so the BYTE offset into a FOUR-byte table is
-  // `(hi & $3E) * 4` and the ENTRY INDEX is `hi & $3E` -- which is the width
-  // field DOUBLED, i.e. `pixels / 8`, exactly as the short axis's `height / 8`
-  // is.  The `>> 1` halved it and made the long-axis recentring `pixels / 16`.
-  // The block comment above this function ("entry index = width*2") had it
-  // right; the code did not.  Nothing could see it because W11 had no producer
-  // for the zooming family at all -- type $82's `$274A28 jsr $23DBCA` is the
-  // first, and on its own `($E,A6)` = $0C58 the two readings are 6 and 12,
-  // i.e. a 3-pixel error on a 96x88 sprite.
-  const scaleLong = SCALE_TABLE[widthByte & 0x3e];            // $23DA10..$23DA1C
-
-  //  $23D9E8..$23D9EE, then $23DA08..$23DA0C on the swapped half.
+  const scaleShort = SCALE_TABLE[(height >> 1) >> 2];
+  const scaleLong = SCALE_TABLE[widthByte & 0x3e];
   const shortAdj = i16(u16(0x80 - u16(d6 >>> 8)) * scaleShort);
   const longAdj = i16(u16(0x80 - ((d6 >>> 24) & 0xff)) * scaleLong);
-
-  const b = BUCKETS[bucket];
-  if (!b) throw new RangeError(`no sprite bucket ${bucket}`);
-  const off = u16(ram.u16(b.counter));                        // $23DA24
-  const at = b.buffer + off;
-  ram.setU16(b.counter, u16(off + RECORD_BYTES));             // $23DA52
-
   const long = u16(longAdj + i16(ram.u16(rec + 0x2)) + i16(ram.u16(rec + 0x6)));
   const short = u16(shortAdj + i16(ram.u16(rec + 0x4)) + i16(ram.u16(rec + 0x8)));
-  const packed = (((long << 16) | short) | 0) >> 6;           // $23DA3C asr.l #6
-  const d1 = (((packed & ENQUEUE_MASK) | d6) >>> 0);          // $23DA3E / $23DA44
+  const packed = (((long << 16) | short) | 0) >> 6;
+  const d1 = (((packed & ENQUEUE_MASK) | d6) >>> 0);
 
-  ram.setU16(at + 0, (d1 >>> 16) & 0xffff);
-  ram.setU16(at + 2, d1 & 0xffff);
-  ram.setU16(at + 4, ram.u16(rec + 0x0a));                    // $23DA4A
-  ram.setU16(at + 6, ram.u16(rec + 0x0c));
-  ram.setU16(at + 8, ram.u16(rec + 0x0e));                    // $23DA4C
-  ram.setU16(at + 10, ram.u16(rec + 0x1c));                   // $23DA4E
+  const request = new Uint8Array(RECORD_BYTES);
+  const view = new DataView(request.buffer);
+  view.setUint16(0, (d1 >>> 16) & 0xffff, false);
+  view.setUint16(2, d1 & 0xffff, false);
+  view.setUint16(4, ram.u16(rec + 0x0a), false);
+  view.setUint16(6, ram.u16(rec + 0x0c), false);
+  view.setUint16(8, ram.u16(rec + 0x0e), false);
+  view.setUint16(10, ram.u16(rec + 0x1c), false);
+  return request;
+}
+
+export function enqueueZoomedRequest(ram, rec, flags, bucket = 0) {
+  const b = BUCKETS[bucket];
+  if (!b) throw new RangeError(`no sprite bucket ${bucket}`);
+  const off = u16(ram.u16(b.counter));
+  const at = b.buffer + off;
+  ram.setU16(b.counter, u16(off + RECORD_BYTES));
+  const request = encodeZoomedRecordRequest(ram, rec, flags);
+  const view = new DataView(request.buffer, request.byteOffset, request.byteLength);
+  for (let offset = 0; offset < RECORD_BYTES; offset += 2) {
+    ram.setU16(at + offset, view.getUint16(offset, false));
+  }
   return off;
 }
 

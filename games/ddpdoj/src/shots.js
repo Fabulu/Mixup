@@ -460,6 +460,16 @@ function emitShotSprite(ram, rec, ctx) {
   }
   return enqueueShotSprite(ram, rec);
 }
+function emitZoomedShotSprite(ram, rec, ctx, flags) {
+  if (ctx?.shotPresentationSink != null) {
+    if (typeof ctx.shotPresentationSink !== 'function') {
+      throw new TypeError('shot presentation sink must be a function');
+    }
+    return ctx.shotPresentationSink(ram, rec, { zoomFlags: flags >>> 0 });
+  }
+  return enqueueZoomedRequest(ram, rec, flags, 14);
+}
+
 //
 // The four are ONE routine with four entry points: $253BDA and $253EC6 are
 // literally instructions inside $253B1E's and $253E34's bodies.  They are
@@ -705,7 +715,7 @@ export function handler253EC6(ram, rom, rec, ctx, prec, d1) {
 }
 
 /** `$253D0C..$253D50`, the moving tail shared by entries 1 and 9. */
-function typeBPlayerNormal(ram, rom, rec) {
+function typeBPlayerNormal(ram, rom, rec, ctx) {
   ram.setU16(rec + S.posY,
     u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
   if (ram.u16(rec + S.posY) >= 0x7800) { ram.setU16(rec, 0); return; }
@@ -719,7 +729,7 @@ function typeBPlayerNormal(ram, rom, rec) {
   ram.setU32(rec + S.dlWord23, rom.u32(anim + i16(ram.u16(rec + S.animIdx))));
   const n = subqBorrow(ram.u16(rec + S.animIdx), 4);
   ram.setU16(rec + S.animIdx, n.borrow ? 4 : n.v);
-  enqueueShotSprite(ram, rec);
+  emitShotSprite(ram, rec, ctx);
 }
 
 /** `$253D82..$253D90`: power words 0,2,...,10 index the six cartridge
@@ -739,7 +749,7 @@ function typeBPlayerLaterHit(ram, rom, rec, ctx) {
     u16(ram.u16(rec + S.posX) + ram.u16(rec + S.velX)));
   const anim = ram.u32(rec + S.animPtr);
   ram.setU32(rec + S.dlWord23, rom.u32(anim + i16(ram.u16(rec + S.animIdx))));
-  enqueueZoomedRequest(ram, rec, typeBHitFlags(rec, ram, ctx.tables), 14);
+  emitZoomedShotSprite(ram, rec, ctx, typeBHitFlags(rec, ram, ctx.tables));
 }
 
 /** `$253DAC..$253E30`, the first hit for Type-B player shots. */
@@ -780,14 +790,14 @@ function typeBPlayerHit(ram, rom, rec, ctx, prec) {
 export function handler253C98(ram, rom, rec, ctx, prec, d1) {
   if (ram.bset8(rec + S.lowByte, 6) === 0) {
     ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);
-    enqueueShotSprite(ram, rec);
+    emitShotSprite(ram, rec, ctx);
     return;
   }
   if (ram.bset8(rec + S.type, 0) === 0) {
     ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + ram.u16(prec + P.velY)));
     ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + ram.u16(prec + P.velX)));
     ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);
-    enqueueShotSprite(ram, rec);
+    emitShotSprite(ram, rec, ctx);
     return;
   }
   ram.setU16(rec, u16(ram.u16(rec) | 0x0008));
@@ -800,17 +810,17 @@ export function handler253C98(ram, rom, rec, ctx, prec, d1) {
   ram.setU16(rec + S.velY, u16(v.dy));
   ram.setU16(rec + S.velX, u16(v.dx));
   ram.bclr8(rec + S.type, 0);
-  typeBPlayerNormal(ram, rom, rec);
+  typeBPlayerNormal(ram, rom, rec, ctx);
 }
 
 /** `$253D52`, dispatch entry 9 for moving Type-B player shots. */
 export function handler253D52(ram, rom, rec, ctx, prec, d1) {
-  if ((d1 & 0x80) === 0) typeBPlayerNormal(ram, rom, rec);
+  if ((d1 & 0x80) === 0) typeBPlayerNormal(ram, rom, rec, ctx);
   else typeBPlayerHit(ram, rom, rec, ctx, prec);
 }
 
 /** `$253FB8..$253FE6`, the moving tail shared by entries 3 and 11. */
-function typeBOptionNormal(ram, rec) {
+function typeBOptionNormal(ram, rec, ctx) {
   ram.bset8(rec + S.type, 0);
   ram.setU16(rec + S.posY,
     u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
@@ -821,7 +831,7 @@ function typeBOptionNormal(ram, rec) {
     ram.setU16(rec, 0);
     return;
   }
-  enqueueShotSprite(ram, rec);
+  emitShotSprite(ram, rec, ctx);
 }
 
 const TYPE_B_OPTION_HIT = Object.freeze({
@@ -843,7 +853,7 @@ function typeBOptionHit(ram, rom, rec, ctx, prec) {
 /** `$253F56`, dispatch entry 3 for normal Type-B option shots. */
 export function handler253F56(ram, rom, rec, ctx, prec, d1) {
   if (ram.bset8(rec + S.lowByte, 6) === 0) {
-    enqueueShotSprite(ram, rec);
+    emitShotSprite(ram, rec, ctx);
     return;
   }
   ram.bset8(rec + S.type, 0);
@@ -858,12 +868,12 @@ export function handler253F56(ram, rom, rec, ctx, prec, d1) {
   const anim = ram.u32(rec + S.animPtr);
   ram.setU32(rec + S.dlWord23, rom.u32(anim));
   ram.bclr8(rec + S.type, 0);
-  typeBOptionNormal(ram, rec);
+  typeBOptionNormal(ram, rec, ctx);
 }
 
 /** `$253FE8`, dispatch entry 11 for moving Type-B option shots. */
 export function handler253FE8(ram, rom, rec, ctx, prec, d1) {
-  if ((d1 & 0x80) === 0) typeBOptionNormal(ram, rec);
+  if ((d1 & 0x80) === 0) typeBOptionNormal(ram, rec, ctx);
   else typeBOptionHit(ram, rom, rec, ctx, prec);
 }
 
@@ -875,7 +885,7 @@ const HYPER_SHOT = Object.freeze({
 });
 
 /** `$2540EC/$254230`, shared by hyper-shot entries 4/12 and 5/13. */
-function hyperShotNormal(ram, rom, rec) {
+function hyperShotNormal(ram, rom, rec, ctx) {
   ram.bset8(rec + S.type, 0);
   ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
   if (ram.u16(rec + S.posY) >= 0x8000) { ram.setU16(rec, 0); return; }
@@ -888,10 +898,10 @@ function hyperShotNormal(ram, rom, rec) {
   ram.setU32(rec + S.dlWord23, rom.u32(anim + i16(ram.u16(rec + S.animIdx))));
   const n = subqBorrow(ram.u16(rec + S.animIdx), 4);
   ram.setU16(rec + S.animIdx, n.borrow ? 4 : n.v);
-  enqueueShotSprite(ram, rec);
+  emitShotSprite(ram, rec, ctx);
 }
 
-function hyperShotLaterHit(ram, rom, rec) {
+function hyperShotLaterHit(ram, rom, rec, ctx) {
   const n = subqBorrow(ram.u16(rec + S.animIdx), 4);
   ram.setU16(rec + S.animIdx, n.v);
   if (n.borrow) { ram.setU16(rec, 0); return; }
@@ -899,13 +909,13 @@ function hyperShotLaterHit(ram, rom, rec) {
   ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + ram.u16(rec + S.velX)));
   const anim = ram.u32(rec + S.animPtr);
   ram.setU32(rec + S.dlWord23, rom.u32(anim + i16(ram.u16(rec + S.animIdx))));
-  enqueueShotSprite(ram, rec);
+  emitShotSprite(ram, rec, ctx);
 }
 
 /** `$25413A/$25427E`, including the first-hit spark and velocity quarter. */
 function hyperShotHit(ram, rom, rec, ctx, prec, tables) {
   if (ram.bset8(rec + S.type, 1) !== 0) {
-    hyperShotLaterHit(ram, rom, rec);
+    hyperShotLaterHit(ram, rom, rec, ctx);
     return;
   }
   if (ram.u16(SPAWN.gate308c) !== 0) {
@@ -923,20 +933,20 @@ function hyperShotHit(ram, rom, rec, ctx, prec, tables) {
   ram.setU16(rec + S.dlWord4, rom.u16(a0)); a0 += 2;
   ram.setU32(rec + S.animPtr, rom.u32(a0)); a0 += 4;
   ram.setU32(rec + S.anim2, rom.u32(a0));
-  hyperShotLaterHit(ram, rom, rec);
+  hyperShotLaterHit(ram, rom, rec, ctx);
 }
 
 function hyperShotBase(ram, rom, rec, ctx, prec, d1, tables) {
   if (ram.bset8(rec + S.lowByte, 6) === 0) {
     ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);
-    enqueueShotSprite(ram, rec);
+    emitShotSprite(ram, rec, ctx);
     return;
   }
   if (ram.bset8(rec + S.type, 0) === 0) {
     ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + ram.u16(prec + P.velY)));
     ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + ram.u16(prec + P.velX)));
     ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);
-    enqueueShotSprite(ram, rec);
+    emitShotSprite(ram, rec, ctx);
     return;
   }
   ram.setU16(rec, u16(ram.u16(rec) | 0x0008));
@@ -949,7 +959,7 @@ function hyperShotBase(ram, rom, rec, ctx, prec, d1, tables) {
   ram.setU16(rec + S.velY, u16(v.dy));
   ram.setU16(rec + S.velX, u16(v.dx));
   ram.bclr8(rec + S.type, 0);
-  hyperShotNormal(ram, rom, rec);
+  hyperShotNormal(ram, rom, rec, ctx);
 }
 
 export function handler254078(ram, rom, rec, ctx, prec, d1) {
@@ -957,17 +967,17 @@ export function handler254078(ram, rom, rec, ctx, prec, d1) {
 }
 export function handler254136(ram, rom, rec, ctx, prec, d1) {
   if (d1 & 0x80) hyperShotHit(ram, rom, rec, ctx, prec, HYPER_SHOT.p1);
-  else hyperShotNormal(ram, rom, rec);
+  else hyperShotNormal(ram, rom, rec, ctx);
 }
 export function handler2541BC(ram, rom, rec, ctx, prec, d1) {
   hyperShotBase(ram, rom, rec, ctx, prec, d1, HYPER_SHOT.p2);
 }
 export function handler25427A(ram, rom, rec, ctx, prec, d1) {
   if (d1 & 0x80) hyperShotHit(ram, rom, rec, ctx, prec, HYPER_SHOT.p2);
-  else hyperShotNormal(ram, rom, rec);
+  else hyperShotNormal(ram, rom, rec, ctx);
 }
 
-function optionHyperNormal(ram, rom, rec) {
+function optionHyperNormal(ram, rom, rec, ctx) {
   ram.bset8(rec + S.type, 0);                                      // $25435A/$254484
   ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + ram.u16(rec + S.velY)));
   if (ram.u16(rec + S.posY) >= 0x7800) { ram.setU16(rec, 0); return; }
@@ -980,12 +990,12 @@ function optionHyperNormal(ram, rom, rec) {
   ram.setU32(rec + S.dlWord23, rom.u32(anim + i16(ram.u16(rec + S.animIdx))));
   const n = subqBorrow(ram.u16(rec + S.animIdx), 4);
   ram.setU16(rec + S.animIdx, n.borrow ? 8 : n.v);
-  enqueueShotSprite(ram, rec);
+  emitShotSprite(ram, rec, ctx);
 }
 
 function optionHyperBase(ram, rom, rec, ctx, prec, d1, tables) {
   if (ram.bset8(rec + S.lowByte, 6) === 0) {
-    enqueueShotSprite(ram, rec);                                    // $25430E/$254438
+    emitShotSprite(ram, rec, ctx);                                    // $25430E/$254438
     return;
   }
   ram.bset8(rec + S.type, 0);
@@ -998,7 +1008,7 @@ function optionHyperBase(ram, rom, rec, ctx, prec, d1, tables) {
   ram.setU16(rec + S.velY, u16(v.dy));
   ram.setU16(rec + S.velX, u16(v.dx));
   ram.bclr8(rec + S.type, 0);
-  optionHyperNormal(ram, rom, rec);
+  optionHyperNormal(ram, rom, rec, ctx);
 }
 
 export function handler254300(ram, rom, rec, ctx, prec, d1) {
@@ -1006,14 +1016,14 @@ export function handler254300(ram, rom, rec, ctx, prec, d1) {
 }
 export function handler2543A4(ram, rom, rec, ctx, prec, d1) {
   if (d1 & 0x80) hyperShotHit(ram, rom, rec, ctx, prec, HYPER_SHOT.pod0);
-  else optionHyperNormal(ram, rom, rec);
+  else optionHyperNormal(ram, rom, rec, ctx);
 }
 export function handler25442A(ram, rom, rec, ctx, prec, d1) {
   optionHyperBase(ram, rom, rec, ctx, prec, d1, HYPER_SHOT.pod1);
 }
 export function handler2544CE(ram, rom, rec, ctx, prec, d1) {
   if (d1 & 0x80) hyperShotHit(ram, rom, rec, ctx, prec, HYPER_SHOT.pod1);
-  else optionHyperNormal(ram, rom, rec);
+  else optionHyperNormal(ram, rom, rec, ctx);
 }
 
 /** The dispatch map the shot driver is given, keyed by ROM address. */

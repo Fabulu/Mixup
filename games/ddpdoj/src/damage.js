@@ -1089,13 +1089,31 @@ function assertPrivateDamageResources(resources) {
     throw new TypeError('private damage resources are required');
   }
   for (const key of [
-    'ownerIndex', 'player', 'shots', 'shotSlots', 'shotStride', 'beamControl',
-    'slot27', 'slot30', 'scratch', 'scratchLength', 'hyperShadows',
-    'hyperShadowLength', 'receipts', 'receiptCount', 'enemyBase', 'enemySlots',
-    'enemyStride', 'ordinaryMask', 'weaponMask', 'phaseAddress',
+    'ownerIndex', 'shotSlots', 'shotStride', 'scratchLength', 'hyperShadowLength',
+    'receiptCount', 'enemyBase', 'enemySlots', 'enemyStride', 'ordinaryMask',
+    'weaponMask', 'phaseAddress',
   ]) {
     if (resources[key] !== PRIVATE_DAMAGE_GEOMETRY[key]) {
       throw new RangeError(`private damage ${key} does not match the exact owner-2 geometry`);
+    }
+  }
+  const base = resources.player - 0x0100;
+  const addresses = {
+    player: 0x0100,
+    shots: 0x0400,
+    beamControl: 0x0b00,
+    slot27: 0x1110,
+    slot30: 0x11a0,
+    scratch: 0x1400,
+    hyperShadows: 0x140e,
+    receipts: 0x1420,
+  };
+  if (!Number.isSafeInteger(base) || base < 0x1000000 || (base & 0xffff) !== 0) {
+    throw new RangeError('private damage sidecar base must be aligned outside cartridge memory');
+  }
+  for (const [key, offset] of Object.entries(addresses)) {
+    if (!Number.isSafeInteger(resources[key]) || resources[key] !== base + offset) {
+      throw new RangeError(`private damage ${key} does not match its exact sidecar offset`);
     }
   }
   if (resources.incomingPolicy !== 'none'

@@ -185,8 +185,12 @@ test('W612 exact body request parses through both selector families and existing
   const requestsA = state.virtualSpriteRequestHook(game);
   assert.equal(state.memory.u16(P3_VIRTUAL.player + P.shipSel), 0);
   assert.equal(state.memory.u16(P3_VIRTUAL.player + P.optFormation), 6);
-  assert.deepEqual(requestsA.map(({ bucket }) => bucket), [NAMED_BUCKETS.player]);
+  assert.deepEqual(requestsA.map(({ bucket }) => bucket),
+    [NAMED_BUCKETS.player, NAMED_BUCKETS.player]);
   assert.equal(hex(requestsA[0].bytes), '802d80630000152006200000');
+  assert.deepEqual(requestWords(requestsA[1].bytes).slice(2), [0, 0x1bc4, 0x0620, 0]);
+  assert.notDeepEqual(requestWords(requestsA[1].bytes).slice(0, 2),
+    requestWords(requestsA[0].bytes).slice(0, 2));
   assert.deepEqual(game.ram.b, ramBefore, 'the host request producer writes no cartridge RAM');
 
   for (const [selector, descriptor] of [[0, 0x1520], [2, 0x1bc4]]) {
@@ -404,22 +408,20 @@ test('W612 attachment exclusively installs a validated seam and emits no deferre
   for (const deferred of [5, 14, 15, 16]) assert.equal(buckets.has(deferred), false);
 });
 
-test('W612 public pages and catalogues remain closed and MOD_IDS remains 32', () => {
+test('W612 public formation is selectable while the mod catalogue remains closed', () => {
   const id = THREE_PILOT_FORMATION_MODE.id;
   assert.equal(MOD_IDS.length, 32);
   assert.equal(MOD_IDS.includes(id), false);
   assert.equal(Object.hasOwn(MODS, id), false);
-  assert.equal(formationMode(id), null);
-  assert.equal(hashToFormation(`#formation=${id}`), null);
-  assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE), '');
-  for (const page of ['../start.html', '../index.html']) {
-    const source = readFileSync(new URL(page, import.meta.url), 'utf8');
-    assert.equal(source.includes(id), false);
-    assert.equal(source.includes(THREE_PILOT_FORMATION_MODE.name), false);
-  }
+  assert.strictEqual(formationMode(id), THREE_PILOT_FORMATION_MODE);
+  assert.strictEqual(hashToFormation(`#formation=${id}`), THREE_PILOT_FORMATION_MODE);
+  assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE), `formation=${id}`);
+  const start = readFileSync(new URL('../start.html', import.meta.url), 'utf8');
+  assert.match(start, /id="formation-three"/);
+  assert.match(start, /All Three Ships/);
 });
 
-test('W612 exact-bundle Game step adds one visible center P3 body without changing native requests',
+test('W612 exact-bundle Game step adds two visible P1 companion bodies without changing native requests',
   { skip: SKIP_ASSETS }, async () => {
     const bundle = await localBundle();
     const selection = THREE_PILOT_FORMATION_MODE.authenticSelection;
@@ -447,8 +449,8 @@ test('W612 exact-bundle Game step adds one visible center P3 body without changi
 
     const rt = renderedDemo.game.displayList;
     const ct = controlDemo.game.displayList;
-    assert.equal(rt.perBucketVirtualRecords[19], 1);
-    assert.equal(rt.perBucketRecords[19], ct.perBucketRecords[19] + 1);
+    assert.equal(rt.perBucketVirtualRecords[19], 2);
+    assert.equal(rt.perBucketRecords[19], ct.perBucketRecords[19] + 2);
     for (let bucket = 0; bucket < BUCKETS.length; bucket++) {
       if (bucket === 19) continue;
       assert.equal(rt.perBucketRecords[bucket], ct.perBucketRecords[bucket],
@@ -457,18 +459,27 @@ test('W612 exact-bundle Game step adds one visible center P3 body without changi
 
     const renderedQueue = queueRequests(renderedDemo.game);
     const controlQueue = queueRequests(controlDemo.game);
-    const p3Index = rt.perBucketRecords.slice(0, 20)
-      .reduce((sum, count) => sum + count, 0) - 1;
-    const [p3Request] = renderedQueue.splice(p3Index, 1);
-    assert.equal(p3Request, '802d80630000152006200000');
+    const companionEnd = rt.perBucketRecords.slice(0, 20)
+      .reduce((sum, count) => sum + count, 0);
+    const companionStart = companionEnd - 2;
+    const companionRequests = renderedQueue.splice(companionStart, 2);
+    assert.deepEqual(companionRequests, [
+      '802d80630000152006200000',
+      '802d808300001bc406200000',
+    ]);
     assert.deepEqual(renderedQueue, controlQueue,
-      'removing the virtual P3 record leaves every native queue request exact');
+      'removing both virtual companion records leaves every native queue request exact');
 
     const visible = parsedList(renderedDemo.game.ram).filter((sprite) =>
       sprite.x === 45 && sprite.y === 99 && sprite.offs === 0x1520
       && sprite.width === 3 && sprite.height === 32
       && sprite.color === 0 && sprite.flip === 0);
-    assert.equal(visible.length, 1, 'the center target reaches the existing hardware list');
+    assert.equal(visible.length, 1, 'the center companion reaches the existing hardware list');
+    const rightVisible = parsedList(renderedDemo.game.ram).filter((sprite) =>
+      sprite.x === 45 && sprite.y === 131 && sprite.offs === 0x1bc4
+      && sprite.width === 3 && sprite.height === 32
+      && sprite.color === 0 && sprite.flip === 0);
+    assert.equal(rightVisible.length, 1, 'the right companion reaches the existing hardware list');
     assert.deepEqual([
       rendered.memory.u16(P3_VIRTUAL.player + P.posY),
       rendered.memory.u16(P3_VIRTUAL.player + P.posX),

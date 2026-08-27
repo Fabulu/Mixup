@@ -1,4 +1,4 @@
-// W610 Wave 3: exact-bundle formation lifecycle proof.
+// W610 Wave 3: exact-bundle P1-owned formation lifecycle proof.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -6,18 +6,17 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MACHINE, P, RAM, BIT, OPT } from '../src/machine.js';
+import { MACHINE, P, RAM, BIT } from '../src/machine.js';
 import { ALLOC } from '../src/objalloc.js';
-import { DMG } from '../src/damage.js';
-import { TALLY } from '../src/tally.js';
-import { SHOT } from '../src/weapons.js';
-import { BEAM, SEG } from '../src/laser.js';
-import { HYPER } from '../src/hyper.js';
 import { BOMBRAM } from '../src/bomb.js';
 import { HUDRAM } from '../src/hud.js';
+import { HYPER } from '../src/hyper.js';
+import { DEATH } from '../src/player.js';
+import { CONTINUE } from '../src/continuescreen.js';
+import { TALLY } from '../src/tally.js';
 import { MOD_IDS } from '../src/mods.js';
 import {
-  FORMATION_MODE, createFormationState, initializeFormation, prepareFormationFrame,
+  FORMATION_MODE, FORMATION_THREE_MODE, prepareFormationFrame,
 } from '../src/formation.js';
 import { mirrorsFromPort, portWordFromPlayerBits } from '../src/input.js';
 import { AssetError, loadBundle } from '../src/web/assets.js';
@@ -55,54 +54,10 @@ function fakeCanvas() {
   };
 }
 
-function allocatorActors(ram, type) {
+function allocatorActors(ram, type, marker = null) {
   return Array.from({ length: ALLOC.slots }, (_, i) => ALLOC.table + i * ALLOC.stride)
-    .filter((slot) => ram.u16(slot) === (0x8000 | type));
-}
-
-const P1_LIVES = 0x8130be;
-const P2_LIVES = 0x8130c0;
-const BULLET_CONTINUATION = 0x282420;
-
-function actorId(ram, slot) {
-  return ram.u32(slot + ALLOC.idOff);
-}
-
-function objectById(ram, id) {
-  for (let slot = 0; slot < ALLOC.slots; slot++) {
-    const rec = ALLOC.table + slot * ALLOC.stride;
-    if ((ram.u16(rec) & 0x8000) !== 0 && actorId(ram, rec) === id) return rec;
-  }
-  return null;
-}
-
-function stagedById(ram, id) {
-  for (let offset = 0; offset < ram.u16(ALLOC.createSp); offset += ALLOC.stride) {
-    const rec = ALLOC.createStage + offset;
-    if ((ram.u16(rec) & 0x8000) !== 0 && actorId(ram, rec) === id) return rec;
-  }
-  return null;
-}
-
-function playerActor(ram, side) {
-  for (let slot = 0; slot < ALLOC.slots; slot++) {
-    const rec = ALLOC.table + slot * ALLOC.stride;
-    if ((ram.u16(rec) & 0xff) === side + 2 && ram.u8(rec + 0x07) === side) return rec;
-  }
-  return null;
-}
-
-function recordsOfType(ram, type) {
-  const records = [];
-  for (let slot = 0; slot < ALLOC.slots; slot++) {
-    const rec = ALLOC.table + slot * ALLOC.stride;
-    if ((ram.u16(rec) & 0x807f) === (0x8000 | type)) records.push(rec);
-  }
-  for (let offset = 0; offset < ram.u16(ALLOC.createSp); offset += ALLOC.stride) {
-    const rec = ALLOC.createStage + offset;
-    if ((ram.u16(rec) & 0x807f) === (0x8000 | type)) records.push(rec);
-  }
-  return records;
+    .filter((slot) => ram.u16(slot) === (0x8000 | type)
+      && (marker == null || ram.u8(slot + 0x07) === marker));
 }
 
 function bytes(ram, begin, length) {
@@ -110,12 +65,7 @@ function bytes(ram, begin, length) {
   return ram.b.slice(offset, offset + length);
 }
 
-function liveRecords(ram, table, slots, stride) {
-  return Array.from({ length: slots }, (_, i) => table + i * stride)
-    .filter((rec) => (ram.u16(rec) & 0x8000) !== 0);
-}
-
-function bombLedger(ram, p2) {
+function bombLedger(ram, p2 = false) {
   return {
     stock: ram.u8((p2 ? RAM.player2 : RAM.player1) + BOMBRAM.stockOffset),
     count: ram.u16(p2 ? BOMBRAM.countP2 : BOMBRAM.countP1),
@@ -123,28 +73,83 @@ function bombLedger(ram, p2) {
   };
 }
 
-function playerResources(ram, side) {
-  const player = side ? RAM.player2 : RAM.player1;
-  const hyper = side ? HYPER.p2 : HYPER.p1;
-  const score = side ? HUDRAM.totalP2 : HUDRAM.totalP1;
-  const pending = side ? HUDRAM.pendingP2 : HUDRAM.pendingP1;
-  const lives = side ? P2_LIVES : P1_LIVES;
-  const tally = side ? TALLY.side1 : TALLY.side0;
+function nativeP2Resources(ram) {
   return {
-    state: ram.u16(player + P.state),
-    lives: ram.u16(lives),
-    tallyResult: ram.u32(tally + TALLY.result),
-    bomb: bombLedger(ram, !!side),
-    hyper: {
-      stock: ram.u16(hyper.stock), req: ram.u16(hyper.req), active: ram.u16(hyper.active),
+    player: bytes(ram, RAM.player2, P.stride),
+    lives: ram.u16(DEATH.p2.lives),
+    hudScore: {
+      total: ram.u32(HUDRAM.totalP2),
+      overflow: ram.u16(HUDRAM.ovfP2),
+      pending: ram.u32(HUDRAM.pendingP2),
+      extendNext: ram.u32(HUDRAM.extendNextP2),
+      extendIndex: ram.u16(HUDRAM.extendIdxP2),
+      digitState: ram.u16(HUDRAM.digitStateP2),
+      digits: bytes(ram, HUDRAM.digitsP2, 9 * 0x0a),
     },
-    score: { total: ram.u32(score), pending: ram.u32(pending) },
+    bombs: bombLedger(ram, true),
+    hyper: {
+      active: ram.u16(HYPER.p2.active),
+      gauge: ram.u16(HYPER.p2.gauge),
+      earn: ram.u16(HYPER.p2.earn),
+      power: ram.u16(HYPER.p2.power),
+      level: ram.u16(HYPER.p2.level),
+      request: ram.u16(HYPER.p2.req),
+      stock: ram.u16(HYPER.p2.stock),
+      pending: ram.u16(HYPER.p2.pending),
+    },
+    tally: bytes(ram, TALLY.side1, TALLY.stride),
+    continue: bytes(ram, CONTINUE.recordB, 0x16),
+    respawn: {
+      ready: ram.u16(DEATH.p2.ready),
+      flag: ram.u16(DEATH.p2.flag),
+      noMiss: ram.u16(DEATH.p2.noMiss),
+      activeSave: ram.u16(DEATH.p2.activeSave),
+      suffix: ram.u16(DEATH.p2.suffix),
+      reloadA: ram.u16(DEATH.p2.reloadA),
+      reloadB: ram.u16(DEATH.p2.reloadB),
+      dropGate: ram.u16(DEATH.p2.dropGate),
+      dropCount: ram.u16(DEATH.p2.dropCount),
+    },
   };
 }
 
-function activeDemo(bundle) {
+function seedNativeP2Resources(ram) {
+  for (let offset = 0; offset < P.stride; offset++) {
+    ram.setU8(RAM.player2 + offset, (0x31 + offset * 7) & 0xff);
+  }
+  ram.setU16(DEATH.p2.lives, 0x4321);
+  ram.setU32(HUDRAM.totalP2, 0x12345678);
+  ram.setU16(HUDRAM.ovfP2, 0x2345);
+  ram.setU32(HUDRAM.pendingP2, 0x3456789a);
+  ram.setU32(HUDRAM.extendNextP2, 0x456789ab);
+  ram.setU16(HUDRAM.extendIdxP2, 0x5678);
+  ram.setU16(HUDRAM.digitStateP2, 0x6789);
+  for (let offset = 0; offset < 9 * 0x0a; offset++) {
+    ram.setU8(HUDRAM.digitsP2 + offset, (0x5a + offset * 3) & 0xff);
+  }
+  ram.setU8(RAM.player2 + BOMBRAM.stockOffset, 0x76);
+  ram.setU16(BOMBRAM.countP2, 0x789a);
+  ram.setU16(BOMBRAM.usedP2, 0x89ab);
+  [
+    HYPER.p2.active, HYPER.p2.gauge, HYPER.p2.earn, HYPER.p2.power,
+    HYPER.p2.level, HYPER.p2.req, HYPER.p2.stock, HYPER.p2.pending,
+  ].forEach((address, index) => ram.setU16(address, 0x1001 + index * 0x111));
+  for (let offset = 0; offset < TALLY.stride; offset++) {
+    ram.setU8(TALLY.side1 + offset, (0x81 + offset * 5) & 0xff);
+  }
+  for (let offset = 0; offset < 0x16; offset++) {
+    ram.setU8(CONTINUE.recordB + offset, (0xa1 + offset * 9) & 0xff);
+  }
+  [
+    DEATH.p2.ready, DEATH.p2.flag, DEATH.p2.noMiss,
+    DEATH.p2.activeSave, DEATH.p2.suffix, DEATH.p2.reloadA,
+    DEATH.p2.reloadB, DEATH.p2.dropGate, DEATH.p2.dropCount,
+  ].forEach((address, index) => ram.setU16(address, 0x2002 + index * 0x101));
+}
+
+function activeDemo(bundle, mode = FORMATION_THREE_MODE) {
   return new Demo(fakeCanvas(), bundle, MACHINE.refreshHz,
-    undefined, null, null, null, null, FORMATION_MODE);
+    undefined, null, null, null, null, mode);
 }
 
 function stepUntil(demo, predicate, limit, message) {
@@ -155,369 +160,117 @@ function stepUntil(demo, predicate, limit, message) {
   assert.fail(`${message} within ${limit} logic frames`);
 }
 
-test('W610 exact formation launch allocates distinct authentic P1 and P2 actors',
-  { skip: SKIP_ASSETS }, async () => {
-    const demo = activeDemo(await localBundle());
-    const ram = demo.game.ram;
-    assert.deepEqual(demo.authentic, {
-      ship: 0, style: 2, p2: { ship: 2, style: 2 },
-    });
-    assert.equal(ram.u16(TALLY.side1), 4, 'formation posts genuine P2 request 4');
-
-    stepUntil(demo, () => allocatorActors(ram, 3).length === 1, 4,
-      'request 4 must commit one type-3 actor');
-    const [p1Actor] = allocatorActors(ram, 2);
-    const [p2Actor] = allocatorActors(ram, 3);
-    assert.ok(p1Actor, 'the exact seed retains its allocator-backed type-2 P1');
-    assert.ok(p2Actor, 'request 4 commits an allocator-backed type-3 P2');
-    const p1Id = actorId(ram, p1Actor);
-    const p2Id = actorId(ram, p2Actor);
-    assert.notEqual(p1Id, p2Id);
-    assert.equal(ram.u32(TALLY.side0 + TALLY.result), p1Id);
-    assert.equal(ram.u32(TALLY.side1 + TALLY.result), p2Id);
-    assert.equal(ram.u8(p1Actor + 0x07), 0);
-    assert.equal(ram.u8(p2Actor + 0x07), 1);
-    assert.equal(ram.u16(RAM.player1 + P.state), 0x8000);
-    assert.equal(ram.u16(RAM.player2 + P.state), 0x8000);
-    assert.deepEqual([
-      ram.u16(RAM.player1 + P.shipSel), ram.u16(RAM.player1 + P.optFormation),
-      ram.u16(RAM.player2 + P.shipSel), ram.u16(RAM.player2 + P.optFormation),
-    ], [0, 2, 2, 2]);
-    assert.equal(RAM.player1 + P.stride, RAM.player2);
-    assert.equal(RAM.p1Options + OPT.stride, RAM.p2Options);
-    assert.deepEqual([
-      ram.u16(RAM.p1Options + OPT.state), ram.u16(RAM.p2Options + OPT.state),
-    ], [0x8003, 0x8001]);
-    assert.notEqual(SHOT.p1Table, SHOT.p2Table);
-    assert.notEqual(BEAM[0].rec, BEAM[1].rec);
-    assert.notEqual(BEAM[0].pool, BEAM[1].pool);
-    assert.notEqual(HYPER.p1.stock, HYPER.p2.stock);
-    assert.notEqual(HUDRAM.totalP1, HUDRAM.totalP2);
-    assert.notEqual(BOMBRAM.countP1, BOMBRAM.countP2);
-    assert.notEqual(P1_LIVES, P2_LIVES);
-    assert.deepEqual(playerResources(ram, 0), {
-      state: 0x8000, lives: 2, tallyResult: p1Id,
-      bomb: { stock: 3, count: 0, used: 0 },
-      hyper: { stock: 0, req: 0, active: 0 },
-      score: { total: 0, pending: 0 },
-    });
-    assert.deepEqual(playerResources(ram, 1), {
-      state: 0x8000, lives: 2, tallyResult: p2Id,
-      bomb: { stock: 3, count: 0, used: 0 },
-      hyper: { stock: 0, req: 0, active: 0 },
-      score: { total: 0, pending: 0 },
-    });
-  });
-
-test('W610 formation control packing reaches both actors but leaves Button 2 with P1',
-  { skip: SKIP_ASSETS }, async () => {
-    clearCoin();
-    clearTouch();
-    const demo = activeDemo(await localBundle());
-    stepUntil(demo, () => allocatorActors(demo.game.ram, 3).length === 1, 4,
-      'formation P2 must become live');
-    assert.equal(selectTouchOwner('P1'), true);
-    const anchorBefore = {
-      x: demo.formation.runtime.anchorX,
-      y: demo.formation.runtime.anchorY,
-    };
-    const angle = demo.game.tables.angleFor(1 << BIT.right);
-    const vector = demo.game.tables.vector(demo.formation.runtime.lastP1Speed, angle);
-    const p1BombBefore = bombLedger(demo.game.ram, false);
-    const p2BombBefore = bombLedger(demo.game.ram, true);
-    setTouchDirections(1 << BIT.right);
-    setTouchButton('SHOT', true);
-    setTouchButton('BOMB', true);
-    setTouchButton('AUTO', true);
-    let packedWord = null;
-    const realStep = demo.game.step.bind(demo.game);
-    demo.game.step = (word) => {
-      packedWord = word;
-      return realStep(word);
-    };
-    try {
-      demo.step();
-      const packed = mirrorsFromPort(packedWord);
-      for (const bit of [BIT.right, BIT.b1, BIT.b3]) {
-        assert.notEqual(packed.p1 & (1 << bit), 0);
-        assert.notEqual(packed.p2 & (1 << bit), 0);
-      }
-      assert.notEqual(packed.p1 & (1 << BIT.b2), 0);
-      assert.equal(packed.p2 & (1 << BIT.b2), 0);
-      const expectedAnchor = {
-        x: Math.max(0x0700, Math.min(0x3100, anchorBefore.x + vector.dx)),
-        y: Math.max(0x0800, Math.min(0x6500, anchorBefore.y + vector.dy)),
-      };
-      assert.deepEqual({
-        x: demo.formation.runtime.anchorX,
-        y: demo.formation.runtime.anchorY,
-      }, expectedAnchor, 'P1 Right advances one shared anchor by the cartridge vector');
-      assert.deepEqual([
-        demo.game.ram.u16(RAM.player1 + P.posY),
-        demo.game.ram.u16(RAM.player1 + P.posX),
-        demo.game.ram.u16(RAM.player2 + P.posY),
-        demo.game.ram.u16(RAM.player2 + P.posX),
-      ], [expectedAnchor.y, expectedAnchor.x - 0x0400,
-        expectedAnchor.y, expectedAnchor.x + 0x0400]);
-      assert.equal(demo.game.ram.u16(RAM.player2 + P.posX)
-        - demo.game.ram.u16(RAM.player1 + P.posX), 0x0800);
-
-      assert.deepEqual(p1BombBefore, { stock: 3, count: 0, used: 0 });
-      assert.deepEqual(p2BombBefore, { stock: 3, count: 0, used: 0 });
-      assert.deepEqual(bombLedger(demo.game.ram, false), { stock: 2, count: 1, used: 1 },
-        'the real P1 Button 2 press spends exactly one P1 bomb');
-      assert.deepEqual(bombLedger(demo.game.ram, true), p2BombBefore,
-        'formation never debits the P2 bomb ledger');
-      assert.equal(demo.game.ram.u16(RAM.p1edge) & (1 << BIT.b2), 1 << BIT.b2);
-      assert.equal(demo.game.ram.u16(RAM.p2edge) & (1 << BIT.b2), 0);
-      assert.equal(demo.game.ram.u16(BOMBRAM.rec), 0x8100);
-      assert.equal(demo.game.ram.btst8(RAM.player1 + P.flags1, 6), 1);
-      assert.equal(demo.game.ram.btst8(RAM.player2 + P.flags1, 6), 0);
-    } finally {
-      clearTouch();
-      clearCoin();
-    }
-  });
-
-test('W610 exact Game clamps the shared formation at all four walls',
-  { skip: SKIP_ASSETS }, async () => {
-    const demo = activeDemo(await localBundle());
-    const { game } = demo;
-    const { ram } = game;
-    stepUntil(demo, () => allocatorActors(ram, 3).length === 1, 4,
-      'formation P2 must become live');
-    const addresses = [
-      RAM.player1 + P.posY, RAM.player1 + P.posX,
-      RAM.player2 + P.posY, RAM.player2 + P.posX,
-    ];
-    const cases = [
-      { name: 'left', bit: BIT.left, anchor: [0x2000, 0x0700],
-        positions: [0x2000, 0x0300, 0x2000, 0x0b00] },
-      { name: 'right', bit: BIT.right, anchor: [0x2000, 0x3100],
-        positions: [0x2000, 0x2d00, 0x2000, 0x3500] },
-      { name: 'bottom', bit: BIT.down, anchor: [0x0800, 0x1400],
-        positions: [0x0800, 0x1000, 0x0800, 0x1800] },
-      { name: 'top', bit: BIT.up, anchor: [0x6500, 0x1400],
-        positions: [0x6500, 0x1000, 0x6500, 0x1800] },
-    ];
-
-    for (const entry of cases) {
-      addresses.forEach((address, i) => ram.setU16(address, entry.positions[i]));
-      const state = createFormationState(FORMATION_MODE);
-      initializeFormation(state, game);
-      const word = prepareFormationFrame(state, game,
-        portWordFromPlayerBits([entry.bit], []));
-      assert.deepEqual([state.runtime.anchorY, state.runtime.anchorX], entry.anchor,
-        `${entry.name} anchor clamps exactly`);
-      assert.deepEqual(addresses.map((address) => ram.u16(address)), entry.positions,
-        `${entry.name} targets remain exactly eight horizontal units apart`);
-      const packed = mirrorsFromPort(word);
-      assert.notEqual(packed.p1 & (1 << entry.bit), 0);
-      assert.notEqual(packed.p2 & (1 << entry.bit), 0);
-    }
-  });
-
-test('W610 copied fire drives independent option, shot, beam, and score resources',
+test('W610 exact three-ship bundle clamps P1 and both companions at all four walls',
   { skip: SKIP_ASSETS }, async () => {
     clearCoin();
     clearTouch();
     const demo = activeDemo(await localBundle());
     const { ram } = demo.game;
-    stepUntil(demo, () => allocatorActors(ram, 3).length === 1, 4,
-      'formation P2 must become live');
-    assert.equal(selectTouchOwner('P1'), true);
-    setTouchButton('SHOT', true);
-    try {
-      demo.step();
-      assert.equal(liveRecords(ram, SHOT.p1Table, SHOT.slots, SHOT.stride).length, 4);
-      assert.equal(liveRecords(ram, SHOT.p2Table, SHOT.slots, SHOT.stride).length, 2);
-      assert.notDeepEqual(bytes(ram, SHOT.p1Table, SHOT.slots * SHOT.stride),
-        bytes(ram, SHOT.p2Table, SHOT.slots * SHOT.stride),
-        'genuine muzzle writers fill separate shot pools');
+    stepUntil(demo, () => allocatorActors(ram, 3, 2).length === 1
+      && allocatorActors(ram, 3, 3).length === 1, 4,
+    'both private companion actors must become live');
+    const manager = demo.formation.foundation;
+    const p2Before = bytes(ram, RAM.player2, P.stride);
+    const cases = [
+      { name: 'left', bit: BIT.left, anchor: [0x2000, 0x0b00],
+        positions: [[0x2000, 0x0300], [0x2000, 0x0b00], [0x2000, 0x1300]] },
+      { name: 'right', bit: BIT.right, anchor: [0x2000, 0x2d00],
+        positions: [[0x2000, 0x2500], [0x2000, 0x2d00], [0x2000, 0x3500]] },
+      { name: 'bottom', bit: BIT.down, anchor: [0x0800, 0x1c00],
+        positions: [[0x0800, 0x1400], [0x0800, 0x1c00], [0x0800, 0x2400]] },
+      { name: 'top', bit: BIT.up, anchor: [0x6500, 0x1c00],
+        positions: [[0x6500, 0x1400], [0x6500, 0x1c00], [0x6500, 0x2400]] },
+    ];
 
-      for (let frame = 1; frame < 120; frame++) demo.step();
+    for (const entry of cases) {
+      [manager.runtime.anchorY, manager.runtime.anchorX] = entry.anchor;
+      const raw = portWordFromPlayerBits([entry.bit], []);
+      assert.equal(prepareFormationFrame(demo.formation, demo.game, raw), raw & 0xffff);
+      assert.deepEqual([manager.runtime.anchorY, manager.runtime.anchorX], entry.anchor,
+        `${entry.name} anchor clamps exactly`);
       assert.deepEqual([
-        ram.u16(RAM.p1Options + OPT.state), ram.u16(RAM.p2Options + OPT.state),
-      ], [0xf007, 0xf007], 'both independent option records reach live laser state');
-      assert.deepEqual([ram.u16(BEAM[0].rec), ram.u16(BEAM[1].rec)], [0x9201, 0x8201]);
-      assert.deepEqual([
-        liveRecords(ram, BEAM[0].pool, SEG.slots, SEG.stride).length,
-        liveRecords(ram, BEAM[1].pool, SEG.slots, SEG.stride).length,
-      ], [12, 10], 'both independent beam pools retain exact live segment counts');
-      assert.deepEqual([
-        ram.u32(HUDRAM.totalP1), ram.u32(HUDRAM.totalP2),
-      ], [0x00000384, 0x00000410],
-      'real weapon hits credit the two independent visible score ledgers');
-      assert.deepEqual({
-        p1: {
-          stock: ram.u16(HYPER.p1.stock), req: ram.u16(HYPER.p1.req),
-          active: ram.u16(HYPER.p1.active),
-        },
-        p2: {
-          stock: ram.u16(HYPER.p2.stock), req: ram.u16(HYPER.p2.req),
-          active: ram.u16(HYPER.p2.active),
-        },
-      }, {
-        p1: { stock: 0, req: 0, active: 0 },
-        p2: { stock: 0, req: 0, active: 0 },
-      }, 'copied fire cannot merge the independent hyper ledgers');
-      assert.deepEqual(bombLedger(ram, false), { stock: 3, count: 0, used: 0 });
-      assert.deepEqual(bombLedger(ram, true), { stock: 3, count: 0, used: 0 });
-    } finally {
-      clearTouch();
-      clearCoin();
+        ram.u16(RAM.player1 + P.posY), ram.u16(RAM.player1 + P.posX),
+      ], entry.positions[0]);
+      manager.companions.forEach((companion, index) => {
+        assert.deepEqual([
+          companion.memory.u16(companion.binding.player + P.posY),
+          companion.memory.u16(companion.binding.player + P.posX),
+        ], entry.positions[index + 1]);
+      });
+      const packed = mirrorsFromPort(raw);
+      assert.notEqual(packed.p1 & (1 << entry.bit), 0);
+      assert.equal(packed.p2 & 0x7f, 0);
+      assert.deepEqual(bytes(ram, RAM.player2, P.stride), p2Before);
     }
   });
 
-test('W610 P2 collision respawns a distinct formation actor without touching P1',
+test('W610 one P1 Button 2 edge spends one P1 bomb and reaches no companion',
   { skip: SKIP_ASSETS }, async () => {
     clearCoin();
     clearTouch();
     const demo = activeDemo(await localBundle());
-    const { game } = demo;
-    const { ram } = game;
-    const p1Actor = playerActor(ram, 0);
-    assert.notEqual(p1Actor, null);
-    const p1Id = actorId(ram, p1Actor);
-    const originalId = (ram.u32(ALLOC.idCounter) + 1) >>> 0;
-
-    demo.step();                                                // call 1: stage request-4 P2
-    assert.equal(ram.u16(TALLY.side1), 0);
-    assert.equal(ram.u16(ALLOC.createStage), 0x8003);
-    assert.equal(ram.u8(ALLOC.createStage + 0x07), 1);
-    assert.equal(ram.u32(TALLY.side1 + TALLY.result), originalId);
-    assert.equal(objectById(ram, originalId), null);
-
-    demo.step();                                                // call 2: commit and initialize P2
-    const originalActor = objectById(ram, originalId);
-    assert.notEqual(originalActor, null);
-    assert.equal(ram.u16(originalActor), 0x8003);
-    assert.equal(ram.u8(originalActor + 0x07), 1);
-    const p1Before = playerResources(ram, 0);
-    const p1ShotsBefore = bytes(ram, SHOT.p1Table, SHOT.slots * SHOT.stride);
-    const p2LivesBefore = ram.u16(P2_LIVES);
-    assert.equal(p2LivesBefore, 2);
-
-    const bullet = DMG.bulletPool;
-    ram.setU16(bullet, 0x8000);
-    ram.setU16(bullet + 0x02, ram.u16(RAM.player2 + P.posY));
-    ram.setU16(bullet + 0x04, ram.u16(RAM.player2 + P.posX));
-    ram.setU8(bullet + 0x1a, 0);
-    ram.setU8(bullet + 0x1b, 0);
-    ram.setU32(bullet + 0x1e, 0);
-    ram.setU32(bullet + 0x22, BULLET_CONTINUATION);
-    ram.setU8(RAM.player2 + P.invuln, 0);
-    ram.setU16(DMG.gate308c, 0);
-    ram.setU16(DMG.mirror2, 0);
-
-    demo.step();                                                // call 3: ordinary collision hits P2
-    assert.equal(game.damageFrame?.player?.hitPlayer, true);
-    assert.equal(ram.u16(DMG.fa72), DMG.maskP2);
-    assert.equal(ram.btst8(RAM.player2 + P.state, 4), 1);
-    assert.equal(ram.btst8(RAM.player1 + P.state, 4), 0);
-    assert.ok((ram.u8(bullet) & 0x10) !== 0);
-
-    demo.step();                                                // call 4: P2 consumes the lethal hit
-    assert.equal(ram.btst8(RAM.player2 + P.state, 0), 1);
-    assert.equal(ram.btst8(RAM.player1 + P.state, 0), 0);
-    assert.equal(ram.u16(P2_LIVES), p2LivesBefore);
-    const deathPosition = [
-      ram.u16(RAM.player2 + P.posY), ram.u16(RAM.player2 + P.posX),
-    ];
-
-    const deathPositions = new Set([deathPosition.join(':')]);
-    for (let call = 5; call <= 73; call++) {
-      demo.step();
-      deathPositions.add([
-        ram.u16(RAM.player2 + P.posY), ram.u16(RAM.player2 + P.posX),
-      ].join(':'));
-    }
-    const deathAnimationPosition = [deathPosition[0], 0x1c00];
-    assert.deepEqual([...deathPositions], [
-      deathPosition.join(':'), deathAnimationPosition.join(':'),
-    ], 'only the cartridge death animation moves its own record');
-    assert.deepEqual([
-      ram.u16(RAM.player2 + P.posY), ram.u16(RAM.player2 + P.posX),
-    ], deathAnimationPosition,
-    'the cartridge death-animation position remains untouched after its own offset');
-    assert.notDeepEqual(deathAnimationPosition,
-      [demo.formation.runtime.targets[1].y, demo.formation.runtime.targets[1].x],
-      'formation does not snap a death record back to the live target');
-    assert.equal(ram.u16(TALLY.side1), 0);
-    assert.equal(objectById(ram, originalId), originalActor);
-    assert.equal(ram.u16(P2_LIVES), p2LivesBefore);
-
-    demo.step();                                                // call 74: death reset posts request 1
-    assert.equal(ram.u16(TALLY.side1), 1);
-    assert.equal(ram.u16(TALLY.side0), 0);
-    assert.equal(ram.u16(ALLOC.killSp), ALLOC.stride);
-    assert.equal(ram.u32(ALLOC.killQueue), originalId);
-    assert.equal(objectById(ram, originalId), originalActor);
-
-    demo.step();                                                // call 75: retire, debit, stage replacement
-    const replacementId = ram.u32(TALLY.side1 + TALLY.result);
-    assert.equal(objectById(ram, originalId), null);
-    assert.equal(ram.u16(P2_LIVES), p2LivesBefore - 1);
-    assert.equal(ram.u16(P1_LIVES), p1Before.lives);
-    assert.notEqual(replacementId, originalId);
-    assert.notEqual(replacementId, 0);
-    assert.equal(objectById(ram, replacementId), null);
-    const staged = stagedById(ram, replacementId);
-    assert.notEqual(staged, null);
-    assert.equal(ram.u16(staged), 0x8003);
-    assert.equal(ram.u8(staged + 0x07), 1);
-
-    demo.step();                                                // call 76: commit and initialize replacement
-    const replacementActor = objectById(ram, replacementId);
-    assert.notEqual(replacementActor, null);
-    assert.equal(ram.u16(replacementActor), 0x8003);
-    assert.equal(ram.u8(replacementActor + 0x07), 1);
-    assert.equal(ram.u8(RAM.player2 + P.invuln), 0xf0);
-    const rightTarget = demo.formation.runtime.targets[1];
-    assert.deepEqual([
-      ram.u16(RAM.player2 + P.posY), ram.u16(RAM.player2 + P.posX),
-    ], [rightTarget.y, rightTarget.x],
-    'replacement initialization callback snaps P2 to the live right-hand target');
-    assert.equal(ram.u16(RAM.player2 + P.posX) - ram.u16(RAM.player1 + P.posX), 0x0800);
-    assert.notDeepEqual(bytes(ram, RAM.player1, P.stride), bytes(ram, RAM.player2, P.stride),
-      'replacement initialization does not copy the complete P1 record');
-    assert.equal(playerActor(ram, 0), p1Actor);
-    assert.equal(actorId(ram, p1Actor), p1Id);
-    assert.deepEqual(playerResources(ram, 0), p1Before);
-    assert.deepEqual(bytes(ram, SHOT.p1Table, SHOT.slots * SHOT.stride), p1ShotsBefore);
-    assert.deepEqual(recordsOfType(ram, 0x0e), []);
-    assert.deepEqual(recordsOfType(ram, 0x0c), [],
-      'a reserve-life respawn never enters the global Game Over chain');
-
+    const { ram } = demo.game;
+    stepUntil(demo, () => allocatorActors(ram, 3, 2).length === 1
+      && allocatorActors(ram, 3, 3).length === 1, 4,
+    'both private companion actors must become live');
     assert.equal(selectTouchOwner('P1'), true);
-    setTouchDirections(1 << BIT.right);
-    setTouchButton('SHOT', true);
-    const anchorBefore = demo.formation.runtime.anchorX;
+    const p1Before = bombLedger(ram);
+    const p2Before = bombLedger(ram, true);
+    const p2RecordBefore = bytes(ram, RAM.player2, P.stride);
+    setTouchButton('BOMB', true);
+
     try {
-      demo.step();                                              // call 77: copied movement and fire
-      assert.ok(demo.formation.runtime.anchorX > anchorBefore);
-      assert.equal(ram.u16(RAM.player2 + P.posX) - ram.u16(RAM.player1 + P.posX), 0x0800);
-      assert.equal(ram.u8(RAM.player1 + P.dirByte), 0x18);
-      assert.equal(ram.u8(RAM.player2 + P.dirByte), 0x98);
-      assert.equal(ram.u8(RAM.player1 + P.btnByte), 0x18);
-      assert.equal(ram.u8(RAM.player2 + P.btnByte), 0x18);
-      assert.equal(liveRecords(ram, SHOT.p1Table, SHOT.slots, SHOT.stride).length, 4);
-      assert.equal(liveRecords(ram, SHOT.p2Table, SHOT.slots, SHOT.stride).length, 2);
-      assert.equal(playerActor(ram, 0), p1Actor);
-      assert.equal(actorId(ram, p1Actor), p1Id);
-      assert.equal(ram.u16(P1_LIVES), p1Before.lives);
-      assert.deepEqual(bombLedger(ram, false), p1Before.bomb);
-      assert.deepEqual({
-        stock: ram.u16(HYPER.p1.stock), req: ram.u16(HYPER.p1.req),
-        active: ram.u16(HYPER.p1.active),
-      }, p1Before.hyper);
+      demo.step();
+      assert.deepEqual(p1Before, { stock: 3, count: 0, used: 0 });
+      assert.deepEqual(bombLedger(ram), { stock: 2, count: 1, used: 1 });
+      assert.deepEqual(bombLedger(ram, true), p2Before);
+      assert.deepEqual(bytes(ram, RAM.player2, P.stride), p2RecordBefore);
+      assert.notEqual(ram.u16(RAM.p1edge) & (1 << BIT.b2), 0);
+      assert.equal(ram.u16(RAM.p2edge) & (1 << BIT.b2), 0);
+      for (const companion of demo.formation.foundation.companions) {
+        assert.equal(companion.memory.u16(companion.binding.input.raw)
+          & (1 << BIT.b2), 0);
+        assert.equal(companion.memory.u16(companion.binding.input.edge)
+          & (1 << BIT.b2), 0);
+      }
     } finally {
       clearTouch();
       clearCoin();
     }
   });
 
-test('W610 vanilla exact-bundle Demo neither joins nor copies a formation P2',
+test('W610 P1 death and revival preserve every native P2 lifecycle resource',
+  { skip: SKIP_ASSETS }, async () => {
+    clearCoin();
+    clearTouch();
+    const demo = activeDemo(await localBundle());
+    const { ram } = demo.game;
+    stepUntil(demo, () => allocatorActors(ram, 3, 2).length === 1
+      && allocatorActors(ram, 3, 3).length === 1, 4,
+    'both private companion actors must become live');
+    const manager = demo.formation.foundation;
+    const actorIds = manager.companions.map((state) => state.actorId);
+
+    seedNativeP2Resources(ram);
+    const before = nativeP2Resources(ram);
+    ram.setU16(RAM.player1 + P.state, 0x8100);
+    prepareFormationFrame(demo.formation, demo.game, 0xffff);
+
+    assert.deepEqual(manager.companions.map((state) =>
+      state.memory.u16(state.binding.player + P.state)), [0, 0]);
+    assert.deepEqual(manager.companions.map((state) => state.actorId), actorIds);
+    assert.deepEqual(nativeP2Resources(ram), before);
+
+    ram.setU16(RAM.player1 + P.state, 0x8000);
+    prepareFormationFrame(demo.formation, demo.game, 0xffff);
+
+    assert.deepEqual(manager.companions.map((state) =>
+      state.memory.u16(state.binding.player + P.state)), [0x8000, 0x8000]);
+    assert.deepEqual(manager.companions.map((state) => state.actorId), actorIds);
+    assert.deepEqual(nativeP2Resources(ram), before);
+  });
+
+test('W610 vanilla exact-bundle Demo leaves native P2 controls and actors untouched',
   { skip: SKIP_ASSETS }, async () => {
     clearCoin();
     clearTouch();
@@ -525,6 +278,7 @@ test('W610 vanilla exact-bundle Demo neither joins nor copies a formation P2',
     setTouchDirections(1 << BIT.right);
     setTouchButton('SHOT', true);
     const demo = new Demo(fakeCanvas(), await localBundle(), MACHINE.refreshHz);
+    const p2Before = bytes(demo.game.ram, RAM.player2, P.stride);
     let packedWord = null;
     const realStep = demo.game.step.bind(demo.game);
     demo.game.step = (word) => {
@@ -541,14 +295,13 @@ test('W610 vanilla exact-bundle Demo neither joins nor copies a formation P2',
       const packed = mirrorsFromPort(packedWord);
       assert.notEqual(packed.p1 & (1 << BIT.right), 0);
       assert.notEqual(packed.p1 & (1 << BIT.b1), 0);
-      assert.equal(packed.p2 & (1 << BIT.right), 0);
-      assert.equal(packed.p2 & (1 << BIT.b1), 0,
-        'ordinary launches do not copy P1 controls into the P2 panel');
+      assert.equal(packed.p2 & 0x7f, 0);
       assert.equal(demo.game.ram.u16(TALLY.side1), 0);
-      assert.deepEqual(allocatorActors(demo.game.ram, 3), [],
-        'ordinary launches neither post request 4 nor allocate type-3 P2');
+      assert.deepEqual(bytes(demo.game.ram, RAM.player2, P.stride), p2Before);
+      assert.deepEqual(allocatorActors(demo.game.ram, 3), []);
       assert.equal(MOD_IDS.length, 32);
       assert.equal(MOD_IDS.includes(FORMATION_MODE.id), false);
+      assert.equal(MOD_IDS.includes(FORMATION_THREE_MODE.id), false);
     } finally {
       clearTouch();
       clearCoin();

@@ -26,7 +26,7 @@ import { Ram } from '../src/ram.js';
 import { Unreached } from '../src/unported.js';
 import {
   BUCKETS, NAMED_BUCKETS, RECORD_BYTES, COUNTER_BASE, COUNTER_COUNT,
-  enqueueRequest, enqueueShotSprite, enqueueZoomedRequest, bulkWrite,
+  enqueueRequest, enqueueShotSprite, enqueueZoomedRequest, encodeZoomedRecordRequest, bulkWrite,
   NO_ZOOM_OR, ENQUEUE_MASK, SCALE_TABLE, SCALE_TABLE_ROM, STAGING_LO, STAGING_HI,
 } from '../src/spritequeue.js';
 import {
@@ -204,6 +204,24 @@ test('$23D9E2 scales the recentring offset by the sprite extent / 8', () => {
   const want = ((packed & ENQUEUE_MASK) | flags) >>> 0;
   assert.equal(ram.u16(BUCKETS[0].buffer + 0), (want >>> 16) & 0xffff);
   assert.equal(ram.u16(BUCKETS[0].buffer + 2), want & 0xffff);
+});
+
+test('$23D9E2 pure encoding is byte-identical to physical queue output', () => {
+  const ram = new Ram(null);
+  writeRecord(ram, REC, {
+    long: 0x9123, short: 0x4567, longOff: 0xfedc, shortOff: 0x1234,
+    offs: 0x0087abcd, size: (3 << 9) | 0x28, flipColour: 0xa05c,
+  });
+  const flags = 0xa4009800;
+  const request = encodeZoomedRecordRequest(ram, REC, flags);
+
+  const bucket = 14;
+  const offset = enqueueZoomedRequest(ram, REC, flags, bucket);
+  assert.equal(offset, 0);
+  assert.deepEqual(
+    [...request],
+    Array.from({ length: RECORD_BYTES }, (_, i) => ram.u8(BUCKETS[bucket].buffer + i)),
+  );
 });
 
 test('$23D9FA throws by ADDRESS on a height that is not a multiple of 8', () => {

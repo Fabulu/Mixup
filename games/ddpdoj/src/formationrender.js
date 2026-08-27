@@ -13,7 +13,6 @@ const STAGE_CLEAR = 0x812972;
 const BODY_LONG_OFFSET = 0xfa00;
 const BODY_SHORT_OFFSET = 0xfc00;
 const BODY_FLIP = 0x0000;
-const P3_STYLE = 6;
 
 const TRAIL_TAPS = Object.freeze([15, 12, 9, 6, 3]);
 
@@ -129,8 +128,9 @@ export function renderThreePilotRequests(state, game) {
     throw new RangeError(`P3 ship selector ${selector} is outside the cartridge set {0, 2}`);
   }
   const style = memory.u16(player + P.optFormation);
-  if (style !== P3_STYLE) {
-    throw new RangeError(`P3 style ${style} is not the private style ${P3_STYLE}`);
+  const expectedStyle = state.binding?.selection?.style;
+  if (!Number.isSafeInteger(expectedStyle) || style !== expectedStyle) {
+    throw new RangeError(`companion style ${style} does not match selection ${expectedStyle}`);
   }
 
   const directions = memory.u16(state.binding.input.raw) & 0x0f;

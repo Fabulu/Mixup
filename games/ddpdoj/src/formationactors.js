@@ -1,10 +1,9 @@
-// Private three-pilot formation actors.
+// Private P1-owned formation companion actors.
 //
-// This remains a private foundation. P3 has an allocator identity, independent
-// host memory, ordinary shots, option pods, an independently owned laser,
-// outgoing enemy damage, and a private score and chain ledger. Incoming
-// collision, item and hyper rewards, death, lives, HUD presentation, and public
-// activation remain excluded.
+// Every companion has an allocator identity and isolated host memory for its
+// ship, options, shots, beam, and outgoing damage. Companions are not players:
+// they have no incoming collision, items, bombs, lives, tally, score, chain, HUD,
+// continue, or Game Over state. Their availability follows native P1.
 
 import { mirrorsFromPort } from './input.js';
 import { MACHINE, OPT, P, RAM } from './machine.js';
@@ -28,107 +27,121 @@ import {
   DMG, PRIVATE_DAMAGE_GEOMETRY, privateOutgoingDamagePass,
 } from './damage.js';
 import { ENEMY } from './enemies.js';
-import {
-  PRIVATE_SCORE_LAYOUT, privateScoreDrain, privateScoreHit, privateScoreKill,
-  privateScoreMeterFrame,
-} from './score.js';
-import { encodeRecordRequest } from './spritequeue.js';
+import { PRIVATE_SCORE_LAYOUT } from './score.js';
+import { encodeRecordRequest, encodeZoomedRecordRequest } from './spritequeue.js';
 
 const THREE_PILOT_ID = 'all-three-pilots-each-piloting-a-ship';
 const THREE_PILOT_NAME = 'All Three Pilots, Each Piloting a Ship';
-const P3_INPUT_MASK = 0x005f; // directions, B1, and B3; never B2 or Start
-const OFFSET_X = 0x0800;
+const COMPANION_INPUT_MASK = 0x005f; // directions, B1, and B3; never B2 or Start
+const TWO_OFFSET_X = 0x0400;
+const THREE_OFFSET_X = 0x0800;
 const STAGE_CLEAR = 0x812972;
 const MOVEMENT_DISABLE = 0x8130d2;
-const ANCHOR = Object.freeze({
+const VIRTUAL_STRIDE = 0x00010000;
+const ANCHOR_TWO = Object.freeze({
+  xMin: 0x0700,
+  xMax: 0x3100,
+  yMin: 0x0800,
+  yMax: 0x6500,
+});
+const ANCHOR_THREE = Object.freeze({
   xMin: 0x0b00,
   xMax: 0x2d00,
   yMin: 0x0800,
   yMax: 0x6500,
 });
 
-const THREE_PILOT_SELECTION = Object.freeze({
-  ship: 0,
-  style: 2,
-  p2: Object.freeze({ ship: 2, style: 4 }),
-  p3: Object.freeze({ ship: 0, style: 6 }),
-});
+const THREE_PILOT_SELECTION = Object.freeze({ ship: 0, style: 2 });
+const THREE_PILOT_COMPANIONS = Object.freeze([
+  Object.freeze({ ship: 0, style: 6, marker: 2, position: 'center' }),
+  Object.freeze({ ship: 2, style: 4, marker: 3, position: 'right' }),
+]);
 
 export const THREE_PILOT_FORMATION_MODE = Object.freeze({
   id: THREE_PILOT_ID,
   name: THREE_PILOT_NAME,
   authenticSelection: THREE_PILOT_SELECTION,
+  companions: THREE_PILOT_COMPANIONS,
 });
 
 // Host addresses deliberately sit beyond the 24-bit cartridge address space.
-// Gaps are intentional. StrictSidecarMemory refuses to treat them as storage.
+// Each companion receives a separate $10000-byte address region.
 export const P3_VIRTUAL_BASE = 0x10000000;
-export const P3_VIRTUAL = Object.freeze({
-  input: Object.freeze({
-    raw: P3_VIRTUAL_BASE,
-    edge: P3_VIRTUAL_BASE + 0x02,
-    previous: P3_VIRTUAL_BASE + 0x04,
-  }),
-  player: P3_VIRTUAL_BASE + 0x0100,
-  options: P3_VIRTUAL_BASE + 0x0200,
-  shots: P3_VIRTUAL_BASE + 0x0400,
-  beamRecord: P3_VIRTUAL_BASE + 0x0b00,
-  beamControl: P3_VIRTUAL_BASE + 0x0b00,
-  beamDraw: P3_VIRTUAL_BASE + 0x0b20,
-  beamWord: P3_VIRTUAL_BASE + 0x0b40,
-  beamPool: P3_VIRTUAL_BASE + 0x0c00,
-  positionHistory: P3_VIRTUAL_BASE + 0x1200,
-  imageHistory: P3_VIRTUAL_BASE + 0x1240,
-  hyper: P3_VIRTUAL_BASE + 0x1300,
-  damageScratch: P3_VIRTUAL_BASE + 0x1400,
-  damageHyperShadows: P3_VIRTUAL_BASE + 0x140e,
-  damageReceipts: P3_VIRTUAL_BASE + 0x1420,
-  score: P3_VIRTUAL_BASE + 0x1500,
-  bomb: P3_VIRTUAL_BASE + 0x1600,
-  lives: P3_VIRTUAL_BASE + 0x1700,
-  tally: P3_VIRTUAL_BASE + 0x1800,
-});
 
-/** The complete private score reservation, kept outside cartridge RAM. */
-export const P3_PRIVATE_SCORE_LEDGER = Object.freeze({
-  base: P3_VIRTUAL.score,
-  length: PRIVATE_SCORE_LAYOUT.length,
-  total: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.total,
-  overflow: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.overflow,
-  pending: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.pending,
-  pendingEnd: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.pending + 4,
-  meter: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.meter,
-  chain: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.chain,
-  hiwater: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.hiwater,
-  prior: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.prior,
-  accA: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.accA,
-  accB: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.accB,
-  specialCadence: P3_VIRTUAL.score + PRIVATE_SCORE_LAYOUT.specialCadence,
-  weaponSel: P3_VIRTUAL.player + P.shipSel,
-  power: P3_VIRTUAL.player + 0x22,
-  formation: P3_VIRTUAL.player + P.optFormation,
-});
+function virtualLayout(base) {
+  return Object.freeze({
+    input: Object.freeze({ raw: base, edge: base + 0x02, previous: base + 0x04 }),
+    player: base + 0x0100,
+    options: base + 0x0200,
+    shots: base + 0x0400,
+    beamRecord: base + 0x0b00,
+    beamControl: base + 0x0b00,
+    beamDraw: base + 0x0b20,
+    beamWord: base + 0x0b40,
+    beamPool: base + 0x0c00,
+    positionHistory: base + 0x1200,
+    imageHistory: base + 0x1240,
+    hyper: base + 0x1300,
+    damageScratch: base + 0x1400,
+    damageHyperShadows: base + 0x140e,
+    damageReceipts: base + 0x1420,
+    score: base + 0x1500,
+    bomb: base + 0x1600,
+    lives: base + 0x1700,
+    tally: base + 0x1800,
+  });
+}
 
-export const P3_VIRTUAL_RANGES = Object.freeze([
-  Object.freeze({ name: 'p3-input', start: P3_VIRTUAL.input.raw, length: 0x06 }),
-  Object.freeze({ name: 'p3-player', start: P3_VIRTUAL.player, length: P.stride }),
-  Object.freeze({ name: 'p3-options', start: P3_VIRTUAL.options, length: OPT.stride }),
-  Object.freeze({ name: 'p3-shots-reserved', start: P3_VIRTUAL.shots, length: 36 * 0x30 }),
-  Object.freeze({ name: 'p3-beam-controls', start: P3_VIRTUAL.beamControl, length: 0x42 }),
-  Object.freeze({ name: 'p3-beam-pool', start: P3_VIRTUAL.beamPool, length: 32 * 0x30 }),
-  Object.freeze({ name: 'p3-position-history', start: P3_VIRTUAL.positionHistory, length: 0x40 }),
-  Object.freeze({ name: 'p3-image-history', start: P3_VIRTUAL.imageHistory, length: 0x40 }),
-  Object.freeze({ name: 'p3-hyper-reserved', start: P3_VIRTUAL.hyper, length: 0x0100 }),
-  Object.freeze({ name: 'p3-damage-scratch', start: P3_VIRTUAL.damageScratch, length: 0x0e }),
-  Object.freeze({ name: 'p3-damage-hyper-shadows', start: P3_VIRTUAL.damageHyperShadows,
-    length: 0x04 }),
-  Object.freeze({ name: 'p3-damage-receipts', start: P3_VIRTUAL.damageReceipts, length: 150 }),
-  Object.freeze({ name: 'p3-score', start: P3_VIRTUAL.score,
-    length: PRIVATE_SCORE_LAYOUT.length }),
-  Object.freeze({ name: 'p3-bomb-reserved', start: P3_VIRTUAL.bomb, length: 0x20 }),
-  Object.freeze({ name: 'p3-lives-reserved', start: P3_VIRTUAL.lives, length: 0x02 }),
-  Object.freeze({ name: 'p3-tally-reserved', start: P3_VIRTUAL.tally, length: 0x24 }),
-]);
+export const P3_VIRTUAL = virtualLayout(P3_VIRTUAL_BASE);
+
+function scoreLedgerFor(virtual) {
+  return Object.freeze({
+    base: virtual.score,
+    length: PRIVATE_SCORE_LAYOUT.length,
+    total: virtual.score + PRIVATE_SCORE_LAYOUT.total,
+    overflow: virtual.score + PRIVATE_SCORE_LAYOUT.overflow,
+    pending: virtual.score + PRIVATE_SCORE_LAYOUT.pending,
+    pendingEnd: virtual.score + PRIVATE_SCORE_LAYOUT.pending + 4,
+    meter: virtual.score + PRIVATE_SCORE_LAYOUT.meter,
+    chain: virtual.score + PRIVATE_SCORE_LAYOUT.chain,
+    hiwater: virtual.score + PRIVATE_SCORE_LAYOUT.hiwater,
+    prior: virtual.score + PRIVATE_SCORE_LAYOUT.prior,
+    accA: virtual.score + PRIVATE_SCORE_LAYOUT.accA,
+    accB: virtual.score + PRIVATE_SCORE_LAYOUT.accB,
+    specialCadence: virtual.score + PRIVATE_SCORE_LAYOUT.specialCadence,
+    weaponSel: virtual.player + P.shipSel,
+    power: virtual.player + 0x22,
+    formation: virtual.player + P.optFormation,
+  });
+}
+
+/** Reserved dormant true-player score bytes. Active companions never use them. */
+export const P3_PRIVATE_SCORE_LEDGER = scoreLedgerFor(P3_VIRTUAL);
+
+function virtualRangesFor(virtual, name = 'companion') {
+  return Object.freeze([
+    Object.freeze({ name: `${name}-input`, start: virtual.input.raw, length: 0x06 }),
+    Object.freeze({ name: `${name}-player`, start: virtual.player, length: P.stride }),
+    Object.freeze({ name: `${name}-options`, start: virtual.options, length: OPT.stride }),
+    Object.freeze({ name: `${name}-shots-reserved`, start: virtual.shots, length: 36 * 0x30 }),
+    Object.freeze({ name: `${name}-beam-controls`, start: virtual.beamControl, length: 0x42 }),
+    Object.freeze({ name: `${name}-beam-pool`, start: virtual.beamPool, length: 32 * 0x30 }),
+    Object.freeze({ name: `${name}-position-history`, start: virtual.positionHistory, length: 0x40 }),
+    Object.freeze({ name: `${name}-image-history`, start: virtual.imageHistory, length: 0x40 }),
+    Object.freeze({ name: `${name}-hyper-reserved`, start: virtual.hyper, length: 0x0100 }),
+    Object.freeze({ name: `${name}-damage-scratch`, start: virtual.damageScratch, length: 0x0e }),
+    Object.freeze({ name: `${name}-damage-hyper-shadows`, start: virtual.damageHyperShadows,
+      length: 0x04 }),
+    Object.freeze({ name: `${name}-damage-receipts`, start: virtual.damageReceipts, length: 150 }),
+    Object.freeze({ name: `${name}-score-reserved`, start: virtual.score,
+      length: PRIVATE_SCORE_LAYOUT.length }),
+    Object.freeze({ name: `${name}-bomb-reserved`, start: virtual.bomb, length: 0x20 }),
+    Object.freeze({ name: `${name}-lives-reserved`, start: virtual.lives, length: 0x02 }),
+    Object.freeze({ name: `${name}-tally-reserved`, start: virtual.tally, length: 0x24 }),
+  ]);
+}
+
+export const P3_VIRTUAL_RANGES = virtualRangesFor(P3_VIRTUAL, 'p3');
 
 export const THREE_PILOT_SHARED_RANGES = Object.freeze([
   Object.freeze({ name: 'auto-shot-setting', start: 0x80380f, length: 0x01,
@@ -139,7 +152,6 @@ export const THREE_PILOT_SHARED_RANGES = Object.freeze([
   Object.freeze({ name: 'p1-motion', start: RAM.player1, length: 0x06, writable: true }),
   Object.freeze({ name: 'p1-speed', start: RAM.player1 + P.speedIdx, length: 0x01,
     writable: false }),
-  Object.freeze({ name: 'p2-motion', start: RAM.player2, length: 0x06, writable: true }),
   Object.freeze({ name: 'shot-count-pointers', start: 0x8127e4, length: 0x08,
     writable: false }),
   Object.freeze({ name: 'stage-draw-freeze', start: 0x812970, length: 0x02,
@@ -163,45 +175,61 @@ export const THREE_PILOT_SHARED_RANGES = Object.freeze([
 ]);
 
 const P1_BINDING = Object.freeze({
-  name: 'P1', logicalIndex: 0, marker: 0, objectType: 2, renderVariant: 0,
-  offsetX: -OFFSET_X,
-  player: RAM.player1,
+  name: 'P1', logicalIndex: 0, targetIndex: 0, marker: 0, objectType: 2,
+  renderVariant: 0, offsetX: -THREE_OFFSET_X, player: RAM.player1,
   options: RAM.p1Options,
   input: Object.freeze({ raw: RAM.p1raw, edge: RAM.p1edge, previous: RAM.p1prev }),
 });
-const P2_BINDING = Object.freeze({
-  name: 'P2', logicalIndex: 1, marker: 1, objectType: 3, renderVariant: 1,
-  offsetX: OFFSET_X,
-  player: RAM.player2,
-  options: RAM.p2Options,
-  input: Object.freeze({ raw: RAM.p2raw, edge: RAM.p2edge, previous: RAM.p2prev }),
-});
-const P3_BINDING = Object.freeze({
-  name: 'P3', logicalIndex: 2, marker: 2, objectType: 3, renderVariant: 0,
+
+function companionBinding({ marker, base, offsetX, targetIndex, selection }) {
+  const virtual = virtualLayout(base);
+  return Object.freeze({
+    name: `P1 companion ${targetIndex}`,
+    logicalIndex: 2,
+    targetIndex,
+    marker,
+    objectType: 3,
+    renderVariant: selection.ship === 2 ? 1 : 0,
+    offsetX,
+    selection: Object.freeze({ ship: selection.ship, style: selection.style }),
+    virtual,
+    player: virtual.player,
+    options: virtual.options,
+    shots: virtual.shots,
+    beam: Object.freeze({
+      control: virtual.beamControl,
+      record: virtual.beamControl,
+      draw: virtual.beamDraw,
+      word: virtual.beamWord,
+      pool: virtual.beamPool,
+      positionHistory: virtual.positionHistory,
+      imageHistory: virtual.imageHistory,
+    }),
+    hyper: virtual.hyper,
+    score: virtual.score,
+    bomb: virtual.bomb,
+    lives: virtual.lives,
+    tally: virtual.tally,
+    input: virtual.input,
+  });
+}
+
+const P3_BINDING = companionBinding({
+  marker: 2,
+  base: P3_VIRTUAL_BASE,
   offsetX: 0,
-  player: P3_VIRTUAL.player,
-  options: P3_VIRTUAL.options,
-  shots: P3_VIRTUAL.shots,
-  beam: Object.freeze({
-    control: P3_VIRTUAL.beamControl,
-    record: P3_VIRTUAL.beamControl,
-    draw: P3_VIRTUAL.beamDraw,
-    word: P3_VIRTUAL.beamWord,
-    pool: P3_VIRTUAL.beamPool,
-    positionHistory: P3_VIRTUAL.positionHistory,
-    imageHistory: P3_VIRTUAL.imageHistory,
-  }),
-  hyper: P3_VIRTUAL.hyper,
-  score: P3_VIRTUAL.score,
-  bomb: P3_VIRTUAL.bomb,
-  lives: P3_VIRTUAL.lives,
-  tally: P3_VIRTUAL.tally,
-  input: P3_VIRTUAL.input,
+  targetIndex: 2,
+  selection: { ship: 0, style: 6 },
+});
+const P4_BINDING = companionBinding({
+  marker: 3,
+  base: P3_VIRTUAL_BASE + VIRTUAL_STRIDE,
+  offsetX: THREE_OFFSET_X,
+  targetIndex: 1,
+  selection: { ship: 2, style: 4 },
 });
 
-export const FORMATION_ACTOR_BINDINGS = Object.freeze([
-  P1_BINDING, P2_BINDING, P3_BINDING,
-]);
+export const FORMATION_ACTOR_BINDINGS = Object.freeze([P1_BINDING, P3_BINDING, P4_BINDING]);
 export const P3_FORMATION_ACTOR_BINDING = P3_BINDING;
 const BINDING_BY_MARKER = new Map(
   FORMATION_ACTOR_BINDINGS.map((binding) => [binding.marker, binding]));
@@ -379,14 +407,27 @@ export class StrictSidecarMemory {
   }
 }
 
-export const P3_PRIVATE_DAMAGE_RESOURCES = Object.freeze({
-  ...PRIVATE_DAMAGE_GEOMETRY,
-  incomingPolicy: 'none',
-  bombPolicy: 'none',
-  bulletErasePolicy: 'none',
-  itemPolicy: 'none',
-  hyperPolicy: 'zero-shadow',
-});
+function damageResourcesFor(binding) {
+  const v = binding.virtual;
+  return Object.freeze({
+    ...PRIVATE_DAMAGE_GEOMETRY,
+    player: binding.player,
+    shots: binding.shots,
+    beamControl: binding.beam.control,
+    slot27: binding.beam.pool + 0x510,
+    slot30: binding.beam.pool + 0x5a0,
+    scratch: v.damageScratch,
+    hyperShadows: v.damageHyperShadows,
+    receipts: v.damageReceipts,
+    incomingPolicy: 'none',
+    bombPolicy: 'none',
+    bulletErasePolicy: 'none',
+    itemPolicy: 'none',
+    hyperPolicy: 'zero-shadow',
+  });
+}
+
+export const P3_PRIVATE_DAMAGE_RESOURCES = damageResourcesFor(P3_BINDING);
 
 const DAMAGE_NATIVE_READS = Object.freeze([
   Object.freeze({ start: DMG.mirror2, length: 0x02 }),
@@ -397,13 +438,16 @@ const DAMAGE_NATIVE_READS = Object.freeze([
   Object.freeze({ start: DMG.b410, length: 0x02 }),
 ]);
 
-const DAMAGE_SIDECAR_RANGES = Object.freeze([
-  Object.freeze({ start: P3_VIRTUAL.player, length: P.stride, writable: false }),
-  Object.freeze({ start: P3_VIRTUAL.shots, length: 36 * 0x30, writable: true }),
-  Object.freeze({ start: P3_VIRTUAL.beamControl, length: 0x20, writable: true }),
-  Object.freeze({ start: PRIVATE_DAMAGE_GEOMETRY.slot27, length: 0x30, writable: true }),
-  Object.freeze({ start: PRIVATE_DAMAGE_GEOMETRY.slot30, length: 0x30, writable: true }),
-]);
+function damageSidecarRanges(state) {
+  const b = state.binding;
+  return [
+    { start: b.player, length: P.stride, writable: false },
+    { start: b.shots, length: 36 * 0x30, writable: true },
+    { start: b.beam.control, length: 0x20, writable: true },
+    { start: state.damage.resources.slot27, length: 0x30, writable: true },
+    { start: state.damage.resources.slot30, length: 0x30, writable: true },
+  ];
+}
 
 function rangeContains(range, address, width) {
   return address >= range.start && address + width <= range.start + range.length;
@@ -464,7 +508,7 @@ function buildEnemyOwnerMap(state) {
 }
 
 function clearDamageReceipt(state, index) {
-  state.memory.setU8(P3_VIRTUAL.damageReceipts + index, 0);
+  state.memory.setU8(state.binding.virtual.damageReceipts + index, 0);
   state.damage.receiptMeta[index] = null;
 }
 
@@ -481,7 +525,7 @@ function reconcileDamageReceipts(state, suppliedOwners = null) {
   const { ram } = state.game;
   for (let index = 0; index < PRIVATE_DAMAGE_GEOMETRY.receiptCount; index++) {
     const meta = state.damage.receiptMeta[index];
-    const receipt = state.memory.u8(P3_VIRTUAL.damageReceipts + index);
+    const receipt = state.memory.u8(state.binding.virtual.damageReceipts + index);
     if (meta == null && receipt === 0) continue;
     const owner = owners[index];
     const rec = PRIVATE_DAMAGE_GEOMETRY.enemyBase
@@ -498,15 +542,20 @@ function reconcileDamageReceipts(state, suppliedOwners = null) {
 function clearP3DamageScratch(state) {
   if (!state?.damage) return;
   for (let offset = 0; offset < PRIVATE_DAMAGE_GEOMETRY.scratchLength; offset++) {
-    state.memory.setU8(P3_VIRTUAL.damageScratch + offset, 0);
+    state.memory.setU8(state.binding.virtual.damageScratch + offset, 0);
   }
   for (let offset = 0; offset < PRIVATE_DAMAGE_GEOMETRY.hyperShadowLength; offset++) {
-    state.memory.setU8(P3_VIRTUAL.damageHyperShadows + offset, 0);
+    state.memory.setU8(state.binding.virtual.damageHyperShadows + offset, 0);
   }
   state.damage.last = null;
   state.damage.source = null;
   state.damage.ownerMap = null;
   state.damage.actorId = 0;
+}
+
+function managerOwnsState(state) {
+  const manager = ATTACHED.get(state.game);
+  return manager != null && manager.companions.includes(state);
 }
 
 class PrivateDamageMemory {
@@ -520,14 +569,14 @@ class PrivateDamageMemory {
     const scratchStart = DMG.fa72;
     const scratchEnd = scratchStart + PRIVATE_DAMAGE_GEOMETRY.scratchLength;
     if (address >= scratchStart && address + width <= scratchEnd) {
-      return P3_VIRTUAL.damageScratch + address - scratchStart;
+      return this.#state.binding.virtual.damageScratch + address - scratchStart;
     }
     const hyperStart = DMG.b6e6;
     const hyperEnd = hyperStart + PRIVATE_DAMAGE_GEOMETRY.hyperShadowLength;
     if (address >= hyperStart && address + width <= hyperEnd) {
-      return P3_VIRTUAL.damageHyperShadows + address - hyperStart;
+      return this.#state.binding.virtual.damageHyperShadows + address - hyperStart;
     }
-    const range = DAMAGE_SIDECAR_RANGES.find((candidate) =>
+    const range = damageSidecarRanges(this.#state).find((candidate) =>
       rangeContains(candidate, address, width));
     if (range) {
       if (writable && !range.writable) {
@@ -600,7 +649,8 @@ class PrivateDamageMemory {
           sources: new Set(),
           committed: false,
         };
-        this.#state.memory.setU8(P3_VIRTUAL.damageReceipts + index, 0x80 | preMask);
+        this.#state.memory.setU8(this.#state.binding.virtual.damageReceipts + index,
+          0x80 | preMask);
         this.#state.damage.receiptMeta[index] = meta;
       }
       meta.postMask = newMask;
@@ -633,19 +683,19 @@ class PrivateDamageMemory {
     const state = this.#state;
     if (resources !== state.damage.resources
         || state.game.ram !== state.damage.realRam
-        || ATTACHED.get(state.game) !== state
+        || !managerOwnsState(state)
         || state.lifecycle !== 'alive' || state.actorId === 0
         || state.damage.actorId !== state.actorId) {
       throw new Error('private damage adapter identity or lifecycle mismatch');
     }
     const resolved = resolveHandle241298(state.game.ram, state.actorId);
     if (!resolved.found
-        || (state.game.ram.u16(resolved.rec) & 0xff) !== P3_BINDING.objectType
-        || state.game.ram.u8(resolved.rec + 0x07) !== P3_BINDING.marker) {
+        || (state.game.ram.u16(resolved.rec) & 0xff) !== state.binding.objectType
+        || state.game.ram.u8(resolved.rec + 0x07) !== state.binding.marker) {
       throw new Error('private damage allocator identity mismatch');
     }
     for (let offset = 0; offset < PRIVATE_DAMAGE_GEOMETRY.hyperShadowLength; offset++) {
-      if (state.memory.u8(P3_VIRTUAL.damageHyperShadows + offset) !== 0) {
+      if (state.memory.u8(state.binding.virtual.damageHyperShadows + offset) !== 0) {
         throw new Error('private damage hyper shadows must remain zero');
       }
     }
@@ -700,7 +750,7 @@ function clearP3ShotState(state) {
   state.shots.requests.length = 0;
   state.shots.actorId = 0;
   state.shots.calls = 0;
-  const player = P3_BINDING.player;
+  const player = state.binding.player;
   state.memory.bclr8(player + P.flags1, 3);
   state.memory.bclr8(player + P.flags1, 4);
   state.memory.bclr8(player + P.state, 3);
@@ -708,7 +758,7 @@ function clearP3ShotState(state) {
   state.memory.setU8(player + 0x2b, 0);
   state.memory.setU8(player + 0x3c, 0);
   for (let offset = 0; offset < 36 * 0x30; offset++) {
-    state.memory.setU8(P3_BINDING.shots + offset, 0);
+    state.memory.setU8(state.binding.shots + offset, 0);
   }
 }
 
@@ -718,7 +768,7 @@ function clearP3OptionState(state) {
   state.weapons.actorId = 0;
   state.weapons.calls = 0;
   for (let offset = 0; offset < OPT.stride; offset++) {
-    state.memory.setU8(P3_BINDING.options + offset, 0);
+    state.memory.setU8(state.binding.options + offset, 0);
   }
 }
 
@@ -729,19 +779,19 @@ function clearP3BeamState(state) {
   state.beam.segmentCalls = 0;
   state.beam.drawCalls = 0;
   for (let offset = 0; offset < 0x42; offset++) {
-    state.memory.setU8(P3_BINDING.beam.control + offset, 0);
+    state.memory.setU8(state.binding.beam.control + offset, 0);
   }
   for (let offset = 0; offset < 32 * 0x30; offset++) {
-    state.memory.setU8(P3_BINDING.beam.pool + offset, 0);
+    state.memory.setU8(state.binding.beam.pool + offset, 0);
   }
-  for (const history of [P3_BINDING.beam.positionHistory, P3_BINDING.beam.imageHistory]) {
+  for (const history of [state.binding.beam.positionHistory, state.binding.beam.imageHistory]) {
     for (let offset = 0; offset < 0x40; offset++) state.memory.setU8(history + offset, 0);
   }
 }
 
 function clearP3ScoreState(state) {
-  for (let offset = 0; offset < P3_PRIVATE_SCORE_LEDGER.length; offset++) {
-    state.memory.setU8(P3_PRIVATE_SCORE_LEDGER.base + offset, 0);
+  for (let offset = 0; offset < state.scoreLedger.length; offset++) {
+    state.memory.setU8(state.scoreLedger.base + offset, 0);
   }
 }
 
@@ -753,13 +803,16 @@ function clearP3WeaponState(state) {
 }
 
 function bindP3ShotResources(state) {
-  const requestSink = (bucket) => (memory, rec) => {
-    state.shots.requests.push({ bucket, bytes: encodeRecordRequest(memory, rec) });
+  const requestSink = (bucket) => (memory, rec, presentation = null) => {
+    const bytes = presentation?.zoomFlags == null
+      ? encodeRecordRequest(memory, rec)
+      : encodeZoomedRecordRequest(memory, rec, presentation.zoomFlags);
+    state.shots.requests.push({ bucket, bytes });
     return state.shots.requests.length - 1;
   };
   const ship = Object.freeze({
-    ownerIndex: P3_BINDING.logicalIndex,
-    pool: P3_BINDING.shots,
+    ownerIndex: state.binding.logicalIndex,
+    pool: state.binding.shots,
     slots: 36,
     stride: 0x30,
     countPointer: 0x8127e4,
@@ -770,8 +823,8 @@ function bindP3ShotResources(state) {
     soundPolicy: 'silent',
   });
   const options = Object.freeze({
-    ownerIndex: P3_BINDING.logicalIndex,
-    pool: P3_BINDING.shots,
+    ownerIndex: state.binding.logicalIndex,
+    pool: state.binding.shots,
     slots: 36,
     stride: 0x30,
     countPointer: 0x8127e8,
@@ -784,9 +837,9 @@ function bindP3ShotResources(state) {
     presentationSink: requestSink(0),
   });
   const driver = Object.freeze({
-    ownerIndex: P3_BINDING.logicalIndex,
-    pool: P3_BINDING.shots,
-    player: P3_BINDING.player,
+    ownerIndex: state.binding.logicalIndex,
+    pool: state.binding.shots,
+    player: state.binding.player,
     slots: 36,
     stride: 0x30,
     scrollDelta: 0x813176,
@@ -796,8 +849,8 @@ function bindP3ShotResources(state) {
   });
   state.shots.resources = Object.freeze({
     ordinary: Object.freeze({
-      ownerIndex: P3_BINDING.logicalIndex,
-      options: P3_BINDING.options,
+      ownerIndex: state.binding.logicalIndex,
+      options: state.binding.options,
       autoShotSetting: 0x80380f,
       shotResources: ship,
     }),
@@ -817,22 +870,22 @@ function bindP3BeamResources(state) {
   };
   state.beam.resources = Object.freeze({
     scope: 'private',
-    ownerIndex: P3_BINDING.logicalIndex,
+    ownerIndex: state.binding.logicalIndex,
     d7: 1,
     segmentOwnerWord: 1,
     slots: 32,
     stride: 0x30,
-    player: P3_BINDING.player,
-    opt: P3_BINDING.options,
-    rec: P3_BINDING.beam.control,
-    blk: P3_BINDING.beam.draw,
-    word: P3_BINDING.beam.word,
-    pool: P3_BINDING.beam.pool,
-    head: P3_BINDING.beam.pool + 0x510,
-    muzzle: P3_BINDING.beam.pool + 0x540,
-    pair: P3_BINDING.beam.pool + 0x5a0,
-    posHistory: P3_BINDING.beam.positionHistory,
-    imgHistory: P3_BINDING.beam.imageHistory,
+    player: state.binding.player,
+    opt: state.binding.options,
+    rec: state.binding.beam.control,
+    blk: state.binding.beam.draw,
+    word: state.binding.beam.word,
+    pool: state.binding.beam.pool,
+    head: state.binding.beam.pool + 0x510,
+    muzzle: state.binding.beam.pool + 0x540,
+    pair: state.binding.beam.pool + 0x5a0,
+    posHistory: state.binding.beam.positionHistory,
+    imgHistory: state.binding.beam.imageHistory,
     dispatch: LASER.dispatchP1,
     drawBias: 0x180,
     soundPolicy: 'silent',
@@ -845,16 +898,17 @@ function bindP3BeamResources(state) {
 
 function initializeP3OptionState(state) {
   clearP3OptionState(state);
-  state.memory.setU16(P3_BINDING.options + OPT.state, 0x8000);
+  state.memory.setU16(state.binding.options + OPT.state, 0x8000);
   state.weapons.actorId = state.actorId;
 }
 
 function collectThreePilotSpriteRequests(state, game) {
-  if (state.game !== game || ATTACHED.get(game) !== state) {
-    throw new Error('private P3 sprite hook is attached to a different Game');
+  if (state.game !== game || !managerOwnsState(state)) {
+    throw new Error('private companion sprite hook is attached to a different Game');
   }
   if (state.lifecycle !== 'alive' || state.actorId === 0
-      || !liveNonDeath(state.memory, P3_BINDING)
+      || !liveNonDeath(state.memory, state.binding)
+      || !liveNonDeath(game.ram, P1_BINDING)
       || game.ram.u16(STAGE_CLEAR) !== 0) {
     clearP3WeaponState(state);
     return renderThreePilotRequests(state, game);
@@ -868,12 +922,12 @@ function collectThreePilotSpriteRequests(state, game) {
 
 function p3OptionBlock(state) {
   return {
-    ownerIndex: P3_BINDING.logicalIndex,
-    opt: P3_BINDING.options,
-    player: P3_BINDING.player,
-    laser: P3_BINDING.beam.draw,
+    ownerIndex: state.binding.logicalIndex,
+    opt: state.binding.options,
+    player: state.binding.player,
+    laser: state.binding.beam.draw,
     beam: state.beam.resources,
-    rampGuard: P3_BINDING.bomb,
+    rampGuard: state.binding.bomb,
     allowLaser: true,
     allowShots: true,
     virtualRequests: state.weapons.requests,
@@ -882,8 +936,8 @@ function p3OptionBlock(state) {
 }
 
 function assertP3ShotInputAllowed(state) {
-  const excludedInput = state.memory.u8(P3_BINDING.player + P.dirByte)
-    | state.memory.u8(P3_BINDING.player + P.btnByte);
+  const excludedInput = state.memory.u8(state.binding.player + P.dirByte)
+    | state.memory.u8(state.binding.player + P.btnByte);
   if ((excludedInput & 0xa0) !== 0) {
     throw new RangeError('private ordinary-shot owner received excluded B2 or Start input');
   }
@@ -898,12 +952,11 @@ function clearMismatchedWeaponIdentity(state) {
   return false;
 }
 
-/** Run P3 cadence, private spawn, movement, expiry, and virtual shot drawing. */
-export function runThreePilotShotObject(game, invokingCtx = null) {
-  const state = ATTACHED.get(game);
-  if (!state) return 0;
+function runCompanionShotObject(state, invokingCtx = null) {
+  const { game } = state;
   if (state.lifecycle !== 'alive' || state.actorId === 0
-      || !liveNonDeath(state.memory, P3_BINDING)
+      || !liveNonDeath(state.memory, state.binding)
+      || !liveNonDeath(game.ram, P1_BINDING)
       || game.ram.u16(STAGE_CLEAR) !== 0) {
     clearP3WeaponState(state);
     return 0;
@@ -919,7 +972,7 @@ export function runThreePilotShotObject(game, invokingCtx = null) {
     soundPost: invokingCtx?.soundPost,
     shotSparkAllocatorPlayer: 0x8103e6,
   };
-  runOrdinaryShotPath2497AA(state.memory, P3_BINDING.player, ctx,
+  runOrdinaryShotPath2497AA(state.memory, state.binding.player, ctx,
     state.shots.resources.ordinary);
   const processed = runShotPool(state.memory, game.rom, shotHandlers(), ctx,
     state.shots.resources.driver);
@@ -927,12 +980,11 @@ export function runThreePilotShotObject(game, invokingCtx = null) {
   return processed;
 }
 
-/** Run the attached private option owner after the native P1/P2 pass. */
-export function runThreePilotOptionObject(game) {
-  const state = ATTACHED.get(game);
-  if (!state) return 0;
+function runCompanionOptionObject(state) {
+  const { game } = state;
   if (state.lifecycle !== 'alive' || state.actorId === 0
-      || !liveNonDeath(state.memory, P3_BINDING)
+      || !liveNonDeath(state.memory, state.binding)
+      || !liveNonDeath(game.ram, P1_BINDING)
       || game.ram.u16(STAGE_CLEAR) !== 0) {
     clearP3WeaponState(state);
     return 0;
@@ -943,7 +995,7 @@ export function runThreePilotOptionObject(game) {
   clearMismatchedWeaponIdentity(state);
   state.weapons.requests.length = 0;
   if (state.weapons.actorId !== state.actorId
-      || (state.memory.u16(P3_BINDING.options + OPT.state) & 0x8000) === 0) {
+      || (state.memory.u16(state.binding.options + OPT.state) & 0x8000) === 0) {
     clearP3BeamState(state);
     initializeP3OptionState(state);
   }
@@ -953,12 +1005,11 @@ export function runThreePilotOptionObject(game) {
   return state.weapons.requests.length;
 }
 
-/** Run only P3's post-call-10 segment pool. */
-export function runThreePilotSegmentObject(game) {
-  const state = ATTACHED.get(game);
-  if (!state) return 0;
+function runCompanionSegmentObject(state) {
+  const { game } = state;
   if (state.lifecycle !== 'alive' || state.actorId === 0
-      || !liveNonDeath(state.memory, P3_BINDING)
+      || !liveNonDeath(state.memory, state.binding)
+      || !liveNonDeath(game.ram, P1_BINDING)
       || game.ram.u16(STAGE_CLEAR) !== 0) {
     clearP3WeaponState(state);
     return 0;
@@ -978,12 +1029,11 @@ export function runThreePilotSegmentObject(game) {
   return processed;
 }
 
-/** Run only P3's post-call-11 beam draw. */
-export function runThreePilotBeamDrawObject(game) {
-  const state = ATTACHED.get(game);
-  if (!state) return 0;
+function runCompanionBeamDrawObject(state) {
+  const { game } = state;
   if (state.lifecycle !== 'alive' || state.actorId === 0
-      || !liveNonDeath(state.memory, P3_BINDING)
+      || !liveNonDeath(state.memory, state.binding)
+      || !liveNonDeath(game.ram, P1_BINDING)
       || game.ram.u16(STAGE_CLEAR) !== 0) {
     clearP3WeaponState(state);
     return 0;
@@ -1002,13 +1052,12 @@ export function runThreePilotBeamDrawObject(game) {
   return emitted;
 }
 
-/** Run P3's outgoing-only damage after the native type-5 tail. */
-export function runThreePilotDamageObject(game, invokingCtx = null) {
-  const state = ATTACHED.get(game);
-  if (!state) return null;
+function runCompanionDamageObject(state, invokingCtx = null) {
+  const { game } = state;
   reconcileDamageReceipts(state);
   if (state.lifecycle !== 'alive' || state.actorId === 0
-      || !liveNonDeath(state.memory, P3_BINDING)
+      || !liveNonDeath(state.memory, state.binding)
+      || !liveNonDeath(game.ram, P1_BINDING)
       || game.ram.u16(STAGE_CLEAR) !== 0) {
     clearP3WeaponState(state);
     return null;
@@ -1017,15 +1066,16 @@ export function runThreePilotDamageObject(game, invokingCtx = null) {
 
   let liveShots = false;
   for (let slot = 0; slot < PRIVATE_DAMAGE_GEOMETRY.shotSlots; slot++) {
-    if ((state.memory.u16(P3_VIRTUAL.shots + slot * PRIVATE_DAMAGE_GEOMETRY.shotStride)
+    if ((state.memory.u16(state.binding.shots + slot * PRIVATE_DAMAGE_GEOMETRY.shotStride)
         & 0x8000) !== 0) {
       liveShots = true;
       break;
     }
   }
-  const liveBeam = (state.memory.u16(P3_VIRTUAL.beamControl) & 0x8000) !== 0
-    || (state.memory.u16(PRIVATE_DAMAGE_GEOMETRY.slot27) & 0x8000) !== 0
-    || (state.memory.u16(PRIVATE_DAMAGE_GEOMETRY.slot30) & 0x8000) !== 0;
+  const resources = state.damage.resources;
+  const liveBeam = (state.memory.u16(resources.beamControl) & 0x8000) !== 0
+    || (state.memory.u16(resources.slot27) & 0x8000) !== 0
+    || (state.memory.u16(resources.slot30) & 0x8000) !== 0;
   if ((liveShots && state.shots.actorId !== state.actorId)
       || (liveBeam && state.beam.actorId !== state.actorId)) {
     clearP3WeaponState(state);
@@ -1035,11 +1085,45 @@ export function runThreePilotDamageObject(game, invokingCtx = null) {
   clearP3DamageScratch(state);
   state.damage.actorId = state.actorId;
   state.damage.epoch++;
-  const result = privateOutgoingDamagePass(state.damage.memory, invokingCtx,
-    state.damage.resources);
+  const result = privateOutgoingDamagePass(state.damage.memory, invokingCtx, resources);
   state.damage.last = result;
   state.damage.calls++;
   return result;
+}
+
+function attachedCompanions(game) {
+  return ATTACHED.get(game)?.companions ?? [];
+}
+
+/** Run every attached companion's private shot path. */
+export function runThreePilotShotObject(game, invokingCtx = null) {
+  return attachedCompanions(game).reduce((sum, state) =>
+    sum + runCompanionShotObject(state, invokingCtx), 0);
+}
+
+/** Run every attached companion's private option path. */
+export function runThreePilotOptionObject(game) {
+  return attachedCompanions(game).reduce((sum, state) =>
+    sum + runCompanionOptionObject(state), 0);
+}
+
+/** Run every attached companion's private beam segment path. */
+export function runThreePilotSegmentObject(game) {
+  return attachedCompanions(game).reduce((sum, state) =>
+    sum + runCompanionSegmentObject(state), 0);
+}
+
+/** Run every attached companion's private beam draw path. */
+export function runThreePilotBeamDrawObject(game) {
+  return attachedCompanions(game).reduce((sum, state) =>
+    sum + runCompanionBeamDrawObject(state), 0);
+}
+
+/** Run every attached companion's outgoing-only damage path. */
+export function runThreePilotDamageObject(game, invokingCtx = null) {
+  const results = attachedCompanions(game)
+    .map((state) => runCompanionDamageObject(state, invokingCtx));
+  return results[0] ?? null;
 }
 
 function availableReceiptIndices(state, current) {
@@ -1076,7 +1160,7 @@ function selectReceiptIndices(state, current, event, rawMask) {
 
 function storedReceiptSnapshot(state, index) {
   const meta = state.damage.receiptMeta[index];
-  const receipt = state.memory.u8(P3_VIRTUAL.damageReceipts + index);
+  const receipt = state.memory.u8(state.binding.virtual.damageReceipts + index);
   if (meta == null || !meta.committed || receipt !== (0x80 | meta.preMask)) {
     throw new Error('private damage receipt byte and metadata disagree');
   }
@@ -1103,11 +1187,13 @@ function resolveReceiptSnapshots(snapshots, rawMask) {
     subrecords.push(snapshot.rec);
   }
   const nativeRemainder = rawMask & ~introduced & 0x5c;
-  const mask = (savedNative | nativeRemainder) & 0x5c;
+  const companionP1 = rawMask === 0 ? 0 : 0x10 | (privateScoreMask & 0x44);
+  const mask = rawMask === 0 ? 0
+    : (savedNative | nativeRemainder | companionP1) & 0x5c;
   return Object.freeze({
     receipt: true,
     mask,
-    privateOnly: mask === 0,
+    privateOnly: false,
     rawMask,
     privateMask: privateMask & 0x5c,
     privateScoreMask: privateScoreMask & 0x44,
@@ -1154,50 +1240,10 @@ function receiptResolution(state, event) {
   return resolveReceiptSet(state, indices, rawMask);
 }
 
-function privateScoreEvent(state, game, event) {
-  if (game !== state.game || ATTACHED.get(game) !== state
-      || event?.ram !== game.ram) {
-    throw new Error('private P3 score hook invoked for a different Game');
-  }
-  if (event.receipt !== true || !Number.isSafeInteger(event.d0)
-      || event.d0 < 0 || event.d0 > 0xffffffff
-      || !Number.isSafeInteger(event.d1) || event.d1 < 0 || event.d1 > 0xffff) {
-    throw new TypeError('private P3 score event is malformed');
-  }
-  if (event.phase === 'score-hit') {
-    privateScoreHit(state.memory, P3_PRIVATE_SCORE_LEDGER, event.d1);
-    return;
-  }
-  if (event.phase === 'score-kill') {
-    privateScoreKill(state.memory, game.rom, P3_PRIVATE_SCORE_LEDGER, event.d0, event.d1);
-    return;
-  }
-  throw new RangeError(`unknown private P3 score phase ${event.phase}`);
-}
-
-function privateScoreFrameEvent(state, game, event) {
-  if (game !== state.game || ATTACHED.get(game) !== state
-      || event?.ctx?.rom !== game.rom) {
-    throw new Error('private P3 score frame hook invoked for a different Game');
-  }
-  if (event.phase === 'drain') {
-    privateScoreDrain(state.memory, P3_PRIVATE_SCORE_LEDGER);
-    return;
-  }
-  if (event.phase === 'meter') {
-    if (state.lifecycle !== 'alive' || state.actorId === 0
-        || !liveNonDeath(state.memory, P3_BINDING)
-        || refreshLifecycle(state, false) == null) return;
-    privateScoreMeterFrame(state.memory, P3_PRIVATE_SCORE_LEDGER);
-    return;
-  }
-  throw new RangeError(`unknown private P3 score frame phase ${event.phase}`);
-}
-
 function privateDamageReceiptEvent(state, game, event) {
-  if (game !== state.game || ATTACHED.get(game) !== state
+  if (game !== state.game || !managerOwnsState(state)
       || event?.ram !== game.ram) {
-    throw new Error('private P3 damage receipt hook invoked for a different Game');
+    throw new Error('private companion damage receipt hook invoked for a different Game');
   }
   if (event.phase === 'allocator-reset') {
     clearAllDamageReceipts(state);
@@ -1318,45 +1364,43 @@ function liveNonDeath(memory, binding) {
   return (value & 0x8000) !== 0 && (value & 0x0100) === 0;
 }
 
-function cacheTargets(state) {
-  const { runtime } = state;
-  for (const binding of FORMATION_ACTOR_BINDINGS) {
-    const target = runtime.targets[binding.logicalIndex];
-    target.y = runtime.anchorY;
-    target.x = runtime.anchorX + binding.offsetX;
+function targetFor(state) {
+  return state.runtime.targets[state.binding.targetIndex];
+}
+
+function cacheTargets(manager) {
+  const { runtime } = manager;
+  runtime.targets[0] = {
+    y: runtime.anchorY,
+    x: runtime.anchorX + manager.p1OffsetX,
+  };
+  for (const state of manager.companions) {
+    runtime.targets[state.binding.targetIndex] = {
+      y: runtime.anchorY,
+      x: runtime.anchorX + state.binding.offsetX,
+    };
   }
 }
 
-function bindingLive(state, binding) {
-  if (binding === P3_BINDING && state.lifecycle !== 'alive') return false;
-  return liveNonDeath(state.memory, binding);
+function rebaseFromP1(manager) {
+  const { runtime, anchor } = manager;
+  runtime.anchorX = clamp(manager.game.ram.u16(RAM.player1 + P.posX)
+    - manager.p1OffsetX, anchor.xMin, anchor.xMax);
+  runtime.anchorY = clamp(manager.game.ram.u16(RAM.player1 + P.posY),
+    anchor.yMin, anchor.yMax);
+  cacheTargets(manager);
 }
 
-function rebaseFromBinding(state, binding) {
-  const { memory, runtime } = state;
-  runtime.anchorX = clamp(memory.u16(binding.player + P.posX) - binding.offsetX,
-    ANCHOR.xMin, ANCHOR.xMax);
-  runtime.anchorY = clamp(memory.u16(binding.player + P.posY), ANCHOR.yMin, ANCHOR.yMax);
-  cacheTargets(state);
-}
-
-function cachedPositionTransform(state, ram, playerIdx) {
-  const { runtime } = state;
-  if (ram !== state.game.ram || state.lifecycle === 'dropped'
-      || state.lifecycle === 'detached' || runtime.rebasePending) return null;
-  if (ram.u16(STAGE_CLEAR) !== 0) {
-    runtime.rebasePending = true;
-    return null;
-  }
-  const binding = FORMATION_ACTOR_BINDINGS[playerIdx];
-  if (!binding || binding === P3_BINDING || !bindingLive(state, binding)) return null;
-  const target = runtime.targets[playerIdx];
+function cachedPositionTransform(manager, ram, playerIdx) {
+  if (ram !== manager.game.ram || playerIdx !== 0 || manager.runtime.rebasePending
+      || ram.u16(STAGE_CLEAR) !== 0 || !liveNonDeath(ram, P1_BINDING)) return null;
+  const target = manager.runtime.targets[0];
   return { y: target.y, x: target.x };
 }
 
 function seedP3Input(state, p1Mirror) {
-  const raw = p1Mirror & P3_INPUT_MASK;
-  const input = P3_BINDING.input;
+  const raw = p1Mirror & COMPANION_INPUT_MASK;
+  const input = state.binding.input;
   state.memory.setU16(input.raw, raw);
   state.memory.setU16(input.previous, raw);
   state.memory.setU16(input.edge, 0);
@@ -1368,8 +1412,8 @@ function updateP3Input(state, p1Mirror) {
     seedP3Input(state, p1Mirror);
     return;
   }
-  const input = P3_BINDING.input;
-  const raw = p1Mirror & P3_INPUT_MASK;
+  const input = state.binding.input;
+  const raw = p1Mirror & COMPANION_INPUT_MASK;
   const previous = state.memory.u16(input.previous);
   state.memory.setU16(input.raw, raw);
   state.memory.setU16(input.previous, raw);
@@ -1390,8 +1434,8 @@ function romLong(rom, address) {
 function initializeP3Record(state, alive) {
   const { memory } = state;
   const { rom } = state.game;
-  const player = P3_BINDING.player;
-  const { ship, style } = THREE_PILOT_FORMATION_MODE.authenticSelection.p3;
+  const player = state.binding.player;
+  const { ship, style } = state.binding.selection;
 
   for (let offset = 0; offset < P.stride; offset++) memory.setU8(player + offset, 0);
   for (let word = 0; word < 48; word++) {
@@ -1423,19 +1467,20 @@ function initializeP3Record(state, alive) {
   memory.setU16(player + 0x2c, rom.u16(0x2552c4 + rampIndex));
   memory.setU16(player + 0x36, rom.u16(0x2552c6 + rampIndex));
 
-  memory.setU8(player + P.playerIdx, P3_BINDING.logicalIndex);
+  memory.setU8(player + P.playerIdx, state.binding.logicalIndex);
   memory.setU8(player + P.invuln, 0xd0);
-  memory.setU16(player + P.posY, state.runtime.targets[2].y);
-  memory.setU16(player + P.posX, state.runtime.targets[2].x);
+  const target = targetFor(state);
+  memory.setU16(player + P.posY, target.y);
+  memory.setU16(player + P.posX, target.x);
   memory.setU16(player + P.state, alive ? 0x8000 : 0);
-  memory.setU8(player + P.dirByte, memory.u16(P3_BINDING.input.raw) & 0xff);
-  memory.setU8(player + P.btnByte, memory.u16(P3_BINDING.input.edge) & 0xff);
+  memory.setU8(player + P.dirByte, memory.u16(state.binding.input.raw) & 0xff);
+  memory.setU8(player + P.btnByte, memory.u16(state.binding.input.edge) & 0xff);
 }
 
 function stageP3Actor(state) {
   const { game } = state;
   if (game.ram.u32(ALLOC.idCounter) === 0xffffffff) return false;
-  const made = stageCreate(game.ram, P3_BINDING.objectType,
+  const made = stageCreate(game.ram, state.binding.objectType,
     (type) => game.rom.u16(ALLOC.dispatch + type * 8 + 4));
   if (!made.ok) return false;
 
@@ -1444,126 +1489,126 @@ function stageP3Actor(state) {
   state.lifecycle = 'staged';
   state.restagePending = false;
   initializeP3Record(state, false);
-  game.ram.setU8(made.addr + 0x06, P3_BINDING.renderVariant);
-  game.ram.setU8(made.addr + 0x07, P3_BINDING.marker);
-  game.ram.setU16(made.addr + 0x08, state.runtime.targets[2].y);
-  game.ram.setU16(made.addr + 0x0a, state.runtime.targets[2].x);
+  game.ram.setU8(made.addr + 0x06, state.binding.renderVariant);
+  game.ram.setU8(made.addr + 0x07, state.binding.marker);
+  const target = targetFor(state);
+  game.ram.setU16(made.addr + 0x08, target.y);
+  game.ram.setU16(made.addr + 0x0a, target.x);
   return true;
 }
 
 function detachP3(state) {
   clearP3WeaponState(state);
+  clearAllDamageReceipts(state);
+  clearP3ScoreState(state);
   state.actorId = 0;
   state.lifecycle = 'detached';
   state.restagePending = true;
-  state.memory.setU16(P3_BINDING.player + P.state, 0);
+  state.memory.setU16(state.binding.player + P.state, 0);
 }
 
 function refreshLifecycle(state, committed) {
-  if (state.lifecycle === 'dropped' || state.lifecycle === 'detached') return null;
+  if (state.lifecycle === 'detached' || state.actorId === 0) return null;
   const resolved = resolveHandle241298(state.game.ram, state.actorId);
   if (!resolved.found) {
-    if (committed) {
-      if (state.lifecycle === 'staged') {
-        clearP3WeaponState(state);
-        state.actorId = 0;
-        state.lifecycle = 'dropped';
-        state.memory.setU16(P3_BINDING.player + P.state, 0);
-      } else {
-        detachP3(state);
-      }
-    }
+    if (committed) detachP3(state);
     return null;
   }
   const { rec } = resolved;
   const type = state.game.ram.u16(rec) & 0xff;
   const marker = state.game.ram.u8(rec + 0x07);
-  if (type !== P3_BINDING.objectType || marker !== P3_BINDING.marker) {
-    throw new Error(`P3 allocator id ${state.actorId} resolved to type ${type} marker ${marker}`);
+  if (type !== state.binding.objectType || marker !== state.binding.marker) {
+    throw new Error(`companion allocator id ${state.actorId} resolved to type ${type} marker ${marker}`);
   }
-  if (state.lifecycle === 'staged') initializeP3Record(state, true);
+  if (state.lifecycle === 'staged') {
+    initializeP3Record(state, liveNonDeath(state.game.ram, P1_BINDING));
+  }
   state.lifecycle = 'alive';
   return rec;
 }
 
-function controllerHook(state, event) {
+function suspendCompanion(state) {
+  clearP3WeaponState(state);
+  clearAllDamageReceipts(state);
+  clearP3ScoreState(state);
+  state.memory.setU16(state.binding.player + P.state, 0);
+}
+
+function syncCompanionAvailability(state, p1Live) {
+  if ((state.lifecycle === 'detached' || state.actorId === 0)
+      && state.restagePending && !stageP3Actor(state)) return;
+  refreshLifecycle(state, false);
+  if (!p1Live || state.lifecycle !== 'alive') {
+    suspendCompanion(state);
+    return;
+  }
+  if (!liveNonDeath(state.memory, state.binding)) initializeP3Record(state, true);
+}
+
+function controllerHook(manager, event) {
   if (event.phase === 'after-commit' || event.phase === 'after-driver') {
-    refreshLifecycle(state, true);
+    for (const state of manager.companions) refreshLifecycle(state, true);
     return false;
   }
-  if (event.phase !== 'before-dispatch') return false;
-  if (event.type !== P3_BINDING.objectType || event.marker !== P3_BINDING.marker) return false;
+  if (event.phase !== 'before-dispatch' || event.type !== 3) return false;
+  const state = manager.companions.find((candidate) =>
+    candidate.binding.marker === event.marker);
+  if (!state) return false;
   const id = event.ram.u32(event.slot + ALLOC.idOff);
   if (state.lifecycle !== 'alive' || id !== state.actorId) {
-    throw new Error(`unknown marker-2 type-3 object with allocator id ${id}`);
+    throw new Error(`unknown marker-${event.marker} type-3 object with allocator id ${id}`);
   }
   return true;
 }
 
-/**
- * Attach one private P3 actor to a Game and stage its allocator record. The
- * returned state owns its sidecar and full allocator ID. It never stores a slot
- * address because allocator commit and kill operations move records.
- */
-export function attachThreePilotFoundation(game, options = {}) {
-  if (!game?.ram || !game?.rom || !game?.tables) {
-    throw new TypeError('three-pilot foundation requires a Game');
+function validateCompanions(companions) {
+  if (!Array.isArray(companions) || companions.length < 1 || companions.length > 2) {
+    throw new RangeError('formation requires one or two private companions');
   }
-  const existing = ATTACHED.get(game);
-  if (existing) return existing;
-  if (game.objectDriverHook != null) {
-    throw new Error('Game already has an objectDriverHook');
-  }
-  if (game.playerPositionTransform != null) {
-    throw new Error('Game already has an incompatible playerPositionTransform');
-  }
-  if (game.virtualSpriteRequestHook != null) {
-    throw new Error('Game already has a virtualSpriteRequestHook');
-  }
-  if (game.privateOptionObjectHook != null) {
-    throw new Error('Game already has a privateOptionObjectHook');
-  }
-  if (game.privateShotObjectHook != null) {
-    throw new Error('Game already has a privateShotObjectHook');
-  }
-  if (game.privateSegmentDriverHook != null) {
-    throw new Error('Game already has a privateSegmentDriverHook');
-  }
-  if (game.privateBeamDrawHook != null) {
-    throw new Error('Game already has a privateBeamDrawHook');
-  }
-  if (game.privateDamageTailHook != null) {
-    throw new Error('Game already has a privateDamageTailHook');
-  }
-  if (game.privateDamageReceiptHook != null) {
-    throw new Error('Game already has a privateDamageReceiptHook');
-  }
-  if (game.privateScoreEventHook != null) {
-    throw new Error('Game already has a privateScoreEventHook');
-  }
-  if (game.privateScoreFrameHook != null) {
-    throw new Error('Game already has a privateScoreFrameHook');
-  }
-  if (game.ram.u32(ALLOC.idCounter) === 0xffffffff) {
-    throw new RangeError('P3 allocator ID would wrap to zero');
-  }
+  return companions.map((selection, index) => {
+    if (!selection || ![0, 2].includes(selection.ship)
+        || ![2, 4, 6].includes(selection.style)) {
+      throw new RangeError(`formation companion ${index + 1} has an invalid selection`);
+    }
+    const marker = index + 2;
+    if (selection.marker != null && selection.marker !== marker) {
+      throw new RangeError(`formation companion ${index + 1} must use marker ${marker}`);
+    }
+    return Object.freeze({ ship: selection.ship, style: selection.style, marker });
+  });
+}
 
-  const memory = new StrictSidecarMemory(game.ram, {
-    virtualRanges: P3_VIRTUAL_RANGES,
+function companionBindings(companions) {
+  const three = companions.length === 2;
+  return companions.map((selection, index) => companionBinding({
+    marker: selection.marker,
+    base: P3_VIRTUAL_BASE + index * VIRTUAL_STRIDE,
+    offsetX: three ? (index === 0 ? 0 : THREE_OFFSET_X) : TWO_OFFSET_X,
+    targetIndex: three ? (index === 0 ? 2 : 1) : 1,
+    selection,
+  }));
+}
+
+function createCompanionState(manager, binding) {
+  const memory = new StrictSidecarMemory(manager.game.ram, {
+    virtualRanges: virtualRangesFor(binding.virtual, `companion-${binding.marker}`),
     sharedRanges: THREE_PILOT_SHARED_RANGES,
   });
   const state = {
-    mode: THREE_PILOT_FORMATION_MODE,
-    game,
+    mode: manager.mode,
+    manager,
+    game: manager.game,
     memory,
-    binding: P3_BINDING,
+    binding,
+    scoreLedger: scoreLedgerFor(binding.virtual),
     actorId: 0,
-    lifecycle: 'staged',
-    restagePending: false,
+    lifecycle: 'detached',
+    restagePending: true,
     inputSeeded: false,
+    runtime: manager.runtime,
     render: createThreePilotRenderState(memory, {
-      position: P3_BINDING.beam.positionHistory,
-      image: P3_BINDING.beam.imageHistory,
+      position: binding.beam.positionHistory,
+      image: binding.beam.imageHistory,
     }),
     weapons: { requests: [], actorId: 0, calls: 0 },
     shots: { requests: [], actorId: 0, calls: 0, resources: null },
@@ -1571,8 +1616,8 @@ export function attachThreePilotFoundation(game, options = {}) {
       requests: [], actorId: 0, segmentCalls: 0, drawCalls: 0, resources: null,
     },
     damage: {
-      resources: P3_PRIVATE_DAMAGE_RESOURCES,
-      realRam: game.ram,
+      resources: damageResourcesFor(binding),
+      realRam: manager.game.ram,
       memory: null,
       actorId: 0,
       epoch: 0,
@@ -1584,166 +1629,253 @@ export function attachThreePilotFoundation(game, options = {}) {
       receiptMeta: new Array(PRIVATE_DAMAGE_GEOMETRY.receiptCount).fill(null),
       deferredEvents: new Map(),
     },
-    runtime: {
-      anchorX: clamp(game.ram.u16(RAM.player1 + P.posX) + OFFSET_X,
-        ANCHOR.xMin, ANCHOR.xMax),
-      anchorY: clamp(game.ram.u16(RAM.player1 + P.posY), ANCHOR.yMin, ANCHOR.yMax),
-      lastP1Speed: null,
-      rebasePending: game.ram.u16(STAGE_CLEAR) !== 0,
-      targets: [{ y: 0, x: 0 }, { y: 0, x: 0 }, { y: 0, x: 0 }],
-    },
   };
   state.damage.memory = new PrivateDamageMemory(state);
-  clearP3ScoreState(state);
-  bindP3ShotResources(state);
-  bindP3BeamResources(state);
-  cacheTargets(state);
-  if (liveNonDeath(memory, P1_BINDING)) {
-    state.runtime.lastP1Speed = memory.u8(P1_BINDING.player + P.speedIdx);
-  }
-  if (Object.hasOwn(options, 'inputWord')) {
-    seedP3Input(state, mirrorsFromPort(options.inputWord).p1);
-  }
-
-  if (!stageP3Actor(state)) {
-    clearP3WeaponState(state);
-    state.lifecycle = 'dropped';
-    state.memory.setU16(P3_BINDING.player + P.state, 0);
-  }
-
-  const hook = (event) => controllerHook(state, event);
-  const positionTransform = (ram, playerIdx) =>
-    cachedPositionTransform(state, ram, playerIdx);
-  const renderHook = (hookGame) => collectThreePilotSpriteRequests(state, hookGame);
-  const shotHook = (hookGame, invokingCtx = null) => {
-    if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
-      throw new Error('private P3 shot hook invoked for a different Game');
-    }
-    return runThreePilotShotObject(hookGame, invokingCtx);
-  };
-  const optionHook = (hookGame) => {
-    if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
-      throw new Error('private P3 option hook invoked for a different Game');
-    }
-    return runThreePilotOptionObject(hookGame);
-  };
-  const segmentHook = (hookGame) => {
-    if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
-      throw new Error('private P3 segment hook invoked for a different Game');
-    }
-    return runThreePilotSegmentObject(hookGame);
-  };
-  const beamDrawHook = (hookGame) => {
-    if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
-      throw new Error('private P3 beam-draw hook invoked for a different Game');
-    }
-    return runThreePilotBeamDrawObject(hookGame);
-  };
-  const damageHook = (hookGame, invokingCtx = null) => {
-    if (hookGame !== state.game || ATTACHED.get(hookGame) !== state) {
-      throw new Error('private P3 damage hook invoked for a different Game');
-    }
-    return runThreePilotDamageObject(hookGame, invokingCtx);
-  };
-  const receiptHook = (hookGame, event) =>
-    privateDamageReceiptEvent(state, hookGame, event);
-  const scoreEventHook = (hookGame, event) =>
-    privateScoreEvent(state, hookGame, event);
-  const scoreFrameHook = (hookGame, event) =>
-    privateScoreFrameEvent(state, hookGame, event);
-  state.objectDriverHook = hook;
-  state.playerPositionTransform = positionTransform;
-  state.virtualSpriteRequestHook = renderHook;
-  state.privateShotObjectHook = shotHook;
-  state.privateOptionObjectHook = optionHook;
-  state.privateSegmentDriverHook = segmentHook;
-  state.privateBeamDrawHook = beamDrawHook;
-  state.privateDamageTailHook = damageHook;
-  state.privateDamageReceiptHook = receiptHook;
-  state.privateScoreEventHook = scoreEventHook;
-  state.privateScoreFrameHook = scoreFrameHook;
-  game.objectDriverHook = hook;
-  game.playerPositionTransform = positionTransform;
-  game.virtualSpriteRequestHook = renderHook;
-  game.privateShotObjectHook = shotHook;
-  game.privateOptionObjectHook = optionHook;
-  game.privateSegmentDriverHook = segmentHook;
-  game.privateBeamDrawHook = beamDrawHook;
-  game.privateDamageTailHook = damageHook;
-  game.privateDamageReceiptHook = receiptHook;
-  game.privateScoreEventHook = scoreEventHook;
-  game.privateScoreFrameHook = scoreFrameHook;
-  ATTACHED.set(game, state);
   return state;
 }
 
+function assertHookAvailable(game, name) {
+  if (game[name] != null) throw new Error(`Game already has a ${name}`);
+}
+
+function mergeReceiptResolutions(resolutions, event) {
+  if (resolutions.length === 0) return null;
+  let mask = 0;
+  let privateMask = 0;
+  let privateScoreMask = 0;
+  const subrecords = [];
+  for (const resolved of resolutions) {
+    mask |= resolved.mask;
+    privateMask |= resolved.privateMask;
+    privateScoreMask |= resolved.privateScoreMask;
+    subrecords.push(...resolved.subrecords);
+  }
+  const rawMask = event.d1 & 0x5c;
+  if (rawMask === 0) mask = 0;
+  return Object.freeze({
+    receipt: true,
+    mask: mask & 0x5c,
+    privateOnly: false,
+    rawMask,
+    privateMask: privateMask & 0x5c,
+    privateScoreMask: privateScoreMask & 0x44,
+    subrecord: subrecords[0],
+    subrecords: Object.freeze([...new Set(subrecords)]),
+  });
+}
+
+function managerReceiptEvent(manager, game, event) {
+  if (game !== manager.game || ATTACHED.get(game) !== manager
+      || event?.ram !== game.ram) {
+    throw new Error('private companion receipt hook invoked for a different Game');
+  }
+  if (event.phase === 'replace-deferred-score') {
+    const index = enemyIndexForAddress(event.a6);
+    for (const state of manager.companions) {
+      if (state.damage.enemyContext?.indices.includes(index)) {
+        privateDamageReceiptEvent(state, game, event);
+      }
+    }
+    return null;
+  }
+  if (event.phase === 'score-hit' || event.phase === 'score-kill') {
+    const resolutions = manager.companions
+      .map((state) => privateDamageReceiptEvent(state, game, event))
+      .filter((value) => value != null);
+    return mergeReceiptResolutions(resolutions, event);
+  }
+  for (const state of manager.companions) privateDamageReceiptEvent(state, game, event);
+  return null;
+}
+
+function collectManagerSpriteRequests(manager, game) {
+  if (game !== manager.game || ATTACHED.get(game) !== manager) {
+    throw new Error('private companion sprite hook invoked for a different Game');
+  }
+  return manager.companions.flatMap((state) =>
+    collectThreePilotSpriteRequests(state, game));
+}
+
+/** Attach one or two outgoing-only P1 companions to a Game. */
+export function attachFormationCompanions(game, options = {}) {
+  if (!game?.ram || !game?.rom || !game?.tables) {
+    throw new TypeError('formation companions require a Game');
+  }
+  const existing = ATTACHED.get(game);
+  if (existing) return existing;
+  for (const name of [
+    'objectDriverHook', 'playerPositionTransform', 'virtualSpriteRequestHook',
+    'privateOptionObjectHook', 'privateShotObjectHook', 'privateSegmentDriverHook',
+    'privateBeamDrawHook', 'privateDamageTailHook', 'privateDamageReceiptHook',
+    'privateScoreEventHook', 'privateScoreFrameHook',
+  ]) assertHookAvailable(game, name);
+  if (game.ram.u32(ALLOC.idCounter) === 0xffffffff) {
+    throw new RangeError('formation companion allocator ID would wrap to zero');
+  }
+
+  const selections = validateCompanions(options.companions);
+  const bindings = companionBindings(selections);
+  const anchor = selections.length === 2 ? ANCHOR_THREE : ANCHOR_TWO;
+  const p1OffsetX = selections.length === 2 ? -THREE_OFFSET_X : -TWO_OFFSET_X;
+  const runtime = {
+    anchorX: clamp(game.ram.u16(RAM.player1 + P.posX) - p1OffsetX,
+      anchor.xMin, anchor.xMax),
+    anchorY: clamp(game.ram.u16(RAM.player1 + P.posY), anchor.yMin, anchor.yMax),
+    lastP1Speed: null,
+    rebasePending: game.ram.u16(STAGE_CLEAR) !== 0,
+    targets: new Array(selections.length + 1).fill(null),
+  };
+  const manager = {
+    mode: options.mode ?? null,
+    game,
+    anchor,
+    p1OffsetX,
+    runtime,
+    companions: [],
+  };
+  manager.companions = bindings.map((binding) => createCompanionState(manager, binding));
+  ATTACHED.set(game, manager);
+  try {
+    cacheTargets(manager);
+    if (liveNonDeath(game.ram, P1_BINDING)) {
+      runtime.lastP1Speed = game.ram.u8(RAM.player1 + P.speedIdx);
+    }
+    const p1Mirror = Object.hasOwn(options, 'inputWord')
+      ? mirrorsFromPort(options.inputWord).p1 : 0;
+    for (const state of manager.companions) {
+      clearP3ScoreState(state);
+      bindP3ShotResources(state);
+      bindP3BeamResources(state);
+      seedP3Input(state, p1Mirror);
+      stageP3Actor(state);
+    }
+  } catch (error) {
+    ATTACHED.delete(game);
+    throw error;
+  }
+
+  const assertManagerGame = (hookGame, label) => {
+    if (hookGame !== manager.game || ATTACHED.get(hookGame) !== manager) {
+      throw new Error(`private companion ${label} hook invoked for a different Game`);
+    }
+  };
+  manager.objectDriverHook = (event) => controllerHook(manager, event);
+  manager.playerPositionTransform = (ram, playerIdx) =>
+    cachedPositionTransform(manager, ram, playerIdx);
+  manager.virtualSpriteRequestHook = (hookGame) =>
+    collectManagerSpriteRequests(manager, hookGame);
+  manager.privateShotObjectHook = (hookGame, invokingCtx = null) => {
+    assertManagerGame(hookGame, 'shot');
+    return runThreePilotShotObject(hookGame, invokingCtx);
+  };
+  manager.privateOptionObjectHook = (hookGame) => {
+    assertManagerGame(hookGame, 'option');
+    return runThreePilotOptionObject(hookGame);
+  };
+  manager.privateSegmentDriverHook = (hookGame) => {
+    assertManagerGame(hookGame, 'segment');
+    return runThreePilotSegmentObject(hookGame);
+  };
+  manager.privateBeamDrawHook = (hookGame) => {
+    assertManagerGame(hookGame, 'beam-draw');
+    return runThreePilotBeamDrawObject(hookGame);
+  };
+  manager.privateDamageTailHook = (hookGame, invokingCtx = null) => {
+    assertManagerGame(hookGame, 'damage');
+    return runThreePilotDamageObject(hookGame, invokingCtx);
+  };
+  manager.privateDamageReceiptHook = (hookGame, event) =>
+    managerReceiptEvent(manager, hookGame, event);
+  for (const state of manager.companions) {
+    state.objectDriverHook = manager.objectDriverHook;
+    state.playerPositionTransform = manager.playerPositionTransform;
+    state.virtualSpriteRequestHook = manager.virtualSpriteRequestHook;
+    state.privateShotObjectHook = manager.privateShotObjectHook;
+    state.privateOptionObjectHook = manager.privateOptionObjectHook;
+    state.privateSegmentDriverHook = manager.privateSegmentDriverHook;
+    state.privateBeamDrawHook = manager.privateBeamDrawHook;
+    state.privateDamageTailHook = manager.privateDamageTailHook;
+    state.privateDamageReceiptHook = manager.privateDamageReceiptHook;
+  }
+
+  game.objectDriverHook = manager.objectDriverHook;
+  game.playerPositionTransform = manager.playerPositionTransform;
+  game.virtualSpriteRequestHook = manager.virtualSpriteRequestHook;
+  game.privateShotObjectHook = manager.privateShotObjectHook;
+  game.privateOptionObjectHook = manager.privateOptionObjectHook;
+  game.privateSegmentDriverHook = manager.privateSegmentDriverHook;
+  game.privateBeamDrawHook = manager.privateBeamDrawHook;
+  game.privateDamageTailHook = manager.privateDamageTailHook;
+  game.privateDamageReceiptHook = manager.privateDamageReceiptHook;
+  return manager;
+}
+
+/** Compatibility entry for the private three-ship mode. */
+export function attachThreePilotFoundation(game, options = {}) {
+  const manager = attachFormationCompanions(game, {
+    ...options,
+    mode: THREE_PILOT_FORMATION_MODE,
+    companions: THREE_PILOT_FORMATION_MODE.companions,
+    layout: 'three',
+  });
+  return manager.companions[0];
+}
+
 export function threePilotFoundationForGame(game) {
-  return ATTACHED.get(game) ?? null;
+  return ATTACHED.get(game)?.companions[0] ?? null;
 }
 
-/** Resolve P3 by its complete 32-bit allocator ID on every call. */
+/** Resolve one companion by its complete 32-bit allocator ID. */
 export function resolveThreePilotActor(state) {
-  return refreshLifecycle(state, false);
+  if (state?.companions) return state.companions.map((child) => refreshLifecycle(child, false));
+  return state?.manager ? refreshLifecycle(state, false) : null;
 }
 
-/** Physical P2 receives the same safe subset as virtual P3. */
+/** Formation never writes native P2 input bits. */
 export function transformThreePilotInput(state, word) {
   const input = word & 0xffff;
-  if (state?.mode !== THREE_PILOT_FORMATION_MODE
-      || ATTACHED.get(state.game) !== state
-      || !activeLifecycle(state.lifecycle)) return input;
-  const p1 = input & 0x00ff;
-  const p2Start = input & 0x0100;
-  const copied = p1 & 0x00be;
-  return (p1 | p2Start | 0x4000 | (copied << 8)) & 0xffff;
+  const manager = state?.companions ? state : state?.manager;
+  return manager && ATTACHED.get(manager.game) === manager ? input : input;
 }
 
-/**
- * Update virtual P3 input and the three formation positions. P1 alone owns the
- * direction and speed lookup. This function does not run any P3 gameplay path.
- */
-export function prepareThreePilotFrame(state, game, word) {
-  const original = word & 0xffff;
-  if (state?.mode !== THREE_PILOT_FORMATION_MODE
-      || state.game !== game || ATTACHED.get(game) !== state) return original;
-  if (state.lifecycle === 'detached' && state.restagePending
-      && !stageP3Actor(state)) return original;
-  if (!activeLifecycle(state.lifecycle)) return original;
+/** Update all companion inputs and positions from P1 alone. */
+export function prepareFormationCompanionFrame(managerValue, game, word) {
+  const input = word & 0xffff;
+  const manager = managerValue?.companions ? managerValue : managerValue?.manager;
+  if (!manager || manager.game !== game || ATTACHED.get(game) !== manager) return input;
 
-  const input = transformThreePilotInput(state, original);
   const p1Mirror = mirrorsFromPort(input).p1;
-  updateP3Input(state, p1Mirror);
-  const { memory, runtime } = state;
-  memory.setU8(P3_BINDING.player + P.dirByte,
-    memory.u16(P3_BINDING.input.raw) & 0xff);
-  memory.setU8(P3_BINDING.player + P.btnByte,
-    memory.u16(P3_BINDING.input.edge) & 0xff);
-  if (memory.u16(STAGE_CLEAR) !== 0) {
-    clearP3WeaponState(state);
-    runtime.rebasePending = true;
+  for (const state of manager.companions) {
+    updateP3Input(state, p1Mirror);
+    state.memory.setU8(state.binding.player + P.dirByte,
+      state.memory.u16(state.binding.input.raw) & 0xff);
+    state.memory.setU8(state.binding.player + P.btnByte,
+      state.memory.u16(state.binding.input.edge) & 0xff);
+  }
+
+  if (game.ram.u16(STAGE_CLEAR) !== 0) {
+    for (const state of manager.companions) suspendCompanion(state);
+    manager.runtime.rebasePending = true;
     return input;
   }
-  if (state.lifecycle === 'alive' && !liveNonDeath(memory, P3_BINDING)) {
-    clearP3WeaponState(state);
+
+  const p1Live = liveNonDeath(game.ram, P1_BINDING);
+  for (const state of manager.companions) syncCompanionAvailability(state, p1Live);
+  if (!p1Live) {
+    manager.runtime.rebasePending = true;
+    return input;
   }
 
-  const live = FORMATION_ACTOR_BINDINGS.map((binding) => bindingLive(state, binding));
-  const liveP1 = live[P1_BINDING.logicalIndex];
-  if (!live.some(Boolean)) return input;
-
+  const { runtime, anchor } = manager;
   if (runtime.rebasePending) {
-    const binding = FORMATION_ACTOR_BINDINGS.find((candidate) =>
-      live[candidate.logicalIndex]);
-    rebaseFromBinding(state, binding);
+    rebaseFromP1(manager);
     runtime.rebasePending = false;
   }
-  if (liveP1) {
-    runtime.lastP1Speed = memory.u8(P1_BINDING.player + P.speedIdx);
-  }
+  runtime.lastP1Speed = game.ram.u8(RAM.player1 + P.speedIdx);
 
   let dy = 0;
   let dx = 0;
-  if (memory.u16(MOVEMENT_DISABLE) === 0 && runtime.lastP1Speed != null) {
+  if (game.ram.u16(MOVEMENT_DISABLE) === 0 && runtime.lastP1Speed != null) {
     const angle = game.tables.angleFor(p1Mirror & 0x0f);
     if ((angle & 0x80) === 0) {
       const vector = game.tables.vector(runtime.lastP1Speed, angle);
@@ -1751,16 +1883,22 @@ export function prepareThreePilotFrame(state, game, word) {
       dx = vector.dx;
     }
   }
+  runtime.anchorX = clamp(runtime.anchorX + dx, anchor.xMin, anchor.xMax);
+  runtime.anchorY = clamp(runtime.anchorY + dy, anchor.yMin, anchor.yMax);
+  cacheTargets(manager);
 
-  runtime.anchorX = clamp(runtime.anchorX + dx, ANCHOR.xMin, ANCHOR.xMax);
-  runtime.anchorY = clamp(runtime.anchorY + dy, ANCHOR.yMin, ANCHOR.yMax);
-  cacheTargets(state);
-
-  for (const binding of FORMATION_ACTOR_BINDINGS) {
-    if (!live[binding.logicalIndex]) continue;
-    const target = runtime.targets[binding.logicalIndex];
-    memory.setU16(binding.player + P.posY, target.y);
-    memory.setU16(binding.player + P.posX, target.x);
+  const p1Target = runtime.targets[0];
+  game.ram.setU16(RAM.player1 + P.posY, p1Target.y);
+  game.ram.setU16(RAM.player1 + P.posX, p1Target.x);
+  for (const state of manager.companions) {
+    if (!liveNonDeath(state.memory, state.binding)) continue;
+    const target = targetFor(state);
+    state.memory.setU16(state.binding.player + P.posY, target.y);
+    state.memory.setU16(state.binding.player + P.posX, target.x);
   }
   return input;
+}
+
+export function prepareThreePilotFrame(state, game, word) {
+  return prepareFormationCompanionFrame(state, game, word);
 }

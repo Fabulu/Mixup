@@ -394,8 +394,9 @@ test('W615 private laser is state and request exact with normalized native P1',
 test('W615 real type-5 frames invoke both private hooks and publish held-B1 segments',
   { skip: SKIP_ASSETS }, async () => {
     const { state, game } = await exactState();
-    const segmentCalls = state.beam.segmentCalls;
-    const drawCalls = state.beam.drawCalls;
+    const companions = state.manager.companions;
+    const segmentCalls = companions.map((companion) => companion.beam.segmentCalls);
+    const drawCalls = companions.map((companion) => companion.beam.drawCalls);
     const idle = portWordFromPlayerBits([]);
     const heldB1 = portWordFromPlayerBits([BIT.b1]);
     for (let frame = 0; frame < 48; frame++) {
@@ -406,12 +407,16 @@ test('W615 real type-5 frames invoke both private hooks and publish held-B1 segm
       game.step(prepareThreePilotFrame(state, game, heldB1));
       sawVirtualBeam ||= game.displayList.perBucketVirtualRecords[LASER.emitBucket] > 0;
     }
-    assert.equal(state.beam.segmentCalls, segmentCalls + 96);
-    assert.equal(state.beam.drawCalls, drawCalls + 96);
-    assert.ok(activeBeamSlots(state.memory).length > 0);
-    assert.ok((state.memory.u16(state.beam.resources.rec) & 0x8000) !== 0);
+    assert.deepEqual(companions.map((companion) => companion.beam.segmentCalls),
+      segmentCalls.map((calls) => calls + 96));
+    assert.deepEqual(companions.map((companion) => companion.beam.drawCalls),
+      drawCalls.map((calls) => calls + 96));
+    for (const companion of companions) {
+      assert.ok(activeBeamSlots(companion.memory, companion.binding.beam.pool).length > 0);
+      assert.ok((companion.memory.u16(companion.beam.resources.rec) & 0x8000) !== 0);
+    }
     assert.equal(sawVirtualBeam, true,
-      'the merged display list receives private bucket-16 segment records');
+      'the merged display list receives both companions private bucket-16 segment records');
   });
 
 test('W615 private calls compose with shots and options without native mutation',
@@ -557,7 +562,7 @@ test('W615 bomb guard is read-only and lifecycle cleanup clears every beam autho
     dropped.state.objectDriverHook({
       phase: 'after-commit', ram: dropped.game.ram, created: 0, killed: 0,
     });
-    assert.equal(dropped.state.lifecycle, 'dropped');
+    assert.equal(dropped.state.lifecycle, 'detached');
     assertBeamCleared(dropped.state);
   });
 
@@ -588,7 +593,7 @@ test('W615 call-10 and call-11 hooks reject cross-Game use and remain isolated',
     assertBytesEqual(sidecarBytes(c.state.memory, P3_VIRTUAL.beamControl, 0x42), cBefore);
   });
 
-test('W615 ordering, privacy, replay refusal, and 32-mod closure stay explicit', async () => {
+test('W615 ordering, privacy, replay refusal, and public formation closure stay explicit', async () => {
   const type5 = readFileSync(new URL('../src/type5.js', import.meta.url), 'utf8');
   const call8 = type5.indexOf('ctx.shotsProcessed = runShotDriver');
   const private8 = type5.indexOf('ctx.privateShotObjectHook?.(ctx)', call8);
@@ -609,17 +614,15 @@ test('W615 ordering, privacy, replay refusal, and 32-mod closure stay explicit',
   assert.match(main, /installedPrivateBeamDrawHook\(this\)/);
 
   const id = THREE_PILOT_FORMATION_MODE.id;
-  assert.equal(formationMode(id), null);
-  assert.equal(hashToFormation(`#formation=${id}`), null);
-  assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE), '');
+  assert.strictEqual(formationMode(id), THREE_PILOT_FORMATION_MODE);
+  assert.strictEqual(hashToFormation(`#formation=${id}`), THREE_PILOT_FORMATION_MODE);
+  assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE), `formation=${id}`);
   assert.equal(MOD_IDS.length, 32);
   assert.equal(MOD_IDS.includes(id), false);
   assert.equal(Object.hasOwn(MODS, id), false);
-  for (const page of ['../start.html', '../index.html']) {
-    const source = readFileSync(new URL(page, import.meta.url), 'utf8');
-    assert.equal(source.includes(id), false);
-    assert.equal(source.includes(THREE_PILOT_FORMATION_MODE.name), false);
-  }
+  const start = readFileSync(new URL('../start.html', import.meta.url), 'utf8');
+  assert.match(start, /id="formation-three"/);
+  assert.match(start, /All Three Ships/);
 
   const formation = createFormationState(FORMATION_MODE);
   await assert.rejects(() => Demo.prototype.armRecording.call({
