@@ -200,6 +200,23 @@ export const COIN_DIP_RESET = Object.freeze({
   debounceStride: 6,
 });
 
+export const OPERATOR_FACTORY = Object.freeze({
+  site: 0x256fa6,
+  source: 0x259512,
+  target: 0x803808,
+  bytes: 8,
+});
+
+/** `$256FA6` copies the cartridge's eight factory operator settings into the
+ * battery-backed main RAM. A browser cabinet has no previous NVRAM image, so
+ * the production cold boot provisions this exact cartridge block before the
+ * ordinary `$23BEEA` reset validates and consumes it. */
+export function operatorFactory256FA6(ram, rom) {
+  for (let i = 0; i < OPERATOR_FACTORY.bytes; i++) {
+    ram.setU8(OPERATOR_FACTORY.target + i, rom.u8(OPERATOR_FACTORY.source + i));
+  }
+}
+
 /** `$23C6FA` initializes coinage from the operator DIP byte. Store widths and
  * ordering follow the cartridge, including the two six-byte debounce records. */
 export function coinDipInit23C6FA(ram, rom) {

@@ -4821,6 +4821,14 @@ const requireTxGrid = (word, d2, d3) => {
   const cells = (d2 + 1) * (d3 + 1);
   for (let i = 0; i < cells; i++) frontEndTxRequired.add((first + i) & 0xffff);
 };
+const requireTxGridStride = (word, d2, d3, d5) => {
+  const first = ((word >>> 16) + 0xc000) & 0xffff;
+  for (let outer = 0; outer <= d2; outer++) {
+    for (let inner = 0; inner <= d3; inner++) {
+      frontEndTxRequired.add((first + outer * d5 + inner) & 0xffff);
+    }
+  }
+};
 // `$25C6D4`: four 6-by-28 attract panels selected at `$25C808`.
 for (let i = 0; i < 4; i++) requireTxGrid(romBe32(0x25c808 + i * 4), 5, 0x1b);
 // `$260B30`: all legal announcement states. The first and third lists contain
@@ -4831,6 +4839,19 @@ for (const table of [0x260d22, 0x260d42]) {
 }
 for (let i = 0; i < 16; i++) requireTxGrid(romBe32(0x260df6 + i * 4), 1, 9);
 frontEndTxRequired.add(0xc000); // `$260A34`'s cartridge blank-tile immediate
+
+// W623: `$28875E` animates the continue countdown from all seventeen banner
+// descriptors and all three frames of each of the ten digit groups. The digit
+// printer is `$240E1A`, so each 8-by-4 block advances twelve source tiles per
+// outer pass rather than occupying one contiguous 32-tile run.
+for (const at of [0x2886fc, 0x28870c]) requireDirectString(at, 0x10, 'continue');
+for (let i = 0; i < 17; i++) requireTxGrid(romBe32(0x28886a + i * 4), 3, 0x13);
+for (let digit = 0; digit < 10; digit++) {
+  const group = romBe32(0x2888b2 + digit * 4);
+  for (let frame = 0; frame < 3; frame++) {
+    requireTxGridStride(romBe32(group + frame * 4), 7, 3, 0x0c);
+  }
+}
 
 // These two adjacent machines deliberately close one continuous mask-ROM TX
 // family. Pinning the endpoints and exact count catches a wrong table width,

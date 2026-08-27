@@ -10,7 +10,7 @@ import { Ram } from '../src/ram.js';
 import { Game, MACHINE } from '../src/main.js';
 import { ALLOC } from '../src/objalloc.js';
 import {
-  BOOT, COIN_DIP_RESET, RESET_PROLOGUE, coinDipInit23C6FA,
+  BOOT, COIN_DIP_RESET, OPERATOR_FACTORY, RESET_PROLOGUE, coinDipInit23C6FA,
 } from '../src/frontend.js';
 import {
   BgVram, CAM, TxVram, VideoRegs,
@@ -349,6 +349,12 @@ test('W621 one real production Demo visibly runs cold cabinet boot, attract, sel
     assert.equal(demo.game.armedVblanks, 0,
       'the zero-RAM cold launch does not inject the seeded replay semaphore arm');
     assert.equal(demo.game.bootResult.reset.calls.length, 23);
+    for (let i = 0; i < OPERATOR_FACTORY.bytes; i++) {
+      assert.equal(demo.game.ram.u8(OPERATOR_FACTORY.target + i),
+        IMG[OPERATOR_FACTORY.source + i], `factory operator byte ${i}`);
+    }
+    assert.equal(demo.game.ram.u8(0x803809), 1,
+      'the cartridge factory policy enables the real continue countdown');
     assert.equal(demo.authentic, undefined, 'no host authentic-selection shortcut was applied');
     assert.equal(demo.rung, null, 'no ladder or LF2000 jump was used');
     assert.equal(harness.canvas.width, 224);

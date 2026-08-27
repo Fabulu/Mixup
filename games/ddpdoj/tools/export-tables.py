@@ -4166,6 +4166,10 @@ SHOT_WINDOWS.extend([
     # `$803956` / `$803957`. The 40-byte window ends exactly where the routine begins.
     (0x23C6D2, 0x0028, "W621: $23C6FA cold-boot coin/DIP lookup tables at $23C6D2 and $23C6E6, "
                        "20 bytes each; the contiguous window ends at routine entry $23C6FA"),
+    # `$256FA6` performs eight literal byte copies from `$259512..$259519` into the
+    # battery-backed operator settings `$803808..$80380F`. The next byte is not read.
+    (0x259512, 0x0008, "W623: $256FA6 cartridge factory operator block, exactly eight bytes "
+                       "copied to $803808..$80380F by eight move.b instructions"),
 
     # ---- W376: THE WARNING SCREEN AND THE CREDIT LINE ---------------------------------------
     #

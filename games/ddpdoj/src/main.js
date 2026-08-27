@@ -71,7 +71,9 @@ import { buildDisplayList } from './displaylist.js';
 // W375 -- `$23BF74`, THE FRONT-END BOOT BLOCK.  See `boot()` below and
 // src/frontend.js's header for the four places the disassembly it was ported
 // from had to be corrected.
-import { bootFrontEnd23BF74, resetPrologue23BEEA } from './frontend.js';
+import {
+  bootFrontEnd23BF74, operatorFactory256FA6, resetPrologue23BEEA,
+} from './frontend.js';
 import { ProtLatch } from './protsim.js';
 import { snapshotBucket, NAMED_BUCKETS } from './spritequeue.js';
 import { makeBackground, BgVram, TxVram, VideoRegs, SlotTable907000 } from './background.js';
@@ -994,6 +996,10 @@ export class Game {
      */
     this.#cabinetFrontend = cabinetFrontend;
     const ctx = this.#ctx();
+    // Main RAM is the board's NVRAM. The published browser starts with no saved
+    // cabinet image, so provision the cartridge's own `$259512` factory block
+    // through `$256FA6` before the reset reads coinage and continue policy.
+    if (cabinetFrontend) operatorFactory256FA6(this.ram, this.rom);
     const reset = resetPrologue23BEEA(this.ram, this.rom, this.palette, ctx);
     this.bootResult = {
       ...bootFrontEnd23BF74(this.ram, this.rom, this.palette, ctx, true),
