@@ -23,7 +23,6 @@
   h2 { margin: 1.6rem 0 .55rem; color: var(--dim); font-size: .78rem;
     letter-spacing: .13em; text-transform: uppercase; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: .6rem; }
-  #styles, #p2-join, #p2-ships, #p2-styles { margin-top: .6rem; }
   .card { padding: .72rem .82rem; text-align: left; color: inherit; cursor: pointer;
     background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
     font: inherit; }
@@ -58,8 +57,9 @@
   <header>
     <h1>DoDonPachi DaiOuJou <span>- Black Label start screen</span></h1>
     <div class="sub">Every switch below has a concrete RAM, input, timing, or RGB hook.
-      Nothing selected launches the cartridge-faithful page with no mod state.
-      Loadouts are shareable URL hashes. <a href="../../index.html">All games</a></div>
+      Nothing selected launches the cartridge-faithful cold boot with no mod state; ship, pilot,
+      and genuine P2 join choices happen on the cartridge screens. Loadouts are shareable URL hashes.
+      <a href="../../index.html">All games</a></div>
   </header>
 
   <h2>Start here</h2>
@@ -80,68 +80,6 @@
       aria-disabled="true" disabled>
       <div class="name"><span>White Label</span><span class="mark">ON</span></div>
       <div class="blurb">Unavailable. White Label remains non-selectable until its gameplay routes are functional and gated.</div>
-    </button>
-  </div>
-
-  <h2>Authentic cartridge selection</h2>
-  <div class="sub">Each player gets an original Version-B ship and pilot/style pair, not a mod.
-    The listing proves selector values 2, 4, and 6 but does not prove which human-readable
-    pilot name belongs to each, so this page keeps the cartridge numbers explicit.</div>
-  <div class="sub"><b>PLAYER 1</b></div>
-  <div class="grid" id="ships">
-    <button class="card" type="button" data-auth-ship="0" aria-pressed="true">
-      <div class="name"><span>Type-A ship</span><span class="mark">ON</span></div>
-      <div class="blurb">Cartridge ship selector 0. Default.</div>
-    </button>
-    <button class="card" type="button" data-auth-ship="2" aria-pressed="false">
-      <div class="name"><span>Type-B ship</span><span class="mark">ON</span></div>
-      <div class="blurb">Cartridge ship selector 2.</div>
-    </button>
-  </div>
-  <div class="grid" id="styles">
-    <button class="card" type="button" data-auth-style="2" aria-pressed="true">
-      <div class="name"><span>Pilot/style slot 1</span><span class="mark">ON</span></div>
-      <div class="blurb">Cartridge selector 2. Default.</div>
-    </button>
-    <button class="card" type="button" data-auth-style="4" aria-pressed="false">
-      <div class="name"><span>Pilot/style slot 2</span><span class="mark">ON</span></div>
-      <div class="blurb">Cartridge selector 4.</div>
-    </button>
-    <button class="card" type="button" data-auth-style="6" aria-pressed="false">
-      <div class="name"><span>Pilot/style slot 3</span><span class="mark">ON</span></div>
-      <div class="blurb">Cartridge selector 6.</div>
-    </button>
-  </div>
-
-  <div class="sub"><b>PLAYER 2</b></div>
-  <div class="grid" id="p2-join">
-    <button class="card" id="join-p2" type="button" aria-pressed="false">
-      <div class="name"><span>Join Player 2</span><span class="mark">ON</span></div>
-      <div class="blurb">Arm the cartridge's genuine type-3 player request.</div>
-    </button>
-  </div>
-  <div class="grid" id="p2-ships">
-    <button class="card" type="button" data-auth-p2-ship="0" aria-pressed="true">
-      <div class="name"><span>P2 Type-A ship</span><span class="mark">ON</span></div>
-      <div class="blurb">Cartridge P2 ship selector 0. Default.</div>
-    </button>
-    <button class="card" type="button" data-auth-p2-ship="2" aria-pressed="false">
-      <div class="name"><span>P2 Type-B ship</span><span class="mark">ON</span></div>
-      <div class="blurb">Cartridge P2 ship selector 2.</div>
-    </button>
-  </div>
-  <div class="grid" id="p2-styles">
-    <button class="card" type="button" data-auth-p2-style="2" aria-pressed="true">
-      <div class="name"><span>P2 pilot/style slot 1</span><span class="mark">ON</span></div>
-      <div class="blurb">Cartridge P2 selector 2. Default.</div>
-    </button>
-    <button class="card" type="button" data-auth-p2-style="4" aria-pressed="false">
-      <div class="name"><span>P2 pilot/style slot 2</span><span class="mark">ON</span></div>
-      <div class="blurb">Cartridge P2 selector 4.</div>
-    </button>
-    <button class="card" type="button" data-auth-p2-style="6" aria-pressed="false">
-      <div class="name"><span>P2 pilot/style slot 3</span><span class="mark">ON</span></div>
-      <div class="blurb">Cartridge P2 selector 6.</div>
     </button>
   </div>
 
@@ -223,14 +161,14 @@ function restoreStateFromLocation() {
   const effective = formation ?? ordinary;
   authenticShip = effective?.ship ?? 0;
   authenticStyle = effective?.style ?? 2;
-  authenticShipExplicit = params.has('ship');
-  authenticStyleExplicit = params.has('style');
+  authenticShipExplicit = ordinary != null && params.has('ship');
+  authenticStyleExplicit = ordinary != null && params.has('style');
 
-  explicitP2Joined = params.has('p2');
+  explicitP2Joined = ordinary?.p2 != null;
   authenticP2Ship = ordinary?.p2?.ship ?? 0;
   authenticP2Style = ordinary?.p2?.style ?? 2;
-  authenticP2ShipExplicit = params.has('p2ship');
-  authenticP2StyleExplicit = params.has('p2style');
+  authenticP2ShipExplicit = ordinary?.p2 != null && params.has('p2ship');
+  authenticP2StyleExplicit = ordinary?.p2 != null && params.has('p2style');
 }
 
 function effectiveP2Selection() {
@@ -339,26 +277,6 @@ function sync({ writeHistory = true } = {}) {
     'aria-pressed', String(formationActive?.id === FORMATION_MODE.id));
   document.getElementById('formation-three').setAttribute(
     'aria-pressed', String(formationActive?.id === FORMATION_THREE_MODE.id));
-  for (const button of document.querySelectorAll('[data-auth-ship]')) {
-    button.setAttribute('aria-pressed', String(Number(button.dataset.authShip) === authenticShip));
-  }
-  for (const button of document.querySelectorAll('[data-auth-style]')) {
-    button.setAttribute('aria-pressed', String(Number(button.dataset.authStyle) === authenticStyle));
-  }
-  const effectiveP2 = effectiveP2Selection();
-  const joinP2 = document.getElementById('join-p2');
-  joinP2.disabled = !!formationActive && !explicitP2Joined;
-  joinP2.setAttribute('aria-pressed', String(!!effectiveP2));
-  for (const button of document.querySelectorAll('[data-auth-p2-ship]')) {
-    button.disabled = !!formationActive || !effectiveP2;
-    button.setAttribute('aria-pressed', String(
-      !!effectiveP2 && Number(button.dataset.authP2Ship) === effectiveP2.ship));
-  }
-  for (const button of document.querySelectorAll('[data-auth-p2-style]')) {
-    button.disabled = !!formationActive || !effectiveP2;
-    button.setAttribute('aria-pressed', String(
-      !!effectiveP2 && Number(button.dataset.authP2Style) === effectiveP2.style));
-  }
 
   const summary = document.getElementById('summary');
   summary.replaceChildren();
@@ -378,13 +296,19 @@ function sync({ writeHistory = true } = {}) {
     summary.appendChild(formation);
   }
   const authentic = document.createElement('span');
-  const p1 = `P1 Type-${authenticShip === 0 ? 'A' : 'B'}, pilot/style selector ${authenticStyle}`;
-  const p2 = formationActive
-    ? ` | ${formationActive.companions.length} P1-owned companion${formationActive.companions.length === 1 ? '' : 's'} | Native P2 not joined`
-    : effectiveP2
-      ? ` | P2 Type-${effectiveP2.ship === 0 ? 'A' : 'B'}, pilot/style selector ${effectiveP2.style}`
-      : ' | P2 not joined';
-  authentic.textContent = ` | ${p1}${p2}`;
+  const diagnosticAuthentic = !formationActive
+    && (authenticShipExplicit || authenticStyleExplicit || explicitP2Joined);
+  if (formationActive) {
+    authentic.textContent = ` | ${formationActive.companions.length} P1-owned companion${
+      formationActive.companions.length === 1 ? '' : 's'} | Native P2 not joined`;
+  } else if (diagnosticAuthentic) {
+    const p1 = `P1 Type-${authenticShip === 0 ? 'A' : 'B'}, selector ${authenticStyle}`;
+    const p2 = effectiveP2Selection();
+    authentic.textContent = ` | Diagnostic cartridge patch: ${p1}${p2
+      ? ` | P2 Type-${p2.ship === 0 ? 'A' : 'B'}, selector ${p2.style}` : ''}`;
+  } else {
+    authentic.textContent = ' | Ship, pilot, and P2 join are selected inside the cartridge';
+  }
   summary.appendChild(authentic);
   const formationP2Conflict = !!formationActive && explicitP2Joined;
   if (lastConflicts.length || formationP2Conflict) {
@@ -417,58 +341,28 @@ document.getElementById('formation-three').addEventListener('click', () => {
   toggleFormation(FORMATION_THREE_MODE);
 });
 
-for (const button of document.querySelectorAll('[data-auth-ship]')) {
-  button.addEventListener('click', () => {
-    authenticShip = Number(button.dataset.authShip);
-    authenticShipExplicit = true;
-    sync();
-  });
-}
-for (const button of document.querySelectorAll('[data-auth-style]')) {
-  button.addEventListener('click', () => {
-    authenticStyle = Number(button.dataset.authStyle);
-    authenticStyleExplicit = true;
-    sync();
-  });
-}
-document.getElementById('join-p2').addEventListener('click', () => {
-  if (formationActive && !explicitP2Joined) return;
-  explicitP2Joined = !explicitP2Joined;
-  if (explicitP2Joined) {
-    authenticP2ShipExplicit = true;
-    authenticP2StyleExplicit = true;
-  }
-  sync();
-});
-for (const button of document.querySelectorAll('[data-auth-p2-ship]')) {
-  button.addEventListener('click', () => {
-    explicitP2Joined = true;
-    authenticP2Ship = Number(button.dataset.authP2Ship);
-    authenticP2ShipExplicit = true;
-    sync();
-  });
-}
-for (const button of document.querySelectorAll('[data-auth-p2-style]')) {
-  button.addEventListener('click', () => {
-    explicitP2Joined = true;
-    authenticP2Style = Number(button.dataset.authP2Style);
-    authenticP2StyleExplicit = true;
-    sync();
-  });
+function clearAuthenticDiagnostics() {
+  authenticShip = 0;
+  authenticStyle = 2;
+  authenticShipExplicit = false;
+  authenticStyleExplicit = false;
+  explicitP2Joined = false;
+  authenticP2Ship = 0;
+  authenticP2Style = 2;
+  authenticP2ShipExplicit = false;
+  authenticP2StyleExplicit = false;
 }
 
 document.getElementById('vanilla').addEventListener('click', () => {
   selected.clear();
   formationActive = null;
+  clearAuthenticDiagnostics();
   sync();
 });
 document.getElementById('clear').addEventListener('click', () => {
   selected.clear();
   formationActive = null;
-  authenticShip = 0;
-  authenticStyle = 2;
-  authenticShipExplicit = false;
-  authenticStyleExplicit = false;
+  clearAuthenticDiagnostics();
   sync();
 });
 document.getElementById('games').addEventListener('click', () => {

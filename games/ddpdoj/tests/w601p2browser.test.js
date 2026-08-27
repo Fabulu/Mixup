@@ -249,22 +249,19 @@ test('W601 normal frame path creates, moves, and fires the genuine P2 actor',
     assert.deepEqual(liveRecords(game.ram, SHOT.p2Table), [0x810ed2, 0x810f02]);
   });
 
-test('W601 start page restores, scopes, preserves, and serializes explicit P2 selection', () => {
+test('W601 start leaves P2 join and fighter selection to the cartridge', () => {
   const start = readFileSync(new URL('../start.html', import.meta.url), 'utf8');
-  assert.match(start, /id="join-p2"/);
-  assert.match(start, /data-auth-p2-ship="0"/);
-  assert.match(start, /data-auth-p2-ship="2"/);
-  assert.match(start, /data-auth-p2-style="2"/);
-  assert.match(start, /data-auth-p2-style="4"/);
-  assert.match(start, /data-auth-p2-style="6"/);
-  assert.match(start, /explicitP2Joined = params\.has\('p2'\)/,
-    'the query restores explicit P2 separately from formation state');
+  assert.doesNotMatch(start, /id="join-p2"/);
+  assert.doesNotMatch(start, /data-auth-p2-(?:ship|style)=/);
+  assert.doesNotMatch(start, /data-auth-(?:ship|style)=/);
+  assert.match(start, /ship, pilot,[\s\S]*genuine P2 join choices happen on the cartridge screens/);
+  assert.match(start, /explicitP2Joined = ordinary\?\.p2 != null/,
+    'a direct diagnostic query still restores explicit P2 separately from formation state');
   assert.match(start,
     /\.\.\.\(explicitP2Joined\s*\? \{ p2: \{ ship: authenticP2Ship, style: authenticP2Style \} \}\s*: \{\}\)/,
-    'ordinary launches serialize the complete explicit P2 pair');
+    'diagnostic launches preserve the complete explicit P2 pair');
   const clear = start.slice(start.indexOf("document.getElementById('clear').addEventListener"),
     start.indexOf("document.getElementById('games').addEventListener"));
-  assert.match(clear, /formationActive = null/);
-  assert.doesNotMatch(clear, /explicitP2Joined\s*=/,
-    'CLEAR resets the formation without erasing an explicit native P2 join');
+  assert.match(clear, /clearAuthenticDiagnostics\(\)/,
+    'CLEAR removes an invisible diagnostic query instead of leaving a hidden P2 launch patch');
 });

@@ -292,8 +292,7 @@ test('W609 start keeps explicit native P2 separate and blocks every formation co
   const formationStart = start.indexOf(
     "document.getElementById('formation-side-by-side').addEventListener");
   const formationHandlers = start.slice(formationStart,
-    start.indexOf("for (const button of document.querySelectorAll('[data-auth-ship]'))",
-      formationStart));
+    start.indexOf('function clearAuthenticDiagnostics()', formationStart));
   const launchHandler = start.slice(
     start.indexOf("document.getElementById('launch').addEventListener"),
     start.indexOf('function restoreNavigationState()'));
