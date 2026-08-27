@@ -1,5 +1,5 @@
-// HIBACHI'S A2 OBJECTS 0..16, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
-// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579, W580, W581, W582, W583, W584, W585, W586.
+// HIBACHI'S A2 OBJECTS 0..18, A0 ARRIVAL POSITION, A4 SCRIPT 0 AND ENDING SCRIPTS 1..6.
+// W399, W403, W409, W552, W553, W555, W556, W557, W558, W559, W560, W561, W574, W575, W576, W577, W578, W579, W580, W581, W582, W583, W584, W585, W586, W627.
 //
 // ============================================================================
 // WHAT THIS FILE IS
@@ -168,6 +168,9 @@ export const HIBACHI_A2 = Object.freeze({
   object16ArtFrames: 8,
   object17: 0x2a4d5e,
   object18: 0x2a4de0,
+  object18CodeEnd: 0x2a4e14,
+  object18Art: 0x2a4e16,
+  object18ArtFrames: 16,
 });
 
 /** `$2A4300` installs this main-sequencer table. It contains twelve init/step pairs;
@@ -530,8 +533,8 @@ export function a2Object8_2A49A6(ram, rom, ctx) {
 }
 
 // =========================================== A2 OBJECTS 9 THROUGH 15
-// IDs 9 and 15 point to the same routine. IDs 16 through 18 index separate
-// cartridge data that remains outside the exported ROM windows.
+// IDs 9 and 15 point to the same routine. IDs 16 and 18 use separate
+// cartridge-selected frame tables; object 17 remains the only unported A2 body.
 
 /** Shared orbit-vector and long-position arithmetic for the three new orbiting parts. */
 function a2OrbitPart(ram, rom, ctx, spec) {
@@ -647,6 +650,22 @@ export function a2Object16_2A4CFC(ram, rom, ctx) {
     ? 0x23dfea : 0x23fe5c;
   enqueueRegistersThroughStub(ram, rom, stub, d1,
     art, 0x0c38, ram.u8(a6 + 0x0ed));
+}
+
+// ========================================================== A2 OBJECT 18 -- THE GATED PHASE PART
+// `$2A4DE0..$2A4E13` gates on `$80390C`, selects one of sixteen frames, and
+// ends in a tail `jmp $23DFEA`. `$2A4E14` is alignment; the art table starts at
+// `$2A4E16` and ends exactly at the A0 main-sequencer table at `$2A4E56`.
+
+/** `$2A4DE0`. Draw the selected phase part only while the cartridge gate is armed. */
+export function a2Object18_2A4DE0(ram, rom, ctx) {
+  const a6 = bossA6(ctx, HIBACHI_A2.object18);
+  if (ram.u16(0x80390c) === 0) return;
+  const selector = i16(ram.u16(a6 + 0x138));
+  const art = rom.u32(HIBACHI_A2.object18Art + selector);
+  const d1 = (ram.u32(a6 + 0x02) + 0xff800000 + 0xf000f800) >>> 0;
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea, d1,
+    art, 0x1040, ram.u8(a6 + 0x0ee));
 }
 
 // ========================================================== A0 MAIN SCRIPT 0 -- THE ARRIVAL POSITION
@@ -1899,6 +1918,7 @@ registerScript(HIBACHI_A2.object12, a2Object12_2A4BC8);
 registerScript(HIBACHI_A2.object13, a2Object13_2A4BA0);
 registerScript(HIBACHI_A2.object14, a2Object14_2A4C08);
 registerScript(HIBACHI_A2.object16, a2Object16_2A4CFC);
+registerScript(HIBACHI_A2.object18, a2Object18_2A4DE0);
 
 registerScript(HIBACHI_A0.s0Init, initThenStep(
   (ram, rom, ctx) => main0Init2A4F56(ram, rom, ctx),

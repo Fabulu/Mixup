@@ -24,7 +24,8 @@ import {
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
-  ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT, tableBeforeW584, tableBeforeW588,
+  ROM_OVERLAP_PAIRS, ROM_WINDOW_BYTES, ROM_WINDOW_COUNT,
+  tableBeforeW584, tableBeforeW588, tableBeforeW627,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -42,13 +43,16 @@ const SKIP_CHECKPOINT = [START, PERIODIC,
   : 'exact W584 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const PRE_W627_TABLE = SKIP ? null : tableBeforeW627(TABLE_JSON);
 const W584_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const W583_TABLE = SKIP ? null : tableBeforeW584(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(W584_TABLE.rom);
 const MT = SKIP ? null : new MoveTables(W584_TABLE, ROM);
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
-const W583_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const PRE_W627_TABLE_HASH = '02c3aea71c84407cdb17bfa454ddc3abac4a62171ec59c627f4d99f3cb9f439e';
+const TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
+const STORED_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const W583_TABLE_HASH = '86d0344a005779abefbb12f51c8f627b65bde0cd8a8438a346e8801741c4310a';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const RNG_STATE = 0x803916;
@@ -150,21 +154,26 @@ test('W584 pins raw pointer, routine, helper, art, and exact window boundaries',
 test('W584 table migration is strict, additive, ordered, and identity-pinned',
   { skip: SKIP }, () => {
     assert.deepEqual([
-      ROM_WINDOW_COUNT, ROM_OVERLAP_PAIRS,
+      ROM_WINDOW_COUNT, ROM_WINDOW_BYTES, ROM_OVERLAP_PAIRS,
       TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(TABLE_JSON),
-    ], [941, 77, 941, 457059, LIVE_TABLE_HASH]);
+    ], [943, 457131, 77, 943, 457131, LIVE_TABLE_HASH]);
+    assert.deepEqual([
+      PRE_W627_TABLE.rom.windows.length,
+      PRE_W627_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
+      canonicalHash(PRE_W627_TABLE),
+    ], [942, 457067, PRE_W627_TABLE_HASH]);
     assert.deepEqual([
       W584_TABLE.rom.windows.length,
       W584_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(W584_TABLE),
-    ], [851, 452689, TABLE_HASH]);
+    ], [852, 452697, TABLE_HASH]);
     assert.deepEqual([
       W583_TABLE.rom.windows.length,
       W583_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(W583_TABLE),
-    ], [849, 452603, W583_TABLE_HASH]);
+    ], [850, 452611, W583_TABLE_HASH]);
 
     const withoutAdded = W584_TABLE.rom.windows.filter((window) =>
       window.base !== '$23FE5C' && window.base !== '$2A4D3E');
@@ -343,12 +352,17 @@ test('W584 migrated checkpoints restore exactly and reach the W587 loud frontier
       start.selection.ship, start.selection.style,
       start.inputWord, start.probeOnly.invulnerable,
     ], [
-      TABLE_HASH, 150131, 160744,
+      STORED_TABLE_HASH, 150131, 160744,
       '1003233dd2baeb59bb1af2208f56cd62bfdaf4752458c0d7769ca55429829a07',
       '7f9e1c02322b112168d630483e8c2d6d43ca1d70d4c691886ee036c8a7437f88',
       0, 4, 65499, true,
     ]);
-    const fromStart = restoreCheckpoint(start, assets, start.selection);
+    const adoptedStart = { ...start, tablesSha256: TABLE_HASH };
+    assert.deepEqual(
+      { ...adoptedStart, tablesSha256: start.tablesSha256 }, start,
+      'in-memory W623 adoption changes only the checkpoint table identity',
+    );
+    const fromStart = restoreCheckpoint(adoptedStart, assets, adoptedStart.selection);
     const restoredStart = checkpointDocument(fromStart.game, assets, {
       ...start.selection, inputWord: fromStart.probe.inputWord, invulnerable: true,
     });
@@ -369,7 +383,7 @@ test('W584 migrated checkpoints restore exactly and reach the W587 loud frontier
       periodic.raw.stage, periodic.raw.stageX2, periodic.raw.stageX4, periodic.raw.loop,
       periodic.ramSha256, periodic.gameSha256,
     ], [
-      TABLE_HASH, 150631, 161263, 4, 8, 16, 1,
+      STORED_TABLE_HASH, 150631, 161263, 4, 8, 16, 1,
       'd45cce1b4986b490e766e32316534fee262ce2a627e06e5c375cfcb843506eb2',
       'c304efde086106dc6dded1a9a9a8a765e138d9b288ba6542fdeec14746a5eca3',
     ]);
@@ -380,7 +394,12 @@ test('W584 migrated checkpoints restore exactly and reach the W587 loud frontier
       'ee735c5d96e15f6746c218a1b6734d04441340735183f00b42ecf09136f6b92c',
     ], 'W593 selector materialization changes only the freshly replayed Game identity');
 
-    const resumed = restoreCheckpoint(periodic, assets, periodic.selection);
+    const adoptedPeriodic = { ...periodic, tablesSha256: TABLE_HASH };
+    assert.deepEqual(
+      { ...adoptedPeriodic, tablesSha256: periodic.tablesSha256 }, periodic,
+      'the periodic checkpoint retains its original table provenance',
+    );
+    const resumed = restoreCheckpoint(adoptedPeriodic, assets, adoptedPeriodic.selection);
     let error = null;
     let attempted = 0;
     for (attempted = 1; attempted <= 3400; attempted++) {

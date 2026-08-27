@@ -23,7 +23,8 @@ import {
 import { loadBundle } from '../src/web/assets.js';
 import { checkpointDocument, restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
-  ROM_WINDOW_COUNT, tableBeforeW576, tableBeforeW584, tableBeforeW588,
+  ROM_WINDOW_BYTES, ROM_WINDOW_COUNT, tableBeforeW576, tableBeforeW584,
+  tableBeforeW588, tableBeforeW627,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -41,12 +42,15 @@ const SKIP_CHECKPOINT = [MIGRATED, FRONTIER,
   : 'exact W576 assets or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
+const PRE_W627_TABLE = SKIP ? null : tableBeforeW627(TABLE_JSON);
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
-const W575_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const PRE_W627_TABLE_HASH = '02c3aea71c84407cdb17bfa454ddc3abac4a62171ec59c627f4d99f3cb9f439e';
+const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
+const W575_TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
+const STORED_W575_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const OUT = BUCKETS[1];
@@ -116,17 +120,22 @@ test('W576 pins both raw code, NOP, and data boundaries with exactly two windows
 
 test('W576 table migration is strict, additive, identity-pinned, and composed for history',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 941);
+    assert.deepEqual([ROM_WINDOW_COUNT, ROM_WINDOW_BYTES], [943, 457131]);
     assert.deepEqual([
       TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(TABLE_JSON),
-    ], [941, 457059, LIVE_TABLE_HASH]);
+    ], [943, 457131, LIVE_TABLE_HASH]);
+    assert.deepEqual([
+      PRE_W627_TABLE.rom.windows.length,
+      PRE_W627_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
+      canonicalHash(PRE_W627_TABLE),
+    ], [942, 457067, PRE_W627_TABLE_HASH]);
     assert.deepEqual([
       W575_TABLE.rom.windows.length,
       W575_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(W575_TABLE),
-    ], [847, 452447, W575_TABLE_HASH]);
+    ], [848, 452455, W575_TABLE_HASH]);
 
     const withoutAdded = tableBeforeW584(TABLE_JSON).rom.windows.filter((window) =>
       !window.why.startsWith('W576:'));
@@ -311,17 +320,30 @@ test('W576 migrates table identity only and reaches the exact W587 $291040 front
       frontier.raw.stage, frontier.raw.stageX2, frontier.raw.stageX4, frontier.raw.loop,
       frontier.ramSha256, frontier.gameSha256,
     ], [
-      W575_TABLE_HASH, 147631, 158220, 4, 8, 16, 1,
+      STORED_W575_TABLE_HASH, 147631, 158220, 4, 8, 16, 1,
       'c63fba57effb9490ed814c76f12d791c3862f11ec912368960ca8654e5e7c528',
       '1472ca7c0f85a8ddbe2e7e56bfe43c1096f17cf2ec7065d7edf3915ddf78e0d9',
     ]);
-    restoreCheckpoint(frontier, assets, { ship: 0, style: 4 });
+    const adoptedFrontier = { ...frontier, tablesSha256: W575_TABLE_HASH };
+    assert.deepEqual(
+      { ...adoptedFrontier, tablesSha256: frontier.tablesSha256 }, frontier,
+      'in-memory W623 adoption changes only the checkpoint table identity',
+    );
+    restoreCheckpoint(adoptedFrontier, assets, { ship: 0, style: 4 });
 
     const migrated = JSON.parse(readFileSync(MIGRATED, 'utf8'));
-    restoreCheckpoint(migrated, assets, migrated.selection);
-    const currentMigrated = { ...migrated, tablesSha256: W587_TABLE_HASH };
-    assert.deepEqual({ ...currentMigrated, tablesSha256: migrated.tablesSha256 }, migrated,
-      'the in-memory migration changes table identity and no checkpoint field');
+    assert.equal(migrated.tablesSha256, STORED_W575_TABLE_HASH);
+    const adoptedMigrated = { ...migrated, tablesSha256: W575_TABLE_HASH };
+    assert.deepEqual(
+      { ...adoptedMigrated, tablesSha256: migrated.tablesSha256 }, migrated,
+      'the stored migrated checkpoint retains its original table provenance',
+    );
+    restoreCheckpoint(adoptedMigrated, assets, adoptedMigrated.selection);
+    const currentMigrated = { ...adoptedMigrated, tablesSha256: W587_TABLE_HASH };
+    assert.deepEqual(
+      { ...currentMigrated, tablesSha256: adoptedMigrated.tablesSha256 }, adoptedMigrated,
+      'the later in-memory migration changes table identity and no checkpoint field',
+    );
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;
     let attempted = 0;

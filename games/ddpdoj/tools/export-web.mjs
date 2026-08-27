@@ -296,6 +296,16 @@ const EFFECT_SHARD = 9;
 
 /** `[shard, base, entries, byteStride, runsTo, endsAt, why]` */
 const HARVEST = Object.freeze([
+  // W626. Slot 15's horizontal text mode indexes this complete 96-glyph
+  // cartridge font as `(character - $20) * 4`. The adjacent vertical font at
+  // $29255A proves the exact exclusive end; both tables form one 192-pointer
+  // valid-stream run that ends on code at $2926DA.
+  [0, 0x2923da, 96, 4, 192, 0x2926da,
+    'slot-15 ending text, complete horizontal $20..$7F glyph table ending at '
+      + 'the adjacent vertical font'],
+  [0, 0x29255a, 96, 4, 96, 0x2926da,
+    'slot-15 ending text, complete vertical $20..$7F glyph table ending exactly '
+      + 'where the next cartridge code begins'],
   // W498. Slot 14 selects one of these two eight-entry tables for its authentic
   // Game Over sprite enqueue. They overlap in seven descriptors, so the full
   // runtime dependency family is exactly nine distinct boot-time streams.
@@ -315,6 +325,21 @@ const HARVEST = Object.freeze([
   // exactly where the table ends, and none of these streams existed in the prior harvest.
   [17, 0x2a4b40, 6, 4, 6, 0x2a4b58,
     'Hibachi A2 objects 9 and 15, six selector frames ending exactly at object 11 code'],
+  // W627. Complete pointer families already selected by production handlers.
+  // Every range closes exactly on adjacent cartridge code or the next table.
+  [17, 0x269246, 4, 4, 4, 0x269256,
+    'stage-5 type $1A helicopter animation, four selector frames ending at type $1B code'],
+  [17, 0x27100c, 8, 4, 8, 0x27102c,
+    'stage-5 type $45 ramp animation, eight selector frames ending at type $46 code'],
+  [17, 0x2a4c36, 3, 4, 3, 0x2a4c42,
+    'Hibachi A2 object 14, three selector frames ending exactly at object 10 code'],
+  [17, 0x2a4c6c, 24, 6, 24, 0x2a4cfc,
+    'Hibachi A2 object 10, art longword at row +0 in twenty-four six-byte rows'],
+  [17, 0x2a4d3e, 8, 4, 8, 0x2a4d5e,
+    'Hibachi A2 object 16, eight selector frames ending exactly at object 17 code'],
+  [17, 0x2a4e16, 16, 4, 17, 0x2a4e5a,
+    'Hibachi A2 object 18, sixteen selector frames ending at the A0 table; the '
+      + 'valid stream-shaped run includes that table\'s first code pointer and closes one long later'],
   [17, TYPE3B_ART.hullTable, TYPE3B_ART.hullFrames + 1, 4,
     30, 0x265348,
     'stage-3 type $3B hull animation plus its fixed satellite. The handler '
@@ -1249,6 +1274,87 @@ const ARM1_REQUIRED_STREAMS = Object.freeze([
   ...W621_TABLE_STREAMS,
 ]);
 
+// W626. The type-$C name-entry furniture is not a conventional pointer table.
+// It is one complete eight-descriptor family in three adjacent straight-line
+// cartridge routines. Every $20-byte descriptor carries `move.l #stream,D2` at
+// +$C, followed by its longword at +$E. The two sole-side routines repeat the
+// same pair mirrored for P1 and P2, so eight reachable occurrences resolve to
+// six distinct streams. Derive the streams from the code rather than copying a
+// browser miss list.
+const W626_NAME_GRID_FAMILIES = Object.freeze([
+  Object.freeze({ base: 0x28fcaa, entries: 4, endsAt: 0x28fd2c,
+    terminator: 0x4e75, finalJump: false,
+    targets: Object.freeze([0x23dece, 0x23df2a, 0x23df58, 0x23df58]),
+    why: 'name-entry cursor and full grid, four direct sprite descriptors' }),
+  Object.freeze({ base: 0x28fd2c, entries: 2, endsAt: 0x28fd6e,
+    terminator: 0x4e71, finalJump: true,
+    targets: Object.freeze([0x23df58, 0x23df58]),
+    why: 'name-entry P2-only furniture, two direct sprite descriptors' }),
+  Object.freeze({ base: 0x28fd6e, entries: 2, endsAt: 0x28fdb0,
+    terminator: 0x4e71, finalJump: true,
+    targets: Object.freeze([0x23df58, 0x23df58]),
+    why: 'name-entry P1-only mirrored furniture, two direct sprite descriptors' }),
+]);
+const W626_NAME_GRID_OPCODES = Object.freeze([
+  Object.freeze([0x00, 0x223c]), // move.l #position,D1
+  Object.freeze([0x06, 0x0681]), // addi.l #delta,D1
+  Object.freeze([0x0c, 0x243c]), // move.l #stream,D2
+  Object.freeze([0x12, 0x363c]), // move.w #extent,D3
+  Object.freeze([0x16, 0x383c]), // move.w #flags,D4
+]);
+const W626_NAME_GRID_OCCURRENCES = [];
+const W626_NAME_GRID_DERIVED = [];
+for (const family of W626_NAME_GRID_FAMILIES) {
+  const terminatorAt = family.base + family.entries * 0x20;
+  if (family.targets.length !== family.entries || terminatorAt + 2 !== family.endsAt) {
+    throw new Error(`W626 name-grid descriptor declaration at `
+      + `$${family.base.toString(16).toUpperCase()} has inconsistent bounds`);
+  }
+  const streamsInFamily = [];
+  for (let i = 0; i < family.entries; i++) {
+    const row = family.base + i * 0x20;
+    for (const [delta, opcode] of W626_NAME_GRID_OPCODES) {
+      if (romBe16(row + delta) !== opcode) {
+        throw new Error(`W626 name-grid descriptor $${row.toString(16).toUpperCase()} `
+          + `has opcode $${romBe16(row + delta).toString(16).toUpperCase()} at `
+          + `+$${delta.toString(16).toUpperCase()}, expected $${opcode.toString(16).toUpperCase()}`);
+      }
+    }
+    const callOpcode = romBe16(row + 0x1a);
+    const expectedCall = family.finalJump && i === family.entries - 1 ? 0x4ef9 : 0x4eb9;
+    const target = romBe32(row + 0x1c);
+    if (callOpcode !== expectedCall || target !== family.targets[i]) {
+      throw new Error(`W626 name-grid descriptor $${row.toString(16).toUpperCase()} `
+        + `ends in $${callOpcode.toString(16).toUpperCase()} -> `
+        + `$${target.toString(16).toUpperCase()}, expected `
+        + `$${expectedCall.toString(16).toUpperCase()} -> `
+        + `$${family.targets[i].toString(16).toUpperCase()}`);
+    }
+    const offs = romBe32(row + 0x0e);
+    if (offs === 0 || offs > 0x7fffff) {
+      throw new Error(`W626 name-grid descriptor $${row.toString(16).toUpperCase()} `
+        + `contains invalid 23-bit stream $${offs.toString(16).toUpperCase()}`);
+    }
+    romExtent(offs); // throws unless the derived immediate is a real mask-ROM stream start
+    streamsInFamily.push(offs);
+    W626_NAME_GRID_OCCURRENCES.push(offs);
+  }
+  if (romBe16(terminatorAt) !== family.terminator) {
+    throw new Error(`W626 name-grid routine $${family.base.toString(16).toUpperCase()} `
+      + `does not end at $${family.endsAt.toString(16).toUpperCase()} with `
+      + `$${family.terminator.toString(16).toUpperCase()}`);
+  }
+  W626_NAME_GRID_DERIVED.push(Object.freeze({
+    ...family, streams: Object.freeze(streamsInFamily),
+  }));
+}
+const W626_NAME_GRID_STREAMS = Object.freeze([...new Set(W626_NAME_GRID_OCCURRENCES)]);
+if (W626_NAME_GRID_OCCURRENCES.length !== 8 || W626_NAME_GRID_STREAMS.length !== 6) {
+  throw new Error(`W626 name-grid descriptor family resolves `
+    + `${W626_NAME_GRID_OCCURRENCES.length} occurrences / `
+    + `${W626_NAME_GRID_STREAMS.length} distinct streams, expected 8 / 6`);
+}
+
 // W621. These are complete cartridge mask-directory families, not a list copied
 // from a browser trace. Each range starts at a code-reachable stream and closes
 // exactly on the next family boundary in the mask ROM. Walking the chain packs
@@ -1346,17 +1452,19 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
       || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
       || w203StreamsBefore !== 166 + typeBShipAdded
-      || streams.size !== 2096 + typeBShipAdded) {
+      || streams.size !== 2351 + typeBShipAdded) {
     throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
       + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
       + `expected 64 on the $F4 chain, ${166 + typeBShipAdded} before, and `
-      + `${2096 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
+      + `${2351 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
   }
   // W419 moved the fixed post-harvest baseline from 1975 to 2011. W498 adds
   // slot 14's separately asserted nine-stream Game Over family, making it 2020;
   // W555 adds Hibachi's six body frames, making it 2026. W558 adds the shared
   // 64-frame part table, making it 2090. W560 adds six more Hibachi frames,
-  // making it 2096.
+  // making it 2096. W626 adds slot 15's separate complete horizontal and
+  // vertical 96-glyph ending fonts, making it 2288. W627 adds six complete
+  // production-selected families containing 63 distinct streams, making it 2351.
   // W497's 17 Type-B ship streams remain an independent addition to both exact
   // totals. The two W203 rows remain added 32 / already 0.
 }
@@ -1596,6 +1704,34 @@ for (const offs of W621_TABLE_STREAMS) {
 for (const offs of ARM1_REQUIRED_STREAMS) {
   if (!streams.has(offs) || shardOfStream.get(offs) !== 0) {
     throw new Error(`required arm-1 stream $${offs.toString(16).toUpperCase()} `
+      + 'must have one packed mapping in boot shard 0');
+  }
+}
+
+// W626. Pack the complete source-derived name-grid family into boot shard 0.
+// Process each cartridge routine as one ledger row. The P1-only routine's two
+// streams intentionally count as already present because they are the mirrored
+// repeats from the immediately preceding P2-only routine.
+for (const family of W626_NAME_GRID_DERIVED) {
+  let added = 0, already = 0;
+  const distinct = new Set(family.streams);
+  for (const offs of distinct) {
+    if (streams.has(offs)) already++;
+    else {
+      streams.set(offs, romExtent(offs));
+      harvested++;
+      added++;
+    }
+    shardOfStream.set(offs, 0);
+  }
+  harvestAlready += already;
+  harvestReport.push({ shard: 0, base: family.base, entries: family.entries,
+    stride: 0x20, runsTo: family.entries, endsAt: family.endsAt,
+    distinct: distinct.size, added, already, why: family.why });
+}
+for (const offs of W626_NAME_GRID_STREAMS) {
+  if (!streams.has(offs) || shardOfStream.get(offs) !== 0) {
+    throw new Error(`W626 name-grid stream $${offs.toString(16).toUpperCase()} `
       + 'must have one packed mapping in boot shard 0');
   }
 }
@@ -4433,6 +4569,13 @@ const STAGE3 = Object.freeze({
 const STAGE4 = Object.freeze({
   cols: 0x22b1e8, ncols: 210, tileBase: 0x1ea9,
 });
+// Stage 5's complete cartridge-bounded family runs from its column pointer at
+// `$22D770` to its sibling palette pointer at `$22FAE0`. The difference is
+// `$2370`, exactly 252 columns of 36 bytes. Export the whole family, including
+// the 28-column tail reached only after an external speed push.
+const STAGE5 = Object.freeze({
+  cols: 0x22d770, ncols: 252, tileBase: 0x26a9,
+});
 const COL_BYTES = 36;                    // 9 longwords, $26135A's `dbra D6`, D6=8
 const COL_ROWS = 9;
 
@@ -4457,6 +4600,7 @@ const secondMap = decodeMap(STAGE1.smap, STAGE1.nsmap, STAGE1.smapBase);
 const stage2Map = decodeMap(STAGE2.cols, STAGE2.ncols, STAGE2.tileBase);
 const stage3Map = decodeMap(STAGE3.cols, STAGE3.ncols, STAGE3.tileBase);
 const stage4Map = decodeMap(STAGE4.cols, STAGE4.ncols, STAGE4.tileBase);
+const stage5Map = decodeMap(STAGE5.cols, STAGE5.ncols, STAGE5.tileBase);
 
 // CHECK 1 -- the attribute word.  Recon Ã‚Â§1b: no BG map entry in the whole game
 // sets a flip bit ($C0) or any bit outside $3E; the attribute is a pure 5-bit
@@ -4464,14 +4608,16 @@ const stage4Map = decodeMap(STAGE4.cols, STAGE4.ncols, STAGE4.tileBase);
 // half turns this into noise, so it is the cheapest way to catch all three.
 {
   const bad = [];
-  for (const map of [stageMap, secondMap, stage2Map, stage3Map, stage4Map]) {
+  for (const map of [
+    stageMap, secondMap, stage2Map, stage3Map, stage4Map, stage5Map,
+  ]) {
     for (const col of map) for (const [, a] of col) if (a & ~0x3e) bad.push(a);
   }
   if (bad.length) {
     throw new Error(`${bad.length} BG map attribute words have a bit outside `
       + `$3E (first $${bad[0].toString(16)}). Recon Ã‚Â§1b measured ZERO in all `
-      + '8,142 entries of all five stages -- so the column stride, the tile '
-      + 'base or the tile/attr halves are being read wrongly.');
+      + '8,145 entries across all five stages and the second map, so the column '
+      + 'stride, the tile base or the tile/attr halves are being read wrongly.');
   }
 }
 
@@ -4485,6 +4631,8 @@ const stage3Tiles = new Set();
 for (const col of stage3Map) for (const [t] of col) stage3Tiles.add(t);
 const stage4Tiles = new Set();
 for (const col of stage4Map) for (const [t] of col) stage4Tiles.add(t);
+const stage5Tiles = new Set();
+for (const col of stage5Map) for (const [t] of col) stage5Tiles.add(t);
 
 // CHECK 2 -- the counts and the ranges the recon measured.
 {
@@ -4517,6 +4665,12 @@ for (const col of stage4Map) for (const [t] of col) stage4Tiles.add(t);
     throw new Error(`stage 4 holds ${stage4Tiles.size} distinct BG tiles `
       + `$${s4lo.toString(16)}..$${s4hi.toString(16)}; the ROM-owned map `
       + 'measures 1,890 in $1EAA..$260B');
+  }
+  const s5lo = Math.min(...stage5Tiles), s5hi = Math.max(...stage5Tiles);
+  if (stage5Tiles.size !== 2268 || s5lo !== 0x26aa || s5hi !== 0x2f85) {
+    throw new Error(`stage 5 holds ${stage5Tiles.size} distinct BG tiles `
+      + `$${s5lo.toString(16)}..$${s5hi.toString(16)}; the complete 252-column `
+      + 'cartridge family measures 2,268 in the contiguous range $26AA..$2F85');
   }
 }
 
@@ -4563,11 +4717,12 @@ let palAgree = 0;
 // the earliest one that needs it.  Slots are contiguous across shards in shard
 // order, so ONE `bg.tileno.u16` describes every slot and the loader can build
 // its tile->slot table before a single shard body has arrived.
-const BG_SHARDS = 11;
+const BG_SHARDS = 12;
 const SMAP_SHARD = 7;
 const STAGE2_SHARD = 8;
 const STAGE3_SHARD = 9;
 const STAGE4_SHARD = 10;
+const STAGE5_SHARD = 11;
 const BOOT_SHARDS = [0, 1];
 const SHARD_COLS = 32;
 
@@ -4582,6 +4737,9 @@ for (const t of smapTiles) if (!shardOfTile.has(t)) shardOfTile.set(t, SMAP_SHAR
 for (const t of stage2Tiles) if (!shardOfTile.has(t)) shardOfTile.set(t, STAGE2_SHARD);
 for (const t of stage3Tiles) if (!shardOfTile.has(t)) shardOfTile.set(t, STAGE3_SHARD);
 for (const t of stage4Tiles) if (!shardOfTile.has(t)) shardOfTile.set(t, STAGE4_SHARD);
+for (const t of stage5Tiles) {
+  if (!shardOfTile.has(t)) shardOfTile.set(t, STAGE5_SHARD);
+}
 
 // THE CAPTURE'S OWN TILES ARE NOT NEGOTIABLE.  `verifyCoverage` throws at load
 // for any BG tile the recording uses and the sheet lacks, and that check must
@@ -4647,12 +4805,14 @@ for (let s = 0; s < BG_SHARDS; s++) {
     kind: s === SMAP_SHARD ? 'secondmap'
       : s === STAGE2_SHARD ? 'stage2'
         : s === STAGE3_SHARD ? 'stage3'
-          : s === STAGE4_SHARD ? 'stage4' : 'scroll',
+          : s === STAGE4_SHARD ? 'stage4'
+            : s === STAGE5_SHARD ? 'stage5' : 'scroll',
     cols: s === SMAP_SHARD ? null
       : s === STAGE2_SHARD ? [0, STAGE2.ncols - 1]
         : s === STAGE3_SHARD ? [0, STAGE3.ncols - 1]
           : s === STAGE4_SHARD ? [0, STAGE4.ncols - 1]
-            : [s * SHARD_COLS, Math.min((s + 1) * SHARD_COLS, STAGE1.ncols) - 1],
+            : s === STAGE5_SHARD ? [0, STAGE5.ncols - 1]
+              : [s * SHARD_COLS, Math.min((s + 1) * SHARD_COLS, STAGE1.ncols) - 1],
     firstSlot,
     tiles: shardTiles[s].length,
   });
@@ -4866,23 +5026,30 @@ for (const tile of frontEndTxRequired) txUsed.add(tile);
 
 // W161 -- THE TX INVENTORY IS THE ROM'S TABLES, NOT THE 161-FRAME CAPTURE.
 // The capture still supplies the ordinary text. These additional families are
-// reached by the live HUD bodies and are complete by construction: score
-// digits are written as $C030..$C03F by $2843A8, while the other values come
-// from the longword tables named by $240DC2 callers.
+// reached by the live HUD bodies and are complete by construction. Each table
+// stores an untagged starting tile, while `$240DC2` and `$240E1A` add `$C000`
+// before advancing through the complete printer grid.
 const TX_TABLES_W161 = Object.freeze([
-  [0x287f7a, 3, 'credit suffix'],
-  [0x287f86, 10, 'credit one-digit'],
-  [0x287fae, 10, 'credit two-digit tens'],
-  [0x287fd6, 10, 'credit two-digit ones'],
-  [0x287ffe, 40, 'chain high-water, four digit families'],
-  [0x2881e2, 4, 'lives icons'],
-  [0x2883e6, 6, 'hyper-stock icons'],
+  [0x287f7a, 3, 'credit suffix', 2, 2, 9],
+  [0x287f86, 10, 'credit one-digit', 2, 2, 3],
+  [0x287fae, 10, 'credit two-digit tens', 2, 1, 2],
+  [0x287fd6, 10, 'credit two-digit ones', 2, 0, 3],
+  [0x287ffe, 40, 'chain high-water, four digit families', 2, 0, 10],
+  [0x2881e2, 4, 'lives icons', 1, 0, 1],
+  [0x2883e6, 6, 'hyper-stock icons', 2, 5, 6],
 ]);
 const txRomSources = [];
-for (const [at, count, name] of TX_TABLES_W161) {
+const addTaggedTxGrid = (word, d2, d3, columnStride) => {
+  const first = ((word >>> 16) + 0xc000) & 0xffff;
+  for (let outer = 0; outer <= d2; outer++) {
+    for (let inner = 0; inner <= d3; inner++) {
+      txUsed.add((first + outer * columnStride + inner) & 0xffff);
+    }
+  }
+};
+for (const [at, count, name, d2, d3, columnStride] of TX_TABLES_W161) {
   for (let i = 0; i < count; i++) {
-    const word = romBe32(at + i * 4);
-    txUsed.add((word >>> 16) & 0xffff);
+    addTaggedTxGrid(romBe32(at + i * 4), d2, d3, columnStride);
   }
   txRomSources.push({ at, count, name });
 }
@@ -4929,8 +5096,12 @@ for (let i = 0; i < 16; i++) txUsed.add(0xc030 + i); // $2843A8 score glyphs
     for (let a = at; cpuBytes[a]; a++) txUsed.add(cpuBytes[a]);
   }
 }
-for (const word of [0x054f000a, 0x053d000a, 0x0404000a,
-  0x03ee000a, 0x0414000a]) txUsed.add((word >>> 16) & 0xffff);
+addTaggedTxGrid(0x054f000a, 2, 5, 6); // panel label
+addTaggedTxGrid(0x053d000a, 2, 5, 6); // chain high-water label
+addTaggedTxGrid(0x0404000a, 7, 1, 2); // P1 bomb stock
+addTaggedTxGrid(0x03ee000a, 7, 1, 2); // P2 bomb stock
+addTaggedTxGrid(0x0414000a, 2, 5, 6); // active hyper stock
+addTaggedTxGrid(0x02c0000a, 2, 1, 2); // SET panel run-B segment
 
 const txList = [...txUsed].sort((a, b) => a - b);
 

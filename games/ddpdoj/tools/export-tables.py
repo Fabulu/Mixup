@@ -4049,6 +4049,10 @@ SHOT_WINDOWS.extend([
     (0x2A4D3E, 0x0020, "W584: HIBACHI A2 object 16 eight art longwords, selected by the signed word byte "
                        "offset at A6+$132. The exact span starts after the routine $2A4D3C alignment nop "
                        "and ends at object 17 code at $2A4D5E"),
+    (0x2A4E16, 0x0040, "W627: HIBACHI A2 object 18's sixteen art longwords, selected by the signed word "
+                       "byte offset at A6+$138. The exact span starts after the routine's $2A4E14 "
+                       "alignment nop and ends at $2A4E56, the A0 main-sequencer table; no code or "
+                       "adjacent scheduler pointer is exported"),
     (0x2A4E56, 0x0060, "W553: HIBACHI's A0 main-sequencer table, twelve init/step pairs. The exact span "
                        "ends at $2A4EB6, the shared part-position body whose first opcode is $4CAE; "
                        "entry 0 is {$2A4F56, $2A4F86}, started by A4 script 0 at $2A593E"),

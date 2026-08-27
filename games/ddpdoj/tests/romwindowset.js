@@ -615,10 +615,18 @@
 // operator settings. Measured: 941 -> 942 windows, 457,059 -> 457,067 bytes,
 // 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 942;
+// ---------------------------------------------------------------------------
+// W627 ADDED ONE DISJOINT HIBACHI ART-TABLE WINDOW.
+// ---------------------------------------------------------------------------
+// `$2A4E16 + $40` holds exactly A2 object 18's sixteen legal art longwords. It
+// begins after the routine's alignment word and ends at the adjacent A0 table.
+// Measured: 942 -> 943 windows, 457,067 -> 457,131 bytes,
+// 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 943;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 457067;
+export const ROM_WINDOW_BYTES = 457131;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -651,6 +659,22 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W627_WINDOW = Object.freeze({ base: '$2A4E16', len: 0x0040 });
+
+/** Reconstruct the exact pre-W627 table by removing only W627's art table. */
+export function tableBeforeW627(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const matches = copy.rom.windows.filter((window) => window.base === W627_WINDOW.base);
+  if (matches.length === 0) return copy;
+  if (matches.length !== 1 || matches[0].len !== W627_WINDOW.len
+      || matches[0].hex.length !== W627_WINDOW.len * 2
+      || !matches[0].why.startsWith('W627:')) {
+    throw new Error('$2A4E16 is not the exact W627 additive shape');
+  }
+  copy.rom.windows = copy.rom.windows.filter((window) => window !== matches[0]);
+  return copy;
+}
+
 const W621_WINDOWS = Object.freeze([
   Object.freeze(['$2302E0', 0x0188]), Object.freeze(['$25C042', 0x01e8]),
   Object.freeze(['$23C6D2', 0x0028]), Object.freeze(['$25AD98', 0x0240]),
@@ -659,7 +683,7 @@ const W621_WINDOWS = Object.freeze([
 
 /** Reconstruct the exact W598 table by removing W621's cabinet-only windows. */
 export function tableBeforeW621(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW627(tables);
   const found = copy.rom.windows.filter((window) =>
     W621_WINDOWS.some(([base]) => window.base === base));
   if (found.length === 0) return copy;
