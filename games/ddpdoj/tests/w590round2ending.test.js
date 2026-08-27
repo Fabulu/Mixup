@@ -35,9 +35,10 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W588_TABLE = SKIP ? null : tableBeforeW589(TABLE_JSON);
 const CHECKPOINT_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const W588_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
-const CHECKPOINT_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const LIVE_TABLE_HASH = '02c3aea71c84407cdb17bfa454ddc3abac4a62171ec59c627f4d99f3cb9f439e';
+const W588_TABLE_HASH = '5dd4830d8759db1fbfbeddef529225a76b264739a9c7375ba00f2be5ce47a837';
+const CHECKPOINT_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
+const STORED_CHECKPOINT_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 
 const PROVENANCE = Object.freeze([
   Object.freeze(['type $0F dispatcher', 0x291f66, '4a2d000267b80c2d']),
@@ -193,9 +194,9 @@ test('W590 exact checkpoint reaches P1 name entry, resets round 2, and hands to 
       canonicalHash(CHECKPOINT_TABLE), CHECKPOINT_TABLE.rom.windows.length,
       CHECKPOINT_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
     ], [
-      LIVE_TABLE_HASH, 941, 457059,
-      W588_TABLE_HASH, 854, 452789,
-      CHECKPOINT_TABLE_HASH, 851, 452689,
+      LIVE_TABLE_HASH, 942, 457067,
+      W588_TABLE_HASH, 855, 452797,
+      CHECKPOINT_TABLE_HASH, 852, 452697,
     ]);
     assert.deepEqual(tableBeforeW589(W588_TABLE), W588_TABLE,
       'W589 removal is idempotent on the exact W588 table');
@@ -232,16 +233,23 @@ test('W590 exact checkpoint reaches P1 name entry, resets round 2, and hands to 
       checkpoint.selection.ship, checkpoint.selection.style,
       checkpoint.inputWord, checkpoint.probeOnly.invulnerable,
     ], [
-      CHECKPOINT_TABLE_HASH, 153631, 164292, 4, 8, 16, 1,
+      STORED_CHECKPOINT_TABLE_HASH, 153631, 164292, 4, 8, 16, 1,
       '74e3fd892f5397d81034cc153e1014f4c3af85e61ffce82b693fd7ef19ccf742',
       '66981316f01a795ca76cbae08ce3a8a5b6876a18a4ff1251dff7a0adc75d658a',
       0, 4, 65499, true,
     ]);
-    restoreCheckpoint(checkpoint, checkpointAssets, checkpoint.selection);
+    const adoptedCheckpoint = { ...checkpoint, tablesSha256: CHECKPOINT_TABLE_HASH };
+    assert.deepEqual(
+      { ...adoptedCheckpoint, tablesSha256: checkpoint.tablesSha256 }, checkpoint,
+      'in-memory W623 adoption changes only the cartridge-table identity',
+    );
+    restoreCheckpoint(adoptedCheckpoint, checkpointAssets, adoptedCheckpoint.selection);
 
-    const migrated = { ...checkpoint, tablesSha256: LIVE_TABLE_HASH };
-    assert.deepEqual({ ...migrated, tablesSha256: checkpoint.tablesSha256 }, checkpoint,
-      'in-memory additive adoption changes only the cartridge-table identity');
+    const migrated = { ...adoptedCheckpoint, tablesSha256: LIVE_TABLE_HASH };
+    assert.deepEqual(
+      { ...migrated, tablesSha256: adoptedCheckpoint.tablesSha256 }, adoptedCheckpoint,
+      'in-memory later-window adoption changes only the cartridge-table identity',
+    );
     const resumed = restoreCheckpoint(migrated, currentAssets, migrated.selection);
     const probe = {
       ...migrated.selection, inputWord: resumed.probe.inputWord, invulnerable: true,

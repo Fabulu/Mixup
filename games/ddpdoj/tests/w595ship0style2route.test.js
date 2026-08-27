@@ -45,9 +45,9 @@ const word = (...names) => portWordFromBits(names.map((name) => CONTROLS[name]))
 const DOWN_SHOT = word('DOWN', 'SHOT');
 const TOTAL_STEPS = 173697;
 const CADENCE = 500;
-const CURRENT_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const W595_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8';
-const PRE_W595_TABLE_HASH = 'b062e45b4c4ca0488a0c4660a83a9d868feaf8b6d00b670d1de9948481f3f7c3';
+const CURRENT_TABLE_HASH = '02c3aea71c84407cdb17bfa454ddc3abac4a62171ec59c627f4d99f3cb9f439e';
+const W595_TABLE_HASH = '706201adef09d00737f1fafc687e52d12ab81f437bc842690af229afab258445';
+const PRE_W595_TABLE_HASH = '83ffbc84cbaec6b527bf784e1e3b3ba8c9b893546252a135ca5db34a7c64a23d';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
 const TERMINAL_RAM_HASH = 'e98132ee41b1603089104c7734032b64fbf389cafc543ed8b473f01ad94df297';
 const TERMINAL_GAME_HASH = 'a1ad5533763c122c6cb3c866c9d4f2b69961a78357d3504ac96d49f39584f2d9';
@@ -99,17 +99,17 @@ test('W595 is one exact BIOS-window widening and reconstructs the $000BEC fault'
       canonicalHash(w595), w595.rom.windows.length,
       w595.rom.windows.reduce((sum, window) => sum + window.len, 0),
       overlappingPairs(windowShape(w595)),
-    ], [W595_TABLE_HASH, 906, 453757, 77]);
+    ], [W595_TABLE_HASH, 907, 453765, 77]);
     assert.deepEqual([
       canonicalHash(before), before.rom.windows.length,
       before.rom.windows.reduce((sum, window) => sum + window.len, 0),
       overlappingPairs(windowShape(before)),
-    ], [PRE_W595_TABLE_HASH, 906, 453741, 77]);
+    ], [PRE_W595_TABLE_HASH, 907, 453749, 77]);
     assert.deepEqual(EXPECTED.tables, {
-      sha256: CURRENT_TABLE_HASH, windows: 941, bytes: 457059, overlapPairs: 77,
+      sha256: CURRENT_TABLE_HASH, windows: 942, bytes: 457067, overlapPairs: 77,
     });
     assert.deepEqual(EXPECTED.preW595Tables, {
-      sha256: PRE_W595_TABLE_HASH, windows: 906, bytes: 453741,
+      sha256: PRE_W595_TABLE_HASH, windows: 907, bytes: 453749,
       overlapPairs: 77, faultAddress: 0x000bec,
     });
 

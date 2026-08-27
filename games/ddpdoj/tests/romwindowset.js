@@ -608,10 +608,17 @@
 // families are read only by the authentic cabinet lifecycle. Measured:
 // 936 -> 941 windows, 455,371 -> 457,059 bytes, 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 941;
+// ---------------------------------------------------------------------------
+// W623 ADDED ONE DISJOINT OPERATOR-FACTORY WINDOW.
+// ---------------------------------------------------------------------------
+// `$259512 + $08` is the exact eight-byte factory block copied to battery-backed
+// operator settings. Measured: 941 -> 942 windows, 457,059 -> 457,067 bytes,
+// 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 942;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 457059;
+export const ROM_WINDOW_BYTES = 457067;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
