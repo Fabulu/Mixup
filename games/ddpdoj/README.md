@@ -4,7 +4,7 @@ This directory contains the JavaScript translation of **DoDonPachi DaiOuJou Blac
 
 ## Current status
 
-Updated 2026-08-23 after W533 closed the static progression preflight; W531 is published in production build `20260823165848`.
+Updated 2026-08-27 after W623 proved and published the complete browser cabinet lifecycle on both public release paths.
 
 | area | current state |
 |---|---|
@@ -14,7 +14,7 @@ Updated 2026-08-23 after W533 closed the static progression preflight; W531 is p
 | duplicate audit | 16 narrow heads, 71 widened heads, 28 body pairs, and 22 body-only findings remain after W497; functional completion precedes their consolidation. |
 | oracle | MAME 0.288, pinned to VERSION-B. Determinism and probe behavior are documented in `NOTES-oracle.md`. |
 | renderer | The original pixel-slice gate matched `13,647,872 / 13,647,872` pixels over 136 frame pairs. This is historical slice evidence, not a claim that the unfinished full game is pixel-perfect. |
-| live build | `20260823165848` at <https://gbtman.pages.dev/games/ddpdoj/> publishes W527 through W531 and supersedes `20260823140446`. |
+| live builds | Asset-backed build `20260827170519` is live at <https://gbtman.pages.dev/games/ddpdoj/> from deployment <https://7a0dd914.gbtman.pages.dev>. Asset-free build `20260827171726` is live at <https://mixup.pages.dev/> from deployment <https://f6d2e284.mixup.pages.dev>. Both publish the W623 complete Black Label browser cabinet lifecycle; White Label remains disabled. |
 
 The live work queue is `../../docs/DOCKET.md`. The concise continuation state is `../../docs/NEXT_AGENT_HANDOFF.md`. Older numbered files under `../../docs/worklog/ddpdoj/` are historical wave records and may describe a much earlier port.
 

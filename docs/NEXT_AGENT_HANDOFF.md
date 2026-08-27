@@ -1,6 +1,6 @@
 # DoDonPachi DOJBL Version-B: next-agent handoff
 
-Updated: 2026-08-23 (W531 published in asset-backed build `20260823165848`; asset-free build `20260823120247` remains live)
+Updated: 2026-08-27 (W623 complete cabinet lifecycle published in asset-backed build `20260827170519` and asset-free build `20260827171726`)
 
 ## CURRENT DIRECTION AND DEFINITION OF DONE
 
@@ -51,28 +51,28 @@ checks, followed by an OR of Bee Perfect `>= $0C`, miss counter `< 2`, or bomb c
 statically scripted. `$2A5C7A/$2A5C84` reaches Hibachi when `$813098 || $80393A`: one-round mode reaches it
 in round 1, two-round mode skips it in round 1, and round 2 reaches it unconditionally.
 
-Production build `20260823165848` publishes W527 through W531 from `33240de`, `a9ff556`, `20cfc12`,
-`292af08`, and `2873487`; repairs `4110255` and `f3b8b85` reconcile the exact registries and publication
-assertions. Assets were regenerated before the quiet-tree gate. It passed 4,414/4,414 DDPDOJ units, bundle and
-web-fetch gates, 748/748 Gradius units and its 13/13 gate, Batman 27/27, distribution and ROM-leak guards,
-deployment, and three consecutive live confirmations. W532 is source-only infrastructure at `644c170`; W533's
-closure-scope refinement also adds no cartridge window.
+Production build `20260827170519` publishes the complete W623 browser cabinet lifecycle at
+<https://gbtman.pages.dev/games/ddpdoj/> from deployment <https://7a0dd914.gbtman.pages.dev>. The exact production
+Chrome gate cold-boots near frame zero, reaches attract, rejects uncredited START, spends a real `Digit5` coin with
+`Enter`, uses the cartridge fighter selector, reaches gameplay, dies naturally, accepts one credited continue, dies
+again, and survives 334 Game Over frames while every control is mashed. It then passes score/name entry, returns to
+attract, and starts another playable run without reload. Ten rendered lifecycle landmarks produced nine distinct
+canvas signatures with every sprite record drawn and no missing TX or BG tile. The live rerun reproduced all 8,369
+logic frames, 357 mash frames, and 334 Game Over frames.
 
-D109 is complete ahead of its 2026-08-28 deadline. Asset-free build `20260823120247` is live at
-`mixup.pages.dev` from Cloudflare Pages project `mixup`; during that separate deployment `gbtman.pages.dev`
-remained unchanged at `20260823074549`. Gameplay publication later advanced the asset-backed site independently.
-The setup supports files, folders, dropped files/folders, saved-handle reuse, and a one-pass global
-inventory. A mixed folder unlocks every complete game independently, unrelated extras stay diagnostic, and only a
-missing, duplicate, or conflicting required identity locks that game. Its cards select the primary world; a separate
-secondary-character role is labelled future Mixup functionality. Exact identity and alternate-revision diagnostics
-are published, including the decrypted DaiOuJou maincpu form that replaces raw u45 plus `ddp3_bios.u37`.
+The same live asset-backed build passed the root launcher, side-by-side and three-ship formation gates, diagnostic
+native-P2 conflict gates, and disabled White Label policy. It passed three consecutive production polls with the
+DaiOuJou page and asset manifest both returning HTTP 200.
 
-All three games now derive their runtime data from validated local inputs and boot without cartridge-asset requests.
-The closed build passed 2,424 local cartridge comparisons over 202 files with zero exceptions. Focused parity and
-fetch-disabled browser-host gates pass for Batman, Gradius, and DaiOuJou. A post-deploy Chrome gate selected one mixed
-twelve-file library, unlocked all three cards, launched all three games, observed only source-module GET requests,
-and observed no upload or forbidden asset, ROM, table, capture, seed, shard, archive, or cartridge-extension request.
-Resume the six-pair Black Label round-2 progression matrix next; D109 no longer blocks gameplay work.
+Asset-free build `20260827171726` is live at <https://mixup.pages.dev/> from deployment
+<https://f6d2e284.mixup.pages.dev>. Its zero-exception audit checked 202 files, 6,686,169 bytes, and 2,424 cartridge
+comparisons. The real-Chrome release gate launched DaiOuJou from validated local ROMs. A separate live gate repeated
+Black Label selection, coin, START, cartridge selector input, and 224 by 448 rendering, observed no ROM upload or
+cartridge-asset request, and proved White Label remained unavailable. Three consecutive polls confirmed this build
+while `gbtman.pages.dev` stayed unchanged at `20260827170519`.
+
+The published source is `main` through `b0b61fea`; the publication-record commit follows it. Generated cartridge
+assets and both distribution directories remain untracked and must not be committed.
 
 Slot [12] still takes its inherited zero-score no-name exit and commits type 8 with cartridge state 2. Slot [8]
 constructs at integration frame 11,529, copies that seed to shared state `$812E56`, and resets its init and blink

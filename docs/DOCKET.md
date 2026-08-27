@@ -7431,6 +7431,20 @@ unlocked all three cards, and launched Batman, Gradius, and DaiOuJou from the li
 60, 25, and 106 source-module GET requests respectively, with no asset, ROM, table, capture, seed, shard, archive,
 cartridge-extension, upload, or other non-GET request.
 
+**W623 lifecycle publication refresh, 2026-08-27.** Asset-backed build `20260827170519` is live at
+<https://gbtman.pages.dev/games/ddpdoj/> from deployment <https://7a0dd914.gbtman.pages.dev>. Three consecutive
+polls confirmed the build, page, and DaiOuJou manifest. The exact live Chrome lifecycle ran 8,369 logic frames,
+used real coin and START edges, accepted one continue, withstood 357 full-control mash frames including 334 visible
+Game Over frames, returned through score/name entry to attract, and began another run without reload. Live launcher
+checks passed both P1-owned formation modes, native-P2 conflicts, and disabled White Label.
+
+Asset-free build `20260827171726` is live at <https://mixup.pages.dev/> from deployment
+<https://f6d2e284.mixup.pages.dev>. Its audit passed 2,424 cartridge comparisons over 202 files and 6,686,169 bytes
+with zero exceptions. Local and live Chrome gates launched Black Label from validated local ROMs, used coin, START,
+and selector input, rendered the 224 by 448 game, made no ROM upload or cartridge-asset request, and kept White Label
+unavailable. Three consecutive polls confirmed this build while `gbtman.pages.dev` remained unchanged at
+`20260827170519`.
+
 ### D110: COMPLETE - DAIOUJOU MOD - SHOW HITBOXES
 
 **COMPLETE, 2026-08-26 (W600).** `Show Hitboxes` is a default-off, replay-safe presentation mod. It reads the

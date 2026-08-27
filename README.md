@@ -51,12 +51,15 @@ recorded in `build-dist.mjs` with its measured cost.
 The guard blocks everything not named in that list, and the load-bearing rule is
 unchanged - nothing ROM-derived is ever committed here.
 
-A parallel asset-free release is live at **https://mixup.pages.dev/**. It ships
-only the setup shell and translated source. Players select legally owned local
-ROM files or a folder, exact identities unlock the matching game cards, and all
-three games boot from those local inputs. Checksums and extraction run in the
-browser; ROM bytes are neither uploaded nor saved. The separate asset-backed
-site at `gbtman.pages.dev` remains available and unchanged.
+A parallel asset-free release is live at **https://mixup.pages.dev/**. Asset-free
+build `20260827171726` was deployed through
+<https://f6d2e284.mixup.pages.dev>. It ships only the setup shell and translated
+source. Players select legally owned local ROM files or a folder, exact
+identities unlock the matching game cards, and all three games boot from those
+local inputs. Checksums and extraction run in the browser; ROM bytes are neither
+uploaded nor saved. The separate asset-backed site at `gbtman.pages.dev` is live
+at build `20260827170519`, deployed through
+<https://7a0dd914.gbtman.pages.dev>.
 
 The asset-free package is built by `tools/build-rom-dist.mjs` into `dist-rom/`.
 Its closed module allowlist rejects generated assets, cartridge extensions,
