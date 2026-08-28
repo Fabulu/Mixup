@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { filesFromDataTransfer, normalizeFiles } from '../src/files.js';
+import {
+  dataTransferIncludesDirectory, filesFromDataTransfer, normalizeFiles, searchRomCandidates,
+} from '../src/files.js';
 
 function fakeFile(name, size = 4, lastModified = 1) {
   return { name, size, lastModified, arrayBuffer: async () => new ArrayBuffer(size) };
@@ -38,6 +40,50 @@ test('intake normalization deduplicates repeated enumeration but preserves diffe
   assert.equal(files.length, 2);
   assert.equal(files[0], first);
   assert.equal(files[1], otherPath);
+});
+
+test('folder ROM search keeps only exact raw sizes and bounded supported archives', () => {
+  const renamedRom = fakeFile('whatever.data', 8388608);
+  const nvram = fakeFile('renamed.bin', 131072);
+  const zip = fakeFile('custom.ZIP', 1024);
+  const sevenZip = fakeFile('set.7z', 2048);
+  const save = fakeFile('SLPM-65378 (AEDB8BB2).00.p2s', 20000000);
+  const movie = fakeFile('movie.mkv', 500000000);
+  const oversizedArchive = fakeFile('backup.zip', 70000000);
+  const rar = fakeFile('unrelated.rar', 1024);
+  const result = searchRomCandidates([
+    save, movie, oversizedArchive, rar, renamedRom, nvram, zip, sevenZip,
+  ], {
+    rawSizes: new Set([131072, 8388608]),
+    maxArchiveBytes: 64 * 1024 * 1024,
+  });
+  assert.deepEqual(result.files, [renamedRom, nvram, zip, sevenZip]);
+  assert.equal(result.ignored, 4);
+  assert.equal(result.ignoredBytes, 590001024);
+});
+
+test('folder ROM search reads no candidate or unrelated file bytes', () => {
+  let reads = 0;
+  const files = [
+    { ...fakeFile('renamed.rom', 4194304), arrayBuffer: async () => { reads++; } },
+    { ...fakeFile('huge.iso', 4000000000), arrayBuffer: async () => { reads++; } },
+  ];
+  const result = searchRomCandidates(files, {
+    rawSizes: [4194304], maxArchiveBytes: 64 * 1024 * 1024,
+  });
+  assert.deepEqual(result.files, [files[0]]);
+  assert.equal(reads, 0);
+});
+
+test('drop intake distinguishes explicit files from folders', () => {
+  const file = fileEntry('one.rom', fakeFile('one.rom'));
+  const folder = directoryEntry('roms', [[]]);
+  assert.equal(dataTransferIncludesDirectory({
+    items: [{ webkitGetAsEntry: () => file }],
+  }), false);
+  assert.equal(dataTransferIncludesDirectory({
+    items: [{ webkitGetAsEntry: () => file }, { webkitGetAsEntry: () => folder }],
+  }), true);
 });
 
 test('drop intake falls back to flat DataTransfer files when entries are unavailable', async () => {

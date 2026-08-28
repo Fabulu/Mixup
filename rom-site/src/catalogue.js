@@ -19,6 +19,7 @@ const batman = Object.freeze({
   region: 'USA, Europe',
   revision: 'No separate revision marker is recorded',
   set: null,
+  requirements: 'Required: the one exact 131,072-byte Game Boy image listed below.',
   notes: [
     'The accepted region label is USA, Europe, as recorded by the verified cartridge identity and filename.',
     'Supply the complete raw Game Boy cartridge image directly or inside a ZIP or 7z archive.',
@@ -41,6 +42,7 @@ const gradius = Object.freeze({
   region: 'USA',
   revision: 'No separate revision marker is recorded',
   set: null,
+  requirements: 'Required: the one exact 65,552-byte headered iNES image listed below.',
   notes: [
     'Supply the complete iNES file directly or inside a ZIP or 7z archive, including its 16-byte header rather than split PRG or CHR files.',
     'The accepted image is mapper 3 CNROM with 32 KiB PRG, 32 KiB CHR, vertical mirroring, and no trainer.',
@@ -129,6 +131,7 @@ const ddpdoj = Object.freeze({
   region: 'Japan',
   revision: 'Black Label Version B, 2002.10.07 BLACK VER',
   set: 'ddpdojblk',
+  requirements: 'Required: all ten exact MAME members below. Alternatively, supply the exact 6 MiB decrypted maincpu image plus the other eight members; it replaces ddb10_10_8_434f.u45 and ddp3_bios.u37.',
   notes: [
     'Supply the ten MAME members listed below directly, inside a ZIP, or inside a 7z archive.',
     'ddb10_10_8_434f.u45 is the raw encrypted program member. MAME loads it with 16-bit word swapping and decrypts it in place.',

@@ -173,12 +173,11 @@ class NoCacheHandler(SimpleHTTPRequestHandler):
     def end_headers(self) -> None:
         production = self.production_headers()
         production.pop("Content-Type", None)
-        cache_control = production.pop("Cache-Control", "no-store, must-revalidate")
+        cache_control = production.pop("Cache-Control", None)
         for name, value in production.items():
             self.send_header(name, value)
-        self.send_header(
-            "Cache-Control", f"{cache_control}, no-cache, max-age=0"
-        )
+        if cache_control is not None:
+            self.send_header("Cache-Control", cache_control)
         self.send_header("Pragma", "no-cache")
         self.send_header("Expires", "0")
         super().end_headers()
@@ -287,10 +286,15 @@ class BrowserGate:
         def response_received(response) -> None:
             headers = response.headers
             cache_control = headers.get("cache-control", "")
-            if not ({"no-store", "no-cache"} & {
+            directives = {
                 directive.strip().lower()
                 for directive in cache_control.split(",")
-            }) or headers.get("pragma", "").lower() != "no-cache" \
+            }
+            response_path = unquote(urlsplit(response.url).path)
+            required_cache = "no-store" if self.asset_free \
+                or response_path in {"/", "/index.html"} else "no-cache"
+            if required_cache not in directives \
+                    or headers.get("pragma", "").lower() != "no-cache" \
                     or headers.get("expires") != "0":
                 failures.append(f"cacheable response: {response.url}")
             if response.status >= 400:
@@ -387,6 +391,10 @@ class BrowserGate:
             page.wait_for_timeout(1500)
             if callable(recheck):
                 recheck()
+            try:
+                page.wait_for_load_state("networkidle", timeout=60000)
+            except PlaywrightTimeoutError as error:
+                raise GateFailure("network did not settle after recheck") from error
             page.wait_for_timeout(250)
         except Exception as error:
             body_error = error
@@ -553,6 +561,20 @@ def gate_asset_backed(browser, origin: str) -> None:
     gate.run("asset-backed root launcher", root_launcher)
 
     def mod_only_cabinet(page):
+        page.add_init_script("""
+        (() => {
+          Object.defineProperty(globalThis, 'requestAnimationFrame', {
+            configurable: true,
+            writable: true,
+            value: () => 1,
+          });
+          Object.defineProperty(globalThis, 'cancelAnimationFrame', {
+            configurable: true,
+            writable: true,
+            value: () => {},
+          });
+        })();
+        """)
         open_page(page, origin, "/games/ddpdoj/start.html")
         page.locator('[data-category="survival"] [data-id="invincibility"]').click()
         page.locator("#launch").click()
@@ -576,6 +598,7 @@ def gate_asset_backed(browser, origin: str) -> None:
                 seedLf: app.demo.seedLf,
                 logicFrame: app.game.logicFrame,
                 videoFrame: app.game.videoFrame,
+                armedVblanks: app.game.armedVblanks,
                 booted: Boolean(app.game.bootResult),
                 modIds: app.stats().modIds,
                 formationId: app.stats().formationId,
@@ -598,10 +621,12 @@ def gate_asset_backed(browser, origin: str) -> None:
         initial = read_state()
         require(initial["coldBoot"] is True, "mod-only launch is not a cold boot")
         require(initial["seedLf"] == 0, f"mod-only seed LF is {initial['seedLf']}")
-        require(initial["logicFrame"] < 305,
-                f"mod-only page advanced past warning at LF{initial['logicFrame']}")
-        require(initial["videoFrame"] < 305,
-                f"mod-only page advanced past warning video frame {initial['videoFrame']}")
+        require(initial["logicFrame"] == 0,
+                f"mod-only page started at logic frame {initial['logicFrame']}")
+        require(initial["videoFrame"] == 0,
+                f"mod-only page started at video frame {initial['videoFrame']}")
+        require(initial["armedVblanks"] == 0,
+                f"mod-only cold boot injected replay semaphore {initial['armedVblanks']}")
         require(initial["booted"] is True, "mod-only launch skipped Game.boot")
         require(initial["modIds"] == ["invincibility"],
                 f"wrong mod-only IDs {initial['modIds']}")
@@ -835,6 +860,79 @@ def gate_asset_backed(browser, origin: str) -> None:
 def gate_asset_free(browser, origin: str) -> None:
     gate = BrowserGate(browser, origin, asset_free=True)
 
+    def shell_layout(page):
+        open_page(page, origin, "/")
+        support = page.locator("#support-link")
+        require(support.count() == 1 and support.is_visible(),
+                "Mixup support link is not uniquely visible")
+        require("support on ko-fi" in support.inner_text().lower(),
+                "Mixup support link has no visible accessible label")
+        require(support.get_attribute("href") == "https://ko-fi.com/readzen",
+                "Mixup support link does not use the canonical Ko-fi destination")
+        require(support.get_attribute("target") is None,
+                "Mixup support link must remain a same-tab link")
+        require(support.get_attribute("onclick") is None,
+                "Mixup support link must not use an inline handler")
+        require(page.locator("iframe").count() == 0,
+                "Mixup support link introduced an iframe")
+
+        def assert_width(width: int) -> None:
+            page.set_viewport_size({"width": width, "height": 900})
+            page.wait_for_timeout(100)
+            layout = page.evaluate("""
+                () => {
+                  const selectors = [
+                    '.hero', '#support-link', '.intake-grid', '.picker', '.drop-zone',
+                    '.game-cards', '.game-card', '.launch-row', '#launch-game'
+                  ];
+                  const bounds = selectors.flatMap(selector =>
+                    Array.from(document.querySelectorAll(selector)).map(element => {
+                      const rect = element.getBoundingClientRect();
+                      return { selector, left: rect.left, right: rect.right, width: rect.width };
+                    }));
+                  const columns = selector => getComputedStyle(
+                    document.querySelector(selector)).gridTemplateColumns.split(' ').length;
+                  const supportRect = document.querySelector('#support-link').getBoundingClientRect();
+                  return {
+                    clientWidth: document.documentElement.clientWidth,
+                    scrollWidth: document.documentElement.scrollWidth,
+                    bounds,
+                    intakeColumns: columns('.intake-grid'),
+                    cardColumns: columns('.game-cards'),
+                    supportWidth: supportRect.width,
+                    supportHeight: supportRect.height,
+                    supportText: document.querySelector('#support-link').innerText,
+                  };
+                }
+            """)
+            require(layout["scrollWidth"] <= layout["clientWidth"] + 1,
+                    f"Mixup shell overflows horizontally at {width}px: {layout!r}")
+            for bounds in layout["bounds"]:
+                require(bounds["width"] > 0 and bounds["left"] >= -1
+                        and bounds["right"] <= layout["clientWidth"] + 1,
+                        f"{bounds['selector']} escapes the {width}px viewport: {bounds!r}")
+            expected_columns = 2 if width == 1280 else 1
+            expected_cards = 3 if width == 1280 else 1
+            require(layout["intakeColumns"] == expected_columns,
+                    f"intake grid has {layout['intakeColumns']} columns at {width}px")
+            require(layout["cardColumns"] == expected_cards,
+                    f"game grid has {layout['cardColumns']} columns at {width}px")
+            require(layout["supportHeight"] >= 44 and layout["supportWidth"] >= 140,
+                    f"support link target is too small at {width}px: {layout!r}")
+            require("support on ko-fi" in layout["supportText"].lower(),
+                    f"support text is hidden at {width}px")
+
+        for width in (1280, 700, 360):
+            assert_width(width)
+
+        def recheck() -> None:
+            for width in (1280, 700, 360):
+                assert_width(width)
+
+        return recheck
+
+    gate.run("asset-free arcade shell and support link", shell_layout)
+
     def zip_intake(page):
         archive = io.BytesIO()
         with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as output:
@@ -894,6 +992,71 @@ def gate_asset_free(browser, origin: str) -> None:
         return assert_7z_read
 
     gate.run("asset-free 7z intake", seven_zip_intake)
+
+    def folder_discovery(page):
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as output:
+            for fixture in ROM_FIXTURES:
+                output.writestr(fixture.name, fixture.read_bytes())
+        open_page(page, origin, "/")
+        folder_input = page.locator("#folder-files")
+        folder_input.evaluate("input => input.removeAttribute('webkitdirectory')")
+        folder_input.set_input_files((
+            {
+                "name": "ddpdojblk.zip",
+                "mimeType": "application/zip",
+                "buffer": archive.getvalue(),
+            },
+            {
+                "name": "SLPM-65378 (AEDB8BB2).00.p2s",
+                "mimeType": "application/octet-stream",
+                "buffer": b"PK\x03\x04unrelated save",
+            },
+            {
+                "name": "broken.zip",
+                "mimeType": "application/zip",
+                "buffer": b"PK\x03\x04broken archive",
+            },
+        ))
+        wait_for_condition(
+            page,
+            "document.querySelector('#status').dataset.kind === 'good'",
+            timeout=300000,
+        )
+        card = page.locator('.game-card[data-game-id="ddpdoj"]')
+        folder_status = page.locator("#status").inner_text()
+        page.locator(".verification-details").evaluate("details => { details.open = true; }")
+        page.locator("#game").select_option("ddpdoj")
+
+        def assert_folder_ready() -> None:
+            status = folder_status
+            require("Could not inspect the selection" not in status,
+                    f"unrelated folder file aborted discovery: {status!r}")
+            require("Read 10 members from 1 local archive." in status,
+                    f"folder archive status is not exact: {status!r}")
+            require("Skipped 1 invalid archive candidate." in status,
+                    f"malformed folder archive was not skipped: {status!r}")
+            require("Searched 3 folder files and ignored 1 non-candidate without opening them."
+                    in status, f"folder candidate search status is not exact: {status!r}")
+            require(not card.is_disabled(),
+                    "folder with unrelated archive-like save left DaiOuJou locked")
+            requirements = page.locator("#identities .identity-requirements").inner_text()
+            require("all ten exact MAME members" in requirements,
+                    f"required-set summary is unclear: {requirements!r}")
+            require("replaces ddb10_10_8_434f.u45 and ddp3_bios.u37" in requirements,
+                    f"decrypted replacement summary is unclear: {requirements!r}")
+            headings = page.locator("#identities h4").all_inner_texts()
+            require(headings == ["Required complete ROM set", "Accepted replacement input"],
+                    f"required-set headings are not exact: {headings!r}")
+            tables = page.locator("#identities tbody")
+            require(tables.count() == 2 and tables.nth(0).locator("tr").count() == 10
+                    and tables.nth(1).locator("tr").count() == 1,
+                    "required and replacement ROM rows are not separated 10 plus 1")
+
+        assert_folder_ready()
+        return assert_folder_ready
+
+    gate.run("asset-free folder ROM discovery", folder_discovery)
 
     def archive_rejections(page):
         def zipped(entries, compression=zipfile.ZIP_STORED):

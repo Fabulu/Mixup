@@ -1,8 +1,12 @@
 import { expandArchives } from './archives.js';
+import { ARCHIVE_LIMITS } from './archive-policy.js';
 import { BUILD_ID } from './buildid.js';
 import { GAME_CATALOGUE, GAME_IDS } from './catalogue.js';
 import { inspectInventory, formatDiagnostic } from './diagnostics.js';
-import { chooseDirectory, collectDirectoryFiles, filesFromDataTransfer, filesFromInput, describeSelection } from './files.js';
+import {
+  chooseDirectory, collectDirectoryFiles, dataTransferIncludesDirectory,
+  filesFromDataTransfer, filesFromInput, describeSelection, searchRomCandidates,
+} from './files.js';
 import {
   forgetDirectoryHandle,
   queryDirectoryPermission,
@@ -30,6 +34,10 @@ const bootStatus = document.querySelector('#boot-status');
 const gameScreen = document.querySelector('#game-screen');
 const gameCanvas = document.querySelector('#game-canvas');
 const build = document.querySelector('#build');
+
+const ROM_INPUT_SIZES = new Set(Object.values(GAME_CATALOGUE).flatMap((game) => [
+  ...game.accepted, ...(game.alternateForms ?? []),
+]).map((identity) => identity.size));
 
 let savedHandle = null;
 let savedPermission = 'missing';
@@ -93,6 +101,11 @@ function renderIdentities() {
     ${game.set ? `<div><dt>MAME set</dt><dd>${game.set}</dd></div>` : ''}</dl>`;
   identities.append(summary);
 
+  const requirements = document.createElement('p');
+  requirements.className = 'identity-requirements';
+  requirements.textContent = game.requirements;
+  identities.append(requirements);
+
   const notes = document.createElement('ul');
   notes.className = 'notes';
   for (const note of game.notes) {
@@ -102,26 +115,36 @@ function renderIdentities() {
   }
   identities.append(notes);
 
-  const table = document.createElement('table');
-  table.innerHTML = '<thead><tr><th>Filename or member</th><th>Bytes</th><th>SHA-256</th><th>Input form</th></tr></thead>';
-  const body = document.createElement('tbody');
-  for (const identity of [...game.accepted, ...(game.alternateForms ?? [])]) {
-    const row = document.createElement('tr');
-    for (const value of [
-      identity.name ?? 'No filename identity; identify by size and digest',
-      formatBytes(identity.size), identity.sha256, identity.inputForm,
-    ]) {
-      const cell = document.createElement('td');
-      cell.textContent = value;
-      row.append(cell);
+  const appendIdentityTable = (heading, entries) => {
+    const title = document.createElement('h4');
+    title.textContent = heading;
+    identities.append(title);
+    const table = document.createElement('table');
+    table.innerHTML = '<thead><tr><th>Filename or member</th><th>Bytes</th><th>SHA-256</th><th>Input form</th></tr></thead>';
+    const body = document.createElement('tbody');
+    for (const identity of entries) {
+      const row = document.createElement('tr');
+      for (const value of [
+        identity.name ?? 'No filename identity; identify by size and digest',
+        formatBytes(identity.size), identity.sha256, identity.inputForm,
+      ]) {
+        const cell = document.createElement('td');
+        cell.textContent = value;
+        row.append(cell);
+      }
+      body.append(row);
     }
-    body.append(row);
+    table.append(body);
+    const wrapper = document.createElement('div');
+    wrapper.className = 'table-wrap';
+    wrapper.append(table);
+    identities.append(wrapper);
+  };
+  appendIdentityTable(game.accepted.length === 1 ? 'Required ROM' : 'Required complete ROM set',
+    game.accepted);
+  if (game.alternateForms?.length) {
+    appendIdentityTable('Accepted replacement input', game.alternateForms);
   }
-  table.append(body);
-  const wrapper = document.createElement('div');
-  wrapper.className = 'table-wrap';
-  wrapper.append(table);
-  identities.append(wrapper);
 }
 
 function renderLauncher() {
@@ -177,11 +200,24 @@ function resetInventory() {
   renderSelectedDiagnostic();
 }
 
-async function validate(files, source, intake = beginIntake()) {
+async function validate(files, source, options = {}) {
+  const intake = options.intake ?? beginIntake();
   if (!intakeIsCurrent(intake)) return;
+  const searched = options.searchFolder ? describeSelection(files) : null;
+  const discovery = options.searchFolder ? searchRomCandidates(files, {
+    rawSizes: ROM_INPUT_SIZES,
+    maxArchiveBytes: ARCHIVE_LIMITS.maxCompressedArchive,
+  }) : null;
+  if (discovery) files = discovery.files;
+  const searchNote = discovery
+    ? ` Searched ${searched.count} folder file${searched.count === 1 ? '' : 's'} and ignored ${discovery.ignored} non-candidate${discovery.ignored === 1 ? '' : 's'} without opening them.`
+    : '';
+  let archiveMemberNote = '';
   if (!files.length) {
     resetInventory();
-    setStatus(`No files were found in ${source}. If a dropped folder was not exposed by this browser, use Choose a folder instead.`, 'bad');
+    setStatus(discovery
+      ? `Searched ${searched.count} file${searched.count === 1 ? '' : 's'} in ${source}. No file had an exact supported ROM byte size or a supported ZIP/7z name within ${formatBytes(ARCHIVE_LIMITS.maxCompressedArchive)} bytes. Non-candidates were not opened.`
+      : `No files were found in ${source}. If a dropped folder was not exposed by this browser, use Choose a folder instead.`, 'bad');
     finishIntake(intake);
     return;
   }
@@ -194,17 +230,31 @@ async function validate(files, source, intake = beginIntake()) {
     launcherState = applyValidation(launcherState, gameId, false);
   }
   renderLauncher();
-  setStatus(`Checking ${selection.count} local file${selection.count === 1 ? '' : 's'} (${formatBytes(selection.totalBytes)} bytes)...`, 'working');
+  setStatus(discovery
+    ? `Found ${selection.count} ROM/archive candidate${selection.count === 1 ? '' : 's'} in ${searched.count} folder file${searched.count === 1 ? '' : 's'}. Checking only those candidates (${formatBytes(selection.totalBytes)} bytes)...`
+    : `Checking ${selection.count} local file${selection.count === 1 ? '' : 's'} (${formatBytes(selection.totalBytes)} bytes)...`, 'working');
   report.textContent = '';
   copyReport.disabled = true;
   try {
     const expanded = await expandArchives(files, {
+      archiveProbe: options.archiveProbe,
+      skipInvalidArchives: Boolean(discovery),
       signal: intake.controller.signal,
       onProgress: (message) => {
         if (intakeIsCurrent(intake)) setStatus(message, 'working');
       },
     });
     if (!intakeIsCurrent(intake)) return;
+    if (discovery) {
+      const memberSearch = searchRomCandidates(expanded.files, {
+        rawSizes: ROM_INPUT_SIZES,
+        maxArchiveBytes: ARCHIVE_LIMITS.maxCompressedArchive,
+      });
+      expanded.files = memberSearch.files;
+      archiveMemberNote = memberSearch.ignored
+        ? ` Ignored ${memberSearch.ignored} non-ROM archive member${memberSearch.ignored === 1 ? '' : 's'} before hashing.`
+        : '';
+    }
     const ready = describeSelection(expanded.files);
     setStatus(`Hashing ${ready.count} ROM file${ready.count === 1 ? '' : 's'} once, then matching every game locally (${formatBytes(ready.totalBytes)} bytes)...`, 'working');
     const inventory = await inspectInventory(expanded.files, {
@@ -225,9 +275,12 @@ async function validate(files, source, intake = beginIntake()) {
     const archiveNote = expanded.archives
       ? ` Read ${expanded.members} member${expanded.members === 1 ? '' : 's'} from ${expanded.archives} local archive${expanded.archives === 1 ? '' : 's'}.`
       : '';
+    const skippedArchiveNote = expanded.skippedArchives
+      ? ` Skipped ${expanded.skippedArchives} invalid archive candidate${expanded.skippedArchives === 1 ? '' : 's'}.`
+      : '';
     setStatus(unlocked.length
-      ? `Validated game cards: ${unlocked.join(', ')}.${archiveNote} Unrelated extras do not relock valid games.`
-      : `No complete game identity set was found.${archiveNote} Open Verification details to inspect missing, duplicate, and extra-file diagnostics.`,
+      ? `Validated game cards: ${unlocked.join(', ')}.${archiveNote}${skippedArchiveNote}${searchNote}${archiveMemberNote} Unrelated extras do not relock valid games.`
+      : `No complete game identity set was found.${archiveNote}${skippedArchiveNote}${searchNote}${archiveMemberNote} Open Required ROMs and verification details to inspect missing, duplicate, and extra-file diagnostics.`,
     unlocked.length ? 'good' : 'bad');
   } catch (error) {
     if (!intakeIsCurrent(intake)) return;
@@ -239,7 +292,8 @@ async function validate(files, source, intake = beginIntake()) {
 }
 
 fileInput.addEventListener('change', () => validate(filesFromInput(fileInput), 'the file selection'));
-folderInput.addEventListener('change', () => validate(filesFromInput(folderInput), 'the folder selection'));
+folderInput.addEventListener('change', () => validate(filesFromInput(folderInput),
+  'the folder selection', { archiveProbe: 'declared-only', searchFolder: true }));
 dropZone.addEventListener('click', () => fileInput.click());
 dropZone.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -260,10 +314,13 @@ dropZone.addEventListener('drop', async (event) => {
   event.preventDefault();
   dropZone.dataset.active = 'false';
   const intake = beginIntake();
+  const searchFolder = dataTransferIncludesDirectory(event.dataTransfer);
   try {
     const files = await filesFromDataTransfer(event.dataTransfer);
     if (!intakeIsCurrent(intake)) return;
-    await validate(files, 'the dropped selection', intake);
+    await validate(files, 'the dropped selection', searchFolder ? {
+      archiveProbe: 'declared-only', searchFolder: true, intake,
+    } : { intake });
   } catch (error) {
     if (!intakeIsCurrent(intake)) return;
     finishIntake(intake);
@@ -356,7 +413,9 @@ chooseFolder.addEventListener('click', async () => {
     updateSavedFolderControls();
     const files = await collectDirectoryFiles(handle);
     if (!intakeIsCurrent(intake)) return;
-    await validate(files, 'the selected folder', intake);
+    await validate(files, 'the selected folder', {
+      archiveProbe: 'declared-only', searchFolder: true, intake,
+    });
   } catch (error) {
     if (intake && !intakeIsCurrent(intake)) return;
     if (intake) finishIntake(intake);
@@ -392,7 +451,9 @@ reuseFolder.addEventListener('click', async () => {
     intake = beginIntake();
     const files = await collectDirectoryFiles(savedHandle);
     if (!intakeIsCurrent(intake)) return;
-    await validate(files, 'the saved folder', intake);
+    await validate(files, 'the saved folder', {
+      archiveProbe: 'declared-only', searchFolder: true, intake,
+    });
   } catch (error) {
     if (intake && !intakeIsCurrent(intake)) return;
     if (intake) finishIntake(intake);

@@ -15,6 +15,12 @@ async function headerBytes(file) {
   return new Uint8Array(await file.slice(0, 8).arrayBuffer());
 }
 
+const DECLARED_ARCHIVE = /\.(?:zip|7z|rar)$/i;
+
+function shouldProbeArchive(name, mode) {
+  return mode === 'strict' || DECLARED_ARCHIVE.test(String(name ?? ''));
+}
+
 function workerError(value) {
   const message = typeof value === 'string' ? value : value?.message;
   return new Error(message || 'Archive worker failed without an error message.');
@@ -26,6 +32,12 @@ function abortError() {
   }
   const error = new Error('Archive intake was superseded by a newer selection.');
   error.name = 'AbortError';
+  return error;
+}
+
+function selectionLimitError(message) {
+  const error = new Error(message);
+  error.name = 'ArchiveSelectionLimitError';
   return error;
 }
 
@@ -136,30 +148,50 @@ function browserFile(bytes, name, source, options = {}) {
 
 export async function expandArchives(files, options = {}) {
   throwIfAborted(options.signal);
+  const archiveProbe = options.archiveProbe ?? 'strict';
+  if (!['strict', 'declared-only'].includes(archiveProbe)) {
+    throw new RangeError(`Unknown archive probe mode ${archiveProbe}.`);
+  }
   const selected = Array.from(files ?? []);
   const raw = [];
   const archives = [];
+  const skipped = [];
+  const maxArchives = options.maxArchives ?? ARCHIVE_LIMITS.maxArchives;
+  const maxCompressedArchive = options.maxCompressedArchive
+    ?? ARCHIVE_LIMITS.maxCompressedArchive;
+  const maxCompressedTotal = options.maxCompressedTotal ?? ARCHIVE_LIMITS.maxCompressedTotal;
+  let compressedTotal = 0;
   for (const file of selected) {
     throwIfAborted(options.signal);
     if (!file || typeof file.arrayBuffer !== 'function' || typeof file.slice !== 'function') continue;
-    const kind = archiveKind(file.name, await headerBytes(file));
-    throwIfAborted(options.signal);
-    if (!kind) {
+    if (!shouldProbeArchive(file.name, archiveProbe)) {
       raw.push(file);
       continue;
     }
-    if (!Number.isSafeInteger(file.size) || file.size <= 0
-        || file.size > (options.maxCompressedArchive ?? ARCHIVE_LIMITS.maxCompressedArchive)) {
-      throw new Error(`${file.name}: archive size must be between 1 and ${formatBytes(options.maxCompressedArchive ?? ARCHIVE_LIMITS.maxCompressedArchive)} bytes.`);
+    try {
+      const kind = archiveKind(file.name, await headerBytes(file));
+      throwIfAborted(options.signal);
+      if (!kind) {
+        raw.push(file);
+        continue;
+      }
+      if (!Number.isSafeInteger(file.size) || file.size <= 0
+          || file.size > maxCompressedArchive) {
+        throw new Error(`${file.name}: archive size must be between 1 and ${formatBytes(maxCompressedArchive)} bytes.`);
+      }
+      if (archives.length >= maxArchives) {
+        throw selectionLimitError(`Select at most ${maxArchives} archives at once.`);
+      }
+      if (compressedTotal + file.size > maxCompressedTotal) {
+        throw selectionLimitError(`Selected archives exceed ${formatBytes(maxCompressedTotal)} compressed bytes.`);
+      }
+      archives.push({ file, kind });
+      compressedTotal += file.size;
+    } catch (error) {
+      if (!options.skipInvalidArchives || error?.name === 'AbortError'
+          || error?.name === 'ArchiveSelectionLimitError') throw error;
+      skipped.push({ name: String(file.name ?? ''), message: error.message });
     }
-    archives.push({ file, kind });
-  }
-  if (archives.length > (options.maxArchives ?? ARCHIVE_LIMITS.maxArchives)) {
-    throw new Error(`Select at most ${options.maxArchives ?? ARCHIVE_LIMITS.maxArchives} archives at once.`);
-  }
-  const compressedTotal = archives.reduce((sum, archive) => sum + archive.file.size, 0);
-  if (compressedTotal > (options.maxCompressedTotal ?? ARCHIVE_LIMITS.maxCompressedTotal)) {
-    throw new Error(`Selected archives exceed ${formatBytes(options.maxCompressedTotal ?? ARCHIVE_LIMITS.maxCompressedTotal)} compressed bytes.`);
   }
 
   const expanded = [];
@@ -182,36 +214,55 @@ export async function expandArchives(files, options = {}) {
         maxEntriesTotal - consumed.entries),
     };
     options.onProgress?.(`Reading ${file.name} locally (${index + 1}/${archives.length})...`);
-    const result = await runWorker(file, kind, archiveOptions);
-    throwIfAborted(options.signal);
-    const validated = validateWorkerResult(file, kind, result, archiveOptions);
-    summaries.push({
-      compressedBytes: file.size,
-      expandedBytes: validated.expandedBytes,
-      entries: validated.entries,
-    });
-    validateArchiveSelection(summaries, options);
+    let validated;
+    try {
+      const result = await runWorker(file, kind, archiveOptions);
+      throwIfAborted(options.signal);
+      validated = validateWorkerResult(file, kind, result, archiveOptions);
+    } catch (error) {
+      if (!options.skipInvalidArchives || error?.name === 'AbortError') throw error;
+      skipped.push({ name: String(file.name ?? ''), message: error.message });
+      continue;
+    }
+    try {
+      const archiveSummary = {
+        compressedBytes: file.size,
+        expandedBytes: validated.expandedBytes,
+        entries: validated.entries,
+      };
+      validateArchiveSelection([...summaries, archiveSummary], options);
 
-    for (const entry of validated.files) {
-      const basename = entry.path.slice(entry.path.lastIndexOf('/') + 1);
-      const folded = basename.toLocaleLowerCase('en-US');
-      if (memberBasenames.has(folded)) {
-        throw new Error(`Selected archives contain duplicate member basename ${basename}.`);
+      const archiveBasenames = new Set();
+      const archiveMembers = [];
+      for (const entry of validated.files) {
+        const basename = entry.path.slice(entry.path.lastIndexOf('/') + 1);
+        const folded = basename.toLocaleLowerCase('en-US');
+        if (memberBasenames.has(folded) || archiveBasenames.has(folded)) {
+          throw new Error(`Selected archives contain duplicate member basename ${basename}.`);
+        }
+        archiveBasenames.add(folded);
+        const member = browserFile(validated.byPath.get(entry.path), basename, file, options);
+        Object.defineProperty(member, 'mixupRelativePath', {
+          value: `${file.name}/${entry.path}`,
+          configurable: true,
+        });
+        archiveMembers.push(member);
       }
-      memberBasenames.add(folded);
-      const member = browserFile(validated.byPath.get(entry.path), basename, file, options);
-      Object.defineProperty(member, 'mixupRelativePath', {
-        value: `${file.name}/${entry.path}`,
-        configurable: true,
-      });
-      expanded.push(member);
+      summaries.push(archiveSummary);
+      for (const folded of archiveBasenames) memberBasenames.add(folded);
+      expanded.push(...archiveMembers);
+    } catch (error) {
+      if (!options.skipInvalidArchives || error?.name === 'AbortError') throw error;
+      skipped.push({ name: String(file.name ?? ''), message: error.message });
     }
   }
   throwIfAborted(options.signal);
   return {
     files: [...raw, ...expanded],
-    archives: archives.length,
+    archives: summaries.length,
     members: expanded.length,
+    skippedArchives: skipped.length,
+    archiveErrors: skipped,
     summary: validateArchiveSelection(summaries, options),
   };
 }

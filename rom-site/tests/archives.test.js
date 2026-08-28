@@ -5,7 +5,7 @@ import { expandArchives } from '../src/archives.js';
 
 const zipMagic = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 1, 2, 3, 4]);
 
-function selectedFile(name, bytes, lastModified = 1) {
+function selectedFile(name, bytes, lastModified = 1, state = null) {
   const body = Uint8Array.from(bytes);
   return {
     name,
@@ -13,6 +13,7 @@ function selectedFile(name, bytes, lastModified = 1) {
     lastModified,
     async arrayBuffer() { return body.slice().buffer; },
     slice(from, to) {
+      if (state) state.slices = (state.slices ?? 0) + 1;
       const part = body.slice(from, to);
       return { async arrayBuffer() { return part.buffer; } };
     },
@@ -72,6 +73,30 @@ test('ordinary ROM files pass through without starting a worker', async () => {
   assert.deepEqual([result.archives, result.members, workers], [0, 0, 0]);
 });
 
+test('folder scans ignore archive-like bytes in unrelated files without probing them', async () => {
+  const state = {};
+  const save = selectedFile('SLPM-65378 (AEDB8BB2).00.p2s', zipMagic, 1, state);
+  let workers = 0;
+  const result = await expandArchives([save], {
+    archiveProbe: 'declared-only',
+    createWorker: () => { workers++; return fakeWorker(workerFlow()); },
+  });
+  assert.deepEqual(result.files, [save]);
+  assert.deepEqual([result.archives, result.members, workers, state.slices ?? 0], [0, 0, 0, 0]);
+});
+
+test('explicit files still reject disguised archives', async () => {
+  const save = selectedFile('SLPM-65378 (AEDB8BB2).00.p2s', zipMagic);
+  await assert.rejects(() => expandArchives([save]),
+    /archive signature requires a matching \.zip or \.7z extension/);
+});
+
+test('folder scans still reject malformed files declared as archives', async () => {
+  const archive = selectedFile('broken.zip', [1, 2, 3, 4, 5, 6, 7, 8]);
+  await assert.rejects(() => expandArchives([archive], { archiveProbe: 'declared-only' }),
+    /\.zip extension does not match the archive signature/);
+});
+
 test('a valid archive becomes ordinary local File-like members', async () => {
   const archive = selectedFile('owned.zip', zipMagic);
   const state = {};
@@ -90,6 +115,52 @@ test('a valid archive becomes ordinary local File-like members', async () => {
   assert.deepEqual(state.messages[1], { action: 'extract', paths: ['set/member.rom'] });
   assert.equal(state.terminated, 1);
   assert.match(progress[0], /Reading owned.zip locally/);
+});
+
+test('valid declared ZIP files still expand during folder scans', async () => {
+  const archive = selectedFile('owned.ZIP', zipMagic);
+  let workers = 0;
+  const result = await expandArchives([archive], {
+    archiveProbe: 'declared-only',
+    createWorker: () => { workers++; return fakeWorker(workerFlow()); },
+    createFile: createdFile,
+  });
+  assert.deepEqual([result.archives, result.members, workers], [1, 1, 1]);
+  assert.equal(result.files[0].name, 'member.rom');
+});
+
+test('folder searches skip malformed archives and keep reading valid candidates', async () => {
+  const broken = selectedFile('broken.zip', zipMagic);
+  const valid = selectedFile('owned.zip', zipMagic);
+  let workers = 0;
+  const result = await expandArchives([broken, valid], {
+    archiveProbe: 'declared-only',
+    skipInvalidArchives: true,
+    createWorker: () => {
+      workers++;
+      return workers === 1
+        ? fakeWorker({ ok: false, error: 'bad central directory' })
+        : fakeWorker(workerFlow());
+    },
+    createFile: createdFile,
+  });
+  assert.deepEqual([result.archives, result.members, result.skippedArchives], [1, 1, 1]);
+  assert.equal(result.files[0].name, 'member.rom');
+  assert.deepEqual(result.archiveErrors,
+    [{ name: 'broken.zip', message: 'bad central directory' }]);
+});
+
+test('folder searches skip a duplicate archive atomically', async () => {
+  const archives = [selectedFile('first.zip', zipMagic), selectedFile('second.zip', zipMagic)];
+  const result = await expandArchives(archives, {
+    archiveProbe: 'declared-only',
+    skipInvalidArchives: true,
+    createWorker: () => fakeWorker(workerFlow()),
+    createFile: createdFile,
+  });
+  assert.deepEqual([result.archives, result.members, result.skippedArchives], [1, 1, 1]);
+  assert.equal(result.files[0].mixupRelativePath, 'first.zip/set/member.rom');
+  assert.match(result.archiveErrors[0].message, /duplicate member basename/);
 });
 
 test('worker errors, listing mismatches, and nested archives fail closed', async () => {
@@ -170,6 +241,9 @@ test('selection-wide archive limits and duplicate basenames are enforced', async
   const archives = Array.from({ length: 5 }, (_, index) =>
     selectedFile(`owned-${index}.zip`, zipMagic));
   await assert.rejects(() => expandArchives(archives), /at most 4 archives/);
+  await assert.rejects(() => expandArchives(archives, {
+    archiveProbe: 'declared-only', skipInvalidArchives: true,
+  }), /at most 4 archives/);
 
   let call = 0;
   await assert.rejects(() => expandArchives(archives.slice(0, 2), {

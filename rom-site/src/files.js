@@ -14,6 +14,33 @@ export function normalizeFiles(groups) {
   return files;
 }
 
+const SUPPORTED_ARCHIVE_NAME = /\.(?:zip|7z)$/i;
+
+export function searchRomCandidates(files, options = {}) {
+  const rawSizes = options.rawSizes instanceof Set
+    ? options.rawSizes : new Set(options.rawSizes ?? []);
+  const maxArchiveBytes = options.maxArchiveBytes;
+  if (!Number.isSafeInteger(maxArchiveBytes) || maxArchiveBytes <= 0) {
+    throw new RangeError('Folder search requires a positive archive-size limit.');
+  }
+  const candidates = [];
+  let ignored = 0;
+  let ignoredBytes = 0;
+  for (const file of files) {
+    const size = file?.size;
+    const archive = SUPPORTED_ARCHIVE_NAME.test(String(file?.name ?? ''));
+    const viableArchive = archive && Number.isSafeInteger(size)
+      && size > 0 && size <= maxArchiveBytes;
+    const viableRaw = Number.isSafeInteger(size) && rawSizes.has(size);
+    if (viableArchive || viableRaw) candidates.push(file);
+    else {
+      ignored++;
+      if (Number.isSafeInteger(size) && size > 0) ignoredBytes += size;
+    }
+  }
+  return { files: candidates, ignored, ignoredBytes };
+}
+
 export function filesFromInput(input) {
   return normalizeFiles([input?.files]);
 }
@@ -46,6 +73,11 @@ async function filesFromEntry(entry, path, output, limits, depth = 0) {
       await filesFromEntry(child, `${path}${entry.name}/`, output, limits, depth + 1);
     }
   }
+}
+
+export function dataTransferIncludesDirectory(dataTransfer) {
+  return Array.from(dataTransfer?.items ?? [])
+    .some((item) => item.webkitGetAsEntry?.()?.isDirectory === true);
 }
 
 export async function filesFromDataTransfer(dataTransfer, options = {}) {

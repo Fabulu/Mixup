@@ -17,6 +17,9 @@ test('catalogue records exact complete identities and regions', () => {
   assert.equal(ddpdoj.region, 'Japan');
   assert.equal(ddpdoj.set, 'ddpdojblk');
   assert.equal(ddpdoj.accepted.length, 10);
+  assert.match(ddpdoj.requirements, /all ten exact MAME members/);
+  assert.match(ddpdoj.requirements,
+    /replaces ddb10_10_8_434f\.u45 and ddp3_bios\.u37/);
   assert.equal(ddpdoj.alternateForms.length, 1);
   assert.ok(ddpdoj.knownAlternates.length >= 10);
   assert.deepEqual(new Set(ddpdoj.knownAlternates.map((identity) => identity.set)),

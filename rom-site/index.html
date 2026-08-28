@@ -14,6 +14,10 @@
     <p class="eyebrow">MIXUP / ASSET-FREE ARCADE</p>
     <h1>Mixup</h1>
     <p class="lede">Play faithful ports of Batman, Gradius, and DoDonPachi DaiOuJou with your own local ROMs.</p>
+    <a id="support-link" class="support-link" href="https://ko-fi.com/readzen" rel="noreferrer">
+      <span aria-hidden="true">♡</span>
+      <span>Support on Ko-fi</span>
+    </a>
   </header>
 
   <main>
@@ -43,7 +47,7 @@
         <div class="folder-content">
           <label class="picker compact-picker" for="folder-files">
             <strong>Choose a folder</strong>
-            <span>Fallback for browsers without saved folder access.</span>
+            <span>Mixup searches recursively and opens only exact-size ROM candidates or bounded ZIP/7z files.</span>
             <input id="folder-files" type="file" webkitdirectory multiple>
           </label>
           <div class="actions">
@@ -65,7 +69,7 @@
           <h2 id="launcher-title">Choose a game</h2>
         </div>
       </div>
-      <p class="launcher-help">A game unlocks as soon as its exact local ROM set is ready.</p>
+      <p class="launcher-help">A game unlocks as soon as its exact local ROM set is ready. The exact accepted sizes and SHA-256 identities, with the standard filenames for reference, are listed below.</p>
       <div id="game-cards" class="game-cards" aria-label="Game selection">
         <button type="button" class="game-card" data-game-id="batman" disabled>
           <span class="card-role">GAME</span><strong>Batman</strong><span class="card-state">ROM required</span>
@@ -90,7 +94,7 @@
       </div>
 
       <details class="verification-details">
-        <summary>Verification details</summary>
+        <summary>Required ROMs and verification details</summary>
         <div class="verification-content">
           <label class="field" for="game">
             <span>Game report</span>
