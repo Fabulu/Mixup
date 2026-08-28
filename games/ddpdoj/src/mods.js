@@ -23,8 +23,8 @@ export const MODS = Object.freeze({
   'invincibility': mod({
     name: 'Invincibility', category: 'survival',
     conflict: 'player-durability', priority: 10,
-    blurb: 'Hold the player record invulnerability byte at $FF.',
-    effects: ['$810424 := $FF before and after every logic frame'],
+    blurb: 'Ignore ordinary enemy-bullet collisions for P1 while cartridge lifecycle events remain active.',
+    effects: ['$2459D0 P1 enemy-bullet collision is filtered before either hit bit is written'],
   }),
   'infinite-lives': mod({
     name: 'Infinite Lives', category: 'survival',
@@ -548,7 +548,11 @@ export function modGameOptions(state) {
   }
   if (sim.revengeBullets) options.enemyDeathHook = fireRevengeBullet;
   if (sim.friendlyConvertedBullets) options.friendlyBulletConvertHook = convertCanceledBullet;
-  if (sim.bulletPolarity) options.enemyBulletCollisionFilter = hostilePolarityBank;
+  if (sim.invincibility || sim.bulletPolarity) {
+    options.enemyBulletCollisionFilter = (ram, event) =>
+      (!sim.invincibility || event.player !== MOD_RAM.player1)
+      && (!sim.bulletPolarity || hostilePolarityBank(ram, event));
+  }
   if (sim.scoreMultiplierMayhem) options.scoreAddendTransform = multiplyFinalScoreAddend;
   if (sim.bossRush) options.stageScriptInstallHook = startAtFinalBossApproach;
   if (sim.stageRemix) options.stageAdvanceTransform = remixNextStageValue;
@@ -558,7 +562,6 @@ export function modGameOptions(state) {
 function applyRamMods(state, ram) {
   if (!state) return;
   const s = state.loadout.sim;
-  if (s.invincibility) ram.setU8(MOD_RAM.invulnP1, 0xff);
   if (s.glassCannon) {
     ram.setU8(MOD_RAM.invulnP1, 0);
     ram.setU8(MOD_RAM.invulnP2, 0);

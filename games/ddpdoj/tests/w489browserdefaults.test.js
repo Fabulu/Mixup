@@ -59,7 +59,8 @@ test('W489 ordinary browser seed removes only the captured fly-around invulnerab
   assert.equal(otherMod[invuln], 0, 'a non-survival mod does not retain invulnerability');
 
   const invincible = launchSeedForBrowser(seed, null, mods('invincibility'));
-  assert.equal(invincible[invuln], 0xff, 'explicit Invincibility retains its visible hold');
+  assert.equal(invincible[invuln], 0,
+    'Invincibility starts clean and acts through its collision filter');
 });
 
 test('W489 labelled progression and replay-compatible seeds retain their intervention', () => {

@@ -126,7 +126,9 @@ test('W496 catalogue reaches 32 and selection alone installs replay-blocking cal
   assert.equal(unknown, null);
   assert.equal(modGameOptions(empty), null);
   assert.equal(modGameOptions(unknown), null);
-  assert.equal(modGameOptions(stateOf('invincibility')), null);
+  const invincibility = modGameOptions(stateOf('invincibility'));
+  assert.deepEqual(Object.keys(invincibility), ['enemyBulletCollisionFilter']);
+  assertNoW496Callbacks(gameWithOptions(invincibility), 'Invincibility Game');
 
   assertNoW496Callbacks(new Game(new Uint8Array(MACHINE.ramSize), TABLES,
     { palCatchUp: false }), 'direct Game');

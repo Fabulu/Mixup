@@ -19,7 +19,7 @@ import {
   MODS, MOD_IDS, MOD_RAM, resolveLoadout, createModState,
   loadoutToHash, hashToLoadout, applyPreFrameMods, applyPostFrameMods,
   transformModInput, transformModTiming, applyPresentationMods,
-  replayPolicy,
+  replayPolicy, modGameOptions,
 } from '../src/mods.js';
 
 const TABLES = JSON.parse(readFileSync(
@@ -86,7 +86,6 @@ test('W477 empty and unknown-only loadouts create no mod state', () => {
 });
 
 test('W477 RAM mods drive their concrete cartridge seams', () => {
-  assert.equal(policyRam('invincibility').ram.u8(MOD_RAM.invulnP1), 0xff);
   assert.equal(policyRam('infinite-lives').ram.u16(MOD_RAM.livesP1), 3);
 
   {
@@ -190,10 +189,14 @@ test('W477 ordinary Demo step has no hidden invulnerability poke', () => {
   assert.equal(demo.game.ram.u8(MOD_RAM.invulnP1), 0);
 });
 
-test('W477 selected invincibility explicitly performs the $810424 write', () => {
-  const demo = stubDemo({ mods: stateOf('invincibility') });
+test('W477 selected invincibility filters collisions without owning $810424', () => {
+  const mods = stateOf('invincibility');
+  assert.equal(typeof modGameOptions(mods).enemyBulletCollisionFilter, 'function');
+  const demo = stubDemo({ mods });
+  demo.game.ram.setU8(MOD_RAM.invulnP1, 0x37);
   demo.step();
-  assert.equal(demo.game.ram.u8(MOD_RAM.invulnP1), 0xff);
+  assert.equal(demo.game.ram.u8(MOD_RAM.invulnP1), 0x37,
+    'a cartridge-owned protection value survives both frame policies');
 });
 
 test('W477 labelled progression rung keeps its explicit intervention', () => {

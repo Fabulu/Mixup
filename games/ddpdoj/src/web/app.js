@@ -275,15 +275,14 @@ export function progressionPokesForRung(rung) {
  * Reapplying no poke is therefore not enough to make ordinary browser play
  * vanilla. A normal launch removes that one host intervention from a copy of
  * the seed. A selected Loop 2 From Stage 1 launch writes only its loop word in
- * that same copy. Labelled progression rungs keep their exact snapshots, and an
- * explicitly selected Invincibility mod deliberately restores `$FF` before the
- * first picture can show a mortal ship.
+ * that same copy. Labelled progression rungs keep their exact snapshots.
+ * Invincibility is a collision filter, so it also starts from the cartridge's
+ * ordinary zero protection byte.
  */
 export function launchSeedForBrowser(seed, rung, mods) {
   if (rung) return seed;
   const clean = Uint8Array.from(seed);
-  clean[MOD_RAM.invulnP1 - MACHINE.ramBase] =
-    mods?.loadout?.sim?.invincibility ? 0xff : 0;
+  clean[MOD_RAM.invulnP1 - MACHINE.ramBase] = 0;
   if (mods?.loadout?.sim?.loop2FromStage1) {
     const loop = MOD_RAM.loopCounter - MACHINE.ramBase;
     clean[loop] = 0;

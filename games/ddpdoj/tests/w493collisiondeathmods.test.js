@@ -18,7 +18,7 @@ import {
 import { WriteLog, spawnCore, poolClear } from '../src/bullets.js';
 import { BOMBRAM, bombDamage24560A } from '../src/bomb.js';
 import {
-  DEATH, playerHit249F8A, playerLethalHit249542,
+  DEATH, playerHit249F8A, playerLethalHit249542, updatePlayer,
 } from '../src/player.js';
 import { bonusLine125FFA8 } from '../src/tally.js';
 import {
@@ -139,6 +139,57 @@ test('W493 catalogue, conflict, replay policy, and per-Game seams are explicit',
     'bulletSpawnHook', 'playerGrazeHook', 'playerDamageTransform', 'lethalHitHook',
     'deathPositionCapture', 'respawnPositionTransform',
   ]) assert.equal(Object.hasOwn(vanilla, name), false, `${name} is absent in vanilla`);
+});
+
+test('W493 Invincibility filters ordinary P1 bullets while P2 and polarity stay authentic', () => {
+  const options = modGameOptions(stateOf('invincibility'));
+
+  const p1 = new Ram();
+  putPlayerBox(p1, RAM.player1);
+  const p1Bullet = putBullet(p1, 0, 0x2000, 0x1000);
+  const p1Result = playerBox(p1, RAM.player1, options);
+  assert.equal(p1Result.hit, false);
+  assert.equal(Boolean(p1.btst8(RAM.player1, 4)), false,
+    'P1 never receives the ordinary pending-hit bit');
+  assert.equal(Boolean(p1.btst8(p1Bullet, 4)), false,
+    'the ignored bullet is not consumed by a fake collision');
+
+  const p2 = new Ram();
+  putPlayerBox(p2, RAM.player2);
+  const p2Bullet = putBullet(p2, 0, 0x2000, 0x1000);
+  const p2Result = playerBox(p2, RAM.player2, options);
+  assert.equal(p2Result.hit, true, 'P2 remains vulnerable to the same ordinary overlap');
+  assert.equal(Boolean(p2.btst8(RAM.player2, 4)), true);
+  assert.equal(Boolean(p2.btst8(p2Bullet, 4)), true);
+
+  const composed = modGameOptions(stateOf('invincibility', 'bullet-polarity'))
+    .enemyBulletCollisionFilter;
+  assert.equal(composed(p2, { player: RAM.player1, bank: 'B' }), false,
+    'Invincibility remains authoritative for P1 when polarity is selected');
+  assert.equal(composed(p2, { player: RAM.player2, bank: 'B' }), true,
+    'unfocused P2 still collides with polarity bank B');
+  assert.equal(composed(p2, { player: RAM.player2, bank: 'A' }), false,
+    'unfocused P2 still phases through polarity bank A');
+});
+
+test('W493 Invincibility leaves cartridge-authored P1 retirement active', () => {
+  const options = modGameOptions(stateOf('invincibility'));
+  const ram = new Ram();
+  const slot = ALLOC.table;
+  const events = [];
+  ram.setU16(RAM.player1, 0x9000);
+  ram.setU8(RAM.player1 + P.invuln, 0);
+  ram.setU8(slot + 0x07, 0);
+  ram.setU32(slot + ALLOC.idOff, 1);
+
+  updatePlayer(ram, slot, 0, deathCtx({
+    ...options,
+    deathEvent: (...event) => events.push(event),
+  }));
+
+  assert.equal(ram.u16(RAM.player1), 0x0100,
+    'the cartridge pending-hit bit still initializes its death state');
+  assert.equal(events[0]?.[0], 'hit');
 });
 
 test('W493 Graze Reactor rewards genuine live near misses once per slot lifetime and player', () => {

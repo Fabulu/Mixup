@@ -236,8 +236,9 @@ test('W492 empty, unknown-only, direct, and Original paths install no policy or 
   assert.equal(loadoutToHash([]), '');
   assert.equal(modGameOptions(empty), null);
   assert.equal(modGameOptions(unknown), null);
-  assert.equal(modGameOptions(stateOf('invincibility')), null,
-    'mods without simulation callbacks install no unrelated callbacks');
+  assert.deepEqual(Object.keys(modGameOptions(stateOf('invincibility'))),
+    ['enemyBulletCollisionFilter'],
+    'Invincibility installs only its P1 collision filter');
 
   const trapRam = new Proxy({}, {
     get() { throw new Error('vanilla mod hook touched RAM'); },
