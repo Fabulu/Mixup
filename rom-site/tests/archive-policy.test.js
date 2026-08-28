@@ -100,6 +100,19 @@ test('valid ZIP and 7z listings pass strict metadata limits', () => {
   assert.equal(seven.expandedBytes, 1024);
 });
 
+test('ZIP Deflate mode indicators remain supported Deflate entries', () => {
+  for (const method of ['Deflate', 'Deflate:Maximum', 'Deflate:Fast', 'Deflate:Fastest']) {
+    const [listed] = parseSevenZipListing([
+      'Path = a04401w064.u7', 'Folder = -', 'Size = 1024', 'Packed Size = 512',
+      'Encrypted = -', `Method = ${method}`, 'Volume Index = 0', '',
+    ], 'zip');
+    assert.doesNotThrow(() => validateArchiveEntries('zip', [listed], 512));
+  }
+  for (const method of ['Deflate64', 'Deflate:Ultra', 'Deflate:Maximum:extra']) {
+    rejects(/unsupported zip method/, () => validateArchiveEntries('zip', [entry({ method })], 512));
+  }
+});
+
 test('entry policy rejects unsafe types, methods, sizes, encryption, and duplicates', () => {
   const cases = [
     [/unsupported entry type/, [entry({ type: 'symlink' })]],

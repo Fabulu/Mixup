@@ -103,7 +103,9 @@ function assertInteger(value, label) {
 function methodAllowed(kind, method) {
   const tokens = String(method ?? '').trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return false;
-  if (kind === 'zip') return tokens.every((token) => /^(?:Store|Deflate)$/i.test(token));
+  if (kind === 'zip') {
+    return tokens.every((token) => /^(?:Store|Deflate(?::(?:Maximum|Fast|Fastest))?)$/i.test(token));
+  }
   return tokens.every((token) => /^(?:Copy|LZMA2?:\d+(?::(?:lc|lp|pb)\d+)*)$/i.test(token));
 }
 
