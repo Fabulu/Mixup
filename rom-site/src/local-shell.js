@@ -3,6 +3,7 @@ import * as BatmanMods from '/games/batman/src/mods.js';
 import * as GradiusInput from '/games/gradius/src/input.js';
 import * as GradiusMods from '/games/gradius/src/mods.js';
 import { GradiusAudio } from '/games/gradius/src/audio/output.js';
+import { AudioController } from '/shared/audio.js';
 import * as DdpInput from '/games/ddpdoj/src/web/input.js';
 import * as DdpMods from '/games/ddpdoj/src/mods.js';
 import * as Formation from '/games/ddpdoj/src/formation.js';
@@ -162,6 +163,15 @@ function setIntegerCanvasFit(canvas, viewport, logicalWidth, logicalHeight) {
   return fit;
 }
 
+function setFullscreenCanvasFit(canvas, viewport, logicalWidth, logicalHeight) {
+  const width = Math.max(1, Number(logicalWidth) || 1);
+  const height = Math.max(1, Number(logicalHeight) || 1);
+  const scale = Math.min(viewport.clientWidth / width, viewport.clientHeight / height);
+  canvas.dataset.scale = String(scale);
+  canvas.style.width = `${width * scale}px`;
+  canvas.style.height = `${height * scale}px`;
+}
+
 function selectField(labelText, values, selected, onChange) {
   const label = element('label');
   label.append(document.createTextNode(labelText));
@@ -210,6 +220,7 @@ class LocalShell {
     this.dpadMask = 0;
     this.syntheticCodes = new Set();
     this.gradiusAudio = null;
+    this.ddpdojAudio = null;
     this.opener = null;
     this.backgroundStates = new Map();
 
@@ -224,9 +235,17 @@ class LocalShell {
     this.gameGames.addEventListener('click', () => this.close());
     this.gameMods.addEventListener('click', () => this.showPicker());
     this.original.addEventListener('click', () => this.resetCurrent());
+    this.startButton.addEventListener('pointerdown', () => this.armCurrentAudio(), true);
+    this.startButton.addEventListener('keydown', (event) => {
+      if (event.code === 'Enter' || event.code === 'Space') this.armCurrentAudio();
+    }, true);
     this.startButton.addEventListener('click', () => this.startGame());
     this.fullscreen.addEventListener('click', () => this.toggleFullscreen());
     this.picture.addEventListener('click', () => this.togglePicture());
+    this.sound.addEventListener('pointerdown', () => this.armCurrentAudio(), true);
+    this.sound.addEventListener('keydown', (event) => {
+      if (event.code === 'Enter' || event.code === 'Space') this.armCurrentAudio();
+    }, true);
     this.sound.addEventListener('click', () => this.toggleSound());
 
     for (const name of ['resize', 'orientationchange']) {
@@ -238,12 +257,17 @@ class LocalShell {
       this.scheduleFit();
     });
     globalThis.addEventListener('pagehide', () => this.stopGame());
-    globalThis.addEventListener('blur', () => this.clearInput());
+    globalThis.addEventListener('blur', () => {
+      this.clearInput();
+      this.resyncAudio();
+    });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) this.clearInput();
+      this.resyncAudio();
     });
     document.addEventListener('keydown', (event) => {
       if (!this.shell.hidden && event.code === 'Escape') {
+        if (document.fullscreenElement) return;
         event.preventDefault();
         this.close();
       }
@@ -260,7 +284,7 @@ class LocalShell {
       weapon: 0, options: 0, missile: 0, shield: 0, speed: 0, meter: 0,
     };
     return {
-      mods: new Set(), preset: 'original', formation: '', mode: 'tate',
+      mods: new Set(), preset: 'original', formation: '', mode: 'tate', sound: true,
     };
   }
 
@@ -572,7 +596,36 @@ class LocalShell {
       loadout,
       formation: state.formation || null,
       mode: state.mode,
+      audio: this.ddpdojAudio,
     };
+  }
+
+  ensureGradiusAudio() {
+    this.gradiusAudio ??= new GradiusAudio((error) => {
+      if (this.gameId === 'gradius' && !this.gameScreen.hidden) {
+        this.gameStatus.textContent = `Sound unavailable: ${error.message}`;
+      }
+    });
+    return this.gradiusAudio;
+  }
+
+  ensureDdpdojAudio() {
+    this.ddpdojAudio ??= new AudioController(null, (error) => {
+      if (this.gameId === 'ddpdoj' && !this.gameScreen.hidden) {
+        this.gameStatus.textContent = `Sound unavailable: ${error.message}`;
+      }
+    });
+    return this.ddpdojAudio;
+  }
+
+  armCurrentAudio() {
+    if (!this.options) return;
+    const audio = this.gameId === 'gradius'
+      ? this.ensureGradiusAudio()
+      : (this.gameId === 'ddpdoj' ? this.ensureDdpdojAudio() : null);
+    if (!audio) return;
+    audio.setMuted(!this.state().sound);
+    audio.arm();
   }
 
   async startGame() {
@@ -586,15 +639,9 @@ class LocalShell {
     this.gameStatus.textContent = 'Preparing validated local ROM data...';
     this.hint.textContent = GAME_COPY[this.gameId].hint;
     this.picture.hidden = this.gameId !== 'ddpdoj';
-    this.sound.hidden = this.gameId !== 'gradius';
-    if (this.gameId === 'gradius') {
-      this.gradiusAudio ??= new GradiusAudio((error) => {
-        if (this.gameId === 'gradius' && !this.gameScreen.hidden) {
-          this.gameStatus.textContent = `Sound unavailable: ${error.message}`;
-        }
-      });
-      this.gradiusAudio.setMuted(!this.state().sound);
-      this.gradiusAudio.arm();
+    this.sound.hidden = this.gameId === 'batman';
+    if (this.gameId !== 'batman') {
+      this.armCurrentAudio();
       this.sound.textContent = this.state().sound ? 'SOUND ON' : 'SOUND OFF';
     }
     this.picture.textContent = this.state().mode === 'yoko' ? 'WIDE' : 'TATE';
@@ -656,11 +703,16 @@ class LocalShell {
   stopGame() {
     this.generation++;
     const runtime = this.runtime;
+    const ddpdojAudio = this.ddpdojAudio;
     this.runtime = null;
+    this.ddpdojAudio = null;
     this.startButton.disabled = this.booting;
     try {
       runtime?.stop();
     } finally {
+      ddpdojAudio?.setMuted(true);
+      ddpdojAudio?.resync();
+      ddpdojAudio?.close();
       BatmanInput.detachInput?.();
       GradiusInput.detachInput?.();
       this.clearInput();
@@ -694,19 +746,23 @@ class LocalShell {
 
   fit() {
     if (this.gameScreen.hidden || !this.viewport.clientWidth || !this.viewport.clientHeight) return;
-    if (this.runtime?.fit) {
-      this.runtime.fit(this.viewport, { fullscreen: Boolean(document.fullscreenElement) });
-      return;
-    }
     const width = this.gameId === 'batman' ? 160 : this.canvas.width;
     const height = this.gameId === 'batman' ? 144 : this.canvas.height;
+    if (document.fullscreenElement === this.viewport) {
+      setFullscreenCanvasFit(this.canvas, this.viewport, width, height);
+      return;
+    }
+    if (this.runtime?.fit) {
+      this.runtime.fit(this.viewport);
+      return;
+    }
     setIntegerCanvasFit(this.canvas, this.viewport, width, height);
   }
 
   async toggleFullscreen() {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
-      else await this.gameScreen.requestFullscreen();
+      else await this.viewport.requestFullscreen({ navigationUI: 'hide' });
     } catch (error) {
       this.gameStatus.textContent = `Fullscreen unavailable: ${error.message}`;
     }
@@ -723,9 +779,15 @@ class LocalShell {
   }
 
   async toggleSound() {
-    if (!this.runtime?.toggleSound) return;
-    const enabled = await this.runtime.toggleSound();
-    if (this.gameId === 'gradius') this.state().sound = enabled;
+    const audio = this.gameId === 'gradius' ? this.gradiusAudio : this.ddpdojAudio;
+    if (!audio) return;
+    let enabled;
+    if (this.runtime?.toggleSound) enabled = await this.runtime.toggleSound();
+    else {
+      audio.setMuted(!audio.muted);
+      enabled = !audio.muted;
+    }
+    this.state().sound = enabled;
     this.sound.textContent = enabled ? 'SOUND ON' : 'SOUND OFF';
   }
 
@@ -743,6 +805,11 @@ class LocalShell {
 
   clearSyntheticCodes() {
     for (const code of [...this.syntheticCodes]) this.dispatchCode(code, false);
+  }
+
+  resyncAudio() {
+    this.gradiusAudio?.resync();
+    this.ddpdojAudio?.resync();
   }
 
   clearInput() {

@@ -505,7 +505,7 @@ export class AudioController {
     }
     this.makeChip = makeChip;
     this.muted = false;
-    this.status = 'locked';   // locked | loading | on | unsupported | failed
+    this.status = 'locked';   // locked | loading | on | unsupported | failed | closed
     this.onError = onError;
     this.out = null;
     this.ctx = null;
@@ -578,7 +578,7 @@ export class AudioController {
    * the case browsers reject.
    */
   arm() {
-    if (this.status === 'unsupported' || this.status === 'failed') return;
+    if (this.status === 'unsupported' || this.status === 'failed' || this.status === 'closed') return;
     if (this.ctx) { this.ctx.resume?.(); this._attach(); return; }
     const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
     if (!AC) { this.status = 'unsupported'; return; }
@@ -596,7 +596,7 @@ export class AudioController {
 
   /** One logic frame. Locked state advances silently; only AudioOut emits. */
   frame(log) {
-    if (this.status === 'failed') return;
+    if (this.status === 'failed' || this.status === 'closed') return;
     if (this.out) {
       this.out.frame(log);
       return;
@@ -614,6 +614,7 @@ export class AudioController {
     if (!Number.isInteger(group) || group < 0 || group > 0xff) {
       throw new RangeError('AudioController score group must be one byte');
     }
+    if (this.status === 'closed') return;
     const entry = Object.freeze({ kind: 'score-group', group });
     if (this.out) this.out.selectScoreGroup(group);
     else if (this.chip) {
@@ -656,6 +657,22 @@ export class AudioController {
    */
   resync() {
     this.out?.resync();
+  }
+
+  /** Permanently release a same-document launcher's Web Audio resources. */
+  close() {
+    if (this.status === 'closed') return Promise.resolve();
+    const out = this.out;
+    const ctx = this.ctx;
+    this.out = null;
+    this.ctx = null;
+    this.pendingStateFrames = null;
+    this.status = 'closed';
+    try {
+      return Promise.resolve(out ? out.close() : ctx?.close?.()).catch(() => {});
+    } catch {
+      return Promise.resolve();
+    }
   }
 
   /** Permanently surface an async asset/runtime failure without stopping play. */

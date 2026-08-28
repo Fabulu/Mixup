@@ -1,8 +1,10 @@
 import { Game, RAM } from '/games/ddpdoj/src/main.js';
 import { FullRom } from '/games/ddpdoj/src/rom.js';
 import {
-  buildMainCpu, tablesFromMainCpu,
+  buildMainCpu, soundAssetsFromLocalRoms, tablesFromMainCpu,
 } from '/games/ddpdoj/src/localrom.js';
+import { soundRuntimeFromStage1Seed } from '/games/ddpdoj/src/soundruntime.js';
+import { APPROVED_SOUND_POLICIES } from '/games/ddpdoj/src/soundpolicy.js';
 import {
   applyHitboxOverlay, applyPostFrameMods, applyPreFrameMods, applyPresentationMods,
   createModState, modGameOptions, prepareModCabinetBoot, transformModInput,
@@ -68,9 +70,14 @@ async function localData(summary, onStatus) {
     graphics.set(name, await readInput(inputFor(summary, name), name));
   }
   onStatus?.('Assembling local IGS023 graphics regions...');
+  const regions = loadRegions((name) => graphics.get(name));
+  onStatus?.('Preparing local DaiOuJou sound data...');
+  const sampleRom = await readInput(inputFor(summary, 'cave_m04401b032.u17'),
+    'cave_m04401b032.u17');
   return {
     maincpu,
-    regions: loadRegions((name) => graphics.get(name)),
+    regions,
+    soundAssets: soundAssetsFromLocalRoms(maincpu, sampleRom),
   };
 }
 
@@ -87,8 +94,12 @@ export class LocalDdpdojRuntime {
     }
     if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('DaiOuJou launch needs a canvas.');
 
-    const { maincpu, regions } = await localData(summary, options.onStatus);
+    const { maincpu, regions, soundAssets } = await localData(summary, options.onStatus);
     const config = options.config ?? {};
+    const audio = config.audio ?? null;
+    const soundRuntime = audio
+      ? soundRuntimeFromStage1Seed(soundAssets, APPROVED_SOUND_POLICIES, 0)
+      : null;
     const loadout = config.loadout ?? null;
     const modState = loadout?.ids?.length ? createModState(loadout) : null;
     if (modState) prepareModCabinetBoot(modState);
@@ -123,13 +134,16 @@ export class LocalDdpdojRuntime {
       palCatchUp: false,
       seedArm: 0,
       coinTick: tickCoinPulse,
+      ...(audio ? { soundSink: audio } : {}),
       ...gameOptions,
     });
     game.boot({ cabinetFrontend: true });
+    if (soundRuntime) audio.setChip(soundRuntime);
 
     ensureInput(canvas);
     return new LocalDdpdojRuntime(game, regions, canvas, {
       ...options,
+      audio,
       modState,
       formationState,
       mode: config.mode,
@@ -143,6 +157,7 @@ export class LocalDdpdojRuntime {
     this.context = canvas.getContext('2d', { alpha: false });
     if (!this.context) throw new Error('A 2D canvas context is unavailable.');
     this.onError = options.onError ?? null;
+    this.audio = options.audio ?? null;
     this.modState = options.modState ?? null;
     this.formationState = options.formationState ?? null;
     this.rowscroll = new Uint16Array(SCREEN_H);
@@ -195,9 +210,17 @@ export class LocalDdpdojRuntime {
   stop() {
     this.running = false;
     cancelAnimationFrame(this.request);
+    this.audio?.setMuted(true);
+    this.audio?.resync();
     clearKeyboard();
     clearTouch();
     clearCoin();
+  }
+
+  toggleSound() {
+    if (!this.audio) return false;
+    this.audio.setMuted(!this.audio.muted);
+    return !this.audio.muted;
   }
 
   frame(time) {
@@ -230,6 +253,7 @@ export class LocalDdpdojRuntime {
         period = transformModTiming(this.modState,
           BASE_FRAME_MS * Math.max(1, this.game.armedVblanks || 1));
       }
+      this.audio?.pump();
       this.draw();
       this.request = requestAnimationFrame((next) => this.frame(next));
     } catch (error) {

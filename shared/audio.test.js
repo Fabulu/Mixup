@@ -370,6 +370,29 @@ test('AudioController: arm() builds the engine once, second arm only resumes', (
   delete globalThis.AudioContext;
 });
 
+test('AudioController: close permanently releases a same-document launch', async () => {
+  const ac = new AudioController(() => makeSineChip(48000, 1), () => {});
+  let closes = 0;
+  globalThis.AudioContext = class {
+    constructor() { this.sampleRate = 48000; this.currentTime = 0; this.destination = {}; }
+    createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+    createBuffer() { return { length: 1024, numberOfChannels: 1, getChannelData: () => new Float32Array(1024) }; }
+    createBufferSource() { return { buffer: null, connect() {}, start() {} }; }
+    resume() {}
+    close() { closes++; return Promise.resolve(); }
+  };
+  ac.arm();
+  await ac.close();
+  assert.equal(ac.status, 'closed');
+  assert.equal(ac.out, null);
+  assert.equal(ac.ctx, null);
+  assert.equal(closes, 1);
+  ac.arm();
+  await ac.close();
+  assert.equal(closes, 1, 'closed controllers cannot reopen or close twice');
+  delete globalThis.AudioContext;
+});
+
 test('AudioController: a throw inside the chip is firewalled, not thrown to the page', () => {
   const errs = [];
   const boom = {

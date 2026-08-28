@@ -1,4 +1,6 @@
 import { FullRom } from './rom.js';
+import { parseScoreGroups, scoreToJson } from './bgmscore.js';
+import { driverParamsToJson } from './driverparams.js';
 
 export const MAINCPU_SIZE = 0x600000;
 export const BIOS_SIZE = 0x080000;
@@ -107,6 +109,73 @@ export async function buildMainCpu({ bios, program, decrypted }, options = {}) {
     decryptPy2k2(maincpu);
   }
   return assertMainCpuIdentity(maincpu, options);
+}
+
+const SOUND_SAMPLE_ROM_SIZE = 0x400000;
+const SOUND_DRIVER_BLOCKS = Object.freeze([
+  Object.freeze({ source: 0x1a8ec0, length: 828, target: 0x7600 }),
+  Object.freeze({ source: 0x1acc24, length: 3520, target: 0x6840 }),
+  Object.freeze({ source: 0x1c6309, length: 3530, target: 0x4439 }),
+  Object.freeze({ source: 0x1c70d3, length: 1920, target: 0x5203 }),
+  Object.freeze({ source: 0x011efb, length: 16, target: 0x5987 }),
+  Object.freeze({ source: 0x011f0b, length: 512, target: 0x5997 }),
+  Object.freeze({ source: 0x1c6246, length: 140, target: 0x4376 }),
+  Object.freeze({ source: 0x005f1c, length: 2, target: 0x6168 }),
+]);
+const SOUND_SAMPLE_FRAGMENTS = Object.freeze([
+  Object.freeze({ romOffset: 0x000000, length: 0x0db837 }),
+  Object.freeze({ romOffset: 0x0db935, length: 0x000922 }),
+  Object.freeze({ romOffset: 0x0e1853, length: 0x01e78e }),
+  Object.freeze({ romOffset: 0x100000, length: 0x0ffff6 }),
+  Object.freeze({ romOffset: 0x200000, length: 0x0ffbfa }),
+  Object.freeze({ romOffset: 0x300000, length: 0x077bf2 }),
+]);
+
+/** Build the proven browser sound assets from exact local cartridge members. */
+export function soundAssetsFromLocalRoms(maincpu, sampleRom) {
+  requireLength(maincpu, MAINCPU_SIZE, 'Decrypted DaiOuJou maincpu');
+  requireLength(sampleRom, SOUND_SAMPLE_ROM_SIZE, 'cave_m04401b032.u17');
+
+  const z80 = new Uint8Array(0x10000);
+  for (const block of SOUND_DRIVER_BLOCKS) {
+    z80.set(maincpu.subarray(block.source, block.source + block.length), block.target);
+  }
+
+  const shardBytes = SOUND_SAMPLE_FRAGMENTS.reduce((total, part) => total + part.length, 0);
+  const sampleShard = new Uint8Array(shardBytes);
+  let shardOffset = 0;
+  const fragments = SOUND_SAMPLE_FRAGMENTS.map((part) => {
+    sampleShard.set(sampleRom.subarray(part.romOffset, part.romOffset + part.length), shardOffset);
+    const fragment = {
+      romOffset: part.romOffset,
+      icsBase: 0x400000 + part.romOffset,
+      shardOffset,
+      len: part.length,
+    };
+    shardOffset += part.length;
+    return fragment;
+  });
+
+  const bgmScore = scoreToJson(parseScoreGroups(maincpu));
+  bgmScore.note = 'W162 live BGM score groups. `$28B814/$28B884/$28CF36` selects and transforms one of seven 68k score banks into Z80 `$A600`; group 0 is only the boot snapshot and stage 1 uses group 1. Each cue carries its header (rowlen/tracks), row/selector stream, the word-aligned track-major `8 * df` LE pointer grid and the per-track/per-selector note-event bytes (hex). W150 fixed the framing: `$00-$3F` is one byte, `$40-$BF` is two bytes, `$D0-$EF` is three bytes, and `$C0-$CF`/`$F0-$FF` is four bytes. A semantic transformation, not a verbatim ROM slice.';
+
+  return {
+    driverParams: driverParamsToJson(z80),
+    bgmScore,
+    sampleIndex: {
+      version: 1,
+      layout: 'ics2115-static-fragment-stitch-v1',
+      coverage: 'all-live-descriptors',
+      descriptorIntervals: 228,
+      fragmentCount: fragments.length,
+      rom: 'cave_m04401b032.u17',
+      icsBase: 0x400000,
+      shardBytes,
+      note: 'W158 sidecar. Each fragment maps a u17 byte run to its offset in snd/sample.shard.u8. synth un-stitch: find the fragment whose [icsBase, icsBase+len) contains the sample address, then read shard[shardOffset + (address - icsBase)]. 6 disjoint fragments, each extended through OscEnd+1 for exact linear interpolation, non-adjacent in u17; the guard passes because the stitched body is not one contiguous ROM slice. Static source: all 69 driver-valid SFX plus 159 score-reachable BGM descriptors; full-ROM fallback is forbidden.',
+      fragments,
+    },
+    sampleShard,
+  };
 }
 
 const DIR_TABLE = 0x2552dc;

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { webcrypto } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
@@ -14,6 +15,7 @@ import {
   buildMainCpu,
   installColdBootDefaults,
   sha256Bytes,
+  soundAssetsFromLocalRoms,
   tablesFromMainCpu,
 } from '../src/localrom.js';
 
@@ -21,6 +23,9 @@ const ROM_DIR = fileURLToPath(new URL('../rip/rom/', import.meta.url));
 const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
 const BIOS = `${ROM_DIR}/ddp3_bios.u37`;
 const PROGRAM = `${ROM_DIR}/ddb10_10_8_434f.u45`;
+const SAMPLE_ROM = `${ROM_DIR}/cave_m04401b032.u17`;
+const SOUND_MAINCPU = fileURLToPath(new URL('../rip/sound/maincpu.bin', import.meta.url));
+const SOUND_ASSETS = fileURLToPath(new URL('../assets/snd/', import.meta.url));
 const digest = webcrypto.subtle.digest.bind(webcrypto.subtle);
 
 test('FullRom reads big-endian values and rejects every out-of-range read', () => {
@@ -34,6 +39,25 @@ test('FullRom reads big-endian values and rejects every out-of-range read', () =
   assert.throws(() => rom.u16(4), RangeError);
   assert.throws(() => rom.u8(-1), RangeError);
 });
+
+const soundFiles = ['driver-params.json.gz', 'bgm-score.json.gz',
+  'sample.index.json.gz', 'sample.shard.u8.gz'];
+if (existsSync(SOUND_MAINCPU) && existsSync(SAMPLE_ROM)
+    && soundFiles.every((name) => existsSync(`${SOUND_ASSETS}/${name}`))) {
+  test('local ROMs reproduce the proven browser sound assets exactly', () => {
+    const assets = soundAssetsFromLocalRoms(
+      new Uint8Array(readFileSync(SOUND_MAINCPU)),
+      new Uint8Array(readFileSync(SAMPLE_ROM)),
+    );
+    const json = (name) => JSON.parse(gunzipSync(
+      readFileSync(`${SOUND_ASSETS}/${name}`)).toString('utf8'));
+    assert.deepEqual(assets.driverParams, json('driver-params.json.gz'));
+    assert.deepEqual(assets.bgmScore, json('bgm-score.json.gz'));
+    assert.deepEqual(assets.sampleIndex, json('sample.index.json.gz'));
+    assert.deepEqual(assets.sampleShard,
+      new Uint8Array(gunzipSync(readFileSync(`${SOUND_ASSETS}/sample.shard.u8.gz`))));
+  });
+}
 
 if (existsSync(BIOS) && existsSync(PROGRAM) && existsSync(TABLES)) {
   test('raw ddpdojblk members reproduce the exact maincpu, direct tables, and cold boot', async () => {
