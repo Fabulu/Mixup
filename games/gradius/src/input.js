@@ -33,6 +33,32 @@ let held = 0;
 // the page loaded only ever reaches us as an auto-repeat; taking those at face
 // value turns the Enter that launched the page into a START press.
 let seen = 0;
+let inputTarget = null;
+
+function keyDown(event) {
+  const bit = KEYMAP[event.code];
+  if (!bit) return;
+  event.preventDefault();
+  if (event.repeat && !(seen & bit)) return;
+  seen |= bit;
+  held |= bit;
+  noteInput();
+}
+
+function keyUp(event) {
+  const bit = KEYMAP[event.code];
+  if (!bit) return;
+  event.preventDefault();
+  held &= ~bit;
+  seen &= ~bit;
+  noteInput();
+}
+
+function blurKeyboard() {
+  held = 0;
+  seen = 0;
+  noteInput();
+}
 
 // ===========================================================================
 // WAVE 14: INPUT BELONGS TO A LOGIC FRAME, NOT TO A WALL-CLOCK MOMENT
@@ -292,30 +318,23 @@ export function dpadMask(u, v, w, h) {
   return m;
 }
 
+export function detachInput() {
+  if (inputTarget) {
+    inputTarget.removeEventListener?.('keydown', keyDown);
+    inputTarget.removeEventListener?.('keyup', keyUp);
+    inputTarget.removeEventListener?.('blur', blurKeyboard);
+    inputTarget = null;
+  }
+  resetInput();
+}
+
 export function attachInput(target = (typeof window !== 'undefined' ? window : null)) {
-  if (!target) return;                    // headless: tests drive readJoypad()
-  target.addEventListener('keydown', (e) => {
-    const b = KEYMAP[e.code];
-    if (!b) return;
-    e.preventDefault();
-    if (e.repeat && !(seen & b)) return;
-    seen |= b;
-    held |= b;
-    noteInput();
-  });
-  target.addEventListener('keyup', (e) => {
-    const b = KEYMAP[e.code];
-    if (!b) return;
-    e.preventDefault();
-    held &= ~b;
-    seen &= ~b;
-    noteInput();
-  });
-  // Keyboard only. The touch mask's backstop lives with the buttons that set
-  // it (index.html binds blur, visibilitychange and pagehide to
-  // clearTouchButtons), so a lost keyup and a lost pointerup are recovered
-  // independently -- see the note on touchHeld.
-  target.addEventListener('blur', () => { held = 0; seen = 0; noteInput(); });
+  if (!target || target === inputTarget) return; // headless: tests drive readJoypad()
+  detachInput();
+  inputTarget = target;
+  target.addEventListener('keydown', keyDown);
+  target.addEventListener('keyup', keyUp);
+  target.addEventListener('blur', blurKeyboard);
 }
 
 /**
@@ -367,11 +386,9 @@ export function inputQueueStats() {
 }
 
 /**
- * Drop everything: the mask, the queue and the edge memory. For tests, which
- * share one module instance across files, and for nothing in the page -- the
- * page's own backstops (blur/pagehide/visibilitychange) go through the ordinary
- * setters so their zeroes are QUEUED like any other transition rather than
- * vanishing.
+ * Drop everything: the mask, the queue and the edge memory. Runtime shutdown
+ * uses this so picker keys cannot become transitions in a restarted game. Tests
+ * also use it because they share one module instance across files.
  */
 export function resetInput() {
   held = 0; seen = 0; touchHeld = 0; live = 0; delivered = 0;

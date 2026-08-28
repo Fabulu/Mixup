@@ -32,7 +32,6 @@ const primaryWorld = document.querySelector('#primary-world');
 const launchGame = document.querySelector('#launch-game');
 const bootStatus = document.querySelector('#boot-status');
 const gameScreen = document.querySelector('#game-screen');
-const gameCanvas = document.querySelector('#game-canvas');
 const build = document.querySelector('#build');
 
 const ROM_INPUT_SIZES = new Set(Object.values(GAME_CATALOGUE).flatMap((game) => [
@@ -350,36 +349,21 @@ launchGame.addEventListener('click', async () => {
   stopRuntime();
   launching = true;
   renderLauncher();
-  setBootStatus(`Preparing validated local ${title} input...`);
+  setBootStatus(`Opening ${title} game options...`);
   try {
-    const Runtime = gameId === 'batman'
-      ? (await import('./batman-local.js')).LocalBatmanRuntime
-      : (gameId === 'gradius'
-        ? (await import('./gradius-local.js')).LocalGradiusRuntime
-        : (await import('./ddpdoj-local.js')).LocalDdpdojRuntime);
-    activeRuntime = await Runtime.create(
-      lastInventory.games[gameId],
-      gameCanvas,
-      {
-        onStatus: setBootStatus,
-        onError: (error) => {
-          activeRuntime = null;
-          gameScreen.hidden = true;
-          setBootStatus(`${title} stopped: ${error.message}`);
-        },
-      },
-    );
-    gameScreen.hidden = false;
-    activeRuntime.start();
-    gameCanvas.focus();
-    setBootStatus(gameId === 'batman'
-      ? 'Batman is running entirely from the validated local cartridge. Press Enter, then use arrows, X, and Y/Z.'
-      : (gameId === 'gradius'
-        ? 'Gradius is running entirely from the validated local cartridge. Press Enter, then use arrows, X, and Y/Z.'
-        : 'DaiOuJou is running entirely from validated local ROMs. Insert a coin with 5, then press Enter.'));
+    const { openLocalShell } = await import('./local-shell.js');
+    activeRuntime = openLocalShell({
+      gameId,
+      summary: lastInventory.games[gameId],
+      title,
+      opener: launchGame,
+      onStatus: setBootStatus,
+      onClose: () => { activeRuntime = null; },
+    });
+    setBootStatus(`${title} is ready. Choose Original, a preset, or customize the game.`);
   } catch (error) {
     stopRuntime();
-    setBootStatus(`${title} could not start: ${error.message}`);
+    setBootStatus(`${title} options could not open: ${error.message}`);
   } finally {
     launching = false;
     renderLauncher();

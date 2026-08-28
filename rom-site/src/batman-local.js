@@ -20,9 +20,12 @@ export class LocalBatmanRuntime {
     options.onStatus?.('Extracting Batman runtime data in this browser...');
     const bytes = new Uint8Array(await input.file.arrayBuffer());
     const assets = createBatmanRomProvider(bytes);
+    const config = options.config ?? {};
     const runtime = await boot(canvas, {
+      ...config,
       assetProvider: assets,
       soundData: assets.soundData,
+      onOptions: options.onOptions,
       onError: (message, error) => options.onError?.(error ?? new Error(message)),
     });
     return new LocalBatmanRuntime(runtime);

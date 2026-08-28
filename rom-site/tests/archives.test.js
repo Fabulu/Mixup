@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+import { ARCHIVE_LIMITS } from '../src/archive-policy.js';
 import { expandArchives } from '../src/archives.js';
 
 const zipMagic = Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 1, 2, 3, 4]);
@@ -218,6 +219,55 @@ test('archive workers time out, abort, and are always terminated', async () => {
   assert.equal(abortState.terminated, 1);
 });
 
+test('serial archive workers share one intake timeout budget', async () => {
+  const archives = [selectedFile('first.zip', zipMagic), selectedFile('second.zip', zipMagic)];
+  let clock = 0;
+  let workers = 0;
+  await assert.rejects(() => expandArchives(archives, {
+    timeoutMs: 60,
+    now: () => clock,
+    createWorker: () => {
+      workers++;
+      return fakeWorker((message) => {
+        const response = workerFlow()(message);
+        if (message.action === 'extract') clock = 61;
+        return response;
+      });
+    },
+    createFile: createdFile,
+  }), (error) => error.name === 'ArchiveIntakeTimeoutError'
+    && error.message === 'Archive intake exceeded 0.06 seconds.');
+  assert.equal(workers, 1, 'the expired shared deadline must prevent another worker');
+});
+
+test('folder archive skipping never swallows the shared timeout', async () => {
+  const archive = selectedFile('stalled.zip', zipMagic);
+  const state = {};
+  const stalledWorker = {
+    addEventListener() {},
+    postMessage() {},
+    terminate() { state.terminated = (state.terminated ?? 0) + 1; },
+  };
+  await assert.rejects(() => expandArchives([archive], {
+    archiveProbe: 'declared-only',
+    skipInvalidArchives: true,
+    createWorker: () => stalledWorker,
+    timeoutMs: 5,
+  }), (error) => error.name === 'ArchiveIntakeTimeoutError');
+  assert.equal(state.terminated, 1);
+});
+
+test('archive timeout includes loading the complete archive bytes', async () => {
+  const archive = selectedFile('stalled.zip', zipMagic);
+  archive.arrayBuffer = () => new Promise(() => {});
+  let workers = 0;
+  await assert.rejects(() => expandArchives([archive], {
+    createWorker: () => { workers++; return fakeWorker(workerFlow()); },
+    timeoutMs: 5,
+  }), (error) => error.name === 'ArchiveIntakeTimeoutError');
+  assert.equal(workers, 0);
+});
+
 test('aggregate expanded limits reject a later listing before extraction', async () => {
   const archives = [selectedFile('first.zip', zipMagic), selectedFile('second.zip', zipMagic)];
   const states = [];
@@ -238,12 +288,13 @@ test('aggregate expanded limits reject a later listing before extraction', async
 });
 
 test('selection-wide archive limits and duplicate basenames are enforced', async () => {
-  const archives = Array.from({ length: 5 }, (_, index) =>
+  const archives = Array.from({ length: ARCHIVE_LIMITS.maxArchives + 1 }, (_, index) =>
     selectedFile(`owned-${index}.zip`, zipMagic));
-  await assert.rejects(() => expandArchives(archives), /at most 4 archives/);
+  const limitMessage = new RegExp(`at most ${ARCHIVE_LIMITS.maxArchives} archives`);
+  await assert.rejects(() => expandArchives(archives), limitMessage);
   await assert.rejects(() => expandArchives(archives, {
     archiveProbe: 'declared-only', skipInvalidArchives: true,
-  }), /at most 4 archives/);
+  }), limitMessage);
 
   let call = 0;
   await assert.rejects(() => expandArchives(archives.slice(0, 2), {

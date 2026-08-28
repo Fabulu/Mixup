@@ -11,13 +11,15 @@ import { MACHINE, P, RAM, BIT } from '../src/machine.js';
 import { ALLOC } from '../src/objalloc.js';
 import { portWordFromPlayerBits, mirrorsFromPort } from '../src/input.js';
 import { TALLY } from '../src/tally.js';
-import { applyAuthenticSelection, authenticSelectionQuery } from '../src/authentic.js';
+import {
+  applyAuthenticSelection, authenticSelectionQuery, forceAuthenticP1Selection,
+} from '../src/authentic.js';
 import {
   MODS, MOD_IDS, createModState, hashToLoadout, loadoutToHash, resolveLoadout,
   transformModInput,
 } from '../src/mods.js';
 import {
-  FORMATION_MODE, FORMATION_THREE_MODE, createFormationState,
+  FORMATION_MODE, FORMATION_THREE_MODE, beginFormationCreditedRun, createFormationState,
   formationAuthenticOverridesFromParams, formationToHash, hashToFormation,
   initializeFormation, resolveFormationAuthenticSelection, transformFormationInput,
 } from '../src/formation.js';
@@ -78,6 +80,48 @@ test('W609 default formation selection never arms genuine allocator-backed P2 re
   assert.equal(ram.u16(0x81308a), 0);
   assert.equal(ram.u16(TALLY.side1), 0);
   assert.equal(ram.u16(TALLY.side1 + 0x02), 0);
+});
+
+test('W609 formation can force its declared default pair after cabinet selection', () => {
+  const ram = new Ram();
+  ram.setU16(0x813084, 2);
+  ram.setU16(0x813088, 6);
+  ram.setU16(RAM.player1 + P.shipSel, 2);
+  ram.setU16(RAM.player1 + P.optFormation, 6);
+  const rom = {
+    u8() { return 0; },
+    u16() { return 0; },
+    u32() { return 0; },
+  };
+  assert.deepEqual(forceAuthenticP1Selection({ ram, rom }, DEFAULT_SELECTION),
+    DEFAULT_SELECTION);
+  assert.equal(ram.u16(0x813084), DEFAULT_SELECTION.ship);
+  assert.equal(ram.u16(0x813088), DEFAULT_SELECTION.style);
+  assert.equal(ram.u16(RAM.player1 + P.shipSel), DEFAULT_SELECTION.ship);
+  assert.equal(ram.u16(RAM.player1 + P.optFormation), DEFAULT_SELECTION.style);
+});
+
+test('W609 every credited formation handoff restores its declared P1 pair', () => {
+  const ram = new Ram();
+  const state = createFormationState(FORMATION_MODE);
+  state.foundation = { game: null };
+  state.runtime = {};
+  const game = {
+    ram,
+    rom: { u8() { return 0; }, u16() { return 0; }, u32() { return 0; } },
+  };
+
+  for (const [ship, style] of [[2, 6], [0, 4]]) {
+    ram.setU16(0x813084, ship);
+    ram.setU16(0x813088, style);
+    ram.setU16(RAM.player1 + P.shipSel, ship);
+    ram.setU16(RAM.player1 + P.optFormation, style);
+    assert.strictEqual(beginFormationCreditedRun(state, game, DEFAULT_SELECTION), state);
+    assert.equal(ram.u16(0x813084), DEFAULT_SELECTION.ship);
+    assert.equal(ram.u16(0x813088), DEFAULT_SELECTION.style);
+    assert.equal(ram.u16(RAM.player1 + P.shipSel), DEFAULT_SELECTION.ship);
+    assert.equal(ram.u16(RAM.player1 + P.optFormation), DEFAULT_SELECTION.style);
+  }
 });
 
 test('W609 Demo step applies catalogue input before private companion input', () => {

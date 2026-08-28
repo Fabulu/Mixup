@@ -5,7 +5,7 @@
 // Companion ships are private outgoing-only actors. They never join native P2.
 
 import {
-  AUTHENTIC_SHIPS, AUTHENTIC_STYLES,
+  AUTHENTIC_SHIPS, AUTHENTIC_STYLES, forceAuthenticP1Selection,
 } from './authentic.js';
 import {
   THREE_PILOT_FORMATION_MODE, attachFormationCompanions,
@@ -131,6 +131,13 @@ export function initializeFormation(state, game, options = {}) {
   });
   state.runtime = state.foundation.runtime;
   return state;
+}
+
+/** Apply the declared P1 roster at every credited handoff, then attach once. */
+export function beginFormationCreditedRun(state, game, selection) {
+  if (!resolveMode(state?.mode)) return null;
+  if (!forceAuthenticP1Selection(game, selection)) return null;
+  return initializeFormation(state, game);
 }
 
 /** Formation leaves the physical cabinet word byte-exact. */

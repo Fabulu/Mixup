@@ -1,8 +1,17 @@
 import { Game, RAM } from '/games/ddpdoj/src/main.js';
 import { FullRom } from '/games/ddpdoj/src/rom.js';
 import {
-  buildMainCpu, tablesFromMainCpu, installColdBootDefaults,
+  buildMainCpu, tablesFromMainCpu,
 } from '/games/ddpdoj/src/localrom.js';
+import {
+  applyHitboxOverlay, applyPostFrameMods, applyPreFrameMods, applyPresentationMods,
+  createModState, modGameOptions, prepareModCabinetBoot, transformModInput,
+  transformModTiming,
+} from '/games/ddpdoj/src/mods.js';
+import {
+  beginFormationCreditedRun, createFormationState, prepareFormationFrame,
+  resolveFormationAuthenticSelection,
+} from '/games/ddpdoj/src/formation.js';
 import { loadRegions } from '/games/ddpdoj/src/render/regions.js';
 import {
   Renderer, paletteRgb, resolveRgb, rotateCCW, rgbToRgba, SCREEN_W, SCREEN_H,
@@ -11,7 +20,7 @@ import { RAM_STRIDE, SPRITE_LIMIT } from '/games/ddpdoj/src/render/spritelist.js
 import { zoomRamWords } from '/games/ddpdoj/src/zoomtable.js';
 import {
   attachInput, pollInput, currentPortWord, currentCoinWord,
-  tickCoinPulse, attachCoinKeys, clearCoin,
+  tickCoinPulse, attachCoinKeys, clearCoin, clearKeyboard, clearTouch,
 } from '/games/ddpdoj/src/web/input.js';
 
 const GRAPHICS = Object.freeze([
@@ -21,6 +30,16 @@ const GRAPHICS = Object.freeze([
   'cave_a04402w064.u8',
   'cave_b04401w064.u1',
 ]);
+
+const BASE_FRAME_MS = 1000 / 60;
+let inputAttached = false;
+
+function ensureInput(target) {
+  if (inputAttached) return;
+  attachInput(target);
+  attachCoinKeys(target, document);
+  inputAttached = true;
+}
 
 function inputFor(summary, name) {
   return summary.acceptedInputs?.find((input) => input.satisfiesNames.includes(name)) ?? null;
@@ -69,19 +88,52 @@ export class LocalDdpdojRuntime {
     if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('DaiOuJou launch needs a canvas.');
 
     const { maincpu, regions } = await localData(summary, options.onStatus);
+    const config = options.config ?? {};
+    const loadout = config.loadout ?? null;
+    const modState = loadout?.ids?.length ? createModState(loadout) : null;
+    if (modState) prepareModCabinetBoot(modState);
+    const formationState = createFormationState(config.formation);
+    const formationSelection = formationState
+      ? resolveFormationAuthenticSelection(formationState.mode, config.authenticSelection)
+      : null;
+    if (formationState && !formationSelection) {
+      throw new Error('Formation mode received an invalid P1 selection.');
+    }
     const rom = new FullRom(maincpu);
     const tables = tablesFromMainCpu(maincpu);
-    const game = new Game(new Uint8Array(0x20000), tables, {
+    let game = null;
+    let gameOptions = { ...(modGameOptions(modState) ?? {}) };
+    if (formationState) {
+      const cabinetRunStartHook = gameOptions.cabinetRunStartHook;
+      gameOptions = {
+        ...gameOptions,
+        cabinetRunStartHook: (ram, event) => {
+          cabinetRunStartHook?.(ram, event);
+          if (event?.demo) return;
+          const firstRun = !formationState.foundation;
+          beginFormationCreditedRun(formationState, game, formationSelection);
+          if (firstRun) {
+            options.onStatus?.(`${formationState.mode.name} joined the credited run.`);
+          }
+        },
+      };
+    }
+    game = new Game(new Uint8Array(0x20000), tables, {
       rom,
       palCatchUp: false,
+      seedArm: 0,
       coinTick: tickCoinPulse,
+      ...gameOptions,
     });
-    game.boot();
-    installColdBootDefaults(game.ram);
+    game.boot({ cabinetFrontend: true });
 
-    attachInput(window);
-    attachCoinKeys(window, document);
-    return new LocalDdpdojRuntime(game, regions, canvas, options);
+    ensureInput(canvas);
+    return new LocalDdpdojRuntime(game, regions, canvas, {
+      ...options,
+      modState,
+      formationState,
+      mode: config.mode,
+    });
   }
 
   constructor(game, regions, canvas, options = {}) {
@@ -91,6 +143,8 @@ export class LocalDdpdojRuntime {
     this.context = canvas.getContext('2d', { alpha: false });
     if (!this.context) throw new Error('A 2D canvas context is unavailable.');
     this.onError = options.onError ?? null;
+    this.modState = options.modState ?? null;
+    this.formationState = options.formationState ?? null;
     this.rowscroll = new Uint16Array(SCREEN_H);
     this.zoomram = zoomRamWords();
     this.spritebuffer = new Uint16Array(SPRITE_LIMIT * RAM_STRIDE);
@@ -98,14 +152,37 @@ export class LocalDdpdojRuntime {
     this.rgb = new Uint8Array(SCREEN_W * SCREEN_H * 3);
     this.rotated = new Uint8Array(SCREEN_W * SCREEN_H * 3);
     this.rgba = new Uint8ClampedArray(SCREEN_W * SCREEN_H * 4);
-    this.image = new ImageData(this.rgba, SCREEN_H, SCREEN_W);
-    this.canvas.width = SCREEN_H;
-    this.canvas.height = SCREEN_W;
+    this.hitboxRam = this.modState?.loadout.presentation.hitboxes
+      ? game.ram.clone() : null;
+    this.mode = null;
+    this.image = null;
+    this.setMode(options.mode === 'yoko' ? 'yoko' : 'tate');
     this.running = false;
     this.request = 0;
     this.lastTime = 0;
     this.accumulator = 0;
     copySpriteList(game, this.spritebuffer);
+  }
+
+  setMode(mode) {
+    const next = mode === 'yoko' ? 'yoko' : 'tate';
+    if (next === this.mode && this.image) return;
+    this.mode = next;
+    const width = next === 'yoko' ? SCREEN_W : SCREEN_H;
+    const height = next === 'yoko' ? SCREEN_H : SCREEN_W;
+    this.canvas.width = width;
+    this.canvas.height = height;
+    this.image = new ImageData(this.rgba, width, height);
+  }
+
+  fit(container) {
+    const dpr = Math.max(1, globalThis.devicePixelRatio || 1);
+    const scale = Math.max(1, Math.floor(Math.min(
+      container.clientWidth * dpr / this.canvas.width,
+      container.clientHeight * dpr / this.canvas.height,
+    )));
+    this.canvas.style.width = `${this.canvas.width * scale / dpr}px`;
+    this.canvas.style.height = `${this.canvas.height * scale / dpr}px`;
   }
 
   start() {
@@ -118,6 +195,8 @@ export class LocalDdpdojRuntime {
   stop() {
     this.running = false;
     cancelAnimationFrame(this.request);
+    clearKeyboard();
+    clearTouch();
     clearCoin();
   }
 
@@ -127,13 +206,29 @@ export class LocalDdpdojRuntime {
       pollInput();
       this.accumulator += Math.min(100, time - this.lastTime);
       this.lastTime = time;
+      let period = transformModTiming(this.modState,
+        BASE_FRAME_MS * Math.max(1, this.game.armedVblanks || 1));
       let steps = 0;
-      while (this.accumulator >= 1000 / 60 && steps < 4) {
+      while (this.accumulator >= period && steps < 8) {
+        this.accumulator -= period;
         copySpriteList(this.game, this.spritebuffer);
+        if (this.hitboxRam) this.hitboxRam.b.set(this.game.ram.b);
+        applyPreFrameMods(this.modState, this.game.ram);
+        const modWord = transformModInput(this.modState,
+          currentPortWord(), this.game.logicFrame);
+        const portWord = this.formationState
+          ? prepareFormationFrame(this.formationState, this.game, modWord)
+          : modWord;
         this.game.coinPort = currentCoinWord();
-        this.game.step(currentPortWord());
-        this.accumulator -= 1000 / 60;
+        this.game.step(portWord);
+        if (this.modState?.loadout.presentation.dropSpriteHold) {
+          copySpriteList(this.game, this.spritebuffer);
+          if (this.hitboxRam) this.hitboxRam.b.set(this.game.ram.b);
+        }
+        applyPostFrameMods(this.modState, this.game.ram);
         steps++;
+        period = transformModTiming(this.modState,
+          BASE_FRAME_MS * Math.max(1, this.game.armedVblanks || 1));
       }
       this.draw();
       this.request = requestAnimationFrame((next) => this.frame(next));
@@ -154,8 +249,12 @@ export class LocalDdpdojRuntime {
     }, { spriteStride: RAM_STRIDE });
     paletteRgb(this.game.palette.words, this.paletteRgb);
     resolveRgb(indexed, this.paletteRgb, this.rgb);
-    rotateCCW(this.rgb, SCREEN_W, SCREEN_H, this.rotated);
-    rgbToRgba(this.rotated, this.rgba);
+    applyPresentationMods(this.modState, this.rgb);
+    applyHitboxOverlay(this.modState, this.hitboxRam ?? this.game.ram, this.rgb);
+    const output = this.mode === 'yoko'
+      ? this.rgb
+      : rotateCCW(this.rgb, SCREEN_W, SCREEN_H, this.rotated);
+    rgbToRgba(output, this.rgba);
     this.context.putImageData(this.image, 0, 0);
   }
 }

@@ -37,6 +37,42 @@ let seen = 0;
 // Covers the gamepad and touch paths, which have no repeat flag to test.
 let firstSample = true;
 let touchHeld = 0;
+let inputTarget = null;
+
+function keyDown(event) {
+  const bit = KEYMAP[event.code];
+  if (!bit) return;
+  event.preventDefault();
+  // A key still down from BEFORE we attached only ever reaches us as an
+  // auto-repeat -- its real keydown went to the launcher. Taking those at face
+  // value turns the Enter that clicked LAUNCH into a START press, and since
+  // Enter is BTN.START the title screen is dismissed on frame 1 and the player
+  // drops straight into the level having seen nothing.
+  //
+  // Whether that happens is a race against how long boot() takes, which is why
+  // it looked like a caching problem: a warm cache boots fast enough to catch
+  // the key still down, and opening devtools slows it enough to miss.
+  if (event.repeat && !(seen & bit)) return;
+  seen |= bit;
+  held |= bit;
+}
+
+function keyUp(event) {
+  const bit = KEYMAP[event.code];
+  if (!bit) return;
+  held &= ~bit;
+  seen &= ~bit;
+  event.preventDefault();
+}
+
+export function resetInput() {
+  held = 0;
+  seen = 0;
+  touchHeld = 0;
+  firstSample = true;
+}
+
+function blurInput() { resetInput(); }
 
 /**
  * Press or release a button from an on-screen control. Kept separate from the
@@ -50,30 +86,23 @@ export function setTouchButton(bit, down) {
 
 export function clearTouchButtons() { touchHeld = 0; }
 
+export function detachInput() {
+  if (inputTarget) {
+    inputTarget.removeEventListener?.('keydown', keyDown);
+    inputTarget.removeEventListener?.('keyup', keyUp);
+    inputTarget.removeEventListener?.('blur', blurInput);
+    inputTarget = null;
+  }
+  resetInput();
+}
+
 export function attachInput(target = (typeof window !== 'undefined' ? window : null)) {
-  if (!target) return;             // headless harness drives state.input directly
-  target.addEventListener('keydown', (e) => {
-    const b = KEYMAP[e.code];
-    if (!b) return;
-    e.preventDefault();
-    // A key still down from BEFORE we attached only ever reaches us as an
-    // auto-repeat -- its real keydown went to the launcher. Taking those at
-    // face value turns the Enter that clicked LAUNCH into a START press, and
-    // since Enter is BTN.START the title screen is dismissed on frame 1 and
-    // the player drops straight into the level having seen nothing.
-    //
-    // Whether that happens is a race against how long boot() takes, which is
-    // why it looked like a caching problem: a warm cache boots fast enough to
-    // catch the key still down, and opening devtools slows it enough to miss.
-    if (e.repeat && !(seen & b)) return;
-    seen |= b;
-    held |= b;
-  });
-  target.addEventListener('keyup', (e) => {
-    const b = KEYMAP[e.code];
-    if (b) { held &= ~b; seen &= ~b; e.preventDefault(); }
-  });
-  target.addEventListener('blur', () => { held = 0; seen = 0; firstSample = true; });
+  if (!target || target === inputTarget) return; // headless harness drives state.input directly
+  detachInput();
+  inputTarget = target;
+  target.addEventListener('keydown', keyDown);
+  target.addEventListener('keyup', keyUp);
+  target.addEventListener('blur', blurInput);
 }
 
 /** Call once per frame, before the game update. */

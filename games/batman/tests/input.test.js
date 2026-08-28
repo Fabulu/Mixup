@@ -3,14 +3,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { attachInput, sampleInput } from '../src/input.js';
-import { BTN } from '../src/input.js';
+import {
+  BTN, attachInput, detachInput, resetInput, sampleInput,
+} from '../src/input.js';
 
 /** The smallest thing attachInput() will bind to. */
 function fakeTarget() {
   const handlers = {};
   return {
     addEventListener(type, fn) { (handlers[type] ||= []).push(fn); },
+    removeEventListener(type, fn) {
+      handlers[type] = (handlers[type] || []).filter((handler) => handler !== fn);
+    },
+    handlerCount(type) { return (handlers[type] || []).length; },
     fire(type, ev) { for (const fn of handlers[type] || []) fn({ preventDefault() {}, ...ev }); },
     keydown(code, repeat = false) { this.fire('keydown', { code, repeat }); },
     keyup(code) { this.fire('keyup', { code }); },
@@ -31,6 +36,30 @@ function attachFresh() {
   t.fire('blur', {});
   return t;
 }
+
+test('input attachment is idempotent and detach clears launcher-era state', () => {
+  const target = fakeTarget();
+  resetInput();
+  attachInput(target);
+  attachInput(target);
+  assert.equal(target.handlerCount('keydown'), 1);
+  assert.equal(target.handlerCount('keyup'), 1);
+  assert.equal(target.handlerCount('blur'), 1);
+
+  const running = newState();
+  sampleInput(running);
+  target.keydown('Enter');
+  sampleInput(running);
+  assert.equal(running.input.pressed & BTN.START, BTN.START);
+
+  detachInput();
+  assert.equal(target.handlerCount('keydown'), 0);
+  assert.equal(target.handlerCount('keyup'), 0);
+  assert.equal(target.handlerCount('blur'), 0);
+  const restarted = newState();
+  sampleInput(restarted);
+  assert.deepEqual(restarted.input, { held: 0, pressed: 0, prev: 0 });
+});
 
 test('a fresh keydown registers as pressed', () => {
   const t = attachFresh();

@@ -6,7 +6,9 @@
 // rate.
 
 import { createState, MODE_STAGE } from './state.js';
-import { attachInput, nextInputWord, inputQueueStats } from './input.js';
+import {
+  attachInput, detachInput, nextInputWord, inputQueueStats,
+} from './input.js';
 import { loadResources, loadGameJson, gameplayPalette } from './assets.js';
 import { nmi } from './nmi.js';
 import { renderFrame, frameFor, W, H, chrBank } from './render/ppu.js';
@@ -423,7 +425,7 @@ export async function boot(canvas, opts = {}) {
     state, res, loop: pacer,
     loopStats: () => pacer.stats(),
     inputStats: inputQueueStats,
-    stop() { running = false; },
+    stop() { running = false; detachInput(); },
   };
 }
 

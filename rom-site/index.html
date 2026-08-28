@@ -25,20 +25,63 @@
       <div class="section-heading">
         <div>
           <p class="step">01 / ADD ROMS</p>
-          <h2 id="setup-title">Choose files or drop them here</h2>
+          <h2 id="setup-title">Drop your game archive</h2>
         </div>
         <span class="local-badge">LOCAL ONLY</span>
       </div>
 
+      <div id="upload-guide" class="upload-guide" aria-labelledby="upload-guide-title">
+        <div class="upload-guide-heading">
+          <p class="step">FASTEST WAY TO START</p>
+          <h3 id="upload-guide-title">Add one game or all three</h3>
+          <p>Drop the matching ZIP or 7z here. Mixup finds the ROM inside and checks it locally.</p>
+        </div>
+        <div class="upload-guide-grid">
+          <article class="upload-game">
+            <strong>Batman</strong>
+            <span>Use this archive or the <code>.gb</code> inside:</span>
+            <code>Batman - Return of the Joker (USA, Europe).zip</code>
+          </article>
+          <article class="upload-game">
+            <strong>Gradius</strong>
+            <span>Use this archive or the <code>.nes</code> inside:</span>
+            <code>Gradius (USA).zip</code>
+          </article>
+          <article class="upload-game">
+            <strong>DaiOuJou Black Label</strong>
+            <span>Use the complete MAME set:</span>
+            <code>ddpdojblk.zip</code>
+            <small>A complete <code>ddpdojblk.7z</code> works too.</small>
+          </article>
+        </div>
+        <details class="extracted-roms">
+          <summary>Using extracted DaiOuJou files instead?</summary>
+          <p>Select all ten members together:</p>
+          <ul class="rom-member-list">
+            <li><code>cave_a04401w064.u7</code></li>
+            <li><code>cave_a04402w064.u8</code></li>
+            <li><code>cave_b04401w064.u1</code></li>
+            <li><code>cave_m04401b032.u17</code></li>
+            <li><code>cave_t04401w064.u19</code></li>
+            <li><code>ddb10_10_8_434f.u45</code></li>
+            <li><code>ddp3_bios.u37</code></li>
+            <li><code>ddp3blk_defaults.nv</code></li>
+            <li><code>pgm_m01s.rom</code></li>
+            <li><code>pgm_t01s.rom</code></li>
+          </ul>
+          <small>An exact 6 MiB decrypted maincpu image may replace <code>ddb10_10_8_434f.u45</code> and <code>ddp3_bios.u37</code>; the other eight members are still required.</small>
+        </details>
+      </div>
+
       <div class="intake-grid">
         <label class="picker" for="files">
-          <strong>Choose ROMs, ZIP, or 7z</strong>
-          <span>Select cartridge files, extracted MAME members, or a local archive.</span>
+          <strong>Choose game archive(s)</strong>
+          <span>Pick one game, two, or all three. ZIP, 7z, and extracted ROM files work.</span>
           <input id="files" type="file" multiple>
         </label>
         <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop ROM files, ZIP or 7z archives, or folders">
-          <strong>Drop ROMs, ZIP/7z, or a folder</strong>
-          <span>Mixup checks them on this device.</span>
+          <strong>Drop game archive(s) or a folder</strong>
+          <span>Mixup finds supported ROMs on this device.</span>
         </div>
       </div>
 
@@ -69,7 +112,7 @@
           <h2 id="launcher-title">Choose a game</h2>
         </div>
       </div>
-      <p class="launcher-help">A game unlocks as soon as its exact local ROM set is ready. The exact accepted sizes and SHA-256 identities, with the standard filenames for reference, are listed below.</p>
+      <p class="launcher-help">Ready games light up after the local check. Pick one, then choose how to play.</p>
       <div id="game-cards" class="game-cards" aria-label="Game selection">
         <button type="button" class="game-card" data-game-id="batman" disabled>
           <span class="card-role">GAME</span><strong>Batman</strong><span class="card-state">ROM required</span>
@@ -87,11 +130,6 @@
         <button id="launch-game" type="button" disabled>Choose an unlocked game</button>
       </div>
       <p id="boot-status" role="status" aria-live="polite"></p>
-
-      <div id="game-screen" class="game-screen" hidden>
-        <canvas id="game-canvas" tabindex="0" aria-label="Local game screen"></canvas>
-        <p>Batman: arrows or WASD move, X jumps, Y/Z/C attacks, Enter starts. Gradius: arrows or WASD fly, X/Space fires, Y/Z/C selects power-ups, Enter starts. DaiOuJou: arrows or WASD move, Y/Z/Space shoots, X bombs, C auto, Enter starts, and 5 inserts a coin. Gamepads are supported.</p>
-      </div>
 
       <details class="verification-details">
         <summary>Required ROMs and verification details</summary>
@@ -114,6 +152,56 @@
       </details>
     </section>
   </main>
+
+  <section id="local-shell" class="local-shell" role="dialog" aria-modal="true" aria-label="Local game launcher" hidden>
+    <div id="local-picker" class="local-picker">
+      <header class="local-picker-header">
+        <button id="local-picker-games" type="button" class="secondary">GAMES</button>
+        <div>
+          <p class="step">LOCAL ROM READY / CHOOSE HOW TO PLAY</p>
+          <h1 id="local-picker-title">Game start</h1>
+          <p id="local-picker-subtitle" class="local-picker-subtitle"></p>
+        </div>
+      </header>
+      <div id="local-picker-content" class="local-picker-content"></div>
+      <div class="local-launch-bar">
+        <div id="local-loadout-summary" class="local-loadout-summary" role="status" aria-live="polite"></div>
+        <button id="local-clear" type="button" class="secondary">ORIGINAL</button>
+        <button id="local-start" type="button">START GAME</button>
+      </div>
+    </div>
+
+    <div id="game-screen" class="local-game" hidden>
+      <header class="local-game-bar">
+        <div class="local-game-identity">
+          <span>LOCAL PLAY</span>
+          <strong id="local-game-title">Game</strong>
+        </div>
+        <p id="local-game-status" role="status" aria-live="polite"></p>
+        <div class="local-game-actions">
+          <button id="local-picture" type="button" class="secondary" hidden>TATE</button>
+          <button id="local-sound" type="button" class="secondary" hidden>SOUND ON</button>
+          <button id="local-fullscreen" type="button" class="secondary">FULLSCREEN</button>
+          <button id="local-game-mods" type="button" class="secondary">MODS</button>
+          <button id="local-game-games" type="button" class="quiet">GAMES</button>
+        </div>
+      </header>
+      <div id="local-stage" class="local-stage">
+        <div id="local-viewport" class="local-viewport">
+          <canvas id="game-canvas" tabindex="0" aria-label="Local game screen"></canvas>
+        </div>
+        <div id="local-pad" class="local-pad" aria-label="On-screen game controls">
+          <div id="local-dpad" class="local-dpad" aria-label="Direction pad">
+            <i data-cell="UP LEFT">◤</i><i data-cell="UP">▲</i><i data-cell="UP RIGHT">◥</i>
+            <i data-cell="LEFT">◀</i><i data-cell="">·</i><i data-cell="RIGHT">▶</i>
+            <i data-cell="DOWN LEFT">◣</i><i data-cell="DOWN">▼</i><i data-cell="DOWN RIGHT">◢</i>
+          </div>
+          <div id="local-pad-buttons" class="local-pad-buttons"></div>
+        </div>
+      </div>
+      <p id="local-control-hint" class="local-control-hint"></p>
+    </div>
+  </section>
 
   <footer>
     <span>Mixup</span>

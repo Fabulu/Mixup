@@ -123,9 +123,10 @@ test('archive and selection aggregate limits fail closed', () => {
       entry({ path: `member-${index}.rom` })), 1024));
   rejects(/expansion ratio/, () => validateArchiveEntries('zip',
     [entry({ size: 201 })], 1));
-  rejects(/at most 4 archives/, () => validateArchiveSelection(Array.from({ length: 5 }, () => ({
-    compressedBytes: 1, expandedBytes: 1, entries: 1,
-  }))));
+  rejects(new RegExp(`at most ${ARCHIVE_LIMITS.maxArchives} archives`), () =>
+    validateArchiveSelection(Array.from({ length: ARCHIVE_LIMITS.maxArchives + 1 }, () => ({
+      compressedBytes: 1, expandedBytes: 1, entries: 1,
+    }))));
   rejects(/compressed bytes/, () => validateArchiveSelection([{
     compressedBytes: ARCHIVE_LIMITS.maxCompressedTotal + 1,
     expandedBytes: 1,

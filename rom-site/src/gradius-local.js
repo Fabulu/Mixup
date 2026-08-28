@@ -1,4 +1,4 @@
-import { boot } from '/games/gradius/src/main.js';
+import { boot, fitCanvas } from '/games/gradius/src/main.js';
 import { createGradiusLocalResources, GRADIUS_LOCAL_GAME } from '/games/gradius/src/localrom.js';
 
 const GRADIUS_SHA256 = '38c44e0e6f531a2779271f10cd4daa08ee2616c59c49d476b6f4e9dc482bf5f3';
@@ -20,21 +20,33 @@ export class LocalGradiusRuntime {
     options.onStatus?.('Extracting Gradius runtime data in this browser...');
     const bytes = new Uint8Array(await input.file.arrayBuffer());
     const resources = createGradiusLocalResources(bytes);
-    canvas.width = 256;
-    canvas.height = 240;
+    const config = options.config ?? {};
     const runtime = await boot(canvas, {
+      ...config,
       resources,
       game: GRADIUS_LOCAL_GAME,
-      target: window,
+      target: options.target ?? window,
       onError: (error) => options.onError?.(error),
     });
-    return new LocalGradiusRuntime(runtime);
+    return new LocalGradiusRuntime(runtime, canvas, config.audio ?? null);
   }
 
-  constructor(runtime) {
+  constructor(runtime, canvas, audio) {
     this.runtime = runtime;
+    this.canvas = canvas;
+    this.audio = audio;
   }
 
   start() {}
-  stop() { this.runtime.stop(); }
+  fit(container) { fitCanvas(this.canvas, container); }
+  toggleSound() {
+    if (!this.audio) return false;
+    this.audio.setMuted(!this.audio.muted);
+    return !this.audio.muted;
+  }
+  stop() {
+    this.runtime.stop();
+    this.audio?.setMuted(true);
+    this.audio?.resync();
+  }
 }

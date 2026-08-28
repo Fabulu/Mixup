@@ -24,6 +24,7 @@ const SHELL_ALLOWLIST = Object.freeze([
   'rom-site/src/setup.js',
 ]);
 const RUNTIME_ROOTS = Object.freeze([
+  'rom-site/src/local-shell.js',
   'rom-site/src/batman-local.js',
   'rom-site/src/gradius-local.js',
   'rom-site/src/ddpdoj-local.js',

@@ -1,7 +1,7 @@
 const MIB = 1024 * 1024;
 
 export const ARCHIVE_LIMITS = Object.freeze({
-  maxArchives: 4,
+  maxArchives: 64,
   maxCompressedArchive: 64 * MIB,
   maxCompressedTotal: 96 * MIB,
   maxEntriesPerArchive: 32,

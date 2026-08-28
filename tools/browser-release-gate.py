@@ -44,6 +44,10 @@ DDPDOJ_ROM_NAMES = (
 )
 ROM_FIXTURES = tuple(ROOT / "games/ddpdoj/rip/rom" / name for name in DDPDOJ_ROM_NAMES)
 DDPDOJ_7Z_FIXTURE = Path("C:/oldpcsx2/ddpdojblk.7z")
+BATMAN_ARCHIVE_FIXTURE = Path(
+    "C:/oldpcsx2/mixup/Batman - Return of the Joker (USA, Europe).zip"
+)
+GRADIUS_ARCHIVE_FIXTURE = Path("C:/oldpcsx2/mixup/Gradius (USA).zip")
 SYNTHETIC_7Z_FIXTURE = base64.b64decode(
     "N3q8ryccAAR1baoBCAAAAAAAAABiAAAAAAAAAA+E0UQBAAMBAgMEAAEEBgABCQgABwsBAAEhIQEA"
     "DAQACAoBzfs8tgAABQEZDAAAAAAAAAAAAAAAABEXAG0AZQBtAGIAZQByAC4AcgBvAG0AAAAZBAAA"
@@ -72,13 +76,22 @@ EXPECTED_FORMATION_VISIBLE_ERROR = (
     "formation mode cannot be combined with a native P2 selection\n\n"
     "The frame loop has stopped. Reload to start again."
 )
+RUNNING_BATMAN = (
+    "Batman is running entirely from the validated local cartridge. Press Enter to start."
+)
+RUNNING_GRADIUS = (
+    "Gradius is running entirely from the validated local cartridge. Press Enter to start."
+)
 RUNNING_DDPDOJ = (
     "DaiOuJou is running entirely from validated local ROMs. "
     "Insert a coin with 5, then press Enter."
 )
+JOINED_THREE_SHIP = (
+    "All Three Pilots, Each Piloting a Ship joined the credited run."
+)
 
 CANVAS_IDENTITY = """
-({ selector, width, height }) => {
+({ selector, width, height, minColors = 8 }) => {
   const canvas = document.querySelector(selector);
   if (!canvas) return { valid: false, reason: 'missing canvas' };
   const style = getComputedStyle(canvas);
@@ -110,7 +123,7 @@ CANVAS_IDENTITY = """
     blockHashes[cell] = Math.imul(blockHashes[cell] ^ rgb, 16777619) >>> 0;
   }
   return {
-    valid: nonBlack >= 512 && colors.size >= 8,
+    valid: nonBlack >= 512 && colors.size >= minColors,
     reason: `nonBlack=${nonBlack} colors=${colors.size}`,
     nonBlack,
     colors: colors.size,
@@ -239,12 +252,15 @@ class BrowserGate:
         self.origin = origin
         self.asset_free = asset_free
 
-    def run(self, name: str, body, expected_console_errors: tuple[str, ...] = ()) -> None:
-        context = self.browser.new_context(
-            viewport={"width": 1280, "height": 900},
-            service_workers="block",
-            accept_downloads=False,
-        )
+    def run(self, name: str, body, expected_console_errors: tuple[str, ...] = (),
+            context_options: dict | None = None) -> None:
+        options = {
+            "viewport": {"width": 1280, "height": 900},
+            "service_workers": "block",
+            "accept_downloads": False,
+        }
+        options.update(context_options or {})
+        context = self.browser.new_context(**options)
         failures: list[str] = []
         active_requests: set = set()
         failed_requests: list[tuple[object, str, str, str, bool]] = []
@@ -471,8 +487,11 @@ def wait_for_condition(page, predicate: str, *, arg=None,
 
 
 def canvas_identity(page, selector: str, width: int, height: int,
-                    timeout: int = 60000) -> dict:
-    arguments = {"selector": selector, "width": width, "height": height}
+                    timeout: int = 60000, min_colors: int = 8) -> dict:
+    arguments = {
+        "selector": selector, "width": width, "height": height,
+        "minColors": min_colors,
+    }
     try:
         wait_for_condition(
             page,
@@ -862,6 +881,36 @@ def gate_asset_free(browser, origin: str) -> None:
 
     def shell_layout(page):
         open_page(page, origin, "/")
+        guide = page.locator("#upload-guide")
+        require(guide.count() == 1 and guide.is_visible(),
+                "Mixup ROM upload checklist is not uniquely visible")
+        guide_text = guide.inner_text()
+        for required in (
+            "Add one game or all three",
+            "Batman - Return of the Joker (USA, Europe).zip",
+            "Gradius (USA).zip",
+            "ddpdojblk.zip",
+            "ddpdojblk.7z",
+        ):
+            require(required in guide_text,
+                    f"Mixup quick upload guide omits {required!r}")
+        extracted = page.locator("#upload-guide .extracted-roms")
+        require(extracted.count() == 1,
+                "Mixup has no single extracted-file disclosure")
+        require(extracted.get_attribute("open") is None,
+                "Mixup opens advanced extracted-file details by default")
+        require("Using extracted DaiOuJou files instead?" in extracted.inner_text(),
+                "Mixup extracted-file disclosure has no clear label")
+        extracted_text = extracted.text_content() or ""
+        for required in DDPDOJ_ROM_NAMES:
+            require(required in extracted_text,
+                    f"Mixup extracted-file details omit {required!r}")
+        guide_box = guide.bounding_box()
+        intake_box = page.locator(".intake-grid").bounding_box()
+        require(guide_box is not None and intake_box is not None
+                and guide_box["y"] < intake_box["y"],
+                "Mixup upload checklist is not before the upload controls")
+
         support = page.locator("#support-link")
         require(support.count() == 1 and support.is_visible(),
                 "Mixup support link is not uniquely visible")
@@ -882,7 +931,8 @@ def gate_asset_free(browser, origin: str) -> None:
             layout = page.evaluate("""
                 () => {
                   const selectors = [
-                    '.hero', '#support-link', '.intake-grid', '.picker', '.drop-zone',
+                    '.hero', '#support-link', '#upload-guide', '.upload-game',
+                    '.intake-grid', '.picker', '.drop-zone',
                     '.game-cards', '.game-card', '.launch-row', '#launch-game'
                   ];
                   const bounds = selectors.flatMap(selector =>
@@ -898,6 +948,7 @@ def gate_asset_free(browser, origin: str) -> None:
                     scrollWidth: document.documentElement.scrollWidth,
                     bounds,
                     intakeColumns: columns('.intake-grid'),
+                    uploadColumns: columns('.upload-guide-grid'),
                     cardColumns: columns('.game-cards'),
                     supportWidth: supportRect.width,
                     supportHeight: supportRect.height,
@@ -912,9 +963,12 @@ def gate_asset_free(browser, origin: str) -> None:
                         and bounds["right"] <= layout["clientWidth"] + 1,
                         f"{bounds['selector']} escapes the {width}px viewport: {bounds!r}")
             expected_columns = 2 if width == 1280 else 1
+            expected_uploads = 3 if width == 1280 else 1
             expected_cards = 3 if width == 1280 else 1
             require(layout["intakeColumns"] == expected_columns,
                     f"intake grid has {layout['intakeColumns']} columns at {width}px")
+            require(layout["uploadColumns"] == expected_uploads,
+                    f"quick upload guide has {layout['uploadColumns']} columns at {width}px")
             require(layout["cardColumns"] == expected_cards,
                     f"game grid has {layout['cardColumns']} columns at {width}px")
             require(layout["supportHeight"] >= 44 and layout["supportWidth"] >= 140,
@@ -1193,6 +1247,146 @@ def gate_asset_free(browser, origin: str) -> None:
 
     gate.run("asset-free latest selection wins", latest_selection_wins)
 
+    def local_cartridge(game_id: str, fixture: Path, title: str,
+                        running_status: str, width: int, height: int):
+        def run(page):
+            open_page(page, origin, "/")
+            page.locator("#files").set_input_files(str(fixture))
+            wait_for_condition(
+                page,
+                "document.querySelector('#status').dataset.kind === 'good'",
+                timeout=120000,
+            )
+            card = page.locator(f'.game-card[data-game-id="{game_id}"]')
+            require(not card.is_disabled(), f"validated {title} card remains disabled")
+            card.click()
+            page.locator("#launch-game").click()
+            wait_for_condition(
+                page,
+                "() => { const shell = document.querySelector('#local-shell'); "
+                "return shell && !shell.hidden; }",
+                timeout=120000,
+            )
+            shell = page.locator("#local-shell")
+            require(shell.get_attribute("role") == "dialog"
+                    and shell.get_attribute("aria-modal") == "true",
+                    f"{title} launcher is not an accessible modal")
+            require(page.locator("main").evaluate("node => node.inert"),
+                    f"{title} launcher did not make setup controls inert")
+            require(page.evaluate("document.activeElement?.id") == "local-picker-games",
+                    f"{title} launcher did not move focus into the modal")
+            require(page.locator(".local-customizer").get_attribute("open") is None,
+                    f"{title} launcher opens advanced options by default")
+
+            if game_id == "gradius":
+                page.evaluate("""() => {
+                  const original = File.prototype.arrayBuffer;
+                  let release;
+                  const gate = new Promise((resolve) => { release = resolve; });
+                  let first = true;
+                  File.prototype.arrayBuffer = async function(...args) {
+                    if (first) {
+                      first = false;
+                      globalThis.__mixupBootReadStarted = true;
+                      await gate;
+                    }
+                    return original.apply(this, args);
+                  };
+                  globalThis.__mixupReleaseBootRead = () => {
+                    File.prototype.arrayBuffer = original;
+                    release();
+                  };
+                }""")
+                page.locator("#local-start").click()
+                wait_for_condition(page, "globalThis.__mixupBootReadStarted === true")
+                page.locator("#local-game-mods").click()
+                require(page.locator("#local-picker").is_visible(),
+                        "Gradius MODS did not overtake the pending boot")
+                require(page.locator("#local-start").is_disabled(),
+                        "Gradius allowed a second start while stale boot cleanup was pending")
+                page.evaluate("globalThis.__mixupReleaseBootRead()")
+                wait_for_condition(
+                    page,
+                    "!document.querySelector('#local-start').disabled",
+                    timeout=120000,
+                )
+                require(page.locator("#local-picker").is_visible(),
+                        "stale Gradius boot escaped the picker")
+
+            page.locator("#local-start").click()
+            wait_for_condition(
+                page,
+                "expected => document.querySelector('#boot-status').textContent === expected",
+                arg=running_status,
+                timeout=120000,
+            )
+            canvas_identity(
+                page, "#game-canvas", width, height, timeout=120000,
+                min_colors=4 if game_id == "batman" else 8,
+            )
+            require(page.evaluate("document.activeElement?.id") == "game-canvas",
+                    f"{title} game screen did not receive focus")
+
+            if game_id == "gradius":
+                sound = page.locator("#local-sound")
+                require(sound.is_visible() and sound.inner_text() == "SOUND ON",
+                        "Gradius sound did not arm from the START gesture")
+                sound.click()
+                require(sound.inner_text() == "SOUND OFF",
+                        "Gradius sound control did not turn sound off")
+                page.locator("#local-game-mods").click()
+                require(page.locator("#local-picker").is_visible()
+                        and page.evaluate("document.activeElement?.id") == "local-picker-games",
+                        "Gradius MODS did not return focus to the picker")
+                page.locator("#local-start").click()
+                wait_for_condition(
+                    page,
+                    "expected => document.querySelector('#boot-status').textContent === expected",
+                    arg=running_status,
+                    timeout=120000,
+                )
+                require(sound.inner_text() == "SOUND OFF",
+                        "Gradius sound preference was lost on restart")
+                canvas_identity(
+                page, "#game-canvas", width, height, timeout=120000,
+                min_colors=4 if game_id == "batman" else 8,
+            )
+
+            page.keyboard.press("Escape")
+            require(shell.is_hidden(), f"Escape did not close the {title} launcher")
+            require(not page.locator("main").evaluate("node => node.inert"),
+                    f"{title} launcher did not restore setup controls")
+            require(page.evaluate("document.activeElement?.id") == "launch-game",
+                    f"{title} launcher did not restore focus to its opener")
+            if game_id == "gradius":
+                input_state = page.evaluate("""async () => {
+                  const input = await import('/games/gradius/src/input.js');
+                  window.dispatchEvent(new KeyboardEvent('keydown', {
+                    code: 'ArrowRight', bubbles: true,
+                  }));
+                  return { buttons: input.currentButtons(), stats: input.inputQueueStats() };
+                }""")
+                require(input_state["buttons"] == 0
+                        and input_state["stats"]["depth"] == 0,
+                        f"Gradius keyboard input remained attached after close: {input_state!r}")
+
+            def recheck() -> None:
+                require(shell.is_hidden(), f"{title} launcher reopened while settling")
+                require(not page.locator("main").evaluate("node => node.inert"),
+                        f"{title} setup controls became inert while settling")
+
+            return recheck
+        return run
+
+    gate.run("asset-free local Batman", local_cartridge(
+        "batman", BATMAN_ARCHIVE_FIXTURE, "Batman",
+        RUNNING_BATMAN, 800, 720,
+    ))
+    gate.run("asset-free local Gradius", local_cartridge(
+        "gradius", GRADIUS_ARCHIVE_FIXTURE, "Gradius",
+        RUNNING_GRADIUS, 256, 240,
+    ))
+
     def local_ddpdoj(page):
         page.add_init_script("""
         (() => {
@@ -1233,11 +1427,98 @@ def gate_asset_free(browser, origin: str) -> None:
         require(not card.is_disabled(), "validated DaiOuJou card remains disabled")
         require(card.locator(".card-state").inner_text() == "Identity validated",
                 "DaiOuJou card does not report exact identity validation")
+        page.evaluate("""() => {
+          Object.defineProperty(document, '__mixupReleaseGateMarker', {
+            value: {}, configurable: true,
+          });
+        }""")
+        original_url = page.url
         card.click()
         require(page.locator("#primary-world").inner_text()
                 == "DoDonPachi DaiOuJou Black Label",
                 "DaiOuJou is not the selected primary world")
         page.locator("#launch-game").click()
+        wait_for_condition(
+            page,
+            "() => { const shell = document.querySelector('#local-shell'); "
+            "const picker = document.querySelector('#local-picker'); "
+            "return shell && !shell.hidden && picker && !picker.hidden; }",
+            timeout=300000,
+        )
+        require(page.url == original_url,
+                "Mixup navigated away while opening local game options")
+        require(page.evaluate(
+            "() => Object.hasOwn(document, '__mixupReleaseGateMarker')"),
+            "Mixup replaced the document while opening game options")
+        require(page.locator("#local-shell").count() == 1
+                and page.locator("#local-shell").is_visible(),
+                "Mixup local shell is not uniquely visible")
+        require(page.locator("#local-shell").get_attribute("role") == "dialog"
+                and page.locator("#local-shell").get_attribute("aria-modal") == "true"
+                and page.locator("main").evaluate("node => node.inert")
+                and page.evaluate("document.activeElement?.id") == "local-picker-games",
+                "Mixup local shell did not establish modal focus")
+        require(page.locator("#local-picker").is_visible()
+                and page.locator("#game-screen").is_hidden(),
+                "Mixup did not stop at the game options screen")
+        require(page.locator("#local-picker-title").text_content()
+                == "DoDonPachi DaiOuJou Black Label",
+                "Mixup options screen has the wrong game title")
+        require(page.locator("#local-picker-content select").count() >= 2,
+                "Mixup options screen has no simple quick choices")
+        require(page.locator(".local-customizer").count() == 1
+                and page.locator(".local-customizer").get_attribute("open") is None,
+                "Mixup opens detailed mod customization by default")
+        require(not page.locator("#local-start").is_disabled(),
+                "Mixup local start button is disabled")
+        ships = page.locator("#local-picker-content .local-fields select").nth(1)
+        ships.select_option("all-three-pilots-each-piloting-a-ship")
+        require("three-ship formation" in page.locator(
+            "#local-loadout-summary").inner_text().lower(),
+                "Mixup did not retain the three-ship quick choice")
+
+        def assert_picker_width(width: int) -> None:
+            page.set_viewport_size({"width": width, "height": 900})
+            page.wait_for_timeout(100)
+            layout = page.evaluate("""() => {
+              const shell = document.querySelector('#local-shell');
+              const launch = document.querySelector('.local-launch-bar');
+              const controls = [...launch.querySelectorAll('button')].map(button => {
+                const rect = button.getBoundingClientRect();
+                return { left: rect.left, right: rect.right,
+                         top: rect.top, bottom: rect.bottom,
+                         width: rect.width, height: rect.height };
+              });
+              const rect = shell.getBoundingClientRect();
+              const launchRect = launch.getBoundingClientRect();
+              return {
+                clientWidth: shell.clientWidth,
+                scrollWidth: shell.scrollWidth,
+                shell: { left: rect.left, right: rect.right,
+                         top: rect.top, bottom: rect.bottom },
+                launch: { left: launchRect.left, right: launchRect.right,
+                          top: launchRect.top, bottom: launchRect.bottom,
+                          width: launchRect.width, height: launchRect.height },
+                controls,
+              };
+            }""")
+            require(layout["scrollWidth"] <= layout["clientWidth"] + 1,
+                    f"Mixup options overflow at {width}px: {layout!r}")
+            require(abs(layout["shell"]["left"]) <= 1
+                    and abs(layout["shell"]["right"] - width) <= 1
+                    and abs(layout["shell"]["top"]) <= 1
+                    and abs(layout["shell"]["bottom"] - 900) <= 1,
+                    f"Mixup options do not cover {width}px viewport: {layout!r}")
+            for bounds in [layout["launch"], *layout["controls"]]:
+                require(bounds["width"] > 0 and bounds["height"] > 0
+                        and bounds["left"] >= -1 and bounds["right"] <= width + 1
+                        and bounds["top"] >= -1 and bounds["bottom"] <= 901,
+                        f"Mixup option control escapes {width}px viewport: {bounds!r}")
+
+        for width in (1280, 700, 360):
+            assert_picker_width(width)
+        page.set_viewport_size({"width": 1280, "height": 900})
+        page.locator("#local-start").click()
         wait_for_condition(
             page,
             "expected => document.querySelector('#boot-status').textContent === expected",
@@ -1265,9 +1546,25 @@ def gate_asset_free(browser, origin: str) -> None:
                     f"asset-free launch added window globals {exposure['added']}")
 
         def assert_running() -> None:
-            require(page.locator("#boot-status").inner_text() == RUNNING_DDPDOJ,
-                    "asset-free DaiOuJou lost its exact running status")
-            require(page.locator("#game-screen").is_visible(), "asset-free game screen is hidden")
+            boot_status = page.locator("#boot-status").inner_text()
+            game_status = page.locator("#local-game-status").inner_text()
+            require(boot_status in {RUNNING_DDPDOJ, JOINED_THREE_SHIP},
+                    f"asset-free DaiOuJou lost its runtime status: {boot_status!r}")
+            require(game_status == boot_status,
+                    "asset-free game view and setup status disagree")
+            require(page.url == original_url
+                    and page.evaluate(
+                        "() => Object.hasOwn(document, '__mixupReleaseGateMarker')"),
+                    "asset-free game launch replaced its document")
+            require(page.locator("#local-shell").is_visible()
+                    and page.locator("#game-screen").is_visible()
+                    and page.locator("#local-picker").is_hidden(),
+                    "asset-free game did not own the full-page shell")
+            require(page.locator("#local-stage").is_visible()
+                    and page.locator("#local-viewport").is_visible(),
+                    "asset-free game stage is hidden")
+            require(page.locator("body").get_attribute("data-local-view") == "true",
+                    "asset-free game did not lock the setup document")
             require(page.locator("#primary-world").inner_text()
                     == "DoDonPachi DaiOuJou Black Label",
                     "asset-free DaiOuJou lost primary-world selection")
@@ -1278,9 +1575,81 @@ def gate_asset_free(browser, origin: str) -> None:
             require(dimensions == {"width": 224, "height": 448, "area": 448 * 224},
                     f"unexpected TATE canvas dimensions {dimensions}")
 
+        def assert_stage_width(width: int) -> None:
+            page.set_viewport_size({"width": width, "height": 900})
+            page.wait_for_timeout(150)
+            layout = page.evaluate("""() => {
+              const screen = document.querySelector('#game-screen').getBoundingClientRect();
+              const stage = document.querySelector('#local-stage').getBoundingClientRect();
+              const viewport = document.querySelector('#local-viewport').getBoundingClientRect();
+              const canvas = document.querySelector('#game-canvas').getBoundingClientRect();
+              const padElement = document.querySelector('#local-pad');
+              const pad = padElement.getBoundingClientRect();
+              const padVisible = getComputedStyle(padElement).display !== 'none';
+              const canvasPadOverlap = padVisible
+                && canvas.left < pad.right && canvas.right > pad.left
+                && canvas.top < pad.bottom && canvas.bottom > pad.top;
+              const actions = [...document.querySelectorAll('.local-game-actions button')]
+                .filter(button => getComputedStyle(button).display !== 'none' && !button.hidden)
+                .map(button => {
+                  const rect = button.getBoundingClientRect();
+                  return { left: rect.left, right: rect.right,
+                           width: rect.width, height: rect.height };
+                });
+              return {
+                docWidth: document.documentElement.clientWidth,
+                docScroll: document.documentElement.scrollWidth,
+                screen: { left: screen.left, right: screen.right,
+                          top: screen.top, bottom: screen.bottom },
+                stage: { width: stage.width, height: stage.height },
+                viewport: { left: viewport.left, right: viewport.right,
+                            top: viewport.top, bottom: viewport.bottom,
+                            width: viewport.width, height: viewport.height },
+                canvas: { left: canvas.left, right: canvas.right,
+                          top: canvas.top, bottom: canvas.bottom,
+                          width: canvas.width, height: canvas.height },
+                pad: { left: pad.left, right: pad.right,
+                       top: pad.top, bottom: pad.bottom,
+                       width: pad.width, height: pad.height,
+                       visible: padVisible, overlapsCanvas: canvasPadOverlap },
+                actions,
+              };
+            }""")
+            require(layout["docScroll"] <= layout["docWidth"] + 1,
+                    f"Mixup game view overflows at {width}px: {layout!r}")
+            require(abs(layout["screen"]["left"]) <= 1
+                    and abs(layout["screen"]["right"] - width) <= 1
+                    and abs(layout["screen"]["top"]) <= 1
+                    and abs(layout["screen"]["bottom"] - 900) <= 1,
+                    f"Mixup game view does not cover {width}px viewport: {layout!r}")
+            require(layout["stage"]["width"] > 0 and layout["stage"]["height"] > 0
+                    and layout["viewport"]["width"] > 0
+                    and layout["viewport"]["height"] > 0,
+                    f"Mixup game stage collapsed at {width}px: {layout!r}")
+            canvas = layout["canvas"]
+            viewport = layout["viewport"]
+            require(canvas["width"] > 0 and canvas["height"] > 0
+                    and canvas["left"] >= viewport["left"] - 1
+                    and canvas["right"] <= viewport["right"] + 1
+                    and canvas["top"] >= viewport["top"] - 1
+                    and canvas["bottom"] <= viewport["bottom"] + 1,
+                    f"Mixup canvas escapes the stage at {width}px: {layout!r}")
+            pad = layout["pad"]
+            require(pad["visible"] and pad["width"] > 0 and pad["height"] > 0
+                    and not pad["overlapsCanvas"],
+                    f"Mixup touch controls cover the canvas at {width}px: {layout!r}")
+            for bounds in layout["actions"]:
+                require(bounds["width"] > 0 and bounds["height"] > 0
+                        and bounds["left"] >= -1 and bounds["right"] <= width + 1,
+                        f"Mixup game action escapes {width}px viewport: {bounds!r}")
+
         assert_running()
         assert_no_runtime_globals()
         first_canvas = canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
+        for width in (1280, 700, 360):
+            assert_stage_width(width)
+        page.set_viewport_size({"width": 1280, "height": 900})
+        page.wait_for_timeout(150)
         page.keyboard.press("5")
         page.wait_for_timeout(1000)
         page.keyboard.down("Enter")
@@ -1308,6 +1677,14 @@ def gate_asset_free(browser, origin: str) -> None:
         page.keyboard.down("z")
         page.wait_for_timeout(500)
         page.keyboard.up("z")
+        wait_for_condition(
+            page,
+            "expected => document.querySelector('#boot-status').textContent === expected",
+            arg=JOINED_THREE_SHIP,
+            timeout=30000,
+        )
+        require(page.locator("#local-game-status").inner_text() == JOINED_THREE_SHIP,
+                "three-ship formation did not join at credited handoff")
         canvas_identity(page, "#game-canvas", 224, 448)
         draw_count = page.evaluate(
             "() => CanvasRenderingContext2D.prototype["
@@ -1331,7 +1708,8 @@ def gate_asset_free(browser, origin: str) -> None:
 
         return recheck
 
-    gate.run("asset-free local DaiOuJou", local_ddpdoj)
+    gate.run("asset-free local DaiOuJou", local_ddpdoj,
+             context_options={"has_touch": True})
 
 
 def parse_args() -> argparse.Namespace:
@@ -1367,6 +1745,9 @@ def main() -> int:
             supplied_root / "src/vendor/sevenzip-wasm/sevenzip-wasm.wasm",
             supplied_root / "src/vendor/sevenzip-wasm/LICENSE",
             supplied_root / "src/ddpdoj-local.js",
+            supplied_root / "src/batman-local.js",
+            supplied_root / "src/gradius-local.js",
+            supplied_root / "src/local-shell.js",
             supplied_root / "src/buildid.js",
         ) if asset_free else (
             supplied_root / "index.html",
@@ -1379,6 +1760,8 @@ def main() -> int:
     require_files(required, "release artifacts")
     if asset_free:
         require_files(ROM_FIXTURES, "exact DaiOuJou ROM fixtures")
+        require_files((BATMAN_ARCHIVE_FIXTURE, GRADIUS_ARCHIVE_FIXTURE),
+                      "exact local cartridge archive fixtures")
 
     handler = partial(NoCacheHandler, directory=str(supplied_root))
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)

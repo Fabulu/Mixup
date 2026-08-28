@@ -169,6 +169,14 @@ function applyP1Selection(game, selected) {
   }
 }
 
+/** Apply one validated P1 pair even when it is the default selector pair. */
+export function forceAuthenticP1Selection(game, value) {
+  const selected = authenticPair(value);
+  if (!selected) return null;
+  applyP1Selection(game, selected);
+  return selected;
+}
+
 function applyP2Selection(game, selected) {
   const { ram, rom } = game;
   const { ship, style } = selected;

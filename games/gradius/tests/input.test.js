@@ -22,8 +22,8 @@ import { readFileSync } from 'node:fs';
 
 import { BTN } from '../src/state.js';
 import {
-  attachInput, currentButtons, readJoypad,
-  TOUCH_BUTTONS, DPAD_MASK, setTouchButton, setTouchDirections,
+  attachInput, detachInput, resetInput, currentButtons, readJoypad,
+  inputQueueStats, TOUCH_BUTTONS, DPAD_MASK, setTouchButton, setTouchDirections,
   clearTouchButtons, dpadMask,
 } from '../src/input.js';
 
@@ -32,6 +32,10 @@ function fakeTarget() {
   const handlers = {};
   return {
     addEventListener(type, fn) { (handlers[type] ||= []).push(fn); },
+    removeEventListener(type, fn) {
+      handlers[type] = (handlers[type] || []).filter((handler) => handler !== fn);
+    },
+    handlerCount(type) { return (handlers[type] || []).length; },
     fire(type, ev) { for (const fn of handlers[type] || []) fn({ preventDefault() {}, ...ev }); },
     keydown(code, repeat = false) { this.fire('keydown', { code, repeat }); },
     keyup(code) { this.fire('keyup', { code }); },
@@ -76,6 +80,28 @@ const KEY_FOR = {
   RIGHT: 'ArrowRight', LEFT: 'ArrowLeft', DOWN: 'ArrowDown', UP: 'ArrowUp',
   A: 'KeyX', B: 'KeyZ', START: 'Enter', SELECT: 'ShiftRight',
 };
+
+test('input attachment is idempotent and detach clears the transition queue', () => {
+  const target = fakeTarget();
+  resetInput();
+  attachInput(target);
+  attachInput(target);
+  assert.equal(target.handlerCount('keydown'), 1);
+  assert.equal(target.handlerCount('keyup'), 1);
+  assert.equal(target.handlerCount('blur'), 1);
+
+  target.keydown('ArrowRight');
+  assert.equal(inputQueueStats().depth, 1);
+  assert.equal(currentButtons(), BTN.RIGHT);
+  detachInput();
+  assert.equal(target.handlerCount('keydown'), 0);
+  assert.equal(target.handlerCount('keyup'), 0);
+  assert.equal(target.handlerCount('blur'), 0);
+  assert.deepEqual(inputQueueStats(), {
+    depth: 0, live: 0, repeats: 0, coalesced: 0, carried: 0, lostEdges: 0, cap: 2,
+  });
+  assert.equal(currentButtons(), 0);
+});
 
 test('every on-screen button drives the same $0007/$0005 bits as its key', () => {
   for (const [name, code] of Object.entries(KEY_FOR)) {

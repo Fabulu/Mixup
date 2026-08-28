@@ -17,7 +17,7 @@
 
 import { createState, GAMEPLAY_PALETTES } from './state.js';
 import { makeTunables } from './tunables.js';
-import { attachInput, sampleInput } from './input.js';
+import { attachInput, detachInput, sampleInput } from './input.js';
 import { initLevel, clearLevel } from './level.js';
 import { loadManifest, loadPlayerTiles, installAssetProvider } from './assets.js';
 import { renderFrame } from './render/renderer.js';
@@ -496,7 +496,12 @@ export async function boot(canvas, { level = 1, tunables = {}, mods = [],
   return {
     state,
     sound,
-    stop() { running = false; sound.stop(); sound.setEnabled(false); },
+    stop() {
+      running = false;
+      detachInput();
+      sound.stop();
+      sound.setEnabled(false);
+    },
   };
 }
 
