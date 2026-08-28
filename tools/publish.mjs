@@ -55,7 +55,8 @@ function run(label, cmd, cmdArgs, opts = {}) {
 // spend two minutes proving something nobody changed. Cheapest-likeliest first
 // is the same rule tools/test-all.mjs uses internally.
 if (only === null || only === 'gradius') {
-  run('gradius unit tests', process.execPath, ['--test', 'games/gradius/tests/']);
+  run('gradius unit tests', process.execPath,
+    ['--test', '--test-concurrency=1', 'games/gradius/tests/']);
   const g = run('gradius gate', process.execPath, ['games/gradius/tools/test-all.mjs']);
   if (!/GREEN/.test(g) || !/0 SKIPPED/.test(g)) {
     console.error('\nREFUSING TO PUBLISH: the Gradius gate is not GREEN with 0 SKIPPED.');
@@ -71,7 +72,8 @@ if (only === null || only === 'gradius') {
 // exporter ever drops a tile or a sprite stream the picture stays plausible and
 // only this number moves, so it runs before every deploy.
 if (only === null || only === 'ddpdoj') {
-  run('ddpdoj unit tests', process.execPath, ['--test', 'games/ddpdoj/tests/']);
+  run('ddpdoj unit tests', process.execPath,
+    ['--test', '--test-concurrency=1', 'games/ddpdoj/tests/']);
   const d = run('ddpdoj bundle gate', process.execPath, [
     'games/ddpdoj/tools/bundlegate.mjs',
     '--assets', 'games/ddpdoj/assets',

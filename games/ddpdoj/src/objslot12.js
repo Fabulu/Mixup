@@ -392,6 +392,9 @@ export function teardown28F368(ram, rom, a5, ctx) {
   const made = stageCreate(ram, SLOT12.childType,            // $28F39A / $28F39E
     (t) => rom.u16(SLOT12.dispatch + t * 8 + 4));
   ram.setU16(made.addr + SLOT12.stateField, SLOT12.childState);   // $28F3A4 -- through A0
+  // Run RAM is cleared and the cartridge's type $08 successor is staged. This
+  // is the exact boundary where a completed credited run becomes cabinet state.
+  ctx?.cabinetRunEndHook?.(ram);
   return made;
 }
 

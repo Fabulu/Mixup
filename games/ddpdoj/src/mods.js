@@ -288,6 +288,42 @@ export function createModState(loadout) {
   } };
 }
 
+function resetRunRuntime(state) {
+  state.runtime.hyperGauge = null;
+  state.runtime.bulletDensity = 0;
+  for (const seen of state.runtime.grazedBullets) seen.clear();
+  state.runtime.grazeCount.fill(0);
+  state.runtime.resurrectionPositions.fill(null);
+}
+
+/** Keep a selected loadout pending while an ordinary browser launch runs the cabinet front end. */
+export function prepareModCabinetBoot(state) {
+  if (!state) return null;
+  state.runtime.cabinetBoot = true;
+  state.runtime.cabinetRunActive = false;
+  resetRunRuntime(state);
+  return state;
+}
+
+function modRunActive(state) {
+  return !!state && state.runtime.cabinetRunActive !== false;
+}
+
+function cabinetRunStart(state, ram, event) {
+  resetRunRuntime(state);
+  const active = event?.demo !== true;
+  state.runtime.cabinetRunActive = active;
+  if (active && state.loadout.sim.loop2FromStage1) {
+    ram.setU16(MOD_RAM.loopCounter, 1);
+  }
+}
+
+function cabinetRunEnd(state) {
+  if (!state.runtime.cabinetRunActive) return;
+  state.runtime.cabinetRunActive = false;
+  resetRunRuntime(state);
+}
+
 export function describeMod(id) {
   return MODS[id]?.effects ?? [];
 }
@@ -532,30 +568,71 @@ export function modGameOptions(state) {
   if (!state) return null;
   const options = {};
   const sim = state.loadout.sim;
-  if (sim.beeMagnet) options.beeRecordHook = pullBeeTowardPlayer;
-  if (sim.bossEnrage) options.bulletSpeedTransform = enrageBossBulletSpeed;
+  if (state.runtime.cabinetBoot) {
+    options.cabinetRunStartHook = (ram, event) => cabinetRunStart(state, ram, event);
+    options.cabinetRunEndHook = () => cabinetRunEnd(state);
+  }
+  if (sim.beeMagnet) {
+    options.beeRecordHook = (...args) => {
+      if (modRunActive(state)) pullBeeTowardPlayer(...args);
+    };
+  }
+  if (sim.bossEnrage) {
+    options.bulletSpeedTransform = (speed, ram) => modRunActive(state)
+      ? enrageBossBulletSpeed(speed, ram) : speed;
+  }
   if (sim.grazeReactor) {
-    options.bulletSpawnHook = (ram, event) => resetGrazeBulletLifetime(state, ram, event);
-    options.playerGrazeHook = (ram, event) => rewardGraze(state, ram, event);
+    options.bulletSpawnHook = (ram, event) => {
+      if (modRunActive(state)) resetGrazeBulletLifetime(state, ram, event);
+    };
+    options.playerGrazeHook = (ram, event) => {
+      if (modRunActive(state)) rewardGraze(state, ram, event);
+    };
   }
-  if (sim.glassCannon) options.playerDamageTransform = doublePlayerDamage;
-  if (sim.autoDeathbomb) options.lethalHitHook = autoDeathbomb;
+  if (sim.glassCannon) {
+    options.playerDamageTransform = (amount) => modRunActive(state)
+      ? doublePlayerDamage(amount) : amount;
+  }
+  if (sim.autoDeathbomb) {
+    options.lethalHitHook = (...args) => modRunActive(state) && autoDeathbomb(...args);
+  }
   if (sim.resurrectionInPlace) {
-    options.deathPositionCapture = (ram, side, y, x, canRespawn) =>
-      captureResurrectionPosition(state, ram, side, y, x, canRespawn);
-    options.respawnPositionTransform = (ram, side, y, x) =>
-      consumeResurrectionPosition(state, ram, side, y, x);
+    options.deathPositionCapture = (ram, side, y, x, canRespawn) => {
+      if (modRunActive(state)) captureResurrectionPosition(state, ram, side, y, x, canRespawn);
+    };
+    options.respawnPositionTransform = (ram, side, y, x) => modRunActive(state)
+      ? consumeResurrectionPosition(state, ram, side, y, x) : { y, x };
   }
-  if (sim.revengeBullets) options.enemyDeathHook = fireRevengeBullet;
-  if (sim.friendlyConvertedBullets) options.friendlyBulletConvertHook = convertCanceledBullet;
+  if (sim.revengeBullets) {
+    options.enemyDeathHook = (...args) => {
+      if (modRunActive(state)) return fireRevengeBullet(...args);
+      return null;
+    };
+  }
+  if (sim.friendlyConvertedBullets) {
+    options.friendlyBulletConvertHook = (...args) => {
+      if (modRunActive(state)) return convertCanceledBullet(...args);
+      return null;
+    };
+  }
   if (sim.invincibility || sim.bulletPolarity) {
-    options.enemyBulletCollisionFilter = (ram, event) =>
-      (!sim.invincibility || event.player !== MOD_RAM.player1)
-      && (!sim.bulletPolarity || hostilePolarityBank(ram, event));
+    options.enemyBulletCollisionFilter = (ram, event) => !modRunActive(state)
+      || ((!sim.invincibility || event.player !== MOD_RAM.player1)
+        && (!sim.bulletPolarity || hostilePolarityBank(ram, event)));
   }
-  if (sim.scoreMultiplierMayhem) options.scoreAddendTransform = multiplyFinalScoreAddend;
-  if (sim.bossRush) options.stageScriptInstallHook = startAtFinalBossApproach;
-  if (sim.stageRemix) options.stageAdvanceTransform = remixNextStageValue;
+  if (sim.scoreMultiplierMayhem) {
+    options.scoreAddendTransform = (addend, ram) => modRunActive(state)
+      ? multiplyFinalScoreAddend(addend, ram) : addend;
+  }
+  if (sim.bossRush) {
+    options.stageScriptInstallHook = (...args) => {
+      if (modRunActive(state)) startAtFinalBossApproach(...args);
+    };
+  }
+  if (sim.stageRemix) {
+    options.stageAdvanceTransform = (value) => modRunActive(state)
+      ? remixNextStageValue(value) : value;
+  }
   return Object.keys(options).length ? Object.freeze(options) : null;
 }
 
@@ -625,22 +702,25 @@ function preserveOrdinaryHyperDrain(state, ram) {
 
 /** Explicit host policy immediately before Game.step(). */
 export function applyPreFrameMods(state, ram) {
+  if (!modRunActive(state)) return;
   cacheHyperGauge(state, ram);
   applyRamMods(state, ram);
 }
 
 /** Explicit host policy immediately after Game.step(). */
 export function applyPostFrameMods(state, ram) {
+  if (!modRunActive(state)) return;
   preserveOrdinaryHyperDrain(state, ram);
   applyRamMods(state, ram);
-  if (state?.loadout.timing.adaptive) {
+  if (state.loadout.timing.adaptive) {
     state.runtime.bulletDensity = ram.u16(MOD_RAM.bulletDensity);
   }
 }
 
 /** Transform the active-low raw PGM input word before Game.step(). */
 export function transformModInput(state, word, logicFrame) {
-  if (!state?.loadout.sim.precisionShip || (logicFrame & 1) === 0) return word & 0xffff;
+  if (!modRunActive(state)
+      || !state.loadout.sim.precisionShip || (logicFrame & 1) === 0) return word & 0xffff;
   // Logical direction bits 0..3 map to raw port bits 1..4. Setting an active-low
   // bit releases it; all fire and start bits pass through unchanged.
   return (word | 0x001e) & 0xffff;
@@ -656,9 +736,10 @@ export function adaptiveSlowMotionScale(bulletDensity) {
 
 /** Transform only host cadence. Game still receives every logic frame. */
 export function transformModTiming(state, basePeriodMs) {
-  const scale = state?.loadout.timing.adaptive
+  if (!modRunActive(state)) return basePeriodMs;
+  const scale = state.loadout.timing.adaptive
     ? adaptiveSlowMotionScale(state.runtime.bulletDensity)
-    : (state?.loadout.timing.scale ?? 1);
+    : state.loadout.timing.scale;
   return basePeriodMs * scale;
 }
 

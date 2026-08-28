@@ -216,7 +216,8 @@ import {
 } from './replay.js';
 import { CLAIMED } from '../state.js';
 import {
-  MODS, MOD_RAM, createModState, applyPreFrameMods, applyPostFrameMods,
+  MODS, MOD_RAM, createModState, prepareModCabinetBoot,
+  applyPreFrameMods, applyPostFrameMods,
   transformModInput, transformModTiming, applyPresentationMods, applyHitboxOverlay,
   assertReplayCompatible, modGameOptions,
 } from '../mods.js';
@@ -914,7 +915,11 @@ export class Demo {
     //       in place of the capture's, which is what takes L5 and L6's program
     //       half off the CAPTURE LEDGER.
     this.soundController = soundController;
-    const coldBoot = !rung && !modState && !this.formation && authenticSelection == null;
+    // A mod loadout configures the next credited run. It does not select the
+    // captured gameplay seed. Rungs, host-authentic shortcuts, and formations
+    // retain their explicit non-cabinet launch contracts.
+    const coldBoot = !rung && !this.formation && authenticSelection == null;
+    if (coldBoot && modState) prepareModCabinetBoot(modState);
     this.coldBoot = coldBoot;
     this.seedLf = coldBoot ? 0 : (rung ? rung.lf : this.cap.frames[0].lf);
     const launchSeed = coldBoot

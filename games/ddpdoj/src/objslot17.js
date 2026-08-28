@@ -865,8 +865,16 @@ export function handoff26070C(ram, rom, ctx, d0, d1, d2, d3, d4, save = savedSel
   const r3 = ram.u16(K.slotD3);                             // $260750 move.w $81308A,D3
   save(ram, rom, r0, r1, r2, r3);                           // $260756 jsr $25D990
 
+  // The cartridge has completed fighter selection at this exact boundary, while
+  // `$260580` below has not yet read loop and stage policy. A browser cold boot
+  // can activate its already-selected host policy here without changing any
+  // selector instruction. `$803926` distinguishes an attract demo from a run
+  // that spent a cabinet credit.
+  const demo = ram.u16(K.d7Gate) !== 0;
+  ctx?.cabinetRunStartHook?.(ram, { demo });
+
   let d7 = 0;                                               // $26075C moveq #$0,D7
-  if (ram.u16(K.d7Gate) !== 0                               // $26075E tst.w $803926 / beq $260778
+  if (demo                                                  // $26075E tst.w $803926 / beq $260778
     && ram.u16(K.d7Block) === 0) {                          // $260768 cmpi.w #$0,$813092 / bne
     d7 = K.d7Set;                                           // $260774 move.w #$38,D7
   }

@@ -286,8 +286,11 @@ class BrowserGate:
 
         def response_received(response) -> None:
             headers = response.headers
-            if "no-store" not in headers.get("cache-control", "") \
-                    or headers.get("pragma", "").lower() != "no-cache" \
+            cache_control = headers.get("cache-control", "")
+            if not ({"no-store", "no-cache"} & {
+                directive.strip().lower()
+                for directive in cache_control.split(",")
+            }) or headers.get("pragma", "").lower() != "no-cache" \
                     or headers.get("expires") != "0":
                 failures.append(f"cacheable response: {response.url}")
             if response.status >= 400:
@@ -548,6 +551,129 @@ def gate_asset_backed(browser, origin: str) -> None:
         return assert_root_launcher
 
     gate.run("asset-backed root launcher", root_launcher)
+
+    def mod_only_cabinet(page):
+        open_page(page, origin, "/games/ddpdoj/start.html")
+        page.locator('[data-category="survival"] [data-id="invincibility"]').click()
+        page.locator("#launch").click()
+        page.wait_for_url("**/games/ddpdoj/index.html*", timeout=30000)
+        require(urlsplit(page.url).fragment == "mods=invincibility",
+                f"unexpected mod-only launch URL {page.url}")
+        wait_for_condition(page, "window.__mixup !== undefined", timeout=180000)
+        page.evaluate("() => { window.__mixup.demo.running = false; }")
+
+        def read_state() -> dict:
+            return page.evaluate("""() => {
+              const app = window.__mixup;
+              const ram = app.game.ram;
+              const types = [];
+              for (let index = 0; index < 20; index++) {
+                const word = ram.u16(0x80e240 + index * 0x50);
+                if (word !== 0) types.push(word & 0xff);
+              }
+              return {
+                coldBoot: app.demo.coldBoot,
+                seedLf: app.demo.seedLf,
+                logicFrame: app.game.logicFrame,
+                videoFrame: app.game.videoFrame,
+                booted: Boolean(app.game.bootResult),
+                modIds: app.stats().modIds,
+                formationId: app.stats().formationId,
+                runActive: app.demo.mods.runtime.cabinetRunActive,
+                screenState: ram.u16(0x812e56),
+                demoFlag: ram.u16(0x803926),
+                credit: ram.u8(0x80395a),
+                loop: ram.u16(0x813098),
+                types,
+              };
+            }""")
+
+        def advance_to(frame: int) -> dict:
+            page.evaluate("""target => {
+              const demo = window.__mixup.demo;
+              while (demo.game.logicFrame < target) demo.step();
+            }""", frame)
+            return read_state()
+
+        initial = read_state()
+        require(initial["coldBoot"] is True, "mod-only launch is not a cold boot")
+        require(initial["seedLf"] == 0, f"mod-only seed LF is {initial['seedLf']}")
+        require(initial["logicFrame"] < 305,
+                f"mod-only page advanced past warning at LF{initial['logicFrame']}")
+        require(initial["videoFrame"] < 305,
+                f"mod-only page advanced past warning video frame {initial['videoFrame']}")
+        require(initial["booted"] is True, "mod-only launch skipped Game.boot")
+        require(initial["modIds"] == ["invincibility"],
+                f"wrong mod-only IDs {initial['modIds']}")
+        require(initial["formationId"] is None, "mod-only launch gained a formation")
+        require(initial["runActive"] is False, "mod activated before cabinet flow")
+
+        warning = advance_to(20)
+        require(warning["screenState"] == 13,
+                f"mod-only warning state is {warning['screenState']}")
+        scores = advance_to(305)
+        require(scores["screenState"] == 2 and scores["credit"] == 0,
+                f"mod-only zero-credit screen is {scores}")
+
+        page.keyboard.down("Enter")
+        refused = advance_to(306)
+        page.keyboard.up("Enter")
+        require(refused["screenState"] == 2 and refused["credit"] == 0,
+                "mod-only uncredited START was not refused")
+
+        title = advance_to(1190)
+        require(title["screenState"] == 1, f"mod-only title state is {title['screenState']}")
+        attract = advance_to(1940)
+        require(attract["screenState"] == 5 and attract["demoFlag"] == 1,
+                f"mod-only attract state is {attract}")
+        require(attract["runActive"] is False,
+                "Invincibility activated during attract gameplay")
+
+        returned = advance_to(4340)
+        require(returned["screenState"] == 2 and returned["demoFlag"] == 0,
+                f"mod-only attract did not return to cabinet: {returned}")
+        page.keyboard.down("5")
+        for _ in range(30):
+            page.evaluate("() => window.__mixup.demo.step()")
+        page.keyboard.up("5")
+        credited = read_state()
+        require(credited["credit"] == 1 and credited["screenState"] == 3,
+                f"mod-only coin did not credit: {credited}")
+
+        page.keyboard.down("Enter")
+        for _ in range(12):
+            page.evaluate("() => window.__mixup.demo.step()")
+        page.keyboard.up("Enter")
+        selection = read_state()
+        require(selection["credit"] == 0 and selection["screenState"] == 14,
+                f"mod-only START did not spend one credit: {selection}")
+        require(9 in selection["types"],
+                f"mod-only credited path has no fighter selector: {selection['types']}")
+        require(selection["runActive"] is False,
+                "Invincibility activated before fighter selection completed")
+
+        gameplay = advance_to(selection["logicFrame"] + 2500)
+        require(2 in gameplay["types"] and 11 in gameplay["types"]
+                and 9 not in gameplay["types"],
+                f"mod-only selector did not hand off to gameplay: {gameplay['types']}")
+        require(gameplay["runActive"] is True,
+                "Invincibility did not activate at credited selector handoff")
+        require(gameplay["loop"] == 0,
+                f"Invincibility changed the cartridge loop counter to {gameplay['loop']}")
+
+        def recheck() -> None:
+            current = read_state()
+            require(current["coldBoot"] is True and current["seedLf"] == 0,
+                    "mod-only cold-boot identity changed during settling")
+            require(current["runActive"] is True,
+                    "mod-only credited run policy became inactive")
+            require(2 in current["types"] and 11 in current["types"]
+                    and 9 not in current["types"],
+                    f"mod-only gameplay topology changed: {current['types']}")
+
+        return recheck
+
+    gate.run("asset-backed mod-only cabinet flow", mod_only_cabinet)
 
     def side_by_side(page):
         open_page(page, origin, "/games/ddpdoj/start.html")

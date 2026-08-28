@@ -16,7 +16,7 @@ import { DEATH, playerDead24A130, updatePlayer } from '../src/player.js';
 import { bonusLine125FFA8 } from '../src/tally.js';
 import { Demo, progressionPokesForRung } from '../src/web/app.js';
 import {
-  MODS, MOD_IDS, MOD_RAM, resolveLoadout, createModState,
+  MODS, MOD_IDS, MOD_RAM, resolveLoadout, createModState, prepareModCabinetBoot,
   loadoutToHash, hashToLoadout, applyPreFrameMods, applyPostFrameMods,
   transformModInput, transformModTiming, applyPresentationMods,
   replayPolicy, modGameOptions,
@@ -137,10 +137,89 @@ test('W477 timing transforms use mutually exclusive host periods', () => {
   assert.equal(transformModTiming(null, 16.896), 16.896);
 });
 
+test('W629 cabinet loadouts stay pending through attract and activate at credited handoff', () => {
+  const state = stateOf(
+    'invincibility', 'infinite-lives', 'precision-ship', 'turbo',
+    'loop-2-from-stage-1', 'stage-remix',
+  );
+  const direct = modGameOptions(state);
+  assert.equal(Object.hasOwn(direct, 'cabinetRunStartHook'), false,
+    'seeded and direct mod states retain their immediate-run contract');
+  assert.equal(Object.hasOwn(direct, 'cabinetRunEndHook'), false,
+    'seeded and direct mod states do not own a cabinet lifecycle');
+
+  prepareModCabinetBoot(state);
+  const options = modGameOptions(state);
+  assert.equal(typeof options.cabinetRunStartHook, 'function');
+  assert.equal(typeof options.cabinetRunEndHook, 'function');
+  const ram = new Ram();
+  ram.setU16(MOD_RAM.livesP1, 0x2222);
+  const held = portWordFromBits([BIT.up, BIT.b1]);
+
+  applyPreFrameMods(state, ram);
+  applyPostFrameMods(state, ram);
+  assert.equal(ram.u16(MOD_RAM.livesP1), 0x2222,
+    'warning, title, credit, and selector frames retain cartridge RAM');
+  assert.equal(transformModInput(state, held, 3), held,
+    'the pending precision policy does not transform selector input');
+  assert.equal(transformModTiming(state, 16.896), 16.896,
+    'the pending timing policy leaves cabinet presentation at cabinet rate');
+  assert.equal(options.enemyBulletCollisionFilter(ram,
+    { player: MOD_RAM.player1, bank: 'A' }), true,
+  'attract gameplay retains ordinary P1 collision behavior');
+  assert.equal(options.stageAdvanceTransform(1), 1,
+    'attract progression is not remixed');
+
+  options.cabinetRunStartHook(ram, { demo: true });
+  assert.equal(state.runtime.cabinetRunActive, false);
+  assert.equal(ram.u16(MOD_RAM.loopCounter), 0,
+    'an attract handoff cannot enter loop 2');
+
+  options.cabinetRunStartHook(ram, { demo: false });
+  assert.equal(state.runtime.cabinetRunActive, true);
+  assert.equal(ram.u16(MOD_RAM.loopCounter), 1,
+    'loop 2 is armed only after authentic fighter selection');
+  applyPreFrameMods(state, ram);
+  assert.equal(ram.u16(MOD_RAM.livesP1), 3);
+  assert.equal(transformModInput(state, held, 3), portWordFromBits([BIT.b1]));
+  assert.equal(transformModTiming(state, 16.896), 8.448);
+  assert.equal(options.enemyBulletCollisionFilter(ram,
+    { player: MOD_RAM.player1, bank: 'A' }), false);
+  assert.equal(options.stageAdvanceTransform(1), 2);
+
+  state.runtime.grazeCount[0] = 7;
+  state.runtime.resurrectionPositions[0] = { y: 0x1200, x: 0x3400 };
+  options.cabinetRunEndHook(ram);
+  assert.equal(state.runtime.cabinetRunActive, false,
+    'the cartridge cabinet-return seam retires the completed run policy');
+  assert.deepEqual(state.runtime.grazeCount, [0, 0]);
+  assert.deepEqual(state.runtime.resurrectionPositions, [null, null]);
+  ram.setU16(MOD_RAM.livesP1, 0x3333);
+  applyPreFrameMods(state, ram);
+  assert.equal(ram.u16(MOD_RAM.livesP1), 0x3333,
+    'an immediate second cabinet and selector remain pending');
+  assert.equal(transformModInput(state, held, 3), held);
+  assert.equal(transformModTiming(state, 16.896), 16.896);
+  assert.equal(options.enemyBulletCollisionFilter(ram,
+    { player: MOD_RAM.player1, bank: 'A' }), true);
+  assert.equal(options.stageAdvanceTransform(1), 1);
+
+  options.cabinetRunStartHook(ram, { demo: false });
+  assert.equal(state.runtime.cabinetRunActive, true,
+    'the second credited selector handoff reactivates the same loadout');
+  assert.equal(transformModTiming(state, 16.896), 8.448);
+  assert.equal(options.stageAdvanceTransform(1), 2);
+});
+
 test('W477 post-RGB transforms are deterministic and state-local', () => {
+  const invertState = stateOf('invert-colors');
+  prepareModCabinetBoot(invertState);
   const invert = new Uint8Array([10, 20, 30]);
-  applyPresentationMods(stateOf('invert-colors'), invert);
-  assert.deepEqual([...invert], [245, 235, 225]);
+  applyPresentationMods(invertState, invert);
+  assert.deepEqual([...invert], [245, 235, 225],
+    'presentation-only policy may render from cabinet frame zero');
+  assert.equal(invertState.runtime.cabinetRunActive, false,
+    'presentation does not activate cartridge policy');
 
   const mono = new Uint8Array([255, 0, 0]);
   applyPresentationMods(stateOf('monochrome'), mono);
