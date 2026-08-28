@@ -47,11 +47,13 @@ const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const ASSET_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
-const W572_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
-const TABLE_HASH = '376e17ddc03d3e56d728cb804ba091ab098b4039b2d51ba7b2d6689ccd07f7c8';
-const PRIOR_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const ASSET_TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
+const W572_HASH = '0f5e8c092c2d16abe958ba0edaa5ea681fd5b296a0b110e10f91d2c6aa1a6ba9';
+const TABLE_HASH = '5c998537267ec18c9392305350a1dd7b3e4f60bfe5825bb238156864cfacca75';
+const PRIOR_HASH = '0ec146c509a74bf3d75e585fdf2cd268fab86948924fd6c331a45ccce5ec12cc';
+const STORED_TABLE_HASH = '376e17ddc03d3e56d728cb804ba091ab098b4039b2d51ba7b2d6689ccd07f7c8';
+const STORED_PRIOR_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
 const TEMPLATE = Object.freeze([
   0x2080, 0x8b8b, 0x0300, 0x0000, 0xfff9, 0x0013, 0x0002, 0x0004,
   0xfffd, 0x0005, 0xfff5, 0x0006, 0x0000, 0x0000, 0x05fb,
@@ -120,16 +122,16 @@ async function bundle() {
 
 test('W571 adds exactly one disjoint template window and reconstructs strict W570',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 941);
-    assert.equal(TABLE_JSON.rom.windows.length, 941);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457059);
+    assert.equal(ROM_WINDOW_COUNT, 943);
+    assert.equal(TABLE_JSON.rom.windows.length, 943);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457131);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
-    assert.equal(W571_TABLE.rom.windows.length, 844);
-    assert.equal(W571_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452343);
+    assert.equal(W571_TABLE.rom.windows.length, 845);
+    assert.equal(W571_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452351);
     assert.equal(canonicalHash(W571_TABLE), TABLE_HASH,
       'removing W573 and W572 preserves strict historical W571');
-    assert.equal(PRIOR_TABLE.rom.windows.length, 843);
-    assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452313);
+    assert.equal(PRIOR_TABLE.rom.windows.length, 844);
+    assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452321);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH,
       'removing only W571 reconstructs W570 byte for byte');
 
@@ -480,12 +482,15 @@ test('W571 historical identity composes through W576 and its checkpoint migrates
       frontier.raw.stage, frontier.raw.stageX2, frontier.raw.stageX4, frontier.raw.loop,
       frontier.ramSha256, frontier.gameSha256,
     ], [
-      PRIOR_HASH, 145131, 155720, 4, 8, 16, 1,
+      STORED_PRIOR_HASH, 145131, 155720, 4, 8, 16, 1,
       '96fca098a3ed4ce80618ae0f675d8afd2e18442d19574d070ca016924adbf9d9',
       'a4fac661dfc90179650cce42318fb7b46923044d0ef94c97786fad92f7745e99',
     ]);
-    restoreCheckpoint(frontier, { ...exact, tables: PRIOR_TABLE }, frontier.selection);
-    const migratedW571 = { ...frontier, tablesSha256: TABLE_HASH };
+    const adoptedPrior = { ...frontier, tablesSha256: PRIOR_HASH };
+    assert.deepEqual({ ...adoptedPrior, tablesSha256: frontier.tablesSha256 }, frontier,
+      'W623 adoption changes only the stored W570 checkpoint table identity');
+    restoreCheckpoint(adoptedPrior, { ...exact, tables: PRIOR_TABLE }, adoptedPrior.selection);
+    const migratedW571 = { ...adoptedPrior, tablesSha256: TABLE_HASH };
     restoreCheckpoint(migratedW571, { ...exact, tables: W571_TABLE }, frontier.selection);
 
     const periodic = JSON.parse(readFileSync(PERIODIC, 'utf8'));
@@ -494,12 +499,15 @@ test('W571 historical identity composes through W576 and its checkpoint migrates
       periodic.raw.stage, periodic.raw.stageX2, periodic.raw.stageX4, periodic.raw.loop,
       periodic.ramSha256, periodic.gameSha256,
     ], [
-      TABLE_HASH, 145631, 156220, 4, 8, 16, 1,
+      STORED_TABLE_HASH, 145631, 156220, 4, 8, 16, 1,
       '26400c3c024c4bda3a1578210a599ba49b6ea9c154a86c2530e7294de053332b',
       'd25395bda9a3c25f53a2a9c06ce747f9924a4bc418268cd7d937414765c8cb1c',
     ]);
-    restoreCheckpoint(periodic, { ...exact, tables: W571_TABLE }, periodic.selection);
-    const migratedW572 = { ...periodic, tablesSha256: W572_HASH };
+    const adoptedW571 = { ...periodic, tablesSha256: TABLE_HASH };
+    assert.deepEqual({ ...adoptedW571, tablesSha256: periodic.tablesSha256 }, periodic,
+      'W623 adoption changes only the stored W571 checkpoint table identity');
+    restoreCheckpoint(adoptedW571, { ...exact, tables: W571_TABLE }, adoptedW571.selection);
+    const migratedW572 = { ...adoptedW571, tablesSha256: W572_HASH };
     restoreCheckpoint(migratedW572, { ...exact, tables: W572_TABLE }, periodic.selection);
     assert.deepEqual([migratedW572.ramSha256, migratedW572.gameSha256],
       [periodic.ramSha256, periodic.gameSha256],

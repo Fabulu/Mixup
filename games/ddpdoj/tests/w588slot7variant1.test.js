@@ -32,9 +32,9 @@ const ROM = SKIP ? null : new RomWindows(W588_TABLE.rom);
 const SCRIPT = 0x291040;
 const SCRIPT_END = 0x29109c;
 const VARIANT_1_LIST = 0x290f36;
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
-const PRIOR_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const TABLE_HASH = '5dd4830d8759db1fbfbeddef529225a76b264739a9c7375ba00f2be5ce47a837';
+const PRIOR_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const SCRIPT_HASH = '0d1653d2d5d777820678bfd8178688498ca9b3aa68370b8bef0a022a8a32443a';
 const WORDS = Object.freeze([
   0x8000, 0x0000,
@@ -92,17 +92,17 @@ test('W588 exports the exact script and two previously absent spawn pointers',
       ROM_WINDOW_COUNT, ROM_OVERLAP_PAIRS, TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0),
       canonicalHash(TABLE_JSON),
-    ], [941, 77, 941, 457059, LIVE_TABLE_HASH]);
+    ], [943, 77, 943, 457131, LIVE_TABLE_HASH]);
     assert.deepEqual([
       W588_TABLE.rom.windows.length,
       W588_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
       canonicalHash(W588_TABLE),
-    ], [854, 452789, TABLE_HASH]);
+    ], [855, 452797, TABLE_HASH]);
     assert.deepEqual([
       PRIOR_TABLE.rom.windows.length,
       PRIOR_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
       canonicalHash(PRIOR_TABLE),
-    ], [851, 452689, PRIOR_HASH]);
+    ], [852, 452697, PRIOR_HASH]);
     assert.equal(overlappingPairs(W588_TABLE.rom.windows.map((window) => [
       Number.parseInt(window.base.slice(1), 16), window.len,
     ])), 77);

@@ -33,8 +33,10 @@ const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
 const A5 = 0x81332c;
 const A6 = 0x81533c;
-const PRIOR_TABLE_SHA256 = 'd70eab3e9152e70ee51fc4d653b244c58d665b1b8908bb2e75caa05207ec7769';
-const W558_TABLE_SHA256 = '250d097bf5c060d214fe690ef264b71a50225690909174320b3b921a76e33e1d';
+const PRIOR_TABLE_SHA256 = '4097e2791990bfa94677e254bc133f34c3a0c02cd5304a9c8e35c510ed6b1969';
+const W558_TABLE_SHA256 = '194e8a881411bebaa23050afac4b5e41e42857146217f07ef92f9c7b6a0a9990';
+const STORED_PRIOR_TABLE_SHA256 = 'd70eab3e9152e70ee51fc4d653b244c58d665b1b8908bb2e75caa05207ec7769';
+const STORED_W558_TABLE_SHA256 = '250d097bf5c060d214fe690ef264b71a50225690909174320b3b921a76e33e1d';
 const POST_W558_BASES = new Set([
   '$2A4B40', '$2A9318', '$2A934E', '$2A967A', '$2A96B6', '$2A97B6',
   '$2A9A68', '$2A9E50', '$2AA004', '$2AA040',
@@ -126,6 +128,9 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
       object16ArtFrames: 8,
       object17: 0x2a4d5e,
       object18: 0x2a4de0,
+      object18CodeEnd: 0x2a4e14,
+      object18Art: 0x2a4e16,
+      object18ArtFrames: 16,
     });
     assert.equal(beU16(HIBACHI_A2.object3), 0x303c, '$2A4816 starts move.w #$A00,D0');
     assert.equal(beU16(0x2a482e), 0x41fa, '$2A482E loads the shared art table');
@@ -148,14 +153,24 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
     const w568 = tableBeforeW569(TABLE_JSON);
     const w558 = { ...w568, rom: { ...w568.rom,
       windows: w568.rom.windows.filter((w) => !POST_W558_BASES.has(w.base)) } };
-    assert.equal(w558.rom.windows.length, 815);
+    assert.equal(w558.rom.windows.length, 816);
     assert.equal(canonicalHash(w558), W558_TABLE_SHA256,
-      'stripping W560, W562, and W563 reconstructs the exact W558 identity');
+      'stripping W560, W562, and W563 reconstructs the adopted W558 identity');
+    const storedW558 = { ...w558, rom: { ...w558.rom,
+      windows: w558.rom.windows.filter((w) => w.base !== '$259512') } };
+    assert.deepEqual([storedW558.rom.windows.length, canonicalHash(storedW558)],
+      [815, STORED_W558_TABLE_SHA256],
+      'removing only the W623 route window recovers the stored W558 identity');
     const prior = { ...w558, rom: { ...w558.rom,
       windows: w558.rom.windows.filter((w) => w.base !== '$2A49F6') } };
-    assert.equal(prior.rom.windows.length, 814);
+    assert.equal(prior.rom.windows.length, 815);
     assert.equal(canonicalHash(prior), PRIOR_TABLE_SHA256,
-      'removing exactly the W558 window reconstructs the prior table identity');
+      'removing exactly the W558 window reconstructs the adopted prior table identity');
+    const storedPrior = { ...prior, rom: { ...prior.rom,
+      windows: prior.rom.windows.filter((w) => w.base !== '$259512') } };
+    assert.deepEqual([storedPrior.rom.windows.length, canonicalHash(storedPrior)],
+      [814, STORED_PRIOR_TABLE_SHA256],
+      'removing only the W623 route window recovers the stored prior table identity');
   });
 
 test('W558 object 3 updates offsets, emits exact registers, and persists',
@@ -215,16 +230,17 @@ test('W558 ships all 64 shared part frames in the boss shard', { skip: SKIP_ASSE
   }
   const first = beU32(HIBACHI_A2.object3Art);
   const last = beU32(HIBACHI_A2.object3Art + (HIBACHI_A2.object3ArtFrames - 1) * 4);
-  assert.deepEqual(rows.get(first), { base: 2421290, maskWords: 562 });
-  assert.deepEqual(rows.get(last), { base: 2456696, maskWords: 562 });
+  // W626 and W627 inserted earlier packed streams; both extents remain exact.
+  assert.deepEqual(rows.get(first), { base: 2488788, maskWords: 562 });
+  assert.deepEqual(rows.get(last), { base: 2524194, maskWords: 562 });
   for (let i = 0; i < HIBACHI_A2.object3ArtFrames; i++) {
     assert.equal(rows.get(beU32(HIBACHI_A2.object3Art + i * 4))?.maskWords, 562);
   }
   const shard = manifest.spr.shards[17];
-  assert.equal(manifest.spr.streamCount, 5636);
-  assert.equal(shard.streams, 1516);
-  assert.equal(shard.maskLen, 851232);
-  assert.equal(shard.colLen, 2149650);
-  assert.equal(manifest.spr.maskUsed, 2868952);
-  assert.equal(manifest.spr.colUsed, 7163964);
+  assert.equal(manifest.spr.streamCount, 5893);
+  assert.equal(shard.streams, 1579);
+  assert.equal(shard.maskLen, 915358);
+  assert.equal(shard.colLen, 2297683);
+  assert.equal(manifest.spr.maskUsed, 2950986);
+  assert.equal(manifest.spr.colUsed, 7368609);
 });

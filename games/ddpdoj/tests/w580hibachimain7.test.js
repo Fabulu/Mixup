@@ -46,9 +46,10 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
-const TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
+const STORED_CHECKPOINT_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
+const STORED_W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const RNG_STATE = 0x803916;
@@ -129,10 +130,10 @@ test('W580 pins the raw id-7 row, all span hashes, id-8 boundary, and branch tai
 
 test('W580 adds no ROM window and preserves the exact table identity',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 941);
+    assert.equal(ROM_WINDOW_COUNT, 943);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 941);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457059);
+    assert.equal(TABLE_JSON.rom.windows.length, 943);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457131);
     let overlaps = 0;
     for (let i = 0; i < TABLE_JSON.rom.windows.length; i++) {
       const a = TABLE_JSON.rom.windows[i];
@@ -153,10 +154,10 @@ test('W580 pins and restores both new 500-frame periodic checkpoints',
     const assets = await bundle();
     assert.equal(canonicalHash(assets.tables), LIVE_TABLE_HASH);
     const expected = [
-      [TABLE_HASH, 149631, 160244,
+      [STORED_CHECKPOINT_TABLE_HASH, 149631, 160244,
         'e92174f8b47aa6a3c2ea3a1cfdecc8d84365365dd12b2d59bda1da956e6d8dc9',
         'a635bc5e34333a78bf5dc6eb5ec800494d2121aa276df19f5a4e92d44faf73cf'],
-      [W587_TABLE_HASH, 150131, 160744,
+      [STORED_W587_TABLE_HASH, 150131, 160744,
         '1003233dd2baeb59bb1af2208f56cd62bfdaf4752458c0d7769ca55429829a07',
         '7f9e1c02322b112168d630483e8c2d6d43ca1d70d4c691886ee036c8a7437f88'],
     ];
@@ -349,7 +350,7 @@ test('W580 restores exact lf149131 and reaches the exact W587 $291040 frontier',
       checkpoint.selection.ship, checkpoint.selection.style,
       checkpoint.inputWord, checkpoint.probeOnly.invulnerable,
     ], [
-      TABLE_HASH, 149131, 159744, 4, 8, 16, 1,
+      STORED_CHECKPOINT_TABLE_HASH, 149131, 159744, 4, 8, 16, 1,
       '7d623105d9054771b76378fb62051785a08587205333daffaa155958535f9386',
       '8f62e99da81abae4193aaeddddd4487124ba7d893836b106c1323a2f5b30e4d1',
       0, 4, 65499, true,

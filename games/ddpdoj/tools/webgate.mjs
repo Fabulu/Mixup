@@ -1297,7 +1297,10 @@ try {
         // W497: `streams` 411 -> 451 while records 1821, distinct 34 and first 24
         // all hold. The 40 additions are the two authentic regular-laser groups
         // made reachable by the ship/style selector; this Type-A seed uses neither.
-        10: { streams: 451, records: 1821, distinct: 34, first: 24,
+        // W626: `streams` 451 -> 450 while every live metric still holds. One selector
+        // stream moved to shard 0 when the complete cabinet and ending art made shard 0
+        // the first owner; the global stream remained present and was not removed.
+        10: { streams: 450, records: 1821, distinct: 34, first: 24,
           what: 'THE LASER BEAM ($24BB0A x4 frames x5 powers + the HYPER block '
             + '$24BAE2 x4 frames + the segment and option blocks, bucket 16)' },
         // W66: 146 -> 153. The fifth chain range ($12D430, 8 frames of stride

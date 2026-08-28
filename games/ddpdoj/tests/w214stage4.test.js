@@ -88,7 +88,7 @@ test('W214 exact type-$9C root/satellite closure, eleven records, and four new s
   // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
   // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
   // shard 9 at 313/166,218.
-  assert.equal(manifest.spr.streamCount, 5636);
+  assert.equal(manifest.spr.streamCount, 5893);
 });
 
 test('W214 real clock-$E5 root initializes five satellite pairs, fires, draws, and dies',

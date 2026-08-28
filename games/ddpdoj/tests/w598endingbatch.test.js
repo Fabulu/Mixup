@@ -51,9 +51,9 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW598(TABLE_JSON);
 
-const CURRENT_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const W597_HASH = '048ae8ac06bcbef9a8fc7648acb2fd6eaaebb091b26545986f1753f79f2c8d6e';
-const CHECKPOINT_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const CURRENT_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const W597_HASH = '46064f29e4cde17e95d86b1a823e82d852346ca80325ed5ea9fbcbb6ddbda4c9';
+const STORED_CHECKPOINT_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const OPCODE_WIDTHS = new Map([
   [0x8000, 4], [0x8001, 6], [0x8002, 4], [0x8003, 4], [0x8005, 6],
 ]);
@@ -174,7 +174,7 @@ test('W598 adds exactly six list-C scripts and nineteen picture pointers',
     assert.deepEqual([
       canonicalHash(PRIOR_TABLE), PRIOR_TABLE.rom.windows.length,
       PRIOR_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
-    ], [W597_HASH, 911, 454759]);
+    ], [W597_HASH, 912, 454767]);
     assert.deepEqual(tableBeforeW598(PRIOR_TABLE), PRIOR_TABLE,
       'the exact W597 reconstruction is idempotent');
 
@@ -252,8 +252,10 @@ test('W598 all six pairs draw their ending and reach name entry, reset, and attr
       checkpoint.tablesSha256, checkpoint.frame.logic, checkpoint.frame.video,
       checkpoint.raw.stage, checkpoint.raw.loop,
       checkpoint.selection.ship, checkpoint.selection.style,
-    ], [CHECKPOINT_HASH, 151631, 162268, 4, 1, 0, 4]);
+    ], [STORED_CHECKPOINT_HASH, 151631, 162268, 4, 1, 0, 4]);
     const migrated = { ...checkpoint, tablesSha256: CURRENT_HASH };
+    assert.deepEqual({ ...migrated, tablesSha256: checkpoint.tablesSha256 }, checkpoint,
+      'W623 adoption changes only the stored checkpoint table identity');
 
     const endingByStyle = new Map(FAMILIES.map((family) =>
       [family.style, decodeList(ROM, family.list).streams]));

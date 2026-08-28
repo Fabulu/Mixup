@@ -45,8 +45,9 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W584_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(W584_TABLE.rom);
 const MT = SKIP ? null : new MoveTables(W584_TABLE, ROM);
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
+const STORED_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const RNG_STATE = 0x803916;
@@ -130,16 +131,16 @@ test('W585 pins the raw id-9 row, code hashes, id-10 boundary, and registration'
 
 test('W585 adds no ROM window and W588 preserves the exact W584 table identity',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 941);
+    assert.equal(ROM_WINDOW_COUNT, 943);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 941);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457059);
+    assert.equal(TABLE_JSON.rom.windows.length, 943);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457131);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual([
       W584_TABLE.rom.windows.length,
       W584_TABLE.rom.windows.reduce((n, w) => n + w.len, 0),
       canonicalHash(W584_TABLE),
-    ], [851, 452689, TABLE_HASH]);
+    ], [852, 452697, TABLE_HASH]);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W585:')), []);
   });
 
@@ -294,10 +295,13 @@ test('W585 periodic checkpoints restore exactly and reach the W587 loud frontier
         checkpoint.selection.ship, checkpoint.selection.style,
         checkpoint.inputWord, checkpoint.probeOnly.invulnerable, binaryHash(bytes),
       ], [
-        TABLE_HASH, logic, video, 4, 8, 16, 1, ramSha256, gameSha256,
+        STORED_TABLE_HASH, logic, video, 4, 8, 16, 1, ramSha256, gameSha256,
         0, 4, 65499, true, fileSha256,
       ]);
-      const restoredGame = restoreCheckpoint(checkpoint, assets, checkpoint.selection);
+      const adoptedCheckpoint = { ...checkpoint, tablesSha256: TABLE_HASH };
+      assert.deepEqual({ ...adoptedCheckpoint, tablesSha256: checkpoint.tablesSha256 }, checkpoint,
+        'W623 adoption changes only the stored checkpoint table identity');
+      const restoredGame = restoreCheckpoint(adoptedCheckpoint, assets, checkpoint.selection);
       const restored = checkpointDocument(restoredGame.game, assets, {
         ...checkpoint.selection, inputWord: restoredGame.probe.inputWord, invulnerable: true,
       });
@@ -308,7 +312,9 @@ test('W585 periodic checkpoints restore exactly and reach the W587 loud frontier
     }
 
     const checkpoint = JSON.parse(readFileSync(PERIODIC_CHECKPOINTS[1], 'utf8'));
-    const resumed = restoreCheckpoint(checkpoint, assets, checkpoint.selection);
+    assert.equal(checkpoint.tablesSha256, STORED_TABLE_HASH);
+    const adoptedCheckpoint = { ...checkpoint, tablesSha256: TABLE_HASH };
+    const resumed = restoreCheckpoint(adoptedCheckpoint, assets, checkpoint.selection);
     let error = null;
     let attempted = 0;
     for (attempted = 1; attempted <= 2400; attempted++) {

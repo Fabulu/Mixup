@@ -41,10 +41,10 @@ const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
-const TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
-const PRIOR_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
+const STORED_CHECKPOINT_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
+const PRIOR_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const RNG_STATE = 0x803916;
@@ -110,9 +110,9 @@ test('W577 pins the exact id-2 pair, boundary, registrations, and unchanged tabl
     assert.ok(registered.has(HIBACHI_A0.s2Init));
     assert.ok(registered.has(HIBACHI_A0.s2Step));
 
-    assert.equal(ROM_WINDOW_COUNT, 941);
-    assert.equal(TABLE_JSON.rom.windows.length, 941);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457059);
+    assert.equal(ROM_WINDOW_COUNT, 943);
+    assert.equal(TABLE_JSON.rom.windows.length, 943);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457131);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W577:')), []);
@@ -263,7 +263,7 @@ test('W577 restores exact lf148131 and reaches the W587 $291040 frontier',
       checkpoint.raw.stage, checkpoint.raw.stageX2, checkpoint.raw.stageX4, checkpoint.raw.loop,
       checkpoint.ramSha256, checkpoint.gameSha256,
     ], [
-      TABLE_HASH, 148131, 158744, 4, 8, 16, 1,
+      STORED_CHECKPOINT_TABLE_HASH, 148131, 158744, 4, 8, 16, 1,
       '4b10c9936658b340e8deb501c4924a1ff7ce4dcbba6b38ffcd155582333c3e71',
       '079c70c717faacc08c5ff1fdbea27d42c359bdace0f276f8c4306ed324a7b4e5',
     ]);

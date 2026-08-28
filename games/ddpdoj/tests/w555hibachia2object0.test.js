@@ -109,6 +109,9 @@ test('W555 cartridge pins the object-0 code, art table, and direct registration'
       object16ArtFrames: 8,
       object17: 0x2a4d5e,
       object18: 0x2a4de0,
+      object18CodeEnd: 0x2a4e14,
+      object18Art: 0x2a4e16,
+      object18ArtFrames: 16,
     });
     assert.equal(beU16(HIBACHI_A2.object0), 0x303c, '$2A4702 is move.w #$1A,D0');
     assert.equal(beU16(0x2a476c), 0x4ef9, '$2A476C is the tail jmp');
@@ -188,10 +191,10 @@ test('W555 exports exactly six new authentic frames into the boss shard',
       added: 6,
       already: 0,
     });
-    assert.equal(manifest.spr.streamCount, 5636);
-    assert.equal(manifest.spr.shards[17].streams, 1516);
-    assert.equal(manifest.spr.shards[17].maskLen, 851232);
-    assert.equal(manifest.spr.shards[17].colLen, 2149650);
-    assert.equal(manifest.spr.maskUsed, 2868952);
-    assert.equal(manifest.spr.colUsed, 7163964);
+    assert.equal(manifest.spr.streamCount, 5893);
+    assert.equal(manifest.spr.shards[17].streams, 1579);
+    assert.equal(manifest.spr.shards[17].maskLen, 915358);
+    assert.equal(manifest.spr.shards[17].colLen, 2297683);
+    assert.equal(manifest.spr.maskUsed, 2950986);
+    assert.equal(manifest.spr.colUsed, 7368609);
   });

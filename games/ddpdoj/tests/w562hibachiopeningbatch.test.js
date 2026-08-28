@@ -106,8 +106,13 @@ const CALL_SITES = Object.freeze([
   0x2a94aa, 0x2a94d8, 0x2a94e2, 0x2a94ec,
   0x2a951a, 0x2a9548,
 ]);
-const PRIOR_HASH = 'd55cfe3af945d92941c3b4b397cf52d11c864513cfb43a2502cc38f348ea6694';
-const FUTURE_HASH = 'cb4da240a356def6672b3ae361a61977569f75fb5e1f63a617e2c0f85ce2f019';
+const PRIOR_HASH = 'adb6db31702dd828633ae0640a16e5d04ae44751f07120b4b5bacb314f6fea41';
+const FUTURE_HASH = '30fc85c4df8009c377c2a2e738746a2523f6ab2907bce752cb58d65e091e9366';
+const CHECKPOINT_TABLE_HASH = '6d3d2c3fca7badac4d1e29fda4095563a1e67352a27a1272e21c698df52a394e';
+const STORED_PRIOR_HASH = 'd55cfe3af945d92941c3b4b397cf52d11c864513cfb43a2502cc38f348ea6694';
+const STORED_FUTURE_HASH = 'cb4da240a356def6672b3ae361a61977569f75fb5e1f63a617e2c0f85ce2f019';
+const STORED_CHECKPOINT_TABLE_HASH =
+  '80b9cd8d170bb9815e22e379b87587e0c2313d2c76eefa3afc0350606beb1041';
 const canonicalHash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const beU16 = (address) => IMG.readUInt16BE(address);
 const caught = (fn) => {
@@ -148,16 +153,29 @@ test('W562 is exactly four disjoint additive windows and $16A bytes', { skip: SK
   assert.deepEqual(W562_TABLE, FUTURE_TABLE,
     'removing the later W563-W568 windows reconstructs the exact W562 additive result');
   assert.equal(TABLE_JSON.rom.windows.length, ROM_WINDOW_COUNT);
-  assert.equal(ROM_WINDOW_COUNT, 941);
-  assert.equal(W562_TABLE.rom.windows.length, 820);
+  assert.equal(ROM_WINDOW_COUNT, 943);
+  assert.equal(W562_TABLE.rom.windows.length, 821);
   assert.equal(canonicalHash(W562_TABLE), FUTURE_HASH,
-    'the reconstructed table has the exact W562 identity');
-  assert.equal(PRIOR_TABLE.rom.windows.length, 816);
+    'the adopted reconstruction has the exact W562 identity');
+  const storedW562 = JSON.parse(JSON.stringify(W562_TABLE));
+  storedW562.rom.windows = storedW562.rom.windows.filter((w) => w.base !== '$259512');
+  assert.deepEqual([
+    storedW562.rom.windows.length,
+    storedW562.rom.windows.reduce((n, w) => n + w.len, 0),
+    canonicalHash(storedW562),
+  ], [820, 451535, STORED_FUTURE_HASH],
+    'W623-W627 live windows do not alter the stored historical reconstructed wave table');
+  assert.equal(PRIOR_TABLE.rom.windows.length, 817);
   assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
-  assert.equal(FUTURE_TABLE.rom.windows.length, 820);
+  const storedPrior = JSON.parse(JSON.stringify(PRIOR_TABLE));
+  storedPrior.rom.windows = storedPrior.rom.windows.filter((w) => w.base !== '$259512');
+  assert.deepEqual([storedPrior.rom.windows.length, canonicalHash(storedPrior)],
+    [816, STORED_PRIOR_HASH],
+    'removing only the adopted W623 route window recovers the stored prior identity');
+  assert.equal(FUTURE_TABLE.rom.windows.length, 821);
   assert.equal(canonicalHash(FUTURE_TABLE), FUTURE_HASH);
   assert.equal(W562_WINDOWS.reduce((n, w) => n + w.len, 0), 0x16a);
-  assert.equal(FUTURE_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451535);
+  assert.equal(FUTURE_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451543);
   assert.deepEqual(W562_WINDOWS.map(({ base, len }) => [base, len]), [
     ['$2A9318', 0x16], ['$2A934E', 0x18], ['$2A967A', 0x3c], ['$2A96B6', 0x100],
   ]);
@@ -469,7 +487,19 @@ test('W562 future-window checkpoint reaches gun 1 template as the W563 window se
     const exact = await bundle();
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
     const checkpointExact = { ...exact, tables: CHECKPOINT_TABLE };
-    const { game, probe } = restoreCheckpoint(checkpoint, checkpointExact, checkpoint.selection);
+    assert.equal(canonicalHash(CHECKPOINT_TABLE), CHECKPOINT_TABLE_HASH);
+    const storedCheckpointTable = JSON.parse(JSON.stringify(CHECKPOINT_TABLE));
+    storedCheckpointTable.rom.windows = storedCheckpointTable.rom.windows
+      .filter((w) => w.base !== '$259512');
+    assert.deepEqual([
+      storedCheckpointTable.rom.windows.length, canonicalHash(storedCheckpointTable),
+      checkpoint.tablesSha256,
+    ], [821, STORED_CHECKPOINT_TABLE_HASH, STORED_CHECKPOINT_TABLE_HASH]);
+    const adoptedCheckpoint = { ...checkpoint, tablesSha256: CHECKPOINT_TABLE_HASH };
+    assert.deepEqual({ ...adoptedCheckpoint, tablesSha256: checkpoint.tablesSha256 }, checkpoint,
+      'W623 adoption changes only the stored checkpoint table identity');
+    const { game, probe } = restoreCheckpoint(
+      adoptedCheckpoint, checkpointExact, adoptedCheckpoint.selection);
     assert.deepEqual(probe, {
       ship: 0, style: 4, inputWord: checkpoint.inputWord, invulnerable: true,
     });

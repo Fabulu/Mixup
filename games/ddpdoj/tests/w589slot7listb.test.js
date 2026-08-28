@@ -43,8 +43,9 @@ const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W588_TABLE = SKIP ? null : tableBeforeW589(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const W588_TABLE_HASH = 'e6375da211814c6ff3bbbb3bfcaddb88fbd5f2dd93894008191e68aa0cdc19b2';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const W588_TABLE_HASH = '5dd4830d8759db1fbfbeddef529225a76b264739a9c7375ba00f2be5ce47a837';
+const STORED_CHECKPOINT_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const FAMILY_HASH = '5ac350be51f40c6d0714f82ec621cb1288ea2dce91f8a8e8a17c974837d8ac9b';
 const SPARSE_HASH = '47546e70b923a30e3285d74367a803b10f7433027e59807b8edafc52d30d5e2a';
 const COMBINED_HASH = 'ba061a0b9af5adcc955b79b9ce40fe0814324506e1a2d74e4741725da4aca8b6';
@@ -261,12 +262,12 @@ test('W589 registry is exact, reconstructs W588 strictly, and stops at $291B3A',
         Number.parseInt(window.base.slice(1), 16), window.len,
       ])),
       canonicalHash(TABLE_JSON),
-    ], [941, 77, 941, 457059, 77, LIVE_TABLE_HASH]);
+    ], [943, 77, 943, 457131, 77, LIVE_TABLE_HASH]);
     assert.deepEqual([
       W588_TABLE.rom.windows.length,
       W588_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
       canonicalHash(W588_TABLE),
-    ], [854, 452789, W588_TABLE_HASH]);
+    ], [855, 452797, W588_TABLE_HASH]);
 
     const expected = [
       ...SCRIPT_SPECS.map(([base, len]) => [base, len]),
@@ -416,7 +417,7 @@ test('W589 browser bundle packs every list-B picture and banner in shard 17',
       manifest.spr.streamCount, shard.streams,
       manifest.spr.maskUsed, manifest.spr.colUsed,
       shard.maskLen, shard.colLen,
-    ], [5636, 1516, 2868952, 7163964, 851232, 2149650]);
+    ], [5893, 1579, 2950986, 7368609, 915358, 2297683]);
     const absent = [...streams].filter((offs) => !byRom.has(offs));
     assert.deepEqual(absent, []);
     for (const offs of streams) {
@@ -431,6 +432,7 @@ test('W589 production route completes entries, terminates, hands to type $800F, 
   { skip: SKIP_ROUTE }, async () => {
     const assets = await bundle(TABLE_JSON);
     const checkpoint = JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
+    assert.equal(checkpoint.tablesSha256, STORED_CHECKPOINT_TABLE_HASH);
     const resumed = restoreCheckpoint(
       { ...checkpoint, tablesSha256: LIVE_TABLE_HASH }, assets, checkpoint.selection);
     const completions = [];

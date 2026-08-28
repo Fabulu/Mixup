@@ -65,8 +65,10 @@ const ROM = SKIP ? null : new RomWindows(FUTURE_TABLE.rom);
 const MT = SKIP ? null : new MoveTables(FUTURE_TABLE, ROM);
 const A5 = 0x81332c;
 const A6 = 0x81533c;
-const PRIOR_TABLE_SHA256 = '250d097bf5c060d214fe690ef264b71a50225690909174320b3b921a76e33e1d';
-const W560_TABLE_SHA256 = 'd55cfe3af945d92941c3b4b397cf52d11c864513cfb43a2502cc38f348ea6694';
+const PRIOR_TABLE_SHA256 = '194e8a881411bebaa23050afac4b5e41e42857146217f07ef92f9c7b6a0a9990';
+const W560_TABLE_SHA256 = 'adb6db31702dd828633ae0640a16e5d04ae44751f07120b4b5bacb314f6fea41';
+const STORED_PRIOR_TABLE_SHA256 = '250d097bf5c060d214fe690ef264b71a50225690909174320b3b921a76e33e1d';
+const STORED_W560_TABLE_SHA256 = 'd55cfe3af945d92941c3b4b397cf52d11c864513cfb43a2502cc38f348ea6694';
 const POINTERS = Object.freeze([
   0x2a4702, 0x2a478c, 0x2a47d6, 0x2a4816, 0x2a4866,
   0x2a48b6, 0x2a4906, 0x2a4956, 0x2a49a6, 0x2a4af6,
@@ -152,13 +154,23 @@ test('W560 pins the exact pointer table, routine boundaries, and shared six-fram
 
 test('W560 is a strict one-window additive superset with exact count and hashes',
   { skip: SKIP }, () => {
-    assert.equal(PRIOR_TABLE.rom.windows.length, 815);
+    assert.equal(PRIOR_TABLE.rom.windows.length, 816);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_TABLE_SHA256,
-      'removing W560, if present, reconstructs the W558 checkpoint identity');
+      'removing W560, if present, reconstructs the adopted W558 identity');
+    const storedPrior = JSON.parse(JSON.stringify(PRIOR_TABLE));
+    storedPrior.rom.windows = storedPrior.rom.windows.filter((w) => w.base !== '$259512');
+    assert.deepEqual([storedPrior.rom.windows.length, canonicalHash(storedPrior)],
+      [815, STORED_PRIOR_TABLE_SHA256],
+      'removing only the W623 route window recovers the stored W558 identity');
     assert.equal(TABLE_JSON.rom.windows.filter((w) => POST_W560_BASES.has(w.base)).length, 23,
       'historical reconstruction strips all twenty-three post-W560 windows');
-    assert.equal(FUTURE_TABLE.rom.windows.length, 816);
+    assert.equal(FUTURE_TABLE.rom.windows.length, 817);
     assert.equal(canonicalHash(FUTURE_TABLE), W560_TABLE_SHA256);
+    const storedW560 = JSON.parse(JSON.stringify(FUTURE_TABLE));
+    storedW560.rom.windows = storedW560.rom.windows.filter((w) => w.base !== '$259512');
+    assert.deepEqual([storedW560.rom.windows.length, canonicalHash(storedW560)],
+      [816, STORED_W560_TABLE_SHA256],
+      'removing only the W623 route window recovers the stored W560 identity');
 
     const addedAt = FUTURE_TABLE.rom.windows.findIndex((w) => w.base === W560_WINDOW.base);
     assert.notEqual(addedAt, -1);
@@ -198,20 +210,21 @@ test('W560 ships all six table streams and object 13 fixed stream in the boss sh
       base = (base + flat[manifest.spr.streamCount + i]) >>> 0;
       rows.set(offs, { base, maskWords: flat[manifest.spr.streamCount * 2 + i] });
     }
+    // W626 inserted earlier packed streams; every per-stream extent remains exact.
     assert.deepEqual(TABLE_STREAMS.map((at) => rows.get(at)), [
-      { base: 2404896, maskWords: 1442 }, { base: 2406338, maskWords: 1442 },
-      { base: 2407780, maskWords: 1442 }, { base: 2409222, maskWords: 1442 },
-      { base: 2410664, maskWords: 1442 }, { base: 2412106, maskWords: 1442 },
+      { base: 2422804, maskWords: 1442 }, { base: 2424246, maskWords: 1442 },
+      { base: 2425688, maskWords: 1442 }, { base: 2427130, maskWords: 1442 },
+      { base: 2428572, maskWords: 1442 }, { base: 2430014, maskWords: 1442 },
     ]);
-    assert.deepEqual(rows.get(OBJECT13_STREAM), { base: 2461868, maskWords: 674 });
+    assert.deepEqual(rows.get(OBJECT13_STREAM), { base: 2529366, maskWords: 674 });
 
     const shard = manifest.spr.shards[17];
-    assert.equal(manifest.spr.streamCount, 5636);
-    assert.equal(shard.streams, 1516);
-    assert.equal(shard.maskLen, 851232);
-    assert.equal(shard.colLen, 2149650);
-    assert.equal(manifest.spr.maskUsed, 2868952);
-    assert.equal(manifest.spr.colUsed, 7163964);
+    assert.equal(manifest.spr.streamCount, 5893);
+    assert.equal(shard.streams, 1579);
+    assert.equal(shard.maskLen, 915358);
+    assert.equal(shard.colLen, 2297683);
+    assert.equal(manifest.spr.maskUsed, 2950986);
+    assert.equal(manifest.spr.colUsed, 7368609);
   });
 
 test('W560 all five implemented ids emit exact requests and remain running',

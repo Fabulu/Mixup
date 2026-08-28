@@ -42,9 +42,10 @@ const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
-const TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
+const TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
+const STORED_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const FRONTIER_A6 = 0x81533c;
@@ -72,9 +73,9 @@ async function bundle() {
 const attached = (ram, part) => ram.u32(SUB + part + 0x02);
 
 test('W574 pins the exact A0 id-1 pair and adds no ROM window', { skip: SKIP }, () => {
-  assert.equal(ROM_WINDOW_COUNT, 941);
-  assert.equal(TABLE_JSON.rom.windows.length, 941);
-  assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457059);
+  assert.equal(ROM_WINDOW_COUNT, 943);
+  assert.equal(TABLE_JSON.rom.windows.length, 943);
+  assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457131);
   assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
   assert.equal(canonicalHash(W575_TABLE), TABLE_HASH);
   assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W574:')), []);
@@ -239,15 +240,22 @@ test('W574 resumes the migrated W573 state and reaches the W587 $291040 frontier
       frontier.raw.stage, frontier.raw.stageX2, frontier.raw.stageX4, frontier.raw.loop,
       frontier.ramSha256, frontier.gameSha256,
     ], [
-      TABLE_HASH, 147631, 158220, 4, 8, 16, 1,
+      STORED_TABLE_HASH, 147631, 158220, 4, 8, 16, 1,
       'c63fba57effb9490ed814c76f12d791c3862f11ec912368960ca8654e5e7c528',
       '1472ca7c0f85a8ddbe2e7e56bfe43c1096f17cf2ec7065d7edf3915ddf78e0d9',
     ]);
-    restoreCheckpoint(frontier, assets, { ship: 0, style: 4 });
+    const adoptedFrontier = { ...frontier, tablesSha256: TABLE_HASH };
+    assert.deepEqual({ ...adoptedFrontier, tablesSha256: frontier.tablesSha256 }, frontier,
+      'W623 adoption changes only the stored checkpoint table identity');
+    restoreCheckpoint(adoptedFrontier, assets, { ship: 0, style: 4 });
 
     const migrated = JSON.parse(readFileSync(MIGRATED, 'utf8'));
-    restoreCheckpoint(migrated, assets, migrated.selection);
-    const currentMigrated = { ...migrated, tablesSha256: W587_TABLE_HASH };
+    assert.equal(migrated.tablesSha256, STORED_TABLE_HASH);
+    const adoptedMigrated = { ...migrated, tablesSha256: TABLE_HASH };
+    assert.deepEqual({ ...adoptedMigrated, tablesSha256: migrated.tablesSha256 }, migrated,
+      'W623 adoption changes only the stored migrated table identity');
+    restoreCheckpoint(adoptedMigrated, assets, adoptedMigrated.selection);
+    const currentMigrated = { ...adoptedMigrated, tablesSha256: W587_TABLE_HASH };
     assert.deepEqual({ ...currentMigrated, tablesSha256: migrated.tablesSha256 }, migrated);
     const resumed = restoreCheckpoint(currentMigrated, exact, currentMigrated.selection);
     let error = null;

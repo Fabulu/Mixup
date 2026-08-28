@@ -46,11 +46,12 @@ const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const W570_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const ASSET_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
-const TABLE_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
-const W571_HASH = '376e17ddc03d3e56d728cb804ba091ab098b4039b2d51ba7b2d6689ccd07f7c8';
-const W570_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const ASSET_TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
+const TABLE_HASH = '0f5e8c092c2d16abe958ba0edaa5ea681fd5b296a0b110e10f91d2c6aa1a6ba9';
+const W571_HASH = '5c998537267ec18c9392305350a1dd7b3e4f60bfe5825bb238156864cfacca75';
+const W570_HASH = '0ec146c509a74bf3d75e585fdf2cd268fab86948924fd6c331a45ccce5ec12cc';
+const STORED_TABLE_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
 const TEMPLATE = Object.freeze([
   0x2080, 0x0b0b, 0x1111, 0x0208, 0x0003, 0x0013,
   0xfff8, 0x0016, 0xff00, 0x0000, 0x0000, 0x0000,
@@ -138,19 +139,19 @@ async function bundle() {
 
 test('W572 adds one strict template window and reconstructs W571 and W570',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 941);
-    assert.equal(TABLE_JSON.rom.windows.length, 941);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457059);
+    assert.equal(ROM_WINDOW_COUNT, 943);
+    assert.equal(TABLE_JSON.rom.windows.length, 943);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457131);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
-    assert.equal(W572_TABLE.rom.windows.length, 845);
-    assert.equal(W572_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452367);
+    assert.equal(W572_TABLE.rom.windows.length, 846);
+    assert.equal(W572_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452375);
     assert.equal(canonicalHash(W572_TABLE), TABLE_HASH,
       'removing only W573 preserves strict historical W572');
-    assert.equal(W571_TABLE.rom.windows.length, 844);
-    assert.equal(W571_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452343);
+    assert.equal(W571_TABLE.rom.windows.length, 845);
+    assert.equal(W571_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452351);
     assert.equal(canonicalHash(W571_TABLE), W571_HASH,
       'removing only W572 reconstructs strict W571 byte for byte');
-    assert.equal(W570_TABLE.rom.windows.length, 843);
+    assert.equal(W570_TABLE.rom.windows.length, 844);
     assert.equal(canonicalHash(W570_TABLE), W570_HASH,
       'the older reconstruction composes through tableBeforeW572');
 
@@ -498,12 +499,15 @@ test('W572 checkpoint remains strict through the W576 additive migration',
       historical.raw.stage, historical.raw.stageX2, historical.raw.stageX4,
       historical.raw.loop, historical.ramSha256, historical.gameSha256,
     ], [
-      TABLE_HASH, 146131, 156720, 4, 8, 16, 1,
+      STORED_TABLE_HASH, 146131, 156720, 4, 8, 16, 1,
       '7aa0a1797578457c05bc7ef4ac04cfcb8bd2091c58d3519552f6dce3bb673ada',
       '887b179b1c99fb62bb44a01fd57e790ac41e80502957f428afc6e64e4eeae5fc',
     ]);
-    restoreCheckpoint(historical, { ...exact, tables: W572_TABLE }, historical.selection);
-    const migrated = { ...historical, tablesSha256: LIVE_TABLE_HASH };
+    const adopted = { ...historical, tablesSha256: TABLE_HASH };
+    assert.deepEqual({ ...adopted, tablesSha256: historical.tablesSha256 }, historical,
+      'W623 adoption changes only the stored W572 checkpoint table identity');
+    restoreCheckpoint(adopted, { ...exact, tables: W572_TABLE }, adopted.selection);
+    const migrated = { ...adopted, tablesSha256: LIVE_TABLE_HASH };
     restoreCheckpoint(migrated, exact, historical.selection);
     assert.deepEqual([migrated.ramSha256, migrated.gameSha256],
       [historical.ramSha256, historical.gameSha256],

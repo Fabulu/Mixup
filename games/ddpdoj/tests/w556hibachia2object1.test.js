@@ -126,12 +126,13 @@ test('W556 ships the one fixed lower-body stream in the boss shard',
     }
     const row = rows.get(HIBACHI_A2.object1Art);
     const shard = manifest.spr.shards[17];
-    assert.deepEqual(row, { base: 2457258, maskWords: 4610 });
+    // W626 and W627 inserted earlier packed streams; this stream's extent remains exact.
+    assert.deepEqual(row, { base: 2524756, maskWords: 4610 });
     assert.ok(row.base >= shard.maskFrom && row.base + row.maskWords <= shard.maskFrom + shard.maskLen);
-    assert.equal(manifest.spr.streamCount, 5636);
-    assert.equal(shard.streams, 1516);
-    assert.equal(shard.maskLen, 851232);
-    assert.equal(shard.colLen, 2149650);
-    assert.equal(manifest.spr.maskUsed, 2868952);
-    assert.equal(manifest.spr.colUsed, 7163964);
+    assert.equal(manifest.spr.streamCount, 5893);
+    assert.equal(shard.streams, 1579);
+    assert.equal(shard.maskLen, 915358);
+    assert.equal(shard.colLen, 2297683);
+    assert.equal(manifest.spr.maskUsed, 2950986);
+    assert.equal(manifest.spr.colUsed, 7368609);
   });

@@ -42,8 +42,9 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
+const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
+const STORED_W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const RNG_STATE = 0x803916;
@@ -148,10 +149,10 @@ test('W582 pins the exact raw id-4, registration, and unchanged table contract',
     const registered = scriptAddresses();
     assert.equal(registered.filter((address) => address === HIBACHI_A0.s4Init).length, 1);
     assert.equal(registered.filter((address) => address === HIBACHI_A0.s4Step).length, 1);
-    assert.equal(ROM_WINDOW_COUNT, 941);
+    assert.equal(ROM_WINDOW_COUNT, 943);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 941);
-    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 457059);
+    assert.equal(TABLE_JSON.rom.windows.length, 943);
+    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 457131);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W582:')), []);
   });
@@ -337,12 +338,15 @@ test('W582 restores exact lf150131 and reaches the exact W587 $291040 frontier',
       checkpoint.selection.ship, checkpoint.selection.style,
       checkpoint.inputWord, checkpoint.probeOnly.invulnerable,
     ], [
-      W587_TABLE_HASH, 150131, 160744, 4, 8, 16, 1,
+      STORED_W587_TABLE_HASH, 150131, 160744, 4, 8, 16, 1,
       '1003233dd2baeb59bb1af2208f56cd62bfdaf4752458c0d7769ca55429829a07',
       '7f9e1c02322b112168d630483e8c2d6d43ca1d70d4c691886ee036c8a7437f88',
       0, 4, 65499, true,
     ]);
-    const resumed = restoreCheckpoint(checkpoint, assets, { ship: 0, style: 4 });
+    const adoptedCheckpoint = { ...checkpoint, tablesSha256: W587_TABLE_HASH };
+    assert.deepEqual({ ...adoptedCheckpoint, tablesSha256: checkpoint.tablesSha256 }, checkpoint,
+      'W623 adoption changes only the stored checkpoint table identity');
+    const resumed = restoreCheckpoint(adoptedCheckpoint, assets, { ship: 0, style: 4 });
     const restored = checkpointDocument(resumed.game, assets, {
       ...checkpoint.selection, inputWord: resumed.probe.inputWord, invulnerable: true,
     });

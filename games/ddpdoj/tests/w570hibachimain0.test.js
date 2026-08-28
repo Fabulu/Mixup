@@ -42,10 +42,11 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W570_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW570(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
-const CURRENT_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const ASSET_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
-const TABLE_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
-const PRIOR_HASH = '3c480c86d79e63da7149fbf1ada5a454d4217cb2dffa6e0aab63ecebc94e9717';
+const CURRENT_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const ASSET_TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
+const TABLE_HASH = '0ec146c509a74bf3d75e585fdf2cd268fab86948924fd6c331a45ccce5ec12cc';
+const PRIOR_HASH = 'e1184c944c19acf60672d7ed50541f1ee31cdaee46813546ca46e795edb0a14c';
+const STORED_TABLE_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
 const A5 = 0x810c00;
 const A6 = 0x814800;
 const PARTS = Object.freeze([0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0]);
@@ -92,16 +93,16 @@ async function bundle() {
 
 test('W570 adds exactly four disjoint gun-0 windows and reconstructs W569',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 941);
-    assert.equal(TABLE_JSON.rom.windows.length, 941);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457059);
+    assert.equal(ROM_WINDOW_COUNT, 943);
+    assert.equal(TABLE_JSON.rom.windows.length, 943);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457131);
     assert.equal(canonicalHash(TABLE_JSON), CURRENT_HASH);
-    assert.equal(W570_TABLE.rom.windows.length, 843);
-    assert.equal(W570_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452313);
+    assert.equal(W570_TABLE.rom.windows.length, 844);
+    assert.equal(W570_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452321);
     assert.equal(canonicalHash(W570_TABLE), TABLE_HASH,
       'removing the W573, W572, and W571 windows reconstructs W570 byte for byte');
-    assert.equal(PRIOR_TABLE.rom.windows.length, 839);
-    assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451951);
+    assert.equal(PRIOR_TABLE.rom.windows.length, 840);
+    assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451959);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH,
       'removing only the four W570 windows reconstructs W569 byte for byte');
 
@@ -281,11 +282,14 @@ test('W570 preserves the migrated frontier, checkpoints at 500, and reaches main
       frontier.raw.stage, frontier.raw.stageX2, frontier.raw.stageX4, frontier.raw.loop,
       frontier.ramSha256, frontier.gameSha256,
     ], [
-      TABLE_HASH, 144631, 155220, 4, 8, 16, 1,
+      STORED_TABLE_HASH, 144631, 155220, 4, 8, 16, 1,
       'cb290e6ee0d50a296233a76a7be1a1fc1dea4a10e1c995770a2d3b7a63ba3b15',
       '9340889f30fe7ceaf774fd1c6c5ca2133ab4c5569929d4456aeb73dc479ac6e1',
     ]);
-    restoreCheckpoint(frontier, w570Bundle, frontier.selection);
+    const adoptedFrontier = { ...frontier, tablesSha256: TABLE_HASH };
+    assert.deepEqual({ ...adoptedFrontier, tablesSha256: frontier.tablesSha256 }, frontier,
+      'W623 adoption changes only the stored checkpoint table identity');
+    restoreCheckpoint(adoptedFrontier, w570Bundle, adoptedFrontier.selection);
     const historical = { ...exact, tables: PRIOR_TABLE };
     restoreCheckpoint({ ...frontier, tablesSha256: PRIOR_HASH }, historical, frontier.selection);
 
@@ -295,13 +299,16 @@ test('W570 preserves the migrated frontier, checkpoints at 500, and reaches main
       periodic.raw.stage, periodic.raw.stageX2, periodic.raw.stageX4, periodic.raw.loop,
       periodic.ramSha256, periodic.gameSha256,
     ], [
-      TABLE_HASH, 145131, 155720, 4, 8, 16, 1,
+      STORED_TABLE_HASH, 145131, 155720, 4, 8, 16, 1,
       '96fca098a3ed4ce80618ae0f675d8afd2e18442d19574d070ca016924adbf9d9',
       'a4fac661dfc90179650cce42318fb7b46923044d0ef94c97786fad92f7745e99',
     ]);
-    restoreCheckpoint(periodic, w570Bundle, periodic.selection);
+    const adoptedPeriodic = { ...periodic, tablesSha256: TABLE_HASH };
+    assert.deepEqual({ ...adoptedPeriodic, tablesSha256: periodic.tablesSha256 }, periodic,
+      'W623 adoption changes only the stored periodic table identity');
+    restoreCheckpoint(adoptedPeriodic, w570Bundle, adoptedPeriodic.selection);
 
-    const restored = restoreCheckpoint(frontier, w570Bundle, frontier.selection);
+    const restored = restoreCheckpoint(adoptedFrontier, w570Bundle, adoptedFrontier.selection);
     let error = null;
     let attempted = 0;
     for (attempted = 1; attempted <= 1000; attempted++) {

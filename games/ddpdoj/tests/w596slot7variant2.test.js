@@ -52,9 +52,11 @@ const PRIOR_ROM = SKIP ? null : new RomWindows(PRIOR_TABLE.rom);
 const SCRIPT = 0x29109c;
 const SCRIPT_END = 0x2910f6;
 const VARIANT_2_LIST = 0x290f4e;
-const TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
-const W597_TABLE_HASH = '048ae8ac06bcbef9a8fc7648acb2fd6eaaebb091b26545986f1753f79f2c8d6e';
-const PRIOR_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8';
+const TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const W597_TABLE_HASH = '46064f29e4cde17e95d86b1a823e82d852346ca80325ed5ea9fbcbb6ddbda4c9';
+const PRIOR_TABLE_HASH = '706201adef09d00737f1fafc687e52d12ab81f437bc842690af229afab258445';
+const STORED_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
+const STORED_PRIOR_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8';
 const SCRIPT_HASH = '16c0eea9d901d6fd6bc9a7fcaf19673282402c73fc70ef21e843a568f5597163';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
 const CHECKPOINT_RAM_HASH = 'a1868acf2e7836a6e2d7a0eb89bb0c7e69727f6e529b1613570fe084b21f6a7f';
@@ -153,7 +155,7 @@ test('W596 exports only the exact variant-2 script and sole missing dependency',
       canonicalHash(PRIOR_TABLE), PRIOR_TABLE.rom.windows.length,
       PRIOR_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       overlappingPairs(windowShape(PRIOR_TABLE)),
-    ], [PRIOR_TABLE_HASH, 906, 453757, 77]);
+    ], [PRIOR_TABLE_HASH, 907, 453765, 77]);
 
     const windows = TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W596:'));
     assert.deepEqual(windows.map(({ base, len }) => [base, len]), [
@@ -336,10 +338,10 @@ test('W596 fresh ship-0/style-6 route pins every cadence identity and stops at t
     });
     assert.deepEqual(EXPECTED.seed, { bytes: 131072, sha256: SEED_HASH });
     assert.deepEqual(EXPECTED.tables, {
-      sha256: TABLE_HASH, windows: 941, bytes: 457059, overlapPairs: 77,
+      sha256: STORED_TABLE_HASH, windows: 941, bytes: 457059, overlapPairs: 77,
     });
     assert.deepEqual(EXPECTED.preW596Tables, {
-      sha256: PRIOR_TABLE_HASH, windows: 906, bytes: 453757, overlapPairs: 77,
+      sha256: STORED_PRIOR_TABLE_HASH, windows: 906, bytes: 453757, overlapPairs: 77,
     });
     assert.equal(EXPECTED.periodic.length, 302);
     assert.equal(EXPECTED.periodic.at(-1)[0], 151000);
