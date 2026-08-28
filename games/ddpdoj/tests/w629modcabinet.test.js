@@ -92,7 +92,7 @@ function frontEndFingerprint(demo) {
   return Uint8Array.from(demo.game.ram.b);
 }
 
-function enterCreditedGameplay(demo) {
+function enterCreditedGameplay(demo, prepareCredit = null) {
   advanceTo(demo, 20);
   assert.equal(demo.game.ram.u16(SCREEN8.state), 13);
   advanceTo(demo, 305);
@@ -112,6 +112,7 @@ function enterCreditedGameplay(demo) {
   advanceTo(demo, 4340);
   assert.equal(demo.game.ram.u16(SCREEN8.state), 2);
   assert.equal(demo.game.ram.u16(ARM5SCREEN.demoFlag), 0);
+  prepareCredit?.(demo);
 
   setCoinKey('COIN1', true);
   for (let i = 0; i < 30; i++) demo.step();
@@ -188,9 +189,14 @@ test('W629 a completed mod run returns to pending before an immediate second cre
     clearTouch();
     t.after(() => { clearCoin(); clearTouch(); });
     const bundle = await exactBundle();
-    const demo = modDemo(bundle, 'turbo', 'loop-2-from-stage-1', 'stage-remix');
+    const demo = modDemo(bundle,
+      'native-auto-fire', 'turbo', 'loop-2-from-stage-1', 'stage-remix');
 
-    enterCreditedGameplay(demo);
+    enterCreditedGameplay(demo, (cabinet) => {
+      cabinet.game.ram.setU8(MOD_RAM.autoFireDip, 0);
+    });
+    assert.equal(demo.game.ram.u8(MOD_RAM.autoFireDip), 1,
+      'Native Auto-Fire is live only after the first credited selector');
     assert.equal(demo.game.stageAdvanceTransform(1), 2,
       'the first credited run owns its selected stage policy');
 
@@ -213,8 +219,16 @@ test('W629 a completed mod run returns to pending before an immediate second cre
       for (const name of MASH_BUTTONS) setTouchButton(name, pressed);
       demo.step();
       const types = activeTypes(demo);
-      if (!firstGameOver && types.includes(0x0e)) firstGameOver = frame;
-      if (!firstNameEntry && types.includes(0x0c)) firstNameEntry = frame;
+      if (!firstGameOver && types.includes(0x0e)) {
+        firstGameOver = frame;
+        assert.equal(demo.mods.runtime.cabinetRunActive, true,
+          'run policy remains active through visible Game Over');
+      }
+      if (!firstNameEntry && types.includes(0x0c)) {
+        firstNameEntry = frame;
+        assert.equal(demo.mods.runtime.cabinetRunActive, true,
+          'run policy remains active through name handling');
+      }
       if (firstNameEntry && types.includes(0x08)) {
         firstCabinet = frame;
         break;
@@ -229,6 +243,8 @@ test('W629 a completed mod run returns to pending before an immediate second cre
       'the exact cartridge return seam retired the first run policy');
     assert.equal(demo.game.ram.u16(MOD_RAM.loopCounter), 0,
       'the cartridge teardown cleared the first run loop policy');
+    assert.equal(demo.game.ram.u8(MOD_RAM.autoFireDip), 0,
+      'the returned cabinet restored the pre-run operator auto-fire byte');
     assert.equal(demo.game.stageAdvanceTransform(1), 1,
       'the immediate cabinet leaves the configured stage policy pending');
 
@@ -247,6 +263,8 @@ test('W629 a completed mod run returns to pending before an immediate second cre
       'the immediate second credit created another authentic selector');
     assert.equal(demo.mods.runtime.cabinetRunActive, false,
       'the second selector cannot inherit the completed run policy');
+    assert.equal(demo.game.ram.u8(MOD_RAM.autoFireDip), 0,
+      'Native Auto-Fire remains pending through the second selector');
     assert.equal(demo.game.stageAdvanceTransform(1), 1);
 
     const selectedAt = demo.game.logicFrame;
@@ -259,5 +277,7 @@ test('W629 a completed mod run returns to pending before an immediate second cre
       'the second credited handoff reactivated the configured policies');
     assert.equal(demo.game.ram.u16(MOD_RAM.loopCounter), 1,
       'the second handoff armed loop 2 before stage initialization');
+    assert.equal(demo.game.ram.u8(MOD_RAM.autoFireDip), 1,
+      'the second handoff reactivated Native Auto-Fire');
     assert.equal(demo.game.stageAdvanceTransform(1), 2);
   });

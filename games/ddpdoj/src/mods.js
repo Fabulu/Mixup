@@ -285,6 +285,7 @@ export function createModState(loadout) {
     grazedBullets: [new Set(), new Set()],
     grazeCount: [0, 0],
     resurrectionPositions: [null, null],
+    cabinetRamRestore: [],
   } };
 }
 
@@ -294,6 +295,7 @@ function resetRunRuntime(state) {
   for (const seen of state.runtime.grazedBullets) seen.clear();
   state.runtime.grazeCount.fill(0);
   state.runtime.resurrectionPositions.fill(null);
+  state.runtime.cabinetRamRestore.length = 0;
 }
 
 /** Keep a selected loadout pending while an ordinary browser launch runs the cabinet front end. */
@@ -309,17 +311,50 @@ function modRunActive(state) {
   return !!state && state.runtime.cabinetRunActive !== false;
 }
 
+function captureCabinetRamPolicy(state, ram) {
+  const restore = state.runtime.cabinetRamRestore;
+  const s = state.loadout.sim;
+  const word = (addr) => restore.push({ addr, width: 2, value: ram.u16(addr) });
+  const byte = (addr) => restore.push({ addr, width: 1, value: ram.u8(addr) });
+  if (s.nativeAutoFire) byte(MOD_RAM.autoFireDip);
+  if (s.rank === 'low') {
+    word(MOD_RAM.rankPowerP1);
+    word(MOD_RAM.rankPowerP2);
+  }
+}
+
+function restoreCabinetRamPolicy(state, ram) {
+  for (const entry of state.runtime.cabinetRamRestore) {
+    if (entry.width === 1) ram.setU8(entry.addr, entry.value);
+    else ram.setU16(entry.addr, entry.value);
+  }
+  const s = state.loadout.sim;
+  if (s.unbreakableChain) ram.setU16(MOD_RAM.chainMeterP1, 0);
+  if (s.bottomlessBombs || s.infiniteHyperStock) ram.setU16(MOD_RAM.hyperStockP1, 0);
+  if (s.bulletCanceller) {
+    ram.setU16(MOD_RAM.cancelArm, 0);
+    ram.setU16(MOD_RAM.cancelMode, 0);
+  }
+  if (s.hyperOverdrive) {
+    ram.setU16(MOD_RAM.hyperGaugeP1, 0);
+    ram.setU16(MOD_RAM.hyperGaugeP2, 0);
+  }
+}
+
 function cabinetRunStart(state, ram, event) {
   resetRunRuntime(state);
   const active = event?.demo !== true;
   state.runtime.cabinetRunActive = active;
-  if (active && state.loadout.sim.loop2FromStage1) {
+  if (!active) return;
+  captureCabinetRamPolicy(state, ram);
+  if (state.loadout.sim.loop2FromStage1) {
     ram.setU16(MOD_RAM.loopCounter, 1);
   }
 }
 
-function cabinetRunEnd(state) {
+function cabinetRunEnd(state, ram) {
   if (!state.runtime.cabinetRunActive) return;
+  restoreCabinetRamPolicy(state, ram);
   state.runtime.cabinetRunActive = false;
   resetRunRuntime(state);
 }
@@ -570,7 +605,7 @@ export function modGameOptions(state) {
   const sim = state.loadout.sim;
   if (state.runtime.cabinetBoot) {
     options.cabinetRunStartHook = (ram, event) => cabinetRunStart(state, ram, event);
-    options.cabinetRunEndHook = () => cabinetRunEnd(state);
+    options.cabinetRunEndHook = (ram) => cabinetRunEnd(state, ram);
   }
   if (sim.beeMagnet) {
     options.beeRecordHook = (...args) => {

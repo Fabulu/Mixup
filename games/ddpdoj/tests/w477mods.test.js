@@ -139,8 +139,9 @@ test('W477 timing transforms use mutually exclusive host periods', () => {
 
 test('W629 cabinet loadouts stay pending through attract and activate at credited handoff', () => {
   const state = stateOf(
-    'invincibility', 'infinite-lives', 'precision-ship', 'turbo',
-    'loop-2-from-stage-1', 'stage-remix',
+    'invincibility', 'infinite-lives', 'unbreakable-chain', 'infinite-hyper-stock',
+    'native-auto-fire', 'bullet-canceller', 'hyper-overdrive', 'low-rank',
+    'precision-ship', 'turbo', 'loop-2-from-stage-1', 'stage-remix',
   );
   const direct = modGameOptions(state);
   assert.equal(Object.hasOwn(direct, 'cabinetRunStartHook'), false,
@@ -154,12 +155,24 @@ test('W629 cabinet loadouts stay pending through attract and activate at credite
   assert.equal(typeof options.cabinetRunEndHook, 'function');
   const ram = new Ram();
   ram.setU16(MOD_RAM.livesP1, 0x2222);
+  ram.setU16(MOD_RAM.chainHitsP1, 1);
+  ram.setU16(MOD_RAM.chainMeterP1, 0x2345);
+  ram.setU16(MOD_RAM.hyperStockP1, 0x1234);
+  ram.setU8(MOD_RAM.autoFireDip, 0);
+  ram.setU16(MOD_RAM.cancelArm, 0x3456);
+  ram.setU16(MOD_RAM.cancelMode, 0x4567);
+  ram.setU16(MOD_RAM.hyperGaugeP1, 0x5678);
+  ram.setU16(MOD_RAM.hyperGaugeP2, 0x6789);
+  ram.setU16(MOD_RAM.rankPowerP1, 0x789a);
+  ram.setU16(MOD_RAM.rankPowerP2, 0x89ab);
   const held = portWordFromBits([BIT.up, BIT.b1]);
 
   applyPreFrameMods(state, ram);
   applyPostFrameMods(state, ram);
   assert.equal(ram.u16(MOD_RAM.livesP1), 0x2222,
     'warning, title, credit, and selector frames retain cartridge RAM');
+  assert.equal(ram.u16(MOD_RAM.rankPowerP1), 0x789a);
+  assert.equal(ram.u16(MOD_RAM.rankPowerP2), 0x89ab);
   assert.equal(transformModInput(state, held, 3), held,
     'the pending precision policy does not transform selector input');
   assert.equal(transformModTiming(state, 16.896), 16.896,
@@ -181,6 +194,13 @@ test('W629 cabinet loadouts stay pending through attract and activate at credite
     'loop 2 is armed only after authentic fighter selection');
   applyPreFrameMods(state, ram);
   assert.equal(ram.u16(MOD_RAM.livesP1), 3);
+  assert.equal(ram.u16(MOD_RAM.chainMeterP1), 0x7fff);
+  assert.equal(ram.u16(MOD_RAM.hyperStockP1), 5);
+  assert.equal(ram.u8(MOD_RAM.autoFireDip), 1);
+  assert.equal(ram.u16(MOD_RAM.cancelArm), 1);
+  assert.equal(ram.u16(MOD_RAM.cancelMode), 0xffff);
+  assert.equal(ram.u16(MOD_RAM.rankPowerP1), 0);
+  assert.equal(ram.u16(MOD_RAM.rankPowerP2), 0);
   assert.equal(transformModInput(state, held, 3), portWordFromBits([BIT.b1]));
   assert.equal(transformModTiming(state, 16.896), 8.448);
   assert.equal(options.enemyBulletCollisionFilter(ram,
@@ -189,11 +209,28 @@ test('W629 cabinet loadouts stay pending through attract and activate at credite
 
   state.runtime.grazeCount[0] = 7;
   state.runtime.resurrectionPositions[0] = { y: 0x1200, x: 0x3400 };
+  ram.setU16(MOD_RAM.hyperGaugeP1, 0);
+  ram.setU16(MOD_RAM.hyperGaugeP2, 0);
   options.cabinetRunEndHook(ram);
   assert.equal(state.runtime.cabinetRunActive, false,
     'the cartridge cabinet-return seam retires the completed run policy');
   assert.deepEqual(state.runtime.grazeCount, [0, 0]);
   assert.deepEqual(state.runtime.resurrectionPositions, [null, null]);
+  assert.equal(ram.u16(MOD_RAM.chainMeterP1), 0,
+    'run-owned chain policy cannot leak into the returned cabinet');
+  assert.equal(ram.u16(MOD_RAM.hyperStockP1), 0,
+    'authentic terminal hyper-stock clear is not rolled back');
+  assert.equal(ram.u8(MOD_RAM.autoFireDip), 0,
+    'Native Auto-Fire cannot leak into the returned cabinet');
+  assert.equal(ram.u16(MOD_RAM.cancelArm), 0);
+  assert.equal(ram.u16(MOD_RAM.cancelMode), 0);
+  assert.equal(ram.u16(MOD_RAM.hyperGaugeP1), 0,
+    'authentic terminal hyper-gauge clear is not rolled back');
+  assert.equal(ram.u16(MOD_RAM.hyperGaugeP2), 0);
+  assert.equal(ram.u16(MOD_RAM.rankPowerP1), 0x789a,
+    'Low Rank restores persistent cabinet-owned P1 rank power');
+  assert.equal(ram.u16(MOD_RAM.rankPowerP2), 0x89ab,
+    'Low Rank restores persistent cabinet-owned P2 rank power');
   ram.setU16(MOD_RAM.livesP1, 0x3333);
   applyPreFrameMods(state, ram);
   assert.equal(ram.u16(MOD_RAM.livesP1), 0x3333,

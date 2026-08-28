@@ -429,6 +429,32 @@ test('W375 $26070C is a ONE-SHOT on $813082', { skip: SKIP }, async () => {
   assert.equal(g.ram.u16(0x813082), 0, '  ...and $813082 stayed zero');
 });
 
+test('W629 $26070C runs the cabinet policy after save and before stage initialization',
+  { skip: SKIP }, async () => {
+    const { handoff26070C, HANDOFF_26070C: K, ram, rom, ctx, save, seen } = await armed();
+    const { STAGESTART } = await import('../src/rank.js');
+    ram.setU16(STAGESTART.zeroWord, 0x1234);
+    ram.setU16(K.d7Gate, 0);
+    const order = [];
+    ctx.cabinetRunStartHook = (hookRam, event) => {
+      order.push('policy');
+      assert.strictEqual(hookRam, ram);
+      assert.deepEqual(event, { demo: false });
+      assert.equal(seen.length, 1, '$25D990 saved selections before host policy activation');
+      assert.equal(ram.u16(STAGESTART.zeroWord), 0x1234,
+        '$260580 has not begun stage initialization at the policy seam');
+      ram.setU16(0x813098, 1);
+    };
+
+    handoff26070C(ram, rom, ctx, 0, 2, 0, 2, 0, save);
+
+    assert.deepEqual(order, ['policy']);
+    assert.equal(ram.u16(STAGESTART.zeroWord), 0,
+      '$260580 began only after the policy hook returned');
+    assert.equal(ram.u16(0x813098), 1,
+      'loop policy was visible before stage initialization');
+  });
+
 test('W375 $26070C D7 = $38 only when $803926 != 0 AND $813092 == 0 -- all four', { skip: SKIP },
   async () => {
     const cases = [
