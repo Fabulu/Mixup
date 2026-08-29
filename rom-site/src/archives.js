@@ -24,7 +24,19 @@ function shouldProbeArchive(name, mode) {
 
 function workerError(value) {
   const message = typeof value === 'string' ? value : value?.message;
-  return new Error(message || 'Archive worker failed without an error message.');
+  const error = new Error(message || 'Archive worker failed without an error message.');
+  if (value?.reusable === true) {
+    Object.defineProperty(error, 'workerReusable', { value: true });
+  }
+  return error;
+}
+
+function reusableWorkerError(error) {
+  const reusable = error instanceof Error ? error : workerError(error);
+  if (!Object.hasOwn(reusable, 'workerReusable')) {
+    Object.defineProperty(reusable, 'workerReusable', { value: true });
+  }
+  return reusable;
 }
 
 function abortError() {
@@ -103,10 +115,12 @@ function runWorker(file, kind, options = {}) {
   throwIfAborted(options.signal);
   return beforeArchiveDeadline(file.arrayBuffer(), deadlineOptions).then((buffer) => {
     throwIfAborted(options.signal);
+    const ownsWorker = typeof options.getWorker !== 'function';
+    const worker = ownsWorker ? createWorker() : options.getWorker();
     return new Promise((resolve, reject) => {
-      const worker = createWorker();
       let settled = false;
       let entries = null;
+      let pendingError = null;
       let timer = null;
       const abort = () => finish(reject, abortError());
       const finish = (callback, value) => {
@@ -114,8 +128,48 @@ function runWorker(file, kind, options = {}) {
         settled = true;
         clearTimeout(timer);
         options.signal?.removeEventListener('abort', abort);
-        worker.terminate();
+        worker.removeEventListener?.('message', receiveMessage);
+        worker.removeEventListener?.('error', receiveError);
+        if (ownsWorker) worker.terminate();
         callback(value);
+      };
+      const receiveMessage = (event) => {
+        if (!event.data?.ok) {
+          finish(reject, workerError(event.data?.error
+            ? { message: event.data.error, reusable: event.data.reusable }
+            : event.data));
+          return;
+        }
+        try {
+          if (event.data.phase === 'listed' && entries === null && !pendingError) {
+            try {
+              entries = parseSevenZipListing(event.data.lines, kind, options);
+              const validated = validateArchiveEntries(kind, entries, file.size, options);
+              worker.postMessage({
+                action: 'extract',
+                paths: validated.files.map((entry) => entry.path),
+              });
+            } catch (error) {
+              pendingError = error;
+              worker.postMessage({ action: 'discard' });
+            }
+            return;
+          }
+          if (event.data.phase === 'discarded' && pendingError) {
+            finish(reject, reusableWorkerError(pendingError));
+            return;
+          }
+          if (event.data.phase === 'extracted' && entries !== null && !pendingError) {
+            finish(resolve, { entries, members: event.data.members });
+            return;
+          }
+          finish(reject, new Error(`${file.name}: archive worker phase was invalid.`));
+        } catch (error) {
+          finish(reject, error);
+        }
+      };
+      const receiveError = (event) => {
+        finish(reject, workerError(event.error ?? event.message));
       };
       timer = setTimeout(() => finish(reject,
         archiveTimeoutError(timeoutMs)), archiveTimeRemaining(deadlineOptions));
@@ -124,33 +178,8 @@ function runWorker(file, kind, options = {}) {
         abort();
         return;
       }
-      worker.addEventListener('message', (event) => {
-        try {
-          if (!event.data?.ok) {
-            finish(reject, workerError(event.data?.error));
-            return;
-          }
-          if (event.data.phase === 'listed' && entries === null) {
-            entries = parseSevenZipListing(event.data.lines, kind, options);
-            const validated = validateArchiveEntries(kind, entries, file.size, options);
-            worker.postMessage({
-              action: 'extract',
-              paths: validated.files.map((entry) => entry.path),
-            });
-            return;
-          }
-          if (event.data.phase === 'extracted' && entries !== null) {
-            finish(resolve, { entries, members: event.data.members });
-            return;
-          }
-          finish(reject, new Error(`${file.name}: archive worker phase was invalid.`));
-        } catch (error) {
-          finish(reject, error);
-        }
-      });
-      worker.addEventListener('error', (event) => {
-        finish(reject, workerError(event.error ?? event.message));
-      }, { once: true });
+      worker.addEventListener('message', receiveMessage);
+      worker.addEventListener('error', receiveError, { once: true });
       worker.postMessage({
         action: 'list',
         name: file.name,
@@ -260,61 +289,87 @@ export async function expandArchives(files, options = {}) {
   const maxExpandedArchive = options.maxExpandedArchive ?? ARCHIVE_LIMITS.maxExpandedArchive;
   const maxEntriesPerArchive = options.maxEntriesPerArchive
     ?? ARCHIVE_LIMITS.maxEntriesPerArchive;
-  for (let index = 0; index < archives.length; index++) {
-    throwIfAborted(options.signal);
-    throwIfArchiveTimedOut(deadlineOptions);
-    const { file, kind } = archives[index];
-    const consumed = validateArchiveSelection(summaries, options);
-    const archiveOptions = {
-      ...deadlineOptions,
-      maxExpandedArchive: Math.min(maxExpandedArchive,
-        maxExpandedTotal - consumed.expandedBytes),
-      maxEntriesPerArchive: Math.min(maxEntriesPerArchive,
-        maxEntriesTotal - consumed.entries),
-    };
-    options.onProgress?.(`Reading ${file.name} locally (${index + 1}/${archives.length})...`);
-    let validated;
-    try {
-      const result = await runWorker(file, kind, archiveOptions);
+  const createWorker = options.createWorker ?? (() =>
+    new Worker(new URL('./archive-worker.js', import.meta.url)));
+  let archiveWorker = null;
+  const getWorker = () => {
+    archiveWorker ??= createWorker();
+    return archiveWorker;
+  };
+  const closeWorker = () => {
+    archiveWorker?.terminate();
+    archiveWorker = null;
+  };
+  try {
+    for (let index = 0; index < archives.length; index++) {
       throwIfAborted(options.signal);
-      validated = validateWorkerResult(file, kind, result, archiveOptions);
-    } catch (error) {
-      if (!options.skipInvalidArchives || error?.name === 'AbortError'
-          || error?.name === 'ArchiveIntakeTimeoutError') throw error;
-      skipped.push({ name: String(file.name ?? ''), message: error.message });
-      continue;
-    }
-    try {
-      const archiveSummary = {
-        compressedBytes: file.size,
-        expandedBytes: validated.expandedBytes,
-        entries: validated.entries,
+      throwIfArchiveTimedOut(deadlineOptions);
+      const { file, kind } = archives[index];
+      const consumed = validateArchiveSelection(summaries, options);
+      const archiveOptions = {
+        ...deadlineOptions,
+        getWorker,
+        maxExpandedArchive: Math.min(maxExpandedArchive,
+          maxExpandedTotal - consumed.expandedBytes),
+        maxEntriesPerArchive: Math.min(maxEntriesPerArchive,
+          maxEntriesTotal - consumed.entries),
       };
-      validateArchiveSelection([...summaries, archiveSummary], options);
-
-      const archiveBasenames = new Set();
-      const archiveMembers = [];
-      for (const entry of validated.files) {
-        const basename = entry.path.slice(entry.path.lastIndexOf('/') + 1);
-        const folded = basename.toLocaleLowerCase('en-US');
-        if (archiveBasenames.has(folded)) {
-          throw new Error(`${file.name} contains duplicate member basename ${basename}.`);
-        }
-        archiveBasenames.add(folded);
-        const member = browserFile(validated.byPath.get(entry.path), basename, file, options);
-        Object.defineProperty(member, 'mixupRelativePath', {
-          value: `${file.name}/${entry.path}`,
-          configurable: true,
-        });
-        archiveMembers.push(member);
+      options.onProgress?.(`Reading ${file.name} locally (${index + 1}/${archives.length})...`);
+      let result;
+      try {
+        result = await runWorker(file, kind, archiveOptions);
+        throwIfAborted(options.signal);
+      } catch (error) {
+        if (error?.workerReusable !== true) closeWorker();
+        if (!options.skipInvalidArchives || error?.name === 'AbortError'
+            || error?.name === 'ArchiveIntakeTimeoutError') throw error;
+        skipped.push({ name: String(file.name ?? ''), message: error.message });
+        continue;
       }
-      summaries.push(archiveSummary);
-      expanded.push(...archiveMembers);
-    } catch (error) {
-      if (!options.skipInvalidArchives || error?.name === 'AbortError'
-          || error?.name === 'ArchiveIntakeTimeoutError') throw error;
-      skipped.push({ name: String(file.name ?? ''), message: error.message });
+      let validated;
+      try {
+        validated = validateWorkerResult(file, kind, result, archiveOptions);
+      } catch (error) {
+        closeWorker();
+        if (!options.skipInvalidArchives || error?.name === 'AbortError'
+            || error?.name === 'ArchiveIntakeTimeoutError') throw error;
+        skipped.push({ name: String(file.name ?? ''), message: error.message });
+        continue;
+      }
+      try {
+        const archiveSummary = {
+          compressedBytes: file.size,
+          expandedBytes: validated.expandedBytes,
+          entries: validated.entries,
+        };
+        validateArchiveSelection([...summaries, archiveSummary], options);
+
+        const archiveBasenames = new Set();
+        const archiveMembers = [];
+        for (const entry of validated.files) {
+          const basename = entry.path.slice(entry.path.lastIndexOf('/') + 1);
+          const folded = basename.toLocaleLowerCase('en-US');
+          if (archiveBasenames.has(folded)) {
+            throw new Error(`${file.name} contains duplicate member basename ${basename}.`);
+          }
+          archiveBasenames.add(folded);
+          const member = browserFile(validated.byPath.get(entry.path), basename, file, options);
+          Object.defineProperty(member, 'mixupRelativePath', {
+            value: `${file.name}/${entry.path}`,
+            configurable: true,
+          });
+          archiveMembers.push(member);
+        }
+        summaries.push(archiveSummary);
+        expanded.push(...archiveMembers);
+      } catch (error) {
+        if (!options.skipInvalidArchives || error?.name === 'AbortError'
+            || error?.name === 'ArchiveIntakeTimeoutError') throw error;
+        skipped.push({ name: String(file.name ?? ''), message: error.message });
+      }
     }
+  } finally {
+    closeWorker();
   }
   throwIfAborted(options.signal);
   throwIfArchiveTimedOut(deadlineOptions);

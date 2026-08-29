@@ -55,13 +55,20 @@ const LISTING = Object.freeze([
 ]);
 
 function workerFlow(options = {}) {
-  return (message) => message.action === 'list'
-    ? (options.list ?? { ok: true, phase: 'listed', lines: LISTING })
-    : (options.extract ?? {
-      ok: true,
-      phase: 'extracted',
-      members: [{ path: 'set/member.rom', bytes: Uint8Array.of(9, 8, 7, 6).buffer }],
-    });
+  if (options.response) return options.response;
+  return (message) => {
+    if (message.action === 'list') {
+      return options.list ?? { ok: true, phase: 'listed', lines: LISTING };
+    }
+    if (message.action === 'extract') {
+      return options.extract ?? {
+        ok: true,
+        phase: 'extracted',
+        members: [{ path: 'set/member.rom', bytes: Uint8Array.of(9, 8, 7, 6).buffer }],
+      };
+    }
+    return options.discard ?? { ok: true, phase: 'discarded' };
+  };
 }
 
 test('ordinary ROM files pass through without starting a worker', async () => {
@@ -130,6 +137,29 @@ test('valid declared ZIP files still expand during folder scans', async () => {
   assert.equal(result.files[0].name, 'member.rom');
 });
 
+test('serial archives reuse one worker in selection order', async () => {
+  const large = selectedFile('large.zip', [...zipMagic, 0, 0, 0, 0]);
+  const small = selectedFile('small.zip', zipMagic);
+  const state = {};
+  let workers = 0;
+  const result = await expandArchives([large, small], {
+    createWorker: () => {
+      workers++;
+      if (workers > 1) throw new Error('created a second archive worker');
+      return fakeWorker(workerFlow(), state);
+    },
+    createFile: createdFile,
+  });
+
+  assert.equal(workers, 1);
+  assert.deepEqual(state.messages.filter((message) => message.action === 'list')
+    .map((message) => message.name), ['large.zip', 'small.zip']);
+  assert.deepEqual(result.files.map((file) => file.mixupRelativePath), [
+    'large.zip/set/member.rom', 'small.zip/set/member.rom',
+  ]);
+  assert.equal(state.terminated, 1);
+});
+
 test('folder searches skip malformed archives and keep reading valid candidates', async () => {
   const broken = selectedFile('broken.zip', zipMagic);
   const valid = selectedFile('owned.zip', zipMagic);
@@ -149,6 +179,45 @@ test('folder searches skip malformed archives and keep reading valid candidates'
   assert.equal(result.files[0].name, 'member.rom');
   assert.deepEqual(result.archiveErrors,
     [{ name: 'broken.zip', message: 'bad central directory' }]);
+});
+
+test('a rejected listing is discarded before the worker is reused', async () => {
+  const archives = [selectedFile('oversized.zip', zipMagic), selectedFile('valid.zip', zipMagic)];
+  const state = {};
+  let listings = 0;
+  let workers = 0;
+  const result = await expandArchives(archives, {
+    archiveProbe: 'declared-only',
+    skipInvalidArchives: true,
+    maxExpandedArchive: 4,
+    createWorker: () => {
+      workers++;
+      return fakeWorker((message) => {
+        if (message.action === 'list') {
+          listings++;
+          return {
+            ok: true,
+            phase: 'listed',
+            lines: listings === 1
+              ? [
+                'Path = set/large.rom', 'Folder = -', 'Size = 8',
+                'Encrypted = -', 'Method = Deflate', 'Volume Index = 0', '',
+              ]
+              : LISTING,
+          };
+        }
+        return workerFlow()(message);
+      }, state);
+    },
+    createFile: createdFile,
+  });
+
+  assert.deepEqual(state.messages.map((message) => message.action), [
+    'list', 'discard', 'list', 'extract',
+  ]);
+  assert.deepEqual([workers, result.archives, result.skippedArchives], [1, 1, 1]);
+  assert.equal(result.files[0].mixupRelativePath, 'valid.zip/set/member.rom');
+  assert.equal(state.terminated, 1);
 });
 
 test('folder searches keep same-named members from separate archives', async () => {
@@ -282,11 +351,11 @@ test('aggregate expanded limits reject a later listing before extraction', async
     },
     createFile: createdFile,
   }), /expands beyond 2 bytes/);
-  assert.equal(states.length, 2);
+  assert.equal(states.length, 1);
+  assert.equal(states[0].messages.filter((message) => message.action === 'list').length, 2);
   assert.equal(states[0].messages.filter((message) => message.action === 'extract').length, 1);
-  assert.equal(states[1].messages.filter((message) => message.action === 'extract').length, 0);
+  assert.equal(states[0].messages.filter((message) => message.action === 'discard').length, 1);
   assert.equal(states[0].terminated, 1);
-  assert.equal(states[1].terminated, 1);
 });
 
 test('selection-wide archive limits are enforced without flattening member namespaces', async () => {
@@ -299,25 +368,29 @@ test('selection-wide archive limits are enforced without flattening member names
   }), limitMessage);
 
   let call = 0;
+  let path = '';
   const result = await expandArchives(archives.slice(0, 2), {
-    createWorker: () => {
-      const path = `set-${call++}/member.rom`;
-      return fakeWorker(workerFlow({
-        list: {
+    createWorker: () => fakeWorker((message) => {
+      if (message.action === 'list') {
+        path = `set-${call++}/member.rom`;
+        return {
           ok: true,
           phase: 'listed',
           lines: [
             `Path = ${path}`, 'Size = 4', 'Encrypted = -',
             'Method = Deflate', 'Volume Index = 0', '',
           ],
-        },
-        extract: {
+        };
+      }
+      if (message.action === 'extract') {
+        return {
           ok: true,
           phase: 'extracted',
           members: [{ path, bytes: Uint8Array.of(1, 2, 3, 4).buffer }],
-        },
-      }));
-    },
+        };
+      }
+      return { ok: true, phase: 'discarded' };
+    }),
     createFile: createdFile,
   });
   assert.deepEqual([result.archives, result.members, result.files.length], [2, 2, 2]);

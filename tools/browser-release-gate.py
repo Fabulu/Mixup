@@ -1142,14 +1142,67 @@ def gate_asset_free(browser, origin: str) -> None:
     gate.run("asset-free folder ROM discovery", folder_discovery)
 
     def complete_archive_folder(page):
+        fixture_routes = (
+            ("/__mixup-folder-batman", BATMAN_ARCHIVE_FIXTURE,
+             "Batman - Return of the Joker (USA, Europe).zip"),
+            ("/__mixup-folder-ddpdoj", DDPDOJ_7Z_FIXTURE, "ddpdojblk.7z"),
+            ("/__mixup-folder-gradius", GRADIUS_ARCHIVE_FIXTURE,
+             "Gradius (USA).zip"),
+        )
+        def fixture_handler(path):
+            def fulfill(route):
+                route.fulfill(
+                    status=200,
+                    path=str(path),
+                    content_type="application/octet-stream",
+                    headers={
+                        "Cache-Control": "no-store",
+                        "Pragma": "no-cache",
+                        "Expires": "0",
+                    },
+                )
+            return fulfill
+
+        for request_path, fixture, _name in fixture_routes:
+            page.route(f"**{request_path}", fixture_handler(fixture))
+        page.add_init_script("""
+        globalThis.__mixupDirectoryHandle = null;
+        Object.defineProperty(globalThis, 'showDirectoryPicker', {
+          value: async () => globalThis.__mixupDirectoryHandle,
+          configurable: true,
+        });
+        """)
         open_page(page, origin, "/")
-        folder_input = page.locator("#folder-files")
-        folder_input.evaluate("input => input.removeAttribute('webkitdirectory')")
-        folder_input.set_input_files((
-            str(BATMAN_ARCHIVE_FIXTURE),
-            str(GRADIUS_ARCHIVE_FIXTURE),
-            str(DDPDOJ_7Z_FIXTURE),
-        ))
+        page.locator(".folder-options").evaluate("details => { details.open = true; }")
+        require(not page.locator("#choose-folder").is_hidden(),
+                "supported directory picker was hidden")
+        handle_details = page.evaluate("""
+        async fixtures => {
+          const root = await navigator.storage.getDirectory();
+          const directory = await root.getDirectoryHandle('mixup-gate', { create: true });
+          for (const fixture of fixtures) {
+            const response = await fetch(fixture.url, { cache: 'no-store' });
+            if (!response.ok) throw new Error(`fixture request failed: ${response.status}`);
+            const file = await directory.getFileHandle(fixture.name, { create: true });
+            const writable = await file.createWritable();
+            await writable.write(await response.arrayBuffer());
+            await writable.close();
+          }
+          globalThis.__mixupDirectoryHandle = directory;
+          return {
+            kind: directory.kind,
+            permission: typeof directory.queryPermission === 'function'
+              ? await directory.queryPermission({ mode: 'read' })
+              : 'unsupported',
+          };
+        }
+        """, [
+            {"url": request_path, "name": name}
+            for request_path, _fixture, name in fixture_routes
+        ])
+        require(handle_details == {"kind": "directory", "permission": "granted"},
+                f"native test directory is not reusable: {handle_details!r}")
+        page.locator("#choose-folder").click()
         wait_for_condition(
             page,
             "document.querySelector('#status').dataset.kind === 'good'",
@@ -1177,9 +1230,25 @@ def gate_asset_free(browser, origin: str) -> None:
                         f"complete folder did not validate {game_id}")
 
         assert_complete_folder()
+        open_page(page, origin, "/")
+        wait_for_condition(
+            page,
+            "!document.querySelector('#reuse-folder').hidden",
+            timeout=60000,
+        )
+        page.locator(".folder-options").evaluate("details => { details.open = true; }")
+        require(page.locator("#reuse-folder").inner_text() == "Reuse saved folder",
+                "remembered native directory did not retain granted permission")
+        page.locator("#reuse-folder").click()
+        wait_for_condition(
+            page,
+            "document.querySelector('#status').dataset.kind === 'good'",
+            timeout=300000,
+        )
+        assert_complete_folder()
         return assert_complete_folder
 
-    gate.run("asset-free complete archive folder", complete_archive_folder)
+    gate.run("asset-free remembered archive folder", complete_archive_folder)
 
     def archive_rejections(page):
         def zipped(entries, compression=zipfile.ZIP_STORED):

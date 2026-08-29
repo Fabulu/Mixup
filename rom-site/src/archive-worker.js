@@ -8,8 +8,7 @@ let outputLines = 0;
 let outputCharacters = 0;
 let outputExceeded = false;
 let archiveKind = null;
-let listed = false;
-let extracted = false;
+let phase = 'idle';
 
 const MAX_OUTPUT_LINES = 1024;
 const MAX_OUTPUT_CHARACTERS = 256 * 1024;
@@ -77,12 +76,35 @@ function readOutput(sevenZip, directory = '/output', prefix = '') {
   return members;
 }
 
+function removeTree(sevenZip, path) {
+  const stat = sevenZip.FS.lstat(path);
+  if (!sevenZip.FS.isDir(stat.mode)) {
+    sevenZip.FS.unlink(path);
+    return;
+  }
+  for (const name of sevenZip.FS.readdir(path)) {
+    if (name === '.' || name === '..') continue;
+    removeTree(sevenZip, `${path}/${name}`);
+  }
+  sevenZip.FS.rmdir(path);
+}
+
+function cleanupArchive(sevenZip) {
+  if (sevenZip.FS.analyzePath('/output').exists) removeTree(sevenZip, '/output');
+  if (sevenZip.FS.analyzePath('/input.archive').exists) {
+    sevenZip.FS.unlink('/input.archive');
+  }
+  archiveKind = null;
+  phase = 'idle';
+  resetOutput();
+}
+
 self.addEventListener('message', async (event) => {
   try {
     const message = event.data;
     const sevenZip = await sevenZipPromise;
     if (message?.action === 'list') {
-      if (listed || extracted || (message.kind !== 'zip' && message.kind !== '7z')
+      if (phase !== 'idle' || (message.kind !== 'zip' && message.kind !== '7z')
           || !(message.bytes instanceof ArrayBuffer)) {
         throw new Error('Archive listing request is invalid.');
       }
@@ -92,12 +114,18 @@ self.addEventListener('message', async (event) => {
         'l', `-t${archiveKind}`, '-slt', '-ba', '-bd', '-bsp0', '-bse1', '--',
         '/input.archive',
       ], 'Archive listing');
-      listed = true;
+      phase = 'listed';
       self.postMessage({ ok: true, phase: 'listed', lines });
       return;
     }
+    if (message?.action === 'discard') {
+      if (phase !== 'listed') throw new Error('Archive discard request is invalid.');
+      cleanupArchive(sevenZip);
+      self.postMessage({ ok: true, phase: 'discarded' });
+      return;
+    }
     if (message?.action === 'extract') {
-      if (!listed || extracted || !Array.isArray(message.paths) || !message.paths.length
+      if (phase !== 'listed' || !Array.isArray(message.paths) || !message.paths.length
           || message.paths.some((path) => typeof path !== 'string')) {
         throw new Error('Archive extraction request is invalid.');
       }
@@ -106,17 +134,26 @@ self.addEventListener('message', async (event) => {
         'x', `-t${archiveKind}`, '-y', '-bd', '-bb0', '-bso0', '-bsp0', '-bse1',
         '-o/output', '--', '/input.archive', ...message.paths,
       ], 'Archive extraction');
-      extracted = true;
       const members = readOutput(sevenZip);
+      cleanupArchive(sevenZip);
       self.postMessage({ ok: true, phase: 'extracted', members },
         members.map((member) => member.bytes));
       return;
     }
     throw new Error('Unknown archive worker request.');
   } catch (error) {
+    let reusable = false;
+    try {
+      const sevenZip = await sevenZipPromise;
+      cleanupArchive(sevenZip);
+      reusable = true;
+    } catch {
+      // A failed cleanup makes this worker session unusable.
+    }
     self.postMessage({
       ok: false,
       error: error?.message || String(error),
+      reusable,
     });
   }
 });
