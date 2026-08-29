@@ -879,6 +879,27 @@ def gate_asset_backed(browser, origin: str) -> None:
 def gate_asset_free(browser, origin: str) -> None:
     gate = BrowserGate(browser, origin, asset_free=True)
 
+    def block_post_preparation_reads(page) -> None:
+        page.evaluate("""() => {
+          const key = Symbol.for('mixup.releaseGate.postPreparationReads');
+          Object.defineProperty(File.prototype, key, {
+            value: 0,
+            writable: true,
+            configurable: true,
+          });
+          File.prototype.arrayBuffer = async function() {
+            File.prototype[key] += 1;
+            throw new Error('START GAME reread a File after local preparation completed');
+          };
+        }""")
+
+    def require_no_post_preparation_reads(page, title: str) -> None:
+        reads = page.evaluate("""() => File.prototype[
+          Symbol.for('mixup.releaseGate.postPreparationReads')
+        ]""")
+        require(reads == 0,
+                f"{title} reread validated files after preparation: {reads!r}")
+
     def shell_layout(page):
         open_page(page, origin, "/")
         guide = page.locator("#upload-guide")
@@ -1287,6 +1308,54 @@ def gate_asset_free(browser, origin: str) -> None:
 
     gate.run("asset-free latest selection wins", latest_selection_wins)
 
+    def latest_preparation_wins(page):
+        held_routes = []
+
+        def hold_gradius_module(route) -> None:
+            held_routes.append(route)
+
+        page.route("**/src/gradius-local.js", hold_gradius_module)
+        open_page(page, origin, "/")
+        page.locator("#files").set_input_files(str(GRADIUS_ARCHIVE_FIXTURE))
+        deadline = time.monotonic() + 120
+        while not held_routes and time.monotonic() < deadline:
+            page.wait_for_timeout(25)
+        require(len(held_routes) == 1,
+                "Gradius preparation did not request its delayed runtime module")
+        card = page.locator('.game-card[data-game-id="gradius"]')
+        require(card.is_disabled(),
+                "Gradius unlocked before delayed preparation completed")
+
+        page.locator("#files").set_input_files({
+            "name": "newer.rom",
+            "mimeType": "application/octet-stream",
+            "buffer": b"newer selection",
+        })
+        wait_for_condition(
+            page,
+            "() => { const status = document.querySelector('#status'); "
+            "return status.dataset.kind === 'bad' "
+            "&& status.textContent.includes('No complete game identity set was found.'); }",
+            timeout=30000,
+        )
+        held_routes[0].continue_()
+        page.unroute("**/src/gradius-local.js", hold_gradius_module)
+        page.wait_for_timeout(1000)
+
+        def assert_latest_preparation() -> None:
+            status = page.locator("#status").inner_text()
+            require("No complete game identity set was found." in status,
+                    f"stale preparation replaced newer selection status: {status!r}")
+            require(card.is_disabled(),
+                    "stale Gradius preparation unlocked the newer selection")
+            require(card.locator(".card-state").inner_text() == "ROM required",
+                    "stale Gradius preparation retained a ready card state")
+
+        assert_latest_preparation()
+        return assert_latest_preparation
+
+    gate.run("asset-free latest preparation wins", latest_preparation_wins)
+
     def local_cartridge(game_id: str, fixture: Path, title: str,
                         running_status: str, width: int, height: int):
         def run(page):
@@ -1297,6 +1366,7 @@ def gate_asset_free(browser, origin: str) -> None:
                 "document.querySelector('#status').dataset.kind === 'good'",
                 timeout=120000,
             )
+            block_post_preparation_reads(page)
             card = page.locator(f'.game-card[data-game-id="{game_id}"]')
             require(not card.is_disabled(), f"validated {title} card remains disabled")
             card.click()
@@ -1318,41 +1388,6 @@ def gate_asset_free(browser, origin: str) -> None:
             require(page.locator(".local-customizer").get_attribute("open") is None,
                     f"{title} launcher opens advanced options by default")
 
-            if game_id == "gradius":
-                page.evaluate("""() => {
-                  const original = File.prototype.arrayBuffer;
-                  let release;
-                  const gate = new Promise((resolve) => { release = resolve; });
-                  let first = true;
-                  File.prototype.arrayBuffer = async function(...args) {
-                    if (first) {
-                      first = false;
-                      globalThis.__mixupBootReadStarted = true;
-                      await gate;
-                    }
-                    return original.apply(this, args);
-                  };
-                  globalThis.__mixupReleaseBootRead = () => {
-                    File.prototype.arrayBuffer = original;
-                    release();
-                  };
-                }""")
-                page.locator("#local-start").click()
-                wait_for_condition(page, "globalThis.__mixupBootReadStarted === true")
-                page.locator("#local-game-mods").click()
-                require(page.locator("#local-picker").is_visible(),
-                        "Gradius MODS did not overtake the pending boot")
-                require(page.locator("#local-start").is_disabled(),
-                        "Gradius allowed a second start while stale boot cleanup was pending")
-                page.evaluate("globalThis.__mixupReleaseBootRead()")
-                wait_for_condition(
-                    page,
-                    "!document.querySelector('#local-start').disabled",
-                    timeout=120000,
-                )
-                require(page.locator("#local-picker").is_visible(),
-                        "stale Gradius boot escaped the picker")
-
             page.locator("#local-start").click()
             wait_for_condition(
                 page,
@@ -1366,7 +1401,9 @@ def gate_asset_free(browser, origin: str) -> None:
             )
             require(page.evaluate("document.activeElement?.id") == "game-canvas",
                     f"{title} game screen did not receive focus")
+            require_no_post_preparation_reads(page, title)
 
+            sound = None
             if game_id == "gradius":
                 sound = page.locator("#local-sound")
                 require(sound.is_visible() and sound.inner_text() == "SOUND ON",
@@ -1374,23 +1411,26 @@ def gate_asset_free(browser, origin: str) -> None:
                 sound.click()
                 require(sound.inner_text() == "SOUND OFF",
                         "Gradius sound control did not turn sound off")
-                page.locator("#local-game-mods").click()
-                require(page.locator("#local-picker").is_visible()
-                        and page.evaluate("document.activeElement?.id") == "local-picker-games",
-                        "Gradius MODS did not return focus to the picker")
-                page.locator("#local-start").click()
-                wait_for_condition(
-                    page,
-                    "expected => document.querySelector('#boot-status').textContent === expected",
-                    arg=running_status,
-                    timeout=120000,
-                )
+
+            page.locator("#local-game-mods").click()
+            require(page.locator("#local-picker").is_visible()
+                    and page.evaluate("document.activeElement?.id") == "local-picker-games",
+                    f"{title} MODS did not return focus to the picker")
+            page.locator("#local-start").click()
+            wait_for_condition(
+                page,
+                "expected => document.querySelector('#boot-status').textContent === expected",
+                arg=running_status,
+                timeout=120000,
+            )
+            if sound is not None:
                 require(sound.inner_text() == "SOUND OFF",
                         "Gradius sound preference was lost on restart")
-                canvas_identity(
+            canvas_identity(
                 page, "#game-canvas", width, height, timeout=120000,
                 min_colors=4 if game_id == "batman" else 8,
             )
+            require_no_post_preparation_reads(page, title)
 
             page.keyboard.press("Escape")
             require(shell.is_hidden(), f"Escape did not close the {title} launcher")
@@ -1414,6 +1454,7 @@ def gate_asset_free(browser, origin: str) -> None:
                 require(shell.is_hidden(), f"{title} launcher reopened while settling")
                 require(not page.locator("main").evaluate("node => node.inert"),
                         f"{title} setup controls became inert while settling")
+                require_no_post_preparation_reads(page, title)
 
             return recheck
         return run
@@ -1459,6 +1500,7 @@ def gate_asset_free(browser, origin: str) -> None:
         archive_status = page.locator("#status").inner_text()
         require("Read 10 members from 1 local archive." in archive_status,
                 f"7z intake status is not exact: {archive_status!r}")
+        block_post_preparation_reads(page)
         card = page.locator('.game-card[data-game-id="ddpdoj"]')
         require(not card.is_disabled(), "validated DaiOuJou card remains disabled")
         require(card.locator(".card-state").inner_text() == "Identity validated",
@@ -1610,6 +1652,7 @@ def gate_asset_free(browser, origin: str) -> None:
             )
             require(dimensions == {"width": 224, "height": 448, "area": 448 * 224},
                     f"unexpected TATE canvas dimensions {dimensions}")
+            require_no_post_preparation_reads(page, "DaiOuJou")
 
         def assert_stage_width(width: int) -> None:
             page.set_viewport_size({"width": width, "height": 900})
@@ -1722,14 +1765,31 @@ def gate_asset_free(browser, origin: str) -> None:
         require(page.locator("#local-game-status").inner_text() == JOINED_THREE_SHIP,
                 "three-ship formation did not join at credited handoff")
         canvas_identity(page, "#game-canvas", 224, 448)
+        assert_running()
+        assert_no_runtime_globals()
+
+        page.locator("#local-game-mods").click()
+        require(page.locator("#local-picker").is_visible()
+                and page.evaluate("document.activeElement?.id") == "local-picker-games",
+                "DaiOuJou MODS did not return focus to the picker")
+        page.locator("#local-start").click()
+        wait_for_condition(
+            page,
+            "expected => document.querySelector('#boot-status').textContent === expected",
+            arg=RUNNING_DDPDOJ,
+            timeout=300000,
+        )
+        assert_running()
+        assert_no_runtime_globals()
+        canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
+        require_no_post_preparation_reads(page, "DaiOuJou")
+
         draw_count = page.evaluate(
             "() => CanvasRenderingContext2D.prototype["
             "Symbol.for('mixup.releaseGate.putImageDataCount')]"
         )
         require(isinstance(draw_count, int) and draw_count > 0,
                 f"asset-free draw counter is invalid: {draw_count!r}")
-        assert_running()
-        assert_no_runtime_globals()
 
         def recheck() -> None:
             assert_running()

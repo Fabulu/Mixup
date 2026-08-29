@@ -311,8 +311,9 @@ class LocalShell {
   }
 
   open(options) {
-    if (!GAME_IDS.has(options?.gameId) || !options.summary?.complete) {
-      throw new Error('A complete validated local game is required.');
+    if (!GAME_IDS.has(options?.gameId) || !options.summary?.complete
+        || options.prepared?.gameId !== options.gameId) {
+      throw new Error('A complete prepared local game is required.');
     }
     this.stopGame();
     this.opener = options.opener instanceof HTMLElement
@@ -636,7 +637,7 @@ class LocalShell {
     this.picker.hidden = true;
     this.gameScreen.hidden = false;
     this.gameTitle.textContent = this.options.title;
-    this.gameStatus.textContent = 'Preparing validated local ROM data...';
+    this.gameStatus.textContent = 'Starting from prepared local game data...';
     this.hint.textContent = GAME_COPY[this.gameId].hint;
     this.picture.hidden = this.gameId !== 'ddpdoj';
     this.sound.hidden = this.gameId === 'batman';
@@ -657,7 +658,7 @@ class LocalShell {
           ? (await import('./gradius-local.js')).LocalGradiusRuntime
           : (await import('./ddpdoj-local.js')).LocalDdpdojRuntime);
       if (generation !== this.generation || this.gameScreen.hidden) return;
-      const runtime = await Runtime.create(this.options.summary, this.canvas, {
+      const runtime = await Runtime.createFromPrepared(this.options.prepared, this.canvas, {
         config: this.runtimeConfig(),
         target: globalThis,
         onStatus: (message) => {

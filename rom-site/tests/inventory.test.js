@@ -40,6 +40,10 @@ test('one mixed folder hashes each file once and unlocks all three games', async
   assert.equal(inventory.games.ddpdoj.acceptedInputs.length, 10);
   assert.deepEqual(inventory.games.ddpdoj.acceptedInputs[0].satisfiesNames,
     [GAME_CATALOGUE.ddpdoj.accepted[0].name]);
+  const accepted = inventory.games.ddpdoj.acceptedInputs[0];
+  assert.strictEqual(accepted.bytes,
+    inventory.items.find((item) => item.file === accepted.file).bytes,
+    'validated bytes remain available for preparation without another file read');
 });
 
 test('unknown extras remain diagnostic but do not relock an exact game', async () => {

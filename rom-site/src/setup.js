@@ -42,7 +42,7 @@ let savedHandle = null;
 let savedPermission = 'missing';
 let diagnosticText = '';
 let launcherState = createLauncherState();
-const selectedFilesByGame = new Map();
+const preparedByGame = new Map();
 let lastInventory = null;
 let activeRuntime = null;
 let launching = false;
@@ -65,6 +65,49 @@ function intakeIsCurrent(intake) {
 
 function finishIntake(intake) {
   if (intakeIsCurrent(intake)) intakeController = null;
+}
+
+async function localRuntimeClass(gameId) {
+  if (gameId === 'batman') return (await import('./batman-local.js')).LocalBatmanRuntime;
+  if (gameId === 'gradius') return (await import('./gradius-local.js')).LocalGradiusRuntime;
+  if (gameId === 'ddpdoj') return (await import('./ddpdoj-local.js')).LocalDdpdojRuntime;
+  throw new RangeError(`Unknown local game ${gameId}.`);
+}
+
+function preparedForGame(gameId) {
+  const prepared = preparedByGame.get(gameId);
+  return prepared && typeof prepared.then !== 'function' ? prepared : null;
+}
+
+function releaseInventoryBytes(inventory) {
+  for (const item of inventory.items ?? []) delete item.bytes;
+  for (const gameId of GAME_IDS) {
+    for (const input of inventory.games[gameId].acceptedInputs) delete input.bytes;
+  }
+}
+
+async function prepareValidatedGame(gameId, summary, intake) {
+  const title = GAME_CATALOGUE[gameId].title;
+  const preparation = (async () => {
+    const Runtime = await localRuntimeClass(gameId);
+    if (!intakeIsCurrent(intake)) return null;
+    return Runtime.prepare(summary, {
+      signal: intake.controller.signal,
+      onStatus: (message) => {
+        if (intakeIsCurrent(intake)) setStatus(message, 'working');
+      },
+    });
+  })();
+  preparedByGame.set(gameId, preparation);
+  renderLauncher();
+  setStatus(`Preparing ${title} for immediate local play...`, 'working');
+  const prepared = await preparation;
+  if (!intakeIsCurrent(intake) || preparedByGame.get(gameId) !== preparation) return null;
+  if (!prepared) throw new Error(`${title} preparation ended without runtime data.`);
+  preparedByGame.set(gameId, prepared);
+  launcherState = applyValidation(launcherState, gameId, true);
+  renderLauncher();
+  return prepared;
 }
 
 build.textContent = BUILD_ID;
@@ -150,12 +193,15 @@ function renderLauncher() {
   for (const card of gameCards) {
     const gameId = card.dataset.gameId;
     const enabled = launcherState.validated[gameId] === true;
+    const cached = preparedByGame.get(gameId);
+    const preparing = cached && typeof cached.then === 'function';
     card.disabled = !enabled;
     card.setAttribute('aria-pressed', String(launcherState.primary === gameId));
     card.dataset.selected = launcherState.primary === gameId ? 'true' : 'false';
     card.querySelector('.card-state').textContent = enabled
       ? 'Identity validated'
-      : (gameId === 'ddpdoj' ? 'ROM set required' : 'ROM required');
+      : (preparing ? 'Preparing local game data'
+        : (gameId === 'ddpdoj' ? 'ROM set required' : 'ROM required'));
   }
   primaryWorld.textContent = launcherState.primary
     ? GAME_CATALOGUE[launcherState.primary].title
@@ -191,7 +237,7 @@ function resetInventory() {
   stopRuntime();
   setBootStatus('');
   lastInventory = null;
-  selectedFilesByGame.clear();
+  preparedByGame.clear();
   for (const gameId of GAME_IDS) {
     launcherState = applyValidation(launcherState, gameId, false);
   }
@@ -224,7 +270,7 @@ async function validate(files, source, options = {}) {
   stopRuntime();
   setBootStatus('');
   lastInventory = null;
-  selectedFilesByGame.clear();
+  preparedByGame.clear();
   for (const gameId of GAME_IDS) {
     launcherState = applyValidation(launcherState, gameId, false);
   }
@@ -261,16 +307,14 @@ async function validate(files, source, options = {}) {
     });
     if (!intakeIsCurrent(intake)) return;
     lastInventory = inventory;
-    for (const gameId of GAME_IDS) {
-      const summary = inventory.games[gameId];
-      launcherState = applyValidation(launcherState, gameId, summary.complete);
-      if (summary.acceptedFiles.length) selectedFilesByGame.set(gameId, summary.acceptedFiles);
-      else selectedFilesByGame.delete(gameId);
-    }
-    renderLauncher();
     renderSelectedDiagnostic();
-    const unlocked = GAME_IDS.filter((gameId) => inventory.games[gameId].complete)
-      .map((gameId) => GAME_CATALOGUE[gameId].title);
+    const complete = GAME_IDS.filter((gameId) => inventory.games[gameId].complete);
+    for (const gameId of complete) {
+      await prepareValidatedGame(gameId, inventory.games[gameId], intake);
+      if (!intakeIsCurrent(intake)) return;
+    }
+    releaseInventoryBytes(inventory);
+    const unlocked = complete.map((gameId) => GAME_CATALOGUE[gameId].title);
     const archiveNote = expanded.archives
       ? ` Read ${expanded.members} member${expanded.members === 1 ? '' : 's'} from ${expanded.archives} local archive${expanded.archives === 1 ? '' : 's'}.`
       : '';
@@ -343,8 +387,9 @@ for (const card of gameCards) {
 }
 launchGame.addEventListener('click', async () => {
   const gameId = launcherState.primary;
+  const prepared = preparedForGame(gameId);
   if (launching || !['batman', 'gradius', 'ddpdoj'].includes(gameId)
-      || !lastInventory?.games[gameId].complete) return;
+      || !lastInventory?.games[gameId].complete || !prepared) return;
   const title = GAME_CATALOGUE[gameId].title;
   stopRuntime();
   launching = true;
@@ -355,6 +400,7 @@ launchGame.addEventListener('click', async () => {
     activeRuntime = openLocalShell({
       gameId,
       summary: lastInventory.games[gameId],
+      prepared,
       title,
       opener: launchGame,
       onStatus: setBootStatus,

@@ -47,38 +47,73 @@ function inputFor(summary, name) {
   return summary.acceptedInputs?.find((input) => input.satisfiesNames.includes(name)) ?? null;
 }
 
-async function readInput(input, label) {
-  if (!input?.file) throw new Error(`Validated local input for ${label} is unavailable.`);
-  return new Uint8Array(await input.file.arrayBuffer());
+function throwIfAborted(signal) {
+  if (!signal?.aborted) return;
+  const error = new Error('Local ROM preparation was superseded by a newer selection.');
+  error.name = 'AbortError';
+  throw error;
 }
 
-async function localData(summary, onStatus) {
+async function readInput(input, label, signal) {
+  throwIfAborted(signal);
+  if (input?.bytes instanceof ArrayBuffer) return new Uint8Array(input.bytes);
+  if (!input?.file) throw new Error(`Validated local input for ${label} is unavailable.`);
+  const bytes = new Uint8Array(await input.file.arrayBuffer());
+  throwIfAborted(signal);
+  return bytes;
+}
+
+async function yieldForTransform(signal) {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  throwIfAborted(signal);
+}
+
+async function localData(summary, options = {}) {
+  const { onStatus, signal } = options;
   const decrypted = summary.acceptedInputs?.find((input) =>
     input.satisfiesNames.includes('ddb10_10_8_434f.u45')
     && input.satisfiesNames.includes('ddp3_bios.u37'));
   onStatus?.('Preparing the local DaiOuJou program image...');
-  const maincpu = decrypted
-    ? await buildMainCpu({ decrypted: await readInput(decrypted, 'decrypted maincpu') })
-    : await buildMainCpu({
-      bios: await readInput(inputFor(summary, 'ddp3_bios.u37'), 'ddp3_bios.u37'),
-      program: await readInput(inputFor(summary, 'ddb10_10_8_434f.u45'), 'ddb10_10_8_434f.u45'),
-    });
+  let maincpu;
+  if (decrypted) {
+    const bytes = await readInput(decrypted, 'decrypted maincpu', signal);
+    await yieldForTransform(signal);
+    maincpu = await buildMainCpu({ decrypted: bytes });
+  } else {
+    const bios = await readInput(inputFor(summary, 'ddp3_bios.u37'),
+      'ddp3_bios.u37', signal);
+    const program = await readInput(inputFor(summary, 'ddb10_10_8_434f.u45'),
+      'ddb10_10_8_434f.u45', signal);
+    await yieldForTransform(signal);
+    maincpu = await buildMainCpu({ bios, program });
+  }
+  throwIfAborted(signal);
 
   const graphics = new Map();
   for (const name of GRAPHICS) {
-    onStatus?.(`Reading local graphics member ${name}...`);
-    graphics.set(name, await readInput(inputFor(summary, name), name));
+    onStatus?.(`Reading validated graphics member ${name} from memory...`);
+    graphics.set(name, await readInput(inputFor(summary, name), name, signal));
   }
   onStatus?.('Assembling local IGS023 graphics regions...');
+  await yieldForTransform(signal);
   const regions = loadRegions((name) => graphics.get(name));
-  onStatus?.('Preparing local DaiOuJou sound data...');
+  throwIfAborted(signal);
+
+  onStatus?.('Preparing local DaiOuJou sound data and runtime tables...');
   const sampleRom = await readInput(inputFor(summary, 'cave_m04401b032.u17'),
-    'cave_m04401b032.u17');
-  return {
+    'cave_m04401b032.u17', signal);
+  await yieldForTransform(signal);
+  const soundAssets = soundAssetsFromLocalRoms(maincpu, sampleRom);
+  const tables = tablesFromMainCpu(maincpu);
+  throwIfAborted(signal);
+  return Object.freeze({
+    gameId: 'ddpdoj',
     maincpu,
     regions,
-    soundAssets: soundAssetsFromLocalRoms(maincpu, sampleRom),
-  };
+    soundAssets,
+    tables,
+    rom: new FullRom(maincpu),
+  });
 }
 
 function copySpriteList(game, out) {
@@ -88,13 +123,23 @@ function copySpriteList(game, out) {
 }
 
 export class LocalDdpdojRuntime {
-  static async create(summary, canvas, options = {}) {
+  static async prepare(summary, options = {}) {
     if (!summary?.complete || summary.gameId !== 'ddpdoj') {
       throw new Error('DaiOuJou launch requires one complete exact local identity set.');
     }
+    return localData(summary, options);
+  }
+
+  static async createFromPrepared(prepared, canvas, options = {}) {
+    if (prepared?.gameId !== 'ddpdoj' || !prepared.maincpu || !prepared.regions
+        || !prepared.soundAssets || !prepared.tables || !prepared.rom) {
+      throw new Error('DaiOuJou launch requires prepared local ROM data.');
+    }
     if (!(canvas instanceof HTMLCanvasElement)) throw new TypeError('DaiOuJou launch needs a canvas.');
 
-    const { maincpu, regions, soundAssets } = await localData(summary, options.onStatus);
+    const {
+      regions, soundAssets, tables, rom,
+    } = prepared;
     const config = options.config ?? {};
     const audio = config.audio ?? null;
     const soundRuntime = audio
@@ -110,8 +155,6 @@ export class LocalDdpdojRuntime {
     if (formationState && !formationSelection) {
       throw new Error('Formation mode received an invalid P1 selection.');
     }
-    const rom = new FullRom(maincpu);
-    const tables = tablesFromMainCpu(maincpu);
     let game = null;
     let gameOptions = { ...(modGameOptions(modState) ?? {}) };
     if (formationState) {
@@ -148,6 +191,11 @@ export class LocalDdpdojRuntime {
       formationState,
       mode: config.mode,
     });
+  }
+
+  static async create(summary, canvas, options = {}) {
+    const prepared = await LocalDdpdojRuntime.prepare(summary, options);
+    return LocalDdpdojRuntime.createFromPrepared(prepared, canvas, options);
   }
 
   constructor(game, regions, canvas, options = {}) {

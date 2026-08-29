@@ -221,13 +221,14 @@ export async function inspectInventory(files, options = {}) {
       metadata.sha1 = await digestHex('SHA-1', bytes, options.sha1Digest ?? digest);
       throwIfAborted(options.signal);
     }
-    items.push({ file, metadata });
+    items.push({ file, bytes, metadata });
   }
 
   const games = Object.fromEntries(GAME_IDS.map((gameId) => {
     const reports = items.map(({ metadata }) => classifyMetadata(gameId, metadata));
     return [gameId, summarizeReports(gameId, reports, {
       files: items.map(({ file }) => file),
+      bytes: items.map(({ bytes }) => bytes),
     })];
   }));
   return { items, games };
@@ -265,11 +266,14 @@ export function summarizeReports(gameId, reports, options = {}) {
     if (file && !seenFiles.has(file)) {
       seenFiles.add(file);
       acceptedFiles.push(file);
-      acceptedInputs.push({
+      const acceptedInput = {
         file,
         satisfiesNames: reports[index].satisfiesNames.slice(),
         sha256: reports[index].actual.sha256,
-      });
+      };
+      const bytes = options.bytes?.[index];
+      if (bytes instanceof ArrayBuffer) acceptedInput.bytes = bytes;
+      acceptedInputs.push(acceptedInput);
     }
   }
   const extras = reports.filter((report) => report.satisfiesNames.length === 0);
