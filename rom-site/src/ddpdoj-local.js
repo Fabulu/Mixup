@@ -183,7 +183,7 @@ export class LocalDdpdojRuntime {
     game.boot({ cabinetFrontend: true });
     if (soundRuntime) audio.setChip(soundRuntime);
 
-    ensureInput(canvas);
+    ensureInput(options.target ?? canvas);
     return new LocalDdpdojRuntime(game, regions, canvas, {
       ...options,
       audio,

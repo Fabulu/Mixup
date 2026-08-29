@@ -1729,6 +1729,7 @@ def gate_asset_free(browser, origin: str) -> None:
             assert_stage_width(width)
         page.set_viewport_size({"width": 1280, "height": 900})
         page.wait_for_timeout(150)
+
         page.keyboard.press("5")
         page.wait_for_timeout(1000)
         page.keyboard.down("Enter")
@@ -1767,6 +1768,106 @@ def gate_asset_free(browser, origin: str) -> None:
         canvas_identity(page, "#game-canvas", 224, 448)
         assert_running()
         assert_no_runtime_globals()
+
+        dpad = page.locator("#local-dpad")
+        require(dpad.bounding_box() is not None,
+                "Mixup DaiOuJou d-pad has no pointer target")
+        dpad.evaluate("""element => {
+          element.setPointerCapture = () => {};
+          const bounds = element.getBoundingClientRect();
+          element.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, cancelable: true, pointerId: 41, pointerType: 'touch',
+            clientX: bounds.left + 3, clientY: bounds.top + 3,
+          }));
+        }""")
+        touch_state = page.evaluate("""async () => {
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          return {
+            mask: input.currentMask(),
+            expected: (1 << input.CONTROLS.UP) | (1 << input.CONTROLS.LEFT),
+          };
+        }""")
+        require(touch_state["mask"] == touch_state["expected"],
+                f"Mixup d-pad did not reach DaiOuJou touch input: {touch_state!r}")
+        dpad.evaluate("""element => element.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, cancelable: true, pointerId: 41, pointerType: 'touch',
+        }))""")
+        require(page.evaluate("""async () => {
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          return input.currentMask() === 0;
+        }"""), "Mixup DaiOuJou d-pad stayed held after pointer release")
+
+        shot = page.locator("#local-pad-buttons .local-pad-button", has_text="SHOT")
+        require(shot.bounding_box() is not None,
+                "Mixup DaiOuJou SHOT has no pointer target")
+        shot.evaluate("""element => {
+          element.setPointerCapture = () => {};
+          element.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, cancelable: true, pointerId: 42, pointerType: 'touch',
+          }));
+        }""")
+        shot_state = page.evaluate("""async () => {
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          return { mask: input.currentMask(), expected: 1 << input.CONTROLS.SHOT };
+        }""")
+        require(shot_state["mask"] == shot_state["expected"],
+                f"Mixup SHOT did not reach DaiOuJou touch input: {shot_state!r}")
+        shot.evaluate("""element => element.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, cancelable: true, pointerId: 42, pointerType: 'touch',
+        }))""")
+
+        coin = page.locator("#local-pad-buttons .local-pad-button", has_text="COIN")
+        require(coin.bounding_box() is not None,
+                "Mixup DaiOuJou COIN has no pointer target")
+        coin.evaluate("""element => {
+          element.setPointerCapture = () => {};
+          element.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, cancelable: true, pointerId: 43, pointerType: 'touch',
+          }));
+        }""")
+        coin_word = page.evaluate("""async () => {
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          return input.currentCoinWord();
+        }""")
+        require((coin_word & 1) == 0,
+                f"Mixup COIN did not reach DaiOuJou coin port: {coin_word:#06x}")
+        coin.evaluate("""element => element.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, cancelable: true, pointerId: 43, pointerType: 'touch',
+        }))""")
+        page.evaluate("""async () => {
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          input.clearTouch();
+          input.clearCoin();
+        }""")
+
+        page.locator("#local-fullscreen").click()
+        wait_for_condition(
+            page,
+            "document.fullscreenElement?.id === 'local-stage'",
+            timeout=30000,
+        )
+        fullscreen_layout = page.evaluate("""() => {
+          const stage = document.querySelector('#local-stage');
+          const pad = document.querySelector('#local-pad');
+          const canvas = document.querySelector('#game-canvas');
+          const stageRect = stage.getBoundingClientRect();
+          const canvasRect = canvas.getBoundingClientRect();
+          return {
+            ownsPad: stage.contains(pad),
+            padVisible: getComputedStyle(pad).display !== 'none',
+            stage: { width: stageRect.width, height: stageRect.height },
+            canvas: { width: canvasRect.width, height: canvasRect.height },
+          };
+        }""")
+        require(fullscreen_layout["ownsPad"] and fullscreen_layout["padVisible"]
+                and fullscreen_layout["stage"]["width"] > 0
+                and fullscreen_layout["stage"]["height"] > 0
+                and fullscreen_layout["canvas"]["width"] > 0
+                and fullscreen_layout["canvas"]["height"] > 0,
+                f"Mixup fullscreen omitted game or touch controls: {fullscreen_layout!r}")
+        page.evaluate("document.exitFullscreen()")
+        wait_for_condition(page, "document.fullscreenElement === null", timeout=30000)
+        page.wait_for_timeout(150)
 
         page.locator("#local-game-mods").click()
         require(page.locator("#local-picker").is_visible()

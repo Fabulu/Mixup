@@ -204,6 +204,7 @@ class LocalShell {
     this.picture = document.querySelector('#local-picture');
     this.sound = document.querySelector('#local-sound');
     this.fullscreen = document.querySelector('#local-fullscreen');
+    this.stage = document.querySelector('#local-stage');
     this.viewport = document.querySelector('#local-viewport');
     this.canvas = document.querySelector('#game-canvas');
     this.hint = document.querySelector('#local-control-hint');
@@ -218,13 +219,12 @@ class LocalShell {
     this.fitRequest = 0;
     this.dpadPointer = null;
     this.dpadMask = 0;
-    this.syntheticCodes = new Set();
     this.gradiusAudio = null;
     this.ddpdojAudio = null;
     this.opener = null;
     this.backgroundStates = new Map();
 
-    if (!this.shell || !this.canvas || !this.pickerContent) {
+    if (!this.shell || !this.stage || !this.canvas || !this.pickerContent) {
       throw new Error('The local game shell markup is incomplete.');
     }
 
@@ -749,7 +749,7 @@ class LocalShell {
     if (this.gameScreen.hidden || !this.viewport.clientWidth || !this.viewport.clientHeight) return;
     const width = this.gameId === 'batman' ? 160 : this.canvas.width;
     const height = this.gameId === 'batman' ? 144 : this.canvas.height;
-    if (document.fullscreenElement === this.viewport) {
+    if (document.fullscreenElement === this.stage) {
       setFullscreenCanvasFit(this.canvas, this.viewport, width, height);
       return;
     }
@@ -763,7 +763,7 @@ class LocalShell {
   async toggleFullscreen() {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
-      else await this.viewport.requestFullscreen({ navigationUI: 'hide' });
+      else await this.stage.requestFullscreen({ navigationUI: 'hide' });
     } catch (error) {
       this.gameStatus.textContent = `Fullscreen unavailable: ${error.message}`;
     }
@@ -792,29 +792,12 @@ class LocalShell {
     this.sound.textContent = enabled ? 'SOUND ON' : 'SOUND OFF';
   }
 
-  dispatchCode(code, down) {
-    const type = down ? 'keydown' : 'keyup';
-    globalThis.dispatchEvent(new KeyboardEvent(type, {
-      code,
-      key: code.startsWith('Arrow') ? code : '',
-      bubbles: true,
-      cancelable: true,
-    }));
-    if (down) this.syntheticCodes.add(code);
-    else this.syntheticCodes.delete(code);
-  }
-
-  clearSyntheticCodes() {
-    for (const code of [...this.syntheticCodes]) this.dispatchCode(code, false);
-  }
-
   resyncAudio() {
     this.gradiusAudio?.resync();
     this.ddpdojAudio?.resync();
   }
 
   clearInput() {
-    this.clearSyntheticCodes();
     this.dpadPointer = null;
     this.dpadMask = 0;
     BatmanInput.resetInput?.();
@@ -883,11 +866,12 @@ class LocalShell {
         | (mask & 4 ? b.LEFT ?? 0 : 0) | (mask & 8 ? b.RIGHT ?? 0 : 0);
       GradiusInput.setTouchDirections?.(directions);
     } else if (this.gameId === 'ddpdoj') {
-      for (const [flag, code] of [[1, 'ArrowUp'], [2, 'ArrowDown'], [4, 'ArrowLeft'], [8, 'ArrowRight']]) {
-        if (Boolean(mask & flag) !== Boolean(this.dpadMask & flag)) {
-          this.dispatchCode(code, Boolean(mask & flag));
-        }
-      }
+      const controls = DdpInput.CONTROLS;
+      const directions = (mask & 1 ? 1 << controls.UP : 0)
+        | (mask & 2 ? 1 << controls.DOWN : 0)
+        | (mask & 4 ? 1 << controls.LEFT : 0)
+        | (mask & 8 ? 1 << controls.RIGHT : 0);
+      DdpInput.setTouchDirections(directions);
     }
     this.dpadMask = mask;
   }
@@ -917,13 +901,13 @@ class LocalShell {
       ]);
     } else {
       rows.push([
-        { label: 'SHOT', codes: ['KeyY', 'KeyZ'] },
-        { label: 'BOMB', codes: ['KeyX'] },
-        { label: 'AUTO', codes: ['KeyC'] },
+        { label: 'SHOT', press: (down) => DdpInput.setTouchButton('SHOT', down) },
+        { label: 'BOMB', press: (down) => DdpInput.setTouchButton('BOMB', down) },
+        { label: 'AUTO', press: (down) => DdpInput.setTouchButton('AUTO', down) },
       ]);
       rows.push([
-        { label: 'COIN', small: true, codes: ['Digit5'] },
-        { label: 'START', small: true, codes: ['Enter'] },
+        { label: 'COIN', small: true, press: (down) => DdpInput.setCoinKey('COIN1', down) },
+        { label: 'START', small: true, press: (down) => DdpInput.setTouchButton('START', down) },
       ]);
     }
     for (const controls of rows) {
@@ -935,7 +919,6 @@ class LocalShell {
         const set = (down) => {
           button.dataset.on = String(down);
           if (control.press) control.press(down);
-          for (const code of control.codes ?? []) this.dispatchCode(code, down);
         };
         button.addEventListener('pointerdown', (event) => {
           event.preventDefault();
