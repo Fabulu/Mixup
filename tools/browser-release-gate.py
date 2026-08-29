@@ -783,7 +783,32 @@ def gate_asset_backed(browser, origin: str) -> None:
             palette: hash(demo.game.palette.words),
           });
           const initial = window.__mixup.stats();
-          demo.step();
+          const cadenceEvents = [];
+          const soundTick = demo.soundController.tick.bind(demo.soundController);
+          const logicStep = demo.step.bind(demo);
+          demo.soundController.tick = () => {
+            cadenceEvents.push('sound');
+            return soundTick();
+          };
+          demo.step = options => {
+            cadenceEvents.push('logic');
+            return logicStep(options);
+          };
+          demo.game.armedVblanks = 2;
+          demo.game.ram.setU8(0x803940, 2);
+          demo.cadence.reset();
+          const start = 100;
+          demo.last = start;
+          demo.running = true;
+          demo.loop(start + demo.periodMs);
+          const afterFirstPeriod = {
+            logicFrame: demo.game.logicFrame,
+            cadenceEvents: cadenceEvents.slice(),
+          };
+          demo.loop(start + demo.periodMs * 2);
+          demo.running = false;
+          demo.soundController.tick = soundTick;
+          demo.step = logicStep;
           const view = demo.runaheadView;
           const stepped = window.__mixup.stats();
           const beforeDraw = canonical();
@@ -808,6 +833,8 @@ def gate_asset_backed(browser, origin: str) -> None:
             beforeDraw,
             afterDraw,
             playbackSuspended,
+            afterFirstPeriod,
+            cadenceEvents,
           };
         }""")
         require(state["initial"]["runaheadConfigured"] == 2
@@ -818,6 +845,13 @@ def gate_asset_backed(browser, origin: str) -> None:
                 and state["stepped"]["runaheadActive"] == 2
                 and state["stepped"]["displayLogicFrame"] == 3,
                 f"runahead did not keep one canonical frame and project two: {state['stepped']}")
+        require(state["afterFirstPeriod"] == {
+                    "logicFrame": state["initial"]["logicFrame"],
+                    "cadenceEvents": ["sound"],
+                },
+                f"sound did not run independently during arm-two wait: {state['afterFirstPeriod']}")
+        require(state["cadenceEvents"] == ["sound", "logic", "sound"],
+                f"coincident logic/sound boundary is out of order: {state['cadenceEvents']}")
         require(state["view"] == {
             "baseLogicFrame": 1,
             "logicFrame": 3,
@@ -901,6 +935,14 @@ def gate_asset_backed(browser, origin: str) -> None:
             wait_for_canvas_change(
                 page, second_canvas, "#screen", 224, 448, "settled side-by-side"
             )
+            page.evaluate("() => { window.__mixup.demo.running = false; }")
+            wait_for_condition(
+                page,
+                "() => [window.__mixup.bundle.bg, window.__mixup.bundle.spr]"
+                ".every(queue => { const state = queue.status(); "
+                "return state.ready === state.total && state.loading.length === 0; })",
+                timeout=180000,
+            )
 
         return recheck
 
@@ -951,6 +993,14 @@ def gate_asset_backed(browser, origin: str) -> None:
                     "three-ship logic frames stopped during settling")
             wait_for_canvas_change(
                 page, second_canvas, "#screen", 224, 448, "settled three-ship"
+            )
+            page.evaluate("() => { window.__mixup.demo.running = false; }")
+            wait_for_condition(
+                page,
+                "() => [window.__mixup.bundle.bg, window.__mixup.bundle.spr]"
+                ".every(queue => { const state = queue.status(); "
+                "return state.ready === state.total && state.loading.length === 0; })",
+                timeout=180000,
             )
 
         return recheck
@@ -1145,7 +1195,7 @@ def gate_asset_free(browser, origin: str) -> None:
             "name": "ddpdojblk.zip",
             "mimeType": "application/zip",
             "buffer": archive.getvalue(),
-        })
+        }, timeout=300000)
         wait_for_condition(
             page,
             "document.querySelector('#status').dataset.kind === 'good'",
@@ -1219,7 +1269,7 @@ def gate_asset_free(browser, origin: str) -> None:
                 "mimeType": "application/zip",
                 "buffer": b"PK\x03\x04broken archive",
             },
-        ))
+        ), timeout=300000)
         wait_for_condition(
             page,
             "document.querySelector('#status').dataset.kind === 'good'",
@@ -2292,7 +2342,36 @@ def gate_asset_free(browser, origin: str) -> None:
             input() { recorderInputs++; },
             feed() { recorderFeeds++; },
           };
-          runtime.step();
+          const cadenceEvents = [];
+          const soundTick = runtime.audio.tick.bind(runtime.audio);
+          const runtimeStep = runtime.step.bind(runtime);
+          runtime.audio.tick = () => {
+            cadenceEvents.push('sound');
+            return soundTick();
+          };
+          runtime.step = options => {
+            cadenceEvents.push('logic');
+            return runtimeStep(options);
+          };
+          runtime.game.armedVblanks = 2;
+          runtime.game.ram.setU8(0x803940, 2);
+          runtime.cadence.reset();
+          const start = 100;
+          const period = runtime.cadence.soundPeriodMs;
+          const initialLogicFrame = runtime.game.logicFrame;
+          runtime.lastTime = start;
+          runtime.running = true;
+          runtime.frame(start + period);
+          cancelAnimationFrame(runtime.request);
+          const afterFirstPeriod = {
+            logicFrame: runtime.game.logicFrame,
+            cadenceEvents: cadenceEvents.slice(),
+          };
+          runtime.frame(start + period * 2);
+          cancelAnimationFrame(runtime.request);
+          runtime.running = false;
+          runtime.audio.tick = soundTick;
+          runtime.step = runtimeStep;
           runtime.recorder = null;
           const view = runtime.runaheadView;
           const beforeDraw = canonical();
@@ -2304,6 +2383,7 @@ def gate_asset_free(browser, origin: str) -> None:
           runtime.playback = playback;
           return {
             configured: runtime.runaheadFrames,
+            initialLogicFrame,
             canonicalLogicFrame: runtime.game.logicFrame,
             view: view && {
               baseLogicFrame: view.baseLogicFrame,
@@ -2322,9 +2402,21 @@ def gate_asset_free(browser, origin: str) -> None:
             beforeDraw,
             afterDraw,
             playbackSuspended,
+            afterFirstPeriod,
+            cadenceEvents,
           };
         }""")
         calls = runahead_state["calls"]
+        require(runahead_state["afterFirstPeriod"] == {
+                    "logicFrame": runahead_state["initialLogicFrame"],
+                    "cadenceEvents": ["sound"],
+                },
+                f"Mixup sound did not run during the arm-two wait: {runahead_state}")
+        require(runahead_state["cadenceEvents"] == ["sound", "logic", "sound"],
+                f"Mixup coincident logic/sound boundary is out of order: {runahead_state}")
+        require(runahead_state["canonicalLogicFrame"]
+                == runahead_state["initialLogicFrame"] + 1,
+                f"Mixup arm-two cadence did not delay exactly one logic step: {runahead_state}")
         require(runahead_state["configured"] == 2
                 and len(calls) == 3
                 and [call["logicFrame"] for call in calls]

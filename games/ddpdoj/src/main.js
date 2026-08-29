@@ -498,12 +498,12 @@ export class Game {
     // the shadow/log/digest triple the sound gate compares per frame. See
     // src/sound.js for the engine and the byte-exactness claim.
     this.sound = new SoundState();
-    if (opts.soundSink != null && typeof opts.soundSink.frame !== 'function') {
-      throw new TypeError('Game soundSink must expose frame(input)');
+    if (opts.soundSink != null && typeof opts.soundSink.command !== 'function') {
+      throw new TypeError('Game soundSink must expose command(input)');
     }
-    // Policy-neutral ownership boundary. Game produces one compact input after
-    // its real mailbox drain. A direct SoundRuntime or the future shared
-    // AudioController may own consumption; Game never advances the chip twice.
+    // Policy-neutral ownership boundary. Game produces one compact mailbox
+    // command after its real drain. The host advances the independent Z80 and
+    // ICS2115 clock, including periods in which the 68000 logic is waiting.
     this.soundSink = opts.soundSink ?? null;
     this.soundInput = new Uint8Array(0);
     // WAVE 91 -- THE PALETTE, and it is PER GAME for the same reason `prot` and
@@ -1229,16 +1229,20 @@ export class Game {
     // any of the six addresses, so this line cannot move a compared column.
     this.paletteFlush = flush24133C(this.ram, this.palette);   // $24133C
     this.armedVblanks = this.#frameSync();            // 10: THE SAMPLE POINT
-    // WAVE A (SOUND) -- the per-frame drain. The 68k pumps the cue ring once per
-    // logic frame (the BIOS pump $18ACE0, mailbox PC $18AD78); the debounce
-    // guards tick down at the top of the sibling $28C19A. Posts accumulate in
-    // the ring during the object driver above; this drains one longword and
-    // records it in the shadow/log/digest the sound gate compares. Tagged with
-    // the logic frame that just completed, before the increment below. See
-    // src/sound.js drainFrame for the dead-code-trap and ACK notes.
+    // WAVE A (SOUND) -- the completed-iteration drain. The 68k pumps the cue
+    // ring once per logic iteration (the BIOS pump $18ACE0, mailbox PC $18AD78);
+    // the debounce guards tick down at the top of the sibling $28C19A. Posts
+    // accumulate in the ring during the object driver above; this drains one
+    // longword and records it in the shadow/log/digest the sound gate compares.
+    // Tagged with the logic frame that just completed, before the increment
+    // below. Delivery is a command boundary only. The host cadence advances the
+    // independent sound hardware after this logic step when deadlines coincide.
+    // See src/sound.js drainFrame for the dead-code-trap and ACK notes.
     this.soundFrame = drainFrame(this.ram, this.sound, this.logicFrame);
     this.soundInput = soundFrameInput(this.soundFrame);
-    if (!speculative && this.soundSink) this.soundSink.frame(this.soundInput);
+    if (!speculative && this.soundSink && this.soundInput.length !== 0) {
+      this.soundSink.command(this.soundInput);
+    }
     this.logicFrame++;
     return this;
   }

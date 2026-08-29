@@ -11,7 +11,8 @@ import { fileURLToPath } from 'node:url';
 import { AudioController } from '../../../shared/audio.js';
 import { sfxRateToOscFc } from '../src/driverparams.js';
 import {
-  STAGE1_SEED_SOUND, soundRuntimeFromAssets, soundRuntimeFromStage1Seed,
+  STAGE1_SEED_SOUND, soundRuntimeFromAssets, soundRuntimeFromSnapshot,
+  soundRuntimeFromStage1Seed,
 } from '../src/soundruntime.js';
 import { APPROVED_SOUND_POLICIES } from '../src/soundpolicy.js';
 
@@ -84,26 +85,79 @@ test('W160 `$0B92` converts SFX Hz through live `[$6168]` before OscFC', () => {
 
 test('W160 stage-one seed pre-roll has exact 1562/1563/2000 boundaries', () => {
   assert.deepEqual(STAGE1_SEED_SOUND, {
-    startFrame: 1562, startLeaf: 0x28cb9c, startDoor: [0x12, 0xeb, 0, 0],
+    startFrame: 1562, startVideoFrame: 1597,
+    startLeaf: 0x28cb9c, startDoor: [0x12, 0xeb, 0, 0],
+    maxPreRollTicks: 8192,
   });
-  const atStart = soundRuntimeFromStage1Seed(ASSETS, APPROVED_SOUND_POLICIES, 1562);
+  const atStart = soundRuntimeFromStage1Seed(
+    ASSETS, APPROVED_SOUND_POLICIES, 1562, 1597,
+  );
   assert.equal(atStart.frameCount, 0);
   assert.equal(atStart.chain.sequencer.cueActive, false);
 
-  const afterStart = soundRuntimeFromStage1Seed(ASSETS, APPROVED_SOUND_POLICIES, 1563);
+  const afterStart = soundRuntimeFromStage1Seed(
+    ASSETS, APPROVED_SOUND_POLICIES, 1563, 1598,
+  );
   assert.equal(afterStart.frameCount, 1);
   assert.equal(afterStart.chain.sequencer.cueId, 0);
   assert.equal(afterStart.chain.sequencer.cueActive, true);
   assert.equal(afterStart.outLen, 0);
 
   const atPublishedSeed = soundRuntimeFromStage1Seed(ASSETS,
-    APPROVED_SOUND_POLICIES, 2000);
-  assert.equal(atPublishedSeed.frameCount, 438);
-  assert.equal(atPublishedSeed.core.frameCount, 438);
+    APPROVED_SOUND_POLICIES, 2000, 2036);
+  assert.equal(atPublishedSeed.frameCount, 439);
+  assert.equal(atPublishedSeed.core.frameCount, 439);
   assert.equal(atPublishedSeed.chain.sequencer.cueId, 0);
   assert.equal(atPublishedSeed.chain.sequencer.cueActive, true);
   assert.ok(atPublishedSeed.chain.sequencer.keyonCount > 0);
   assert.equal(atPublishedSeed.outLen, 0, 'pre-roll creates state, never stale audio');
+});
+
+test('W160 sound snapshot resumes arbitrary replay audio without pre-roll', () => {
+  const original = soundRuntimeFromStage1Seed(
+    ASSETS, APPROVED_SOUND_POLICIES, 2000, 2036,
+  );
+  original.command(Uint8Array.of(0x01, 0xa0, 0x00, 0x00));
+  const snapshot = JSON.parse(JSON.stringify(original.stateSnapshot()));
+  const restored = soundRuntimeFromSnapshot(
+    ASSETS, APPROVED_SOUND_POLICIES, snapshot,
+  );
+  assert.deepEqual(restored.stateSnapshot(), snapshot,
+    'the checkpoint preserves pending Z80, sequencer, register, and oscillator state');
+
+  for (let tick = 0; tick < 40; tick++) {
+    assert.equal(restored.tick(true), original.tick(true));
+  }
+  assert.deepEqual(restored.stateSnapshot(), original.stateSnapshot(),
+    'both runtimes remain state-identical after future sound ticks');
+  assert.equal(restored.outLen, original.outLen);
+  const expected = [new Float32Array(original.outLen), new Float32Array(original.outLen)];
+  const actual = [new Float32Array(restored.outLen), new Float32Array(restored.outLen)];
+  assert.equal(original.drain(original.outLen, expected), expected[0].length);
+  assert.equal(restored.drain(restored.outLen, actual), actual[0].length);
+  assert.deepEqual(actual, expected, 'future PCM resumes sample-exactly from the checkpoint');
+});
+
+test('W160 Stage 1 pre-roll rejects an unbounded video-frame claim', () => {
+  assert.throws(() => soundRuntimeFromStage1Seed(
+    ASSETS, APPROVED_SOUND_POLICIES, 9000,
+    STAGE1_SEED_SOUND.startVideoFrame + STAGE1_SEED_SOUND.maxPreRollTicks + 1,
+  ), /outside the bounded Stage 1 pre-roll window/);
+});
+
+test('W160 sound checkpoint rejects timer stalls', () => {
+  const runtime = soundRuntimeFromAssets(ASSETS, APPROVED_SOUND_POLICIES);
+  const hugeClock = runtime.stateSnapshot();
+  hugeClock.timerClockAcc = Number.MAX_SAFE_INTEGER;
+  assert.throws(() => soundRuntimeFromSnapshot(
+    ASSETS, APPROVED_SOUND_POLICIES, hugeClock,
+  ), /timerClockAcc must be below/);
+
+  const hugeHold = runtime.stateSnapshot();
+  hugeHold.timerHoldFrames = Number.MAX_SAFE_INTEGER;
+  assert.throws(() => soundRuntimeFromSnapshot(
+    ASSETS, APPROVED_SOUND_POLICIES, hugeHold,
+  ), /timerHoldFrames must be zero or one/);
 });
 
 test('W160 asset-first controller advances silently then attaches the same chip', () => {
@@ -149,19 +203,21 @@ test('W160 delayed asset arrival joins seed pre-roll and pending Game input once
   withFakeAudioContext(() => {
     const controller = new AudioController(null);
     controller.frame(Uint8Array.of(0x01, 0xa0, 0x00, 0x00));
-    const rt = soundRuntimeFromStage1Seed(ASSETS, APPROVED_SOUND_POLICIES, 2000);
-    assert.equal(rt.frameCount, 438);
-    controller.setChip(rt);
+    const rt = soundRuntimeFromStage1Seed(
+      ASSETS, APPROVED_SOUND_POLICIES, 2000, 2036,
+    );
     assert.equal(rt.frameCount, 439);
+    controller.setChip(rt);
+    assert.equal(rt.frameCount, 440);
     assert.equal(rt.lastFrame.door.selector, 0);
     assert.equal(rt.chain.sequencer.cueId, 0);
     assert.equal(rt.outLen, 0);
     controller.arm();
     assert.equal(controller.out.chip, rt);
-    assert.equal(rt.frameCount, 439, 'attaching AudioOut does not replay the seam');
+    assert.equal(rt.frameCount, 440, 'attaching AudioOut does not replay the seam');
     controller.frame(EMPTY);
     controller.pump();
-    assert.equal(rt.frameCount, 440);
+    assert.equal(rt.frameCount, 441);
     assert.ok(controller.out.resampler.outLen > 0,
       'only the first post-gesture frame reaches the audible resampler');
   });
@@ -169,7 +225,8 @@ test('W160 delayed asset arrival joins seed pre-roll and pending Game input once
 
 test('W160 browser boot uses singleton stateful attach, not a gesture-time factory', () => {
   const source = readFileSync(join(ROOT, 'src', 'web', 'app.js'), 'utf8');
-  assert.match(source, /soundRuntimeFromStage1Seed\(assets,[\s\S]*demo\.seedLf\)/);
+  assert.match(source,
+    /soundRuntimeFromStage1Seed\(assets,[\s\S]*demo\.seedLf, demo\.seedVf\)/);
   assert.match(source, /sound\.setChip\(runtime\)/);
   assert.doesNotMatch(source, /sound\.setFactory\(/);
 });

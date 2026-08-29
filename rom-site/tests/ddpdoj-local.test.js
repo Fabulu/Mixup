@@ -100,6 +100,36 @@ test('local replay seeds preserve the armed slowdown semaphore', () => {
     'an explicit seed arm cannot contradict the replay RAM');
 });
 
+test('local runtime uses the measured PGM period and shared dual-clock cadence', async () => {
+  const source = await readFile(new URL('../src/ddpdoj-local.js', import.meta.url), 'utf8');
+  assert.match(source, /const BASE_FRAME_MS = 1000 \/ MACHINE\.refreshHz;/,
+    'Mixup must use the same exact display clock as the packaged runtime');
+  assert.doesNotMatch(source, /const BASE_FRAME_MS = 1000 \/ 60;/,
+    'the rounded 60 Hz clock runs DaiOuJou at the wrong rate');
+  assert.match(source, /import \{ DdpdojCadence \} from '\/games\/ddpdoj\/src\/cadence\.js';/);
+  assert.match(source, /this\.cadence = new DdpdojCadence\(BASE_FRAME_MS\);/);
+  assert.match(source, /stepSound: \(\) => this\.audio\?\.tick\(\)/,
+    'sound hardware must advance independently of canonical logic');
+  assert.doesNotMatch(source, /Math\.max\(1, this\.game\.armedVblanks/,
+    'cold arm zero must remain an immediate logic fall-through');
+});
+
+test('local PLAY restores replay sound state without arbitrary pre-roll', async () => {
+  const source = await readFile(new URL('../src/ddpdoj-local.js', import.meta.url), 'utf8');
+  assert.match(source,
+    /obj\.seed\.sound[\s\S]*?soundRuntimeFromSnapshot\([\s\S]*?this\.soundAssets,[\s\S]*?obj\.seed\.sound\)[\s\S]*?: soundRuntimeFromAssets\(this\.soundAssets,[\s\S]*?this\.audio\.resetGameAudio\(soundRuntime\);/,
+    'a replay checkpoint replaces Z80, sequencer, ICS voice, and queued host state');
+  assert.doesNotMatch(source,
+    /soundRuntimeFromStage1Seed\(\s*this\.soundAssets/,
+    'arbitrary replay clocks must not trigger synchronous Stage 1 reconstruction');
+});
+
+test('local visibility resync resets DaiOuJou host chronology', async () => {
+  const source = await readFile(new URL('../src/local-shell.js', import.meta.url), 'utf8');
+  assert.match(source,
+    /if \(this\.gameId === 'ddpdoj'\) this\.runtime\?\.resyncTiming\?\.\(\);/);
+});
+
 test('local replay refuses formations and simulation-changing mods', () => {
   const formation = createFormationState(FORMATION_MODE.id);
   assert.throws(() => assertFormationReplayCompatible(formation, 'REC'),

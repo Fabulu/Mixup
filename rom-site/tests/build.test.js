@@ -25,6 +25,7 @@ test('source allowlist is a closed hand-authored browser graph with no game data
   assert.ok(SOURCE_ALLOWLIST.includes('games/gradius/src/main.js'));
   assert.ok(SOURCE_ALLOWLIST.includes('games/ddpdoj/src/localrom.js'));
   assert.ok(SOURCE_ALLOWLIST.includes('games/ddpdoj/src/main.js'));
+  assert.ok(SOURCE_ALLOWLIST.includes('games/ddpdoj/src/cadence.js'));
   assert.ok(SOURCE_ALLOWLIST.includes('games/ddpdoj/src/runahead.js'));
   assert.ok(SOURCE_ALLOWLIST.includes('games/ddpdoj/src/runahead-state.js'));
   assert.ok(SOURCE_ALLOWLIST.includes('shared/input.js'));

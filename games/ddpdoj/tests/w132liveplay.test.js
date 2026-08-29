@@ -31,9 +31,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  armPlayback, decodePortinWords, b64, unb64, FORMAT,
+  armPlayback, decodePortinWords, b64, unb64, replaySeedArm, FORMAT,
 } from '../src/web/replay.js';
-import { Game } from '../src/main.js';
+import { Demo } from '../src/web/app.js';
+import { Game, MACHINE, RAM } from '../src/main.js';
 import { verifyReplay } from '../tools/replay.mjs';
 import { AUTOSHOT_MUTATE, CLAMP_ORDER } from '../src/player.js';
 import { W82_MUTATE } from '../src/boss.js';
@@ -119,6 +120,24 @@ test('armPlayback: guards the v1 format', () => {
     /not a ddpdoj\.replay\/v1 artifact/);
 });
 
+test('replay seed arm preserves modern and legacy slowdown state', () => {
+  const ram = new Uint8Array(8);
+  ram[3] = 2;
+  assert.equal(replaySeedArm({ arm: 2 }, ram, 3), 2,
+    'a modern replay preserves its explicit next-frame slowdown');
+  assert.equal(replaySeedArm({}, ram, 3), 2,
+    'a legacy replay recovers a positive arm from its RAM semaphore');
+  ram[3] = 0;
+  assert.equal(replaySeedArm({}, ram, 3), 1,
+    'a legacy pre-arm tap retains the historical one-vblank fallback');
+  assert.equal(replaySeedArm({ arm: 0 }, ram, 3), 0,
+    'an explicit cold arm zero must not be replaced by the legacy fallback');
+  assert.throws(() => replaySeedArm({ arm: 2 }, ram, 3),
+    /does not match its RAM semaphore/);
+  assert.throws(() => replaySeedArm({ arm: 256 }, Uint8Array.of(0), 0),
+    /integer from 0 through 255/);
+});
+
 // ===========================================================================
 // 2. THE LIVE VERIFIER ON THE REAL FIXTURE (ROM-gated; skip when absent).
 // Boots a Game from the fixture's own seed, feeds its portin one word per logic
@@ -149,6 +168,11 @@ async function playObj(obj) {
   const game = new Game(ram, tables, {
     logicFrame: obj.seed.lf,
     videoFrame: obj.seed.vf,
+    seedArm: replaySeedArm(
+      obj.seed,
+      ram,
+      RAM.semaphore - MACHINE.ramBase,
+    ),
     bgSeed,
   });
   resetSwitches();
@@ -168,6 +192,59 @@ async function playObj(obj) {
 function readFixture() {
   return JSON.parse(fs.readFileSync(FIXTURE, 'utf8'));
 }
+
+function replayWithArm(arm) {
+  const obj = readFixture();
+  const ram = unb64(obj.seed.ramB64);
+  ram[RAM.semaphore - MACHINE.ramBase] = arm;
+  obj.seed.ramB64 = b64(ram);
+  obj.seed.arm = arm;
+  const tables = JSON.parse(new TextDecoder().decode(unb64(obj.seed.tablesB64)));
+  tables.rom = adoptCurrentWindows(tables.rom, LIVE_TABLES.rom);
+  obj.seed.tablesB64 = b64(new TextEncoder().encode(JSON.stringify(tables)));
+  return obj;
+}
+
+test('packaged PLAY passes the replay arm into the replacement Game',
+  { skip: !HAVE && 'fly-around fixture absent (CI)' }, () => {
+    const obj = replayWithArm(2);
+    obj.seed.sound = { format: 'ddpdoj.sound/v1', frameCount: 439 };
+    let resetSound = null;
+    const host = {
+      formation: null,
+      mods: null,
+      game: {},
+      soundController: null,
+      recorder: null,
+      playback: null,
+      resetSound(lf, vf, sound) { resetSound = [lf, vf, sound]; },
+      resyncTiming() {},
+      coinTick() {},
+      romToPacked: new Map(),
+      listOpts: {},
+      progressionPokes: [],
+      progressionPoke: '',
+      rung: null,
+      _emitPlayback() {},
+    };
+
+    Demo.prototype.playFrom.call(host, obj);
+    assert.equal(host.game.armedVblanks, 2);
+    assert.equal(host.game.ram.u8(RAM.semaphore), 2);
+    assert.deepEqual(resetSound, [obj.seed.lf, obj.seed.vf, obj.seed.sound],
+      'PLAY restores sound from the replacement Game checkpoint');
+  });
+
+test('headless PLAY respects the explicit arm instead of inheriting its default',
+  { skip: !HAVE && 'fly-around fixture absent (CI)' }, () => {
+    const baseline = readFixture();
+    assert.equal(verifyReplay(baseline).green, true);
+    const changedArm = replayWithArm(2);
+    const result = verifyReplay(changedArm);
+    assert.equal(result.green, false,
+      'a two-vblank first step must diverge from a recording made with the default arm');
+    assert.notEqual(result.divergentPeriod, null);
+  });
 
 test('play: GREEN -- the live verifier agrees with the headless player',
   { skip: !HAVE && 'fly-around fixture absent (CI)' }, async () => {

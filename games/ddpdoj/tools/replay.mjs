@@ -35,7 +35,8 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
 
-import { Game } from '../src/main.js';
+import { Game, MACHINE, RAM } from '../src/main.js';
+import { replaySeedArm } from '../src/web/replay.js';
 import { adoptCurrentWindows } from '../src/rom.js';
 import { stateVector, CLAIMED } from '../src/state.js';
 import { readTrace, run } from './portdiff.mjs';
@@ -128,7 +129,7 @@ function liveTablesOnce() {
 }
 
 export function verifyReplay(obj, opts = {}) {
-  const { ramBytes, bgBytes, tables, portinWords, pokes } = validateReplayObject(obj);
+  const { ramBytes, bgBytes, tables, portinWords, pokes, seedArm } = validateReplayObject(obj);
 
   // Same construction as portdiff.mjs:128 and seedcmp.mjs:134.  bgSeed is the
   // 2048-word big-endian tilemap ring, NOT main RAM; without it a seeded port
@@ -136,6 +137,7 @@ export function verifyReplay(obj, opts = {}) {
   const game = new Game(ramBytes, tables, {
     logicFrame: obj.seed.lf,
     videoFrame: obj.seed.vf,
+    seedArm,
     bgSeed: beWords(bgBytes),
   });
   resetMutationSwitches();
@@ -214,6 +216,11 @@ function validateReplayObject(obj) {
   if (bgBytes.length !== 0x1000) {
     throw new Error(`replay BG seed is ${bgBytes.length} bytes, expected 4096`);
   }
+  const seedArm = replaySeedArm(
+    obj.seed,
+    ramBytes,
+    RAM.semaphore - MACHINE.ramBase,
+  );
   let tables;
   try { tables = JSON.parse(Buffer.from(tablesBytes).toString('utf8')); }
   catch (e) { throw new Error(`replay tables seed is not JSON: ${e.message}`); }
@@ -252,7 +259,7 @@ function validateReplayObject(obj) {
   if (!/^[0-9a-f]{64}$/.test(obj.digest.cumulative ?? '')) {
     throw new Error('replay digest.cumulative is not a SHA-256 hex digest');
   }
-  return { ramBytes, bgBytes, tables, portinWords, pokes };
+  return { ramBytes, bgBytes, tables, portinWords, pokes, seedArm };
 }
 
 function decodePortin(bytes, meta) {

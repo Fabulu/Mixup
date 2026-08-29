@@ -203,7 +203,10 @@ import {
 // here: it is the cartridge's idle level and it lives with the rest of $13CFBA.
 import { COIN } from '../isr.js';
 import { AudioController } from '../../../../shared/audio.js';
-import { soundRuntimeFromStage1Seed } from '../soundruntime.js';
+import { DdpdojCadence } from '../cadence.js';
+import {
+  soundRuntimeFromAssets, soundRuntimeFromSnapshot, soundRuntimeFromStage1Seed,
+} from '../soundruntime.js';
 import { APPROVED_SOUND_POLICIES } from '../soundpolicy.js';
 // WAVE 131/132 -- the browser-side replay module.  W131 owns the REC half: the
 // `.replay` digest feed + ACCUMULATE-then-hash (SubtleCrypto has no incremental
@@ -214,7 +217,7 @@ import { APPROVED_SOUND_POLICIES } from '../soundpolicy.js';
 // (that is a Node tool).
 import {
   armRecorder, stopRecorder, b64 as recB64, beBytesFromWords,
-  sha256Hex, armPlayback, validateReplay, parsePoke,
+  sha256Hex, armPlayback, validateReplay, parsePoke, replaySeedArm,
   FORMAT as REPLAY_FORMAT, BUILD as REPLAY_BUILD, PERIOD_FRAMES as REPLAY_PERIOD,
 } from './replay.js';
 import { CLAIMED } from '../state.js';
@@ -928,6 +931,7 @@ export class Demo {
     //       in place of the capture's, which is what takes L5 and L6's program
     //       half off the CAPTURE LEDGER.
     this.soundController = soundController;
+    this.resetSound = null;
     // A mod loadout configures the next credited run. It does not select the
     // captured gameplay seed. Rungs, host-authentic shortcuts, and formations
     // retain their explicit non-cabinet launch contracts.
@@ -935,16 +939,23 @@ export class Demo {
     if (coldBoot && modState) prepareModCabinetBoot(modState);
     this.coldBoot = coldBoot;
     this.seedLf = coldBoot ? 0 : (rung ? rung.lf : this.cap.frames[0].lf);
+    this.seedVf = coldBoot ? 0 : (rung ? rung.vf : this.cap.frames[0].vf);
     const launchSeed = coldBoot
       ? new Uint8Array(MACHINE.ramSize)
       : launchSeedForBrowser(rung ? rung.seed : bundle.seed, rung, modState);
+    const seedArm = coldBoot
+      ? 0
+      : (rung
+        ? replaySeedArm(null, launchSeed, RAM.semaphore - MACHINE.ramBase)
+        : 1);
     const gameMods = modGameOptions(modState);
     const gameFormation = this.formation ? formationGameOptions(this.formation) : null;
     this.game = new Game(launchSeed, bundle.tables, {
       logicFrame: this.seedLf,
-      videoFrame: coldBoot ? 0 : (rung ? rung.vf : this.cap.frames[0].vf),
+      videoFrame: this.seedVf,
       bgSeed: coldBoot ? undefined : (rung ? rung.bgSeed : this.cap.part(0, 'bg')),
-      ...(coldBoot ? { palCatchUp: false, seedArm: 0 } : {}),
+      ...(coldBoot ? { palCatchUp: false } : {}),
+      seedArm,
       soundSink: soundController,
       ...(gameMods ?? {}),
       ...(gameFormation ?? {}),
@@ -1041,13 +1052,18 @@ export class Demo {
     this.setMode(mode);
 
     this.periodMs = 1000 / frameHz;
-    this.acc = 0;
+    this.cadence = new DdpdojCadence(this.periodMs);
     this.last = 0;
     this.stepsRun = 0;
     this.hudAt = 0;
     this.hudSteps = 0;
     this.hz = 0;
     this.running = true;
+  }
+
+  resyncTiming() {
+    this.cadence.reset();
+    this.last = 0;
   }
 
   /**
@@ -1317,13 +1333,6 @@ export class Demo {
       throw new Error('cannot arm REC while a .replay is playing; stop PLAY first.');
     }
     const g = this.game;
-    const lf = g.logicFrame;
-    const vf = g.videoFrame;
-
-    // RAM: detached copy of the live 128 KiB (`ram.b` is mutated in place every
-    // step).  BG: the live 2048-word ring as 4096 big-endian bytes.
-    const ramB64 = recB64(g.ram.b.slice());
-    const bgB64 = recB64(beBytesFromWords(g.vram.w));
 
     // Tables: prefer the shipped bytes (byte-exact tablesSha256); fall back to
     // the parsed bundle stringified.  `sha256Hex` hashes the SAME bytes that
@@ -1355,11 +1364,28 @@ export class Demo {
     }
     assertPrivateFormationReplayCompatible(this.game, 'REC');
     if (this.recorder) return this.recorder;
+
+    // Everything derived from the live Game is captured only after the last
+    // asynchronous operation and immediately before input recording starts. rAF
+    // may advance this same Game while tables are fetched and hashed, so object
+    // identity alone cannot make an earlier RAM/frame snapshot coherent.
     const seeded = this.stats().seeded;
+    const lf = g.logicFrame;
+    const vf = g.videoFrame;
+    const arm = g.armedVblanks;
+    const ramB64 = recB64(g.ram.b.slice());
+    const bgB64 = recB64(beBytesFromWords(g.vram.w));
+    const soundState = this.soundController?.snapshotGameAudio?.() ?? null;
+    if (this.soundController && !soundState) {
+      throw new Error('cannot arm REC until the exact sound state is available.');
+    }
     this.recorder = armRecorder(g, {
       columns: CLAIMED,                 // a live recording freezes ALL of CLAIMED
       periodFrames: REPLAY_PERIOD,
-      seed: { lf, vf, ramB64, bgB64, tablesB64 },
+      seed: {
+        lf, vf, arm, ramB64, bgB64, tablesB64,
+        ...(soundState ? { sound: soundState } : {}),
+      },
       version: {
         git: 'unknown',                // the browser cannot run git; see worklog 131
         tablesSha256,
@@ -1416,9 +1442,11 @@ export class Demo {
     // Decode the seed the same way `replay.mjs:108-121` does.
     const { ram, bg, tables, words, pokes } = parsed;
     const seed = obj.seed;
+    const seedArm = replaySeedArm(seed, ram, RAM.semaphore - MACHINE.ramBase);
     const game = new Game(ram, tables, {
       logicFrame: seed.lf,
       videoFrame: seed.vf,
+      seedArm,
       bgSeed: beWords(bg),
       soundSink: this.soundController,
       ...(modGameOptions(this.mods) ?? {}),
@@ -1432,11 +1460,15 @@ export class Demo {
     // owner pressed for minutes ago. Same backstop `attachCoinKeys` runs on blur.
     clearCoin();
 
-    // Swap in the fresh Game and re-init the game-derived state.  `recorder` is
+    // Swap in the fresh Game and re-init the game-derived state. `recorder` is
     // dropped (mutually exclusive); `onPlaybackUpdate` is left to the page.
+    if (this.resetSound) this.resetSound(seed.lf, seed.vf, seed.sound ?? null);
+    else this.soundController?.resync();
     this.game = game;
+    this.resyncTiming();
     this.hitboxRam = this.mods?.loadout.presentation.hitboxes ? game.ram.clone() : null;
     this.seedLf = seed.lf;
+    this.seedVf = seed.vf;
     // The replay seed replaces any local ladder seed. Keep the file's explicit
     // intervention for live continuation after end-of-portin.
     this.rung = null;
@@ -1857,39 +1889,36 @@ export class Demo {
 
   loop(now) {
     if (!this.running) return;
-    // W499 -- poll both indexed gamepads ONCE per ANIMATION frame (this callback
-    // is the rAF), not per logic frame. Standard and maintained non-Standard
-    // profiles are sampled through the same API; currentPortWord() packs their
-    // P1/P2 states before each logic frame inside step().
+    // W499: poll both indexed gamepads once per animation frame. Standard and
+    // maintained non-Standard profiles share currentPortWord() inside step().
     pollInput();
     if (!this.last) this.last = now;
     let dt = now - this.last;
     this.last = now;
-    // W599: `armedVblanks` is the cartridge frame-sync governor's delay for
-    // the NEXT complete main-loop iteration.  The simulation already consumes
-    // every modeled vblank; presentation must give those vblanks real time too.
-    // Recompute after every step because that step can change the next arm.
-    let period = transformModTiming(this.mods, this.periodMs * this.game.armedVblanks);
-    // A tab that was in the background must not run a thousand frames at once.
-    // Presentation is dropped; the SIMULATION is never altered.
-    if (dt > 200) dt = period;
-    this.acc += dt;
-    let n = 0;
-    let liveRawPw = null;
-    while (this.acc >= period && n < 8) {
-      this.acc -= period;
-      liveRawPw = this.step({ project: false });
-      n++;
-      period = transformModTiming(this.mods, this.periodMs * this.game.armedVblanks);
+    // A hidden tab must not catch up either clock across a stale timestamp.
+    if (dt > 200) {
+      this.cadence.reset();
+      dt = 0;
     }
+
+    let liveRawPw = null;
+    const timing = this.cadence.advance(dt, {
+      logicPeriodMs: () => transformModTiming(
+        this.mods,
+        this.periodMs * this.game.armedVblanks,
+      ),
+      stepLogic: () => {
+        liveRawPw = this.step({ project: false });
+      },
+      stepSound: () => this.soundController?.tick(),
+      maxLogicSteps: 8,
+    });
+    const n = timing.logicSteps;
     if (liveRawPw !== null && this.runaheadFrames) {
       this.runaheadView = this._projectRunahead(liveRawPw);
     }
-    // WAVE 132 -- PLAYBACK LIVE BOUNDARY CHECK.  After the step batch, if a
-    // period window closed, hash it fresh and surface the first divergence now
-    // (a divergence in window 0 shows up at ~lf+250, not at end-of-portin).
-    // Cheap when nothing closed and no playback is active.  The async hash does
-    // not block the rAF: `_pollPlayback` stores a promise and resolves later.
+    // WAVE 132: after the chronological batch, verify any replay window that
+    // closed. This remains cheap when no playback is active.
     if (this.playback && !this.playback.ended) this._pollPlayback();
     if (n || this.dirty) {
       // `dirty` is set by setMode: resizing the backing store blanks it, and a
@@ -1904,8 +1933,8 @@ export class Demo {
         this.hudSteps = this.stepsRun;
       }
     }
-    // Game queued each compact door once during the catch-up batch. The shared
-    // controller is the only runtime/chip owner and is pumped once afterwards.
+    // Commands were queued by canonical logic and ticks by the independent
+    // sound clock. One ordered pump follows the complete chronological batch.
     this.soundController?.pump();
   }
 }
@@ -2017,10 +2046,12 @@ export async function boot(canvas, opts = {}) {
   const detachSoundUnlock = armSoundOnFirstGesture(sound,
     opts.target ?? globalThis, opts.soundToggle ?? null);
   let soundDisposed = false;
+  let detachSoundBackstop = () => {};
   const disposeSound = () => {
     if (soundDisposed) return;
     soundDisposed = true;
     detachSoundUnlock();
+    detachSoundBackstop();
     opts.onSoundDispose?.(sound);
   };
   try {
@@ -2081,6 +2112,17 @@ export async function boot(canvas, opts = {}) {
   // gesture attaches AudioOut. No pre-gesture PCM becomes an audible backlog.
   const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung, sound,
     opts.mods ?? null, opts.authentic ?? null, opts.formation ?? null);
+  let soundAssets = null;
+  let replacementSound = undefined;
+  demo.resetSound = (seedLf, seedVf, snapshot = null) => {
+    replacementSound = snapshot;
+    const replacement = soundAssets
+      ? (snapshot
+        ? soundRuntimeFromSnapshot(soundAssets, APPROVED_SOUND_POLICIES, snapshot)
+        : soundRuntimeFromAssets(soundAssets, APPROVED_SOUND_POLICIES))
+      : null;
+    sound.resetGameAudio(replacement);
+  };
   // WAVE 131 -- the asset base `armRecording()` re-fetches the tables from, so
   // a live REC's `version.tablesSha256` can match the shipped bytes rather than
   // the fallback `JSON.stringify(bundle.tables)`.
@@ -2105,16 +2147,25 @@ export async function boot(canvas, opts = {}) {
   // one a bfcache navigation fires. Firing twice is harmless -- a resync with
   // nothing queued does nothing.
   //
-  // It runs on BOTH edges. Hiding drops what will never be heard in time;
-  // showing drops whatever accumulated in the gap before the first pump can
-  // schedule it. `sound.resync()` is a no-op until the arming gesture.
+  // It runs on both edges. Sound state is reconciled silently and both host
+  // deadlines restart from one clean board period. `sound.resync()` is a no-op
+  // until the arming gesture.
   {
     const target = opts.target ?? globalThis;
-    const backstop = () => sound.resync();
-    for (const ev of ['blur', 'pagehide', 'visibilitychange']) {
-      target.addEventListener?.(ev, backstop);
-      if (target !== globalThis) globalThis.addEventListener?.(ev, backstop);
+    const hosts = target === globalThis ? [target] : [target, globalThis];
+    const events = ['blur', 'pagehide', 'visibilitychange'];
+    const backstop = () => {
+      sound.resync();
+      demo.resyncTiming();
+    };
+    for (const host of hosts) {
+      for (const event of events) host.addEventListener?.(event, backstop);
     }
+    detachSoundBackstop = () => {
+      for (const host of hosts) {
+        for (const event of events) host.removeEventListener?.(event, backstop);
+      }
+    };
   }
 
   const frame = (t) => {
@@ -2141,8 +2192,13 @@ export async function boot(canvas, opts = {}) {
   const soundReady = new Promise((resolve) => requestAnimationFrame(resolve))
     .then(() => loadSoundAssets(httpReader(base), bundle.manifest))
     .then((assets) => {
-      const runtime = soundRuntimeFromStage1Seed(assets, APPROVED_SOUND_POLICIES,
-        demo.seedLf);
+      soundAssets = assets;
+      const runtime = replacementSound === undefined
+        ? soundRuntimeFromStage1Seed(assets, APPROVED_SOUND_POLICIES,
+          demo.seedLf, demo.seedVf)
+        : (replacementSound
+          ? soundRuntimeFromSnapshot(assets, APPROVED_SOUND_POLICIES, replacementSound)
+          : soundRuntimeFromAssets(assets, APPROVED_SOUND_POLICIES));
       sound.setChip(runtime);
       return assets;
     })
@@ -2170,8 +2226,10 @@ export async function boot(canvas, opts = {}) {
     sound,
     soundReady,
     stop() {
-      disposeSound();
       demo.running = false;
+      sound.resync();
+      demo.resyncTiming();
+      disposeSound();
     },
   };
   } catch (e) {

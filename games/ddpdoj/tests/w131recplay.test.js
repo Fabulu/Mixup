@@ -32,14 +32,16 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
 import {
   armRecorder, stopRecorder, feedLine, sha256Hex, b64, unb64, beBytesFromWords,
   FORMAT, BUILD, PERIOD_FRAMES,
 } from '../src/web/replay.js';
+import { Demo } from '../src/web/app.js';
 import { stateVector, CLAIMED } from '../src/state.js';
-import { Game } from '../src/main.js';
+import { Game, MACHINE, RAM } from '../src/main.js';
 import { readTrace } from '../tools/portdiff.mjs';
 import { verifyReplay } from '../tools/replay.mjs';
 import { AUTOSHOT_MUTATE, CLAMP_ORDER } from '../src/player.js';
@@ -192,6 +194,128 @@ test('recorder: input() tees portin words verbatim; never input()-ed is empty', 
   assert.deepEqual(rec2.portin, []);
 });
 
+test('packaged REC freezes the next-frame slowdown arm with its RAM seed', async () => {
+  const bytes = new Uint8Array(MACHINE.ramSize);
+  const semaphoreOffset = RAM.semaphore - MACHINE.ramBase;
+  bytes[semaphoreOffset] = 3;
+  const game = {
+    logicFrame: 41,
+    videoFrame: 52,
+    armedVblanks: 3,
+    ram: { b: bytes },
+    vram: { w: new Uint16Array(2048) },
+  };
+  const host = {
+    formation: null,
+    mods: null,
+    playback: null,
+    recorder: null,
+    game,
+    assetBase: null,
+    bundle: { tables: {} },
+    progressionPoke: '',
+    stats: () => ({ seeded: null }),
+  };
+
+  const recorder = await Demo.prototype.armRecording.call(host);
+  assert.equal(recorder.seed.lf, 41);
+  assert.equal(recorder.seed.vf, 52);
+  assert.equal(recorder.seed.arm, 3);
+  assert.equal(unb64(recorder.seed.ramB64)[semaphoreOffset], 3,
+    'the explicit arm and detached RAM semaphore describe the same next frame');
+});
+
+test('packaged REC refuses to omit deferred sound state', async () => {
+  const bytes = new Uint8Array(MACHINE.ramSize);
+  const game = {
+    logicFrame: 4,
+    videoFrame: 5,
+    armedVblanks: 1,
+    ram: { b: bytes },
+    vram: { w: new Uint16Array(2048) },
+  };
+  const host = {
+    formation: null,
+    mods: null,
+    playback: null,
+    recorder: null,
+    game,
+    soundController: { snapshotGameAudio: () => null },
+    assetBase: null,
+    bundle: { tables: {} },
+    progressionPoke: '',
+    stats: () => ({ seeded: null }),
+  };
+  await assert.rejects(() => Demo.prototype.armRecording.call(host),
+    /exact sound state is available/);
+  assert.equal(host.recorder, null);
+});
+
+test('packaged REC snapshots one final instant after deferred table loading', async () => {
+  const bytes = new Uint8Array(MACHINE.ramSize);
+  const semaphoreOffset = RAM.semaphore - MACHINE.ramBase;
+  bytes[semaphoreOffset] = 1;
+  const game = {
+    logicFrame: 41,
+    videoFrame: 52,
+    armedVblanks: 1,
+    ram: { b: bytes },
+    vram: { w: new Uint16Array(2048) },
+  };
+  const soundController = {
+    snapshotGameAudio: () => ({ format: 'ddpdoj.sound/v1', lf: game.logicFrame }),
+  };
+  const host = {
+    formation: null,
+    mods: null,
+    playback: null,
+    recorder: null,
+    game,
+    soundController,
+    assetBase: new URL('https://example.test/assets/'),
+    bundle: { tables: { stale: true } },
+    progressionPoke: '',
+    stats: () => ({ seeded: {
+      scenario: `frame-${game.logicFrame}`,
+      intervention: `arm-${game.armedVblanks}`,
+    } }),
+  };
+
+  const tables = new TextEncoder().encode('{"current":true}');
+  const compressed = gzipSync(tables);
+  const previousFetch = globalThis.fetch;
+  let releaseFetch = null;
+  globalThis.fetch = () => new Promise((resolve) => {
+    releaseFetch = () => resolve(new Response(compressed));
+  });
+  try {
+    const pending = Demo.prototype.armRecording.call(host);
+    while (!releaseFetch) await new Promise((resolve) => setImmediate(resolve));
+
+    // rAF advances the same Game object while the network operation is pending.
+    game.logicFrame = 45;
+    game.videoFrame = 59;
+    game.armedVblanks = 3;
+    bytes[semaphoreOffset] = 3;
+    game.vram.w[0] = 0x1234;
+    releaseFetch();
+
+    const recorder = await pending;
+    assert.equal(recorder.seed.lf, 45);
+    assert.equal(recorder.seed.vf, 59);
+    assert.equal(recorder.seed.arm, 3);
+    assert.equal(unb64(recorder.seed.ramB64)[semaphoreOffset], 3);
+    assert.deepEqual(Array.from(unb64(recorder.seed.bgB64).subarray(0, 2)), [0x12, 0x34]);
+    assert.deepEqual(recorder.seed.sound, { format: 'ddpdoj.sound/v1', lf: 45 });
+    assert.equal(recorder.scenario, 'frame-45');
+    assert.equal(recorder.intervention, 'arm-3');
+    assert.equal(new TextDecoder().decode(unb64(recorder.seed.tablesB64)), '{"current":true}');
+  } finally {
+    if (previousFetch === undefined) delete globalThis.fetch;
+    else globalThis.fetch = previousFetch;
+  }
+});
+
 // ===========================================================================
 // 3. REC SELF-VERIFY + RED A/B (ROM-gated; skip when the ladder is absent).
 // Boots the live Game from the fly-around seed, records with the BROWSER
@@ -232,6 +356,7 @@ async function recordFlyAround() {
   const seed = {
     lf: game.logicFrame,
     vf: game.videoFrame,
+    arm: game.armedVblanks,
     ramB64: b64(game.ram.b.slice()),
     bgB64: b64(beBytesFromWords(game.vram.w)),
     tablesB64: b64(new Uint8Array(tablesBytes)),
@@ -272,6 +397,8 @@ test('rec: a browser-built .replay VERIFIES GREEN through the Node player',
     assert.equal(o.digest.periodFrames, PERIOD_FRAMES);
     assert.equal(o.portin.encoding, 'u16be');
     assert.equal(o.portin.count, TO_LF - SEED_LF);
+    assert.equal(o.seed.arm, unb64(o.seed.ramB64)[RAM.semaphore - MACHINE.ramBase],
+      'the packaged next-frame arm matches its RAM semaphore');
     // A live recording freezes ALL of CLAIMED (stateVector always populates
     // every claimed name on the live page), unlike a trace-based replay.
     assert.deepEqual(o.digest.columns, CLAIMED);

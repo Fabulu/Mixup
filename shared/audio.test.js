@@ -22,6 +22,8 @@ import { Resampler, AudioOut, AudioController,
          CHUNK, LOOKAHEAD_S, MAX_BACKLOG_FRAMES, MAX_BUFFERED_S,
          MASTER_GAIN } from './audio.js';
 
+const EMPTY = new Uint8Array(0);
+
 // ------------------------------------------------------------- helpers
 
 /** A pure-tone source at `hz` for `n` samples at `rate`. */
@@ -258,6 +260,104 @@ test('AudioOut: backlog valve drops samples but advances chip state', () => {
   assert.equal(out.dropped, 40 - MAX_BACKLOG_FRAMES, 'drop counter matches');
 });
 
+test('AudioOut: split commands and ticks retain order without charging control events', () => {
+  const events = [];
+  const chip = {
+    sourceRate: 48000, channels: 1, outLen: 0,
+    selectScoreGroup(group) { events.push(`group:${group}`); },
+    command(input) { events.push(`command:${input[0]}`); },
+    tick(emit) { events.push(`tick:${emit}`); },
+    frame() { throw new Error('legacy frame path was used'); },
+    drain() { return 0; },
+  };
+  const out = new AudioOut(new FakeCtx(48000), () => chip);
+  out.selectScoreGroup(2);
+  for (let i = 0; i < 20; i++) {
+    out.command(Uint8Array.of(i, 0, 0, 0));
+    out.tick();
+  }
+  out.pump();
+
+  assert.equal(events[0], 'group:2');
+  assert.equal(events.filter((event) => event.startsWith('command:')).length, 20);
+  assert.equal(events.filter((event) => event === 'tick:true').length,
+    MAX_BACKLOG_FRAMES);
+  assert.equal(events.filter((event) => event === 'tick:false').length,
+    20 - MAX_BACKLOG_FRAMES);
+  assert.equal(out.dropped, 20 - MAX_BACKLOG_FRAMES);
+  assert.equal(out.pendingTicks, 0);
+  const expected = ['group:2'];
+  for (let i = 0; i < 20; i++) {
+    expected.push(`command:${i}`);
+    expected.push(`tick:${i >= 20 - MAX_BACKLOG_FRAMES}`);
+  }
+  assert.deepEqual(events, expected);
+});
+
+test('AudioOut: split inputs are validated before they enter the queue', () => {
+  const chip = makeSineChip(48000, 1);
+  const out = new AudioOut(new FakeCtx(48000), () => chip);
+  assert.throws(() => out.command(Uint8Array.of(1, 2, 3, 4)),
+    /does not expose command/);
+  chip.command = () => {};
+  assert.throws(() => out.command(Uint8Array.of(1, 2, 3)), /four-byte/);
+  assert.throws(() => out.tick(), /does not expose tick/);
+});
+
+test('AudioOut: replacing a game chip discards only the old semantic timeline', () => {
+  const oldEvents = [];
+  const nextEvents = [];
+  const eventChip = (events) => ({
+    sourceRate: 48000, channels: 1, outLen: 0,
+    command(input) { events.push(`command:${input[0]}`); },
+    tick(emit) { events.push(`tick:${emit}`); },
+    frame() { throw new Error('legacy frame path was used'); },
+    drain() { return 0; },
+  });
+  const oldChip = eventChip(oldEvents);
+  const nextChip = eventChip(nextEvents);
+  const out = new AudioOut(new FakeCtx(48000), () => oldChip);
+
+  out.command(Uint8Array.of(1, 0, 0, 0));
+  out.tick();
+  assert.equal(out.queue.length, 2);
+  assert.equal(out.pendingTicks, 1);
+  out.replaceChip(nextChip);
+  assert.equal(out.chip, nextChip);
+  assert.equal(out.queue.length, 0, 'the replaced Game cannot deliver a queued command');
+  assert.equal(out.pendingTicks, 0, 'the replaced Game cannot deliver a queued tick');
+
+  out.command(Uint8Array.of(2, 0, 0, 0));
+  out.tick();
+  out.pump();
+  assert.deepEqual(oldEvents, []);
+  assert.deepEqual(nextEvents, ['command:2', 'tick:true']);
+});
+
+test('AudioOut: replacement audio starts after already-scheduled old audio', () => {
+  const ctx = new FakeCtx(48000);
+  const oldChip = makeSineChip(48000, 1);
+  const out = new AudioOut(ctx, () => oldChip);
+  for (let i = 0; i < 16; i++) out.frame(EMPTY);
+  out.pump();
+  assert.ok(ctx.starts.length > 0, 'the old Game scheduled audible buffers');
+  const oldStarts = ctx.starts.length;
+  const oldNextTime = out.nextTime;
+  assert.ok(oldNextTime > ctx.currentTime);
+
+  const nextChip = makeSineChip(48000, 1, 440);
+  out.replaceChip(nextChip);
+  assert.equal(out.nextTime, oldNextTime,
+    'a future scheduling boundary survives replacement to prevent overlap');
+  ctx.currentTime = oldNextTime - LOOKAHEAD_S / 2;
+  for (let i = 0; i < 16; i++) out.frame(EMPTY);
+  out.pump();
+
+  assert.ok(ctx.starts.length > oldStarts, 'the replacement Game scheduled audio');
+  assert.equal(ctx.starts[oldStarts].t, oldNextTime,
+    'replacement audio begins exactly after the last old buffer');
+});
+
 test('AudioOut: underrun resyncs nextTime forward, never schedules in the past', () => {
   const ctx = new FakeCtx(48000);
   const out = new AudioOut(ctx, (rate) => makeSineChip(rate, 1));
@@ -333,20 +433,92 @@ test('AudioController: starts locked, drops frames until armed', () => {
   assert.equal(ac.status, 'unsupported');
 });
 
-test('AudioController: deferred semantic controls stay ordered with silent frames', () => {
+test('AudioController: deferred semantic controls stay ordered with silent ticks', () => {
   const events = [];
   const chip = {
     sourceRate: 33075, channels: 2, outLen: 0,
     selectScoreGroup(group) { events.push(`group:${group}`); },
+    command(input) { events.push(`command:${input[0]}`); },
+    tick(emit) { events.push(`tick:${emit}`); },
     frame(log, emit) { events.push(`frame:${log[0] ?? '-'}:${emit}`); },
     drain() { return 0; },
   };
   const ac = new AudioController(null, () => {});
   ac.frame(Uint8Array.of(1));
   ac.selectScoreGroup(1);
-  ac.frame(Uint8Array.of(2));
+  ac.command(Uint8Array.of(2, 3, 4, 5));
+  ac.tick();
+  ac.frame(Uint8Array.of(6));
   ac.setChip(chip);
-  assert.deepEqual(events, ['frame:1:false', 'group:1', 'frame:2:false']);
+  assert.deepEqual(events, [
+    'frame:1:false', 'group:1', 'command:2', 'tick:false', 'frame:6:false',
+  ]);
+  assert.equal(ac.preReadyFrames, 3,
+    'only elapsed legacy frames and ticks count as pre-ready time');
+});
+
+test('AudioController: reset before attachment drops the replaced Game catch-up', () => {
+  const events = [];
+  const chip = {
+    sourceRate: 48000, channels: 1, outLen: 0,
+    command(input) { events.push(`command:${input[0]}`); },
+    tick(emit) { events.push(`tick:${emit}`); },
+    frame(log, emit) { events.push(`frame:${log[0] ?? '-'}:${emit}`); },
+    drain() { return 0; },
+  };
+  const ac = new AudioController(null);
+  ac.command(Uint8Array.of(1, 0, 0, 0));
+  ac.tick();
+  ac.frame(Uint8Array.of(2));
+  assert.equal(ac.preReadyFrames, 2);
+
+  ac.resetGameAudio(chip);
+  assert.equal(ac.chip, chip);
+  assert.equal(ac.pendingStateFrames, null);
+  assert.equal(ac.preReadyFrames, 0);
+  assert.deepEqual(events, [], 'the replacement chip never receives old Game events');
+
+  ac.command(Uint8Array.of(3, 0, 0, 0));
+  ac.tick();
+  assert.deepEqual(events, ['command:3', 'tick:false']);
+});
+
+test('AudioController: reset after attachment replaces chip and queued events atomically', () => {
+  const oldEvents = [];
+  const nextEvents = [];
+  const eventChip = (events) => ({
+    sourceRate: 48000, channels: 1, outLen: 0,
+    command(input) { events.push(`command:${input[0]}`); },
+    tick(emit) { events.push(`tick:${emit}`); },
+    frame() {}, drain() { return 0; },
+  });
+  const oldChip = eventChip(oldEvents);
+  const nextChip = eventChip(nextEvents);
+  globalThis.AudioContext = class extends FakeCtx {
+    constructor() { super(48000); }
+  };
+  try {
+    const ac = new AudioController(null);
+    ac.setChip(oldChip);
+    ac.arm();
+    assert.equal(ac.out.chip, oldChip);
+    ac.command(Uint8Array.of(4, 0, 0, 0));
+    ac.tick();
+
+    ac.resetGameAudio(nextChip);
+    assert.equal(ac.chip, nextChip);
+    assert.equal(ac.out.chip, nextChip);
+    assert.equal(ac.out.queue.length, 0);
+    assert.equal(ac.out.pendingTicks, 0);
+    assert.deepEqual(oldEvents, [], 'queued old Game events were discarded');
+
+    ac.command(Uint8Array.of(5, 0, 0, 0));
+    ac.tick();
+    ac.pump();
+    assert.deepEqual(nextEvents, ['command:5', 'tick:true']);
+  } finally {
+    delete globalThis.AudioContext;
+  }
 });
 
 test('AudioController: arm() builds the engine once, second arm only resumes', () => {
@@ -419,6 +591,55 @@ test('AudioController: a throw inside the chip is firewalled, not thrown to the 
   assert.doesNotThrow(() => { ac.frame(new Uint8Array([0, 1])); ac.pump(); });
 
   delete globalThis.AudioContext;
+});
+
+test('AudioController: split command and tick throws are firewalled', () => {
+  for (const boundary of ['command', 'tick']) {
+    const errors = [];
+    const chip = {
+      sourceRate: 33075, channels: 2, outLen: 0,
+      frame() {}, drain() { return 0; },
+      command() {
+        if (boundary === 'command') throw new Error('command failed');
+      },
+      tick() {
+        if (boundary === 'tick') throw new Error('tick failed');
+      },
+    };
+    const ac = new AudioController(null, (error) => errors.push(error));
+    ac.setChip(chip);
+    if (boundary === 'command') {
+      assert.doesNotThrow(() => ac.command(Uint8Array.of(1, 2, 3, 4)));
+    } else assert.doesNotThrow(() => ac.tick());
+    assert.equal(ac.status, 'failed');
+    assert.equal(errors.length, 1);
+    assert.match(errors[0].message, new RegExp(`${boundary} failed`));
+  }
+});
+
+test('AudioController: resync firewalls queued semantic failures', () => {
+  const errors = [];
+  const chip = {
+    sourceRate: 48000, channels: 1, outLen: 0,
+    frame() {}, drain() { return 0; },
+    command() { throw new Error('resync command failed'); },
+  };
+  globalThis.AudioContext = class extends FakeCtx {
+    constructor() { super(48000); }
+  };
+  try {
+    const ac = new AudioController(null, (error) => errors.push(error));
+    ac.setChip(chip);
+    ac.arm();
+    ac.command(Uint8Array.of(1, 2, 3, 4));
+    assert.equal(ac.out.queue.length, 1, 'the throwing command is deferred until resync');
+    assert.doesNotThrow(() => ac.resync());
+    assert.equal(ac.status, 'failed');
+    assert.equal(errors.length, 1);
+    assert.match(errors[0].message, /resync command failed/);
+  } finally {
+    delete globalThis.AudioContext;
+  }
 });
 
 test('AudioController: stats reports locked status with no engine, numbers with one', () => {
@@ -586,16 +807,59 @@ test('D54: stats() reports the discarded count, so this is visible in the field'
 // consulted, so a dropped batch still applies every register write.
 // ===========================================================================
 
-test('D57: resync drops the pending backlog outright', () => {
+test('D57: resync state-applies the pending backlog without rendering it', () => {
   const ctx = new FakeCtx(48000);
   const chip = makeSineChip(48000, 2);
+  let applied = 0;
+  const frame = chip.frame.bind(chip);
+  chip.frame = (log, emit) => { applied++; return frame(log, emit); };
   const out = new AudioOut(ctx, () => chip);
   for (let i = 0; i < 600; i++) out.frame(null);      // a ten-second tab-away
-  assert.equal(out.queue.length, 600, 'the backlog really is there to drop');
+  assert.equal(out.queue.length, 600, 'the backlog really is there to reconcile');
   out.resync();
-  assert.equal(out.queue.length, 0, 'queued frames are gone');
-  assert.equal(chip.outLen, 0, 'and so are the rendered samples');
+  assert.equal(out.queue.length, 0, 'queued frames are reconciled');
+  assert.equal(out.pendingTicks, 0);
+  assert.equal(applied, 600, 'every driver event reached chip state');
+  assert.equal(chip.outLen, 0, 'silent reconciliation retained no rendered samples');
   assert.equal(out.resyncs, 1);
+});
+
+test('D57: resync preserves split command then silent tick ordering', () => {
+  const events = [];
+  const chip = {
+    sourceRate: 33075, channels: 2, outLen: 0,
+    frame() {}, drain() { return 0; },
+    command(input) { events.push(`command:${input[0]}`); },
+    tick(emit) { events.push(`tick:${emit}`); },
+  };
+  const out = new AudioOut(new FakeCtx(48000), () => chip);
+  out.command(Uint8Array.of(7, 0, 0, 0));
+  out.tick();
+  out.resync();
+  assert.deepEqual(events, ['command:7', 'tick:false']);
+  assert.equal(out.dropped, 0, 'visibility reconciliation is not backlog loss');
+});
+
+test('D57: resync never overlaps Web Audio buffers already scheduled ahead', () => {
+  const ctx = new FakeCtx(48000);
+  const chip = makeSineChip(48000, 1);
+  const out = new AudioOut(ctx, () => chip);
+  for (let i = 0; i < 16; i++) out.frame(EMPTY);
+  out.pump();
+  assert.ok(ctx.starts.length > 0);
+  const oldStarts = ctx.starts.length;
+  const oldNextTime = out.nextTime;
+
+  out.resync();
+  assert.equal(out.nextTime, oldNextTime,
+    'the future tail stays authoritative while scheduled sources can still play');
+  ctx.currentTime = oldNextTime - LOOKAHEAD_S / 2;
+  for (let i = 0; i < 16; i++) out.frame(EMPTY);
+  out.pump();
+
+  assert.ok(ctx.starts.length > oldStarts);
+  assert.equal(ctx.starts[oldStarts].t, oldNextTime,
+    'fresh output starts after the scheduled pre-resync tail, never on top of it');
 });
 
 test('D57: after a resync the clock re-arms at NOW, not where it left off', () => {

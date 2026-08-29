@@ -3,7 +3,10 @@ import { FullRom } from '/games/ddpdoj/src/rom.js';
 import {
   buildMainCpu, soundAssetsFromLocalRoms, tablesFromMainCpu,
 } from '/games/ddpdoj/src/localrom.js';
-import { soundRuntimeFromStage1Seed } from '/games/ddpdoj/src/soundruntime.js';
+import {
+  soundRuntimeFromAssets, soundRuntimeFromSnapshot, soundRuntimeFromStage1Seed,
+} from '/games/ddpdoj/src/soundruntime.js';
+import { DdpdojCadence } from '/games/ddpdoj/src/cadence.js';
 import { APPROVED_SOUND_POLICIES } from '/games/ddpdoj/src/soundpolicy.js';
 import {
   applyHitboxOverlay, applyPostFrameMods, applyPreFrameMods, applyPresentationMods,
@@ -43,7 +46,7 @@ const GRAPHICS = Object.freeze([
   'cave_b04401w064.u1',
 ]);
 
-const BASE_FRAME_MS = 1000 / 60;
+const BASE_FRAME_MS = 1000 / MACHINE.refreshHz;
 let inputAttached = false;
 
 function ensureInput(target) {
@@ -161,7 +164,7 @@ export class LocalDdpdojRuntime {
     const config = options.config ?? {};
     const audio = config.audio ?? null;
     const soundRuntime = audio
-      ? soundRuntimeFromStage1Seed(soundAssets, APPROVED_SOUND_POLICIES, 0)
+      ? soundRuntimeFromStage1Seed(soundAssets, APPROVED_SOUND_POLICIES, 0, 0)
       : null;
     const loadout = config.loadout ?? null;
     const modState = loadout?.ids?.length ? createModState(loadout) : null;
@@ -209,6 +212,7 @@ export class LocalDdpdojRuntime {
     return new LocalDdpdojRuntime(game, regions, canvas, {
       ...options,
       audio,
+      soundAssets,
       modState,
       formationState,
       runaheadFrames,
@@ -233,6 +237,7 @@ export class LocalDdpdojRuntime {
     this.onP2Joined = options.onP2Joined ?? null;
     this.onReplayUpdate = options.onReplayUpdate ?? null;
     this.audio = options.audio ?? null;
+    this.soundAssets = options.soundAssets ?? null;
     this.modState = options.modState ?? null;
     this.formationState = options.formationState ?? null;
     this.runaheadFrames = options.runaheadFrames ?? 0;
@@ -266,9 +271,14 @@ export class LocalDdpdojRuntime {
     this.running = false;
     this.request = 0;
     this.lastTime = 0;
-    this.accumulator = 0;
+    this.cadence = new DdpdojCadence(BASE_FRAME_MS);
     copySpriteList(game, this.spritebuffer);
     this.onP2Joined?.(this.p2Joined);
+  }
+
+  resyncTiming() {
+    this.cadence.reset();
+    this.lastTime = this.running ? performance.now() : 0;
   }
 
   updateP2Joined() {
@@ -313,6 +323,10 @@ export class LocalDdpdojRuntime {
         || this.game !== game || this.inPlayback()) {
       throw new Error('REC could not arm because the active game changed.');
     }
+    const soundState = this.audio?.snapshotGameAudio?.() ?? null;
+    if (this.audio && !soundState) {
+      throw new Error('REC needs the exact local sound state before it can arm.');
+    }
     this.recorder = armRecorder(game, {
       periodFrames: PERIOD_FRAMES,
       seed: {
@@ -322,6 +336,7 @@ export class LocalDdpdojRuntime {
         ramB64: b64(game.ram.b.slice()),
         bgB64: b64(beBytesFromWords(game.vram.w)),
         tablesB64: b64(tablesBytes),
+        ...(soundState ? { sound: soundState } : {}),
       },
       version: {
         git: 'unknown',
@@ -378,6 +393,13 @@ export class LocalDdpdojRuntime {
     clearKeyboard();
     clearTouch();
     clearCoin();
+    if (this.audio) {
+      const soundRuntime = obj.seed.sound
+        ? soundRuntimeFromSnapshot(
+            this.soundAssets, APPROVED_SOUND_POLICIES, obj.seed.sound)
+        : soundRuntimeFromAssets(this.soundAssets, APPROVED_SOUND_POLICIES);
+      this.audio.resetGameAudio(soundRuntime);
+    }
     this.game = game;
     this.tables = this.preparedTables;
     if (this.modState) this.modState.runtime.ghost = null;
@@ -387,8 +409,7 @@ export class LocalDdpdojRuntime {
     copySpriteList(game, this.spritebuffer);
     this.p2Joined = authenticP2Joined(game.ram.u16(RAM.playerCountM1));
     this.onP2Joined?.(this.p2Joined);
-    this.accumulator = 0;
-    this.lastTime = performance.now();
+    this.resyncTiming();
     this.playback = {
       obj,
       words: parsed.words,
@@ -485,12 +506,15 @@ export class LocalDdpdojRuntime {
   start() {
     if (this.running) return;
     this.running = true;
+    this.cadence.reset();
     this.lastTime = performance.now();
     this.request = requestAnimationFrame((time) => this.frame(time));
   }
 
   stop() {
     this.running = false;
+    this.cadence.reset();
+    this.lastTime = 0;
     this.replayGeneration++;
     cancelAnimationFrame(this.request);
     this.recorder = null;
@@ -632,25 +656,30 @@ export class LocalDdpdojRuntime {
     if (!this.running) return;
     try {
       pollInput();
-      this.accumulator += Math.min(100, time - this.lastTime);
+      let elapsed = time - this.lastTime;
       this.lastTime = time;
-      let period = transformModTiming(this.modState,
-        BASE_FRAME_MS * Math.max(1, this.game.armedVblanks || 1));
-      let steps = 0;
-      let liveRawWord = null;
-      while (this.accumulator >= period && steps < 8) {
-        this.accumulator -= period;
-        liveRawWord = this.step({ project: false });
-        steps++;
-        period = transformModTiming(this.modState,
-          BASE_FRAME_MS * Math.max(1, this.game.armedVblanks || 1));
+      if (elapsed > 200 || elapsed < 0) {
+        this.cadence.reset();
+        elapsed = 0;
       }
-      if (liveRawWord !== null && this.runaheadFrames) {
+      let liveRawWord = null;
+      const timing = this.cadence.advance(elapsed, {
+        logicPeriodMs: () => transformModTiming(
+          this.modState,
+          BASE_FRAME_MS * this.game.armedVblanks,
+        ),
+        stepLogic: () => {
+          liveRawWord = this.step({ project: false });
+        },
+        stepSound: () => this.audio?.tick(),
+        maxLogicSteps: 8,
+      });
+      if (timing.logicSteps && liveRawWord !== null && this.runaheadFrames) {
         this.runaheadView = this._projectRunahead(liveRawWord);
       }
       this.pollPlayback();
-      this.audio?.pump();
       this.draw();
+      this.audio?.pump();
       this.request = requestAnimationFrame((next) => this.frame(next));
     } catch (error) {
       this.stop();

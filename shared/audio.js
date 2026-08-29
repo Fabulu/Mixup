@@ -9,8 +9,8 @@
 // Everything that solves the INPUT-GRANULARITY PROBLEM is here, and none of it
 // knows what a NES APU or an ICS2115 is:
 //
-//   * the per-logic-frame queue and the AudioContext-clock pump -- a burst of
-//     eight logic frames in one rAF callback becomes eight queued batches and
+//   * the elapsed-time event queue and the AudioContext-clock pump: a burst of
+//     eight hardware ticks in one rAF callback becomes eight queued batches and
 //     ~133 ms of audio played over 133 ms, never eight frames of music delivered
 //     at once (games/gradius/docs/worklog/13-FINDING-input-granularity-under-load.md);
 //   * the backlog valve -- past MAX_BACKLOG_FRAMES the batch still APPLIES to
@@ -28,9 +28,10 @@
 //
 // The chip is INJECTED via a factory and must conform to:
 //
-//   frame(log, emit)   apply one logic frame's flat [off,val,off,val,...] writes;
-//                      emit=false advances state but discards samples (the valve)
-//   drain(n, dests)    move up to n samples per channel into dests, an array of
+//   frame(log, emit)   legacy combined elapsed frame used by Gradius
+//   command(input)      optional semantic command with no elapsed chip time
+//   tick(emit)          optional independent elapsed hardware interval
+//   drain(n, dests)     move up to n samples per channel into dests, an array of
 //                      `channels` Float32Arrays (filled in place). Returns the
 //                      count moved (same for every channel).
 //   outLen             samples currently available, per channel
@@ -55,14 +56,14 @@ export const CHUNK = 1024;
 export const START_LATENCY_S = 0.05;
 
 /**
- * The backlog ceiling, in LOGIC FRAMES. 15 frames = 250 ms; anything past that
- * is a real stall (a backgrounded tab, a long GC) rather than rAF jitter.
+ * The backlog ceiling, in ELAPSED HARDWARE INTERVALS. 15 intervals is about
+ * 250 ms at the board display clock; commands and controls consume no time.
  */
 export const MAX_BACKLOG_FRAMES = 15;
 
 /**
  * THE RENDERED-SAMPLE CEILING, in seconds. `MAX_BACKLOG_FRAMES` bounds how many
- * logic frames one pump may turn into SAMPLES; it does not bound how many
+ * elapsed intervals one pump may turn into SAMPLES; it does not bound how many
  * samples pile up ACROSS pumps, and those are two different things.
  *
  * Measured under D54: a catch-up burst emits 15 frames = 250 ms of audio while
@@ -83,8 +84,16 @@ export const MAX_BUFFERED_S = 0.25;
  */
 export const MASTER_GAIN = 0.8;
 
-/** One shared empty batch, so an idle frame costs no allocation. */
+/** One shared empty batch, so an idle legacy frame costs no allocation. */
 const EMPTY = new Uint8Array(0);
+const SOUND_TICK = Object.freeze({ kind: 'tick' });
+
+function commandEntry(input) {
+  if (!(input instanceof Uint8Array) || input.length !== 4) {
+    throw new TypeError('audio command input must be a four-byte Uint8Array');
+  }
+  return Object.freeze({ kind: 'command', input: Uint8Array.from(input) });
+}
 
 // ---------------------------------------------------------------------------
 // THE CUBIC HERMITE RESAMPLER -- the one primitive Gradius does not have.
@@ -271,8 +280,10 @@ export class AudioOut {
       this.gain.connect(ctx.destination);
     }
 
-    /** Queued logic frames, oldest first. One entry per frame, empty ones too. */
+    /** Ordered chip events, oldest first. */
     this.queue = [];
+    /** Queued elapsed-time events. Commands and controls do not count. */
+    this.pendingTicks = 0;
     this.nextTime = -1;          // -1 = nothing scheduled yet
     this.underruns = 0;
     this.dropped = 0;
@@ -289,12 +300,45 @@ export class AudioOut {
     this._junk = null;
   }
 
+  /** Replace one game's chip state without overlapping its queued host timeline. */
+  replaceChip(chip) {
+    if (!chip || typeof chip.frame !== 'function' || typeof chip.drain !== 'function') {
+      throw new Error('AudioOut replacement chip must expose frame and drain');
+    }
+    this.queue.length = 0;
+    this.pendingTicks = 0;
+    this.chip = chip;
+    this.resampler = null;
+    this._src = null;
+    this._junk = null;
+    if (this.nextTime < this.ctx.currentTime) this.nextTime = -1;
+  }
+
   /**
    * One logic frame's register writes. Copied, because the caller's log buffer
    * (e.g. `state.apuLog`) is reused by the very next frame.
    */
   frame(log) {
     this.queue.push(log && log.length ? Uint8Array.from(log) : EMPTY);
+    this.pendingTicks++;
+    this.frames++;
+  }
+
+  /** One command boundary with no elapsed chip time. */
+  command(input) {
+    if (typeof this.chip.command !== 'function') {
+      throw new Error('AudioOut chip does not expose command');
+    }
+    this.queue.push(commandEntry(input));
+  }
+
+  /** One elapsed hardware interval with no implied command. */
+  tick() {
+    if (typeof this.chip.tick !== 'function') {
+      throw new Error('AudioOut chip does not expose tick');
+    }
+    this.queue.push(SOUND_TICK);
+    this.pendingTicks++;
     this.frames++;
   }
 
@@ -310,26 +354,36 @@ export class AudioOut {
     this.queue.push(Object.freeze({ kind: 'score-group', group }));
   }
 
-  /** Called once per animation frame, after the catch-up loop has run. */
-  pump() {
-    const ctx = this.ctx;
+  /** Apply queued events in order. `emitOverride` is null for the backlog valve. */
+  _applyQueue(emitOverride = null) {
     const chip = this.chip;
-
-    // ---- 1. queued logic frames -> chip ------------------------------------
     while (this.queue.length) {
-      const queued = this.queue.length;
       const entry = this.queue.shift();
       if (entry?.kind === 'score-group') {
         chip.selectScoreGroup(entry.group);
         continue;
       }
-      // THE BACKLOG VALVE. Past the ceiling the batch is still applied (the
-      // chip's state must not be allowed to diverge from the driver's) but its
-      // samples are discarded.
-      const emit = queued <= MAX_BACKLOG_FRAMES;
-      if (!emit) this.dropped++;
-      chip.frame(entry, emit);
+      if (entry?.kind === 'command') {
+        chip.command(entry.input);
+        continue;
+      }
+
+      const queued = this.pendingTicks;
+      this.pendingTicks--;
+      const emit = emitOverride ?? queued <= MAX_BACKLOG_FRAMES;
+      if (!emit && emitOverride === null) this.dropped++;
+      if (entry?.kind === 'tick') chip.tick(emit);
+      else chip.frame(entry, emit);
     }
+  }
+
+  /** Called once per animation frame, after the catch-up loop has run. */
+  pump() {
+    const ctx = this.ctx;
+    const chip = this.chip;
+
+    // ---- 1. queued elapsed-time and semantic events -> chip ------------------
+    this._applyQueue();
 
     // ---- 1b. hold the RENDERED buffer to its ceiling -----------------------
     // Step 1's valve limits how fast this can grow. Only this bounds it. Every
@@ -432,7 +486,7 @@ export class AudioOut {
   }
 
   /**
-   * DROP THE BACKLOG AND RE-ARM THE CLOCK. For a visibility change: while a tab
+   * DROP THE BACKLOG AND RECONCILE THE CLOCK. For a visibility change: while a tab
    * is hidden rAF stops, so logic frames stop, and on return the catch-up loop
    * posts every missed frame at once. `_trim` bounds what that costs; this
    * removes it entirely, which is what the owner asked for -- "would be nice to
@@ -440,12 +494,12 @@ export class AudioOut {
    *
    * The CHIP IS NOT RESET. Its voices, envelopes and length counters are the
    * game's state, and zeroing them would silence music the driver still thinks
-   * is playing and never restart it. Only the pending work and the rendered
-   * samples go, so what plays after a resync is the game's present, not its
-   * past.
+   * is playing and never restart it. Pending semantic work is state-applied with
+   * emit=false before stale rendered samples are discarded. What plays after a
+   * resync is the game's present, not its past.
    */
   resync() {
-    this.queue.length = 0;
+    this._applyQueue(false);
     if (this.chip.outLen > 0) {
       this.stale += this._discard(this.chip, this.chip.outLen, this.chip.channels,
         (n, d) => this.chip.drain(n, d));
@@ -454,7 +508,11 @@ export class AudioOut {
     if (res && res.outLen > 0) {
       this._discard(res, res.outLen, this.chip.channels, (n, d) => res.drainOutput(n, d));
     }
-    this.nextTime = -1;                 // the next pump re-arms at currentTime + START_LATENCY_S
+    // Web Audio sources already scheduled into the future cannot be withdrawn
+    // without retaining every node. Preserve their exact tail boundary so fresh
+    // output cannot overlap them. After a real tab stall that boundary is in the
+    // past, so the next pump re-arms from currentTime as before.
+    if (this.nextTime < this.ctx.currentTime) this.nextTime = -1;
     this.resyncs++;
   }
 
@@ -560,6 +618,8 @@ export class AudioController {
     try {
       for (const entry of this.pendingStateFrames ?? []) {
         if (entry?.kind === 'score-group') chip.selectScoreGroup(entry.group);
+        else if (entry?.kind === 'command') chip.command(entry.input);
+        else if (entry?.kind === 'tick') chip.tick(false);
         else chip.frame(entry, false);
       }
     } catch (e) {
@@ -570,6 +630,44 @@ export class AudioController {
     this.pendingStateFrames = null;
     this.makeChip = () => chip;
     this._attach();
+  }
+
+  /** Return a detached game-audio checkpoint when the chip supports one. */
+  snapshotGameAudio() {
+    if (!this.chip || typeof this.chip.stateSnapshot !== 'function') return null;
+    try {
+      return this.chip.stateSnapshot();
+    } catch (e) {
+      this.fail(e);
+      return null;
+    }
+  }
+
+  /** Replace sound state when the page replaces its authoritative Game. */
+  resetGameAudio(chip = null) {
+    if (this.status === 'failed' || this.status === 'closed') return;
+    try {
+      if (chip == null) {
+        if (this.out || this.chip) {
+          throw new Error('AudioController cannot clear an attached chip without a replacement');
+        }
+        if (this.pendingStateFrames) this.pendingStateFrames.length = 0;
+        this.preReadyFrames = 0;
+        return;
+      }
+      if (typeof chip.frame !== 'function' || typeof chip.drain !== 'function') {
+        throw new TypeError('AudioController replacement chip must expose frame and drain');
+      }
+      this.out?.replaceChip(chip);
+      this.chip = chip;
+      this.makeChip = () => chip;
+      if (this.pendingStateFrames) this.pendingStateFrames.length = 0;
+      this.pendingStateFrames = null;
+      this.preReadyFrames = 0;
+      this._attach();
+    } catch (e) {
+      this.fail(e);
+    }
   }
 
   /**
@@ -607,6 +705,29 @@ export class AudioController {
     } else if (this.pendingStateFrames) {
       this.pendingStateFrames.push(log && log.length ? Uint8Array.from(log) : EMPTY);
     }
+  }
+
+  /** Deliver a semantic command without advancing chip time. */
+  command(input) {
+    if (this.status === 'failed' || this.status === 'closed') return;
+    let entry;
+    try { entry = commandEntry(input); } catch (e) { this.fail(e); return; }
+    if (this.out) {
+      try { this.out.command(entry.input); } catch (e) { this.fail(e); }
+    } else if (this.chip) {
+      try { this.chip.command(entry.input); } catch (e) { this.fail(e); }
+    } else if (this.pendingStateFrames) this.pendingStateFrames.push(entry);
+  }
+
+  /** Advance one hardware interval without implying a new command. */
+  tick() {
+    if (this.status === 'failed' || this.status === 'closed') return;
+    this.preReadyFrames++;
+    if (this.out) {
+      try { this.out.tick(); } catch (e) { this.fail(e); }
+    } else if (this.chip) {
+      try { this.chip.tick(false); } catch (e) { this.fail(e); }
+    } else if (this.pendingStateFrames) this.pendingStateFrames.push(SOUND_TICK);
   }
 
   /** Preserve the `$28B884` group upload in-order with subsequent frame doors. */
@@ -656,7 +777,8 @@ export class AudioController {
    * nothing to drop.
    */
   resync() {
-    this.out?.resync();
+    if (!this.out) return;
+    try { this.out.resync(); } catch (e) { this.fail(e); }
   }
 
   /** Permanently release a same-document launcher's Web Audio resources. */
@@ -700,7 +822,8 @@ export class AudioController {
     return {
       status: this.muted ? 'muted' : this.status,
       rate: this.out.ctx.sampleRate,
-      backlog: this.out.queue.length,
+      backlog: this.out.pendingTicks,
+      queuedEvents: this.out.queue.length,
       dropped: this.out.dropped,
       underruns: this.out.underruns,
       stale: this.out.stale,

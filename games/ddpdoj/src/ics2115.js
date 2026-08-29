@@ -443,4 +443,52 @@ export class Ics2115Core {
       })),
     };
   }
+
+  restoreState(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+      throw new Error('ICS2115 state snapshot must be an object');
+    }
+    integer('state activeOsc', snapshot.activeOsc, 0, ACTIVE_OSC);
+    if (snapshot.activeOsc !== ACTIVE_OSC) {
+      throw new Error(`ICS2115 state activeOsc must be ${ACTIVE_OSC}`);
+    }
+    integer('state lastIrqVoice', snapshot.lastIrqVoice, 0, ACTIVE_OSC);
+    integer('state nativeClockAcc', snapshot.nativeClockAcc, 0, LOGIC_RATE_NUM - 1);
+    integer('state frameCount', snapshot.frameCount, 0, Number.MAX_SAFE_INTEGER);
+    if (!Array.isArray(snapshot.voices) || snapshot.voices.length !== N_VOICES) {
+      throw new Error(`ICS2115 state must contain ${N_VOICES} voices`);
+    }
+    const bytes = (name, value) => {
+      if (!Array.isArray(value) || value.length !== REG_COUNT
+          || value.some((byte) => !Number.isInteger(byte) || byte < 0 || byte > 0xff)) {
+        throw new Error(`ICS2115 state ${name} must contain ${REG_COUNT} bytes`);
+      }
+      return Uint8Array.from(value);
+    };
+    for (let i = 0; i < N_VOICES; i++) {
+      const source = snapshot.voices[i];
+      if (!source || typeof source !== 'object' || Array.isArray(source)) {
+        throw new Error(`ICS2115 state voice ${i} must be an object`);
+      }
+      integer(`state voice ${i} phase`, source.phase, 0, MASK_29);
+      for (const key of ['running', 'irqCondition', 'irqLatched']) {
+        if (typeof source[key] !== 'boolean') {
+          throw new Error(`ICS2115 state voice ${i} ${key} must be boolean`);
+        }
+      }
+      const voice = this.voices[i];
+      voice.lo.set(bytes(`voice ${i} lo`, source.lo));
+      voice.hi.set(bytes(`voice ${i} hi`, source.hi));
+      voice.phase = source.phase;
+      voice.running = source.running;
+      voice.irqCondition = source.irqCondition;
+      voice.irqLatched = source.irqLatched;
+    }
+    this.activeOsc = snapshot.activeOsc;
+    this.lastIrqVoice = snapshot.lastIrqVoice;
+    this.nativeClockAcc = snapshot.nativeClockAcc;
+    this.frameCount = snapshot.frameCount;
+    this.outLen = 0;
+    return this;
+  }
 }

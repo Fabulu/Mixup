@@ -12,6 +12,7 @@ import {
   resolveLoadout,
 } from '../src/mods.js';
 import { COIN } from '../src/isr.js';
+import { SOUND, postWrapper } from '../src/sound.js';
 
 const SEED = fileURLToPath(new URL('../rip/web/seed.bin', import.meta.url));
 const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
@@ -212,22 +213,29 @@ test('runahead checkpoints are bounded, one-shot, non-nesting, and Game-owned', 
 
 test('speculative frames suppress host sound and coin effects, then the real frame emits once', () => {
   let coinTicks = 0;
-  const soundFrames = [];
+  const soundCommands = [];
   const g = game({
     coinTick: () => { coinTicks++; },
-    soundSink: { frame: (input) => soundFrames.push(Array.from(input)) },
+    soundSink: { command: (input) => soundCommands.push(Array.from(input)) },
   });
   g.ram.setU16(COIN.irq4Phase, 1);
+  g.ram.setU16(SOUND.head, 0);
+  g.ram.setU16(SOUND.tail, 0);
+  g.ram.setU16(SOUND.gateDual, 0);
+  g.ram.setU16(SOUND.masterVol, 0);
+  g.ram.setU8(SOUND.debounceA, 0);
+  g.ram.setU8(SOUND.debounceB, 0);
+  assert.equal(postWrapper(g.ram, g.sound, 0x28c714), true);
 
   const checkpoint = g.saveRunaheadState(1);
   g.step(0xffff);
   assert.equal(coinTicks, 0);
-  assert.deepEqual(soundFrames, []);
+  assert.deepEqual(soundCommands, []);
   g.restoreRunaheadState(checkpoint);
 
   g.step(0xffff);
   assert.equal(coinTicks, 1);
-  assert.equal(soundFrames.length, 1);
+  assert.equal(soundCommands.length, 1);
 });
 
 test('projection restores canonical state and identifies speculative failures', () => {

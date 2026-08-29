@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
-import { Game } from '../src/main.js';
+import { Game, RAM } from '../src/main.js';
 import { SOUND, postWrapper, soundFrameInput } from '../src/sound.js';
 import { ENDPOINT_POLICY, boundaryPhase, volumeGain } from '../src/ics2115.js';
 import { IRQ_TIMING_POLICY, soundRuntimeFromAssets } from '../src/soundruntime.js';
@@ -68,7 +68,7 @@ test('compact Game boundary preserves precisely zero or four door bytes', () => 
   })), [0x12, 0x34, 0x56, 0x79]);
   assert.throws(() => soundFrameInput({ type: 256, pan: 0, id: 0, chan: 0 }),
     /outside 0\.\.255/);
-  assert.throws(() => game({}), /soundSink must expose frame/);
+  assert.throws(() => game({}), /soundSink must expose command/);
   const noSound = game();
   emptyMailbox(noSound);
   noSound.step(0xffff);
@@ -76,11 +76,51 @@ test('compact Game boundary preserves precisely zero or four door bytes', () => 
   assert.equal(noSound.logicFrame, 1);
 });
 
+test('Game posts commands without advancing the independent sound clock', () => {
+  const rt = runtime();
+  const g = game(rt);
+  emptyMailbox(g);
+  assert.equal(postWrapper(g.ram, g.sound, 0x28c714), true);
+
+  const videoFrame = g.videoFrame;
+  g.armedVblanks = 2;
+  g.ram.setU8(RAM.semaphore, 2);
+  g.step(0xffff);
+
+  assert.equal(g.videoFrame - videoFrame, 2);
+  assert.equal(g.logicFrame, 1);
+  assert.equal(rt.frameCount, 0,
+    'a 68000 logic step cannot advance independent sound time');
+  assert.equal(rt.core.frameCount, 0);
+  assert.equal(rt.outLen, 0);
+  assert.deepEqual(Array.from(g.soundInput), [0x01, 0x4e, 0x24, 0x0c]);
+  assert.equal(rt.pendingDoors.length, 1);
+
+  rt.tick();
+  assert.equal(rt.frameCount, 1);
+  assert.equal(rt.core.frameCount, 1);
+  assert.equal(rt.lastFrame.door.selector, 0x24,
+    'the next hardware tick consumes the pending mailbox command');
+
+  const beforeFive = rt.frameCount;
+  g.armedVblanks = 5;
+  g.ram.setU8(RAM.semaphore, 5);
+  g.step(0xffff);
+  assert.equal(rt.frameCount, beforeFive,
+    'even a five-vblank logic span does not burst sound after the wait');
+  for (let i = 0; i < 5; i++) rt.tick(false);
+  assert.equal(rt.frameCount - beforeFive, 5,
+    'the host may service five sound intervals independently');
+  assert.equal(rt.core.frameCount, rt.frameCount);
+});
+
 test('speculative Game frames leave the sound runtime and PCM queues untouched', () => {
   const rt = runtime();
   const g = game(rt);
   emptyMailbox(g);
   assert.equal(postWrapper(g.ram, g.sound, 0x28c714), true);
+  g.armedVblanks = 2;
+  g.ram.setU8(RAM.semaphore, 2);
   const lastFrame = structuredClone(rt.lastFrame);
   const checkpoint = g.saveRunaheadState(1);
   g.step(0xffff);
@@ -92,6 +132,10 @@ test('speculative Game frames leave the sound runtime and PCM queues untouched',
   g.restoreRunaheadState(checkpoint);
 
   g.step(0xffff);
+  assert.equal(rt.frameCount, 0);
+  assert.equal(rt.core.frameCount, 0);
+  assert.equal(rt.pendingDoors.length, 1);
+  rt.tick();
   assert.equal(rt.frameCount, 1);
   assert.equal(rt.core.frameCount, 1);
   assert.ok(rt.outLen > 0);
@@ -122,6 +166,7 @@ test('real Game SFX wrapper reaches registers, PCM, native IRQ keyoff, and alloc
   emptyMailbox(g);
   assert.equal(postWrapper(g.ram, g.sound, 0x28c714), true);
   g.step(0xffff);
+  rt.tick();
 
   assert.deepEqual(Array.from(g.soundInput), [0x01, 0x4e, 0x24, 0x0c]);
   assert.equal(rt.lastFrame.door.selector, 0x24);
@@ -145,6 +190,7 @@ test('real Game SFX wrapper reaches registers, PCM, native IRQ keyoff, and alloc
     g.ram.setU8(SOUND.debounceB, 0);
     assert.equal(postWrapper(g.ram, g.sound, 0x28c714), true);
     g.step(0xffff);
+    rt.tick();
     for (let guard = 0; !rt.lastFrame.irqs.length; guard++) {
       assert.ok(guard < 200, 'each selector $24 voice must eventually end');
       rt.frame(new Uint8Array(0), false);
@@ -165,6 +211,7 @@ test('a real streaming leaf starts a live BGM cue and reaches stereo samples', (
   rt.selectScoreGroup(1);
   assert.equal(postWrapper(g.ram, g.sound, 0x28cb9c), true);
   g.step(0xffff);
+  rt.tick();
   assert.deepEqual(Array.from(g.soundInput), [0x12, 0xeb, 0x00, 0x00]);
   assert.equal(rt.lastFrame.door.cmd, 0x12);
   assert.equal(rt.chain.sequencer.cueId, 0);

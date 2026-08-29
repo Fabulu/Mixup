@@ -1171,6 +1171,7 @@ class LocalShell {
   resyncAudio() {
     this.gradiusAudio?.resync();
     this.ddpdojAudio?.resync();
+    if (this.gameId === 'ddpdoj') this.runtime?.resyncTiming?.();
   }
 
   clearInput() {

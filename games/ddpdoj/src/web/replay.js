@@ -113,6 +113,22 @@ export function parsePoke(s) {
   });
 }
 
+/** Preserve the frame-sync semaphore at an arbitrary replay or checkpoint seed. */
+export function replaySeedArm(seed, ram, semaphoreOffset) {
+  const ramArm = ram?.[semaphoreOffset];
+  const explicit = Boolean(seed) && Object.hasOwn(seed, 'arm');
+  const arm = explicit
+    ? seed.arm
+    : (Number.isSafeInteger(ramArm) && ramArm > 0 ? ramArm : 1);
+  if (!Number.isSafeInteger(arm) || arm < 0 || arm > 0xff) {
+    throw new Error('Replay seed arm must be an integer from 0 through 255.');
+  }
+  if (explicit && ramArm !== arm) {
+    throw new Error(`Replay seed arm ${arm} does not match its RAM semaphore ${String(ramArm)}.`);
+  }
+  return arm;
+}
+
 /** The inverse of `beWords` (`tools/replay.mjs:58`, `app.js:1130`): lay a
  *  `Uint16Array(2048)` BE ring out as 4096 big-endian bytes.  This is the
  *  shape the v1 `seed.bgB64` field carries and the headless player rebuilds
@@ -140,7 +156,7 @@ export function beBytesFromWords(w) {
 
 /**
  * Arm a recorder on `game`.  `opts.seed` is the already-captured seed block
- * (`{ lf, vf, ramB64, bgB64, tablesB64 }`), `opts.version` is the
+ * (`{ lf, vf, arm, ramB64, bgB64, tablesB64, sound? }`), `opts.version` is the
  * `{ git, tablesSha256, buildId }` block, and `opts.scenario`/`intervention`/
  * `poke` are carried into the file verbatim.  `opts.columns` defaults to the
  * full CLAIMED set (a live recording freezes all of CLAIMED -- `stateVector`
@@ -305,6 +321,12 @@ export function validateReplay(obj) {
   if (!obj.seed || !Number.isSafeInteger(obj.seed.lf) || obj.seed.lf < 0
       || !Number.isSafeInteger(obj.seed.vf) || obj.seed.vf < 0) {
     throw new Error('replay seed lf/vf must be non-negative integers');
+  }
+  if (obj.seed.sound !== undefined
+      && (!obj.seed.sound || typeof obj.seed.sound !== 'object'
+        || Array.isArray(obj.seed.sound)
+        || obj.seed.sound.format !== 'ddpdoj.sound/v1')) {
+    throw new Error('replay sound seed must be a ddpdoj.sound/v1 object when present');
   }
   const ram = unb64(obj.seed.ramB64);
   const bg = unb64(obj.seed.bgB64);
