@@ -161,7 +161,7 @@ test('W608 formation lookup, hash, selection, and catalogue separation are exact
   assert.equal(resolveFormationAuthenticSelection(null,
     { ship: 2, style: 6, p2: { ship: 0, style: 4 } }), null);
 
-  assert.equal(MOD_IDS.length, 35);
+  assert.equal(MOD_IDS.length, 36);
   assert.equal(MOD_IDS.includes(ID), false);
   assert.equal(Object.hasOwn(MODS, ID), false);
 });

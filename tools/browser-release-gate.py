@@ -603,10 +603,16 @@ def gate_asset_backed(browser, origin: str) -> None:
         })();
         """)
         open_page(page, origin, "/games/ddpdoj/start.html")
+        no_slowdown = page.locator('[data-category="challenge"] [data-id="no-slowdown"]')
+        require(no_slowdown.count() == 1 and no_slowdown.is_visible(),
+                "No Slowdown is not uniquely visible in the mod menu")
+        require(no_slowdown.get_attribute("aria-pressed") == "false",
+                "No Slowdown is not default-off")
         page.locator('[data-category="survival"] [data-id="invincibility"]').click()
+        no_slowdown.click()
         page.locator("#launch").click()
         page.wait_for_url("**/games/ddpdoj/index.html*", timeout=30000)
-        require(urlsplit(page.url).fragment == "mods=invincibility",
+        require(urlsplit(page.url).fragment == "mods=invincibility+no-slowdown",
                 f"unexpected mod-only launch URL {page.url}")
         wait_for_condition(page, "window.__mixup !== undefined", timeout=180000)
         page.evaluate("() => { window.__mixup.demo.running = false; }")
@@ -655,7 +661,7 @@ def gate_asset_backed(browser, origin: str) -> None:
         require(initial["armedVblanks"] == 0,
                 f"mod-only cold boot injected replay semaphore {initial['armedVblanks']}")
         require(initial["booted"] is True, "mod-only launch skipped Game.boot")
-        require(initial["modIds"] == ["invincibility"],
+        require(initial["modIds"] == ["invincibility", "no-slowdown"],
                 f"wrong mod-only IDs {initial['modIds']}")
         require(initial["formationId"] is None, "mod-only launch gained a formation")
         require(initial["runActive"] is False, "mod activated before cabinet flow")

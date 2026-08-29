@@ -108,6 +108,9 @@ test('local runtime uses the measured PGM period and shared dual-clock cadence',
     'the rounded 60 Hz clock runs DaiOuJou at the wrong rate');
   assert.match(source, /import \{ DdpdojCadence \} from '\/games\/ddpdoj\/src\/cadence\.js';/);
   assert.match(source, /this\.cadence = new DdpdojCadence\(BASE_FRAME_MS\);/);
+  assert.match(source,
+    /BASE_FRAME_MS \* transformCartridgeSlowdown\(\s*this\.modState, this\.game\.armedVblanks,/,
+    'Mixup applies the shared No Slowdown arm policy before timing modifiers');
   assert.match(source, /stepSound: \(\) => this\.audio\?\.tick\(\)/,
     'sound hardware must advance independently of canonical logic');
   assert.doesNotMatch(source, /Math\.max\(1, this\.game\.armedVblanks/,

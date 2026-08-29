@@ -119,6 +119,11 @@ export const MODS = Object.freeze({
     blurb: 'Slow the cabinet cadence progressively as the live enemy-bullet pool fills.',
     effects: ['$81B40C after each logic frame -> bounded host period scale 1.0..2.25'],
   }),
+  'no-slowdown': mod({
+    name: 'No Slowdown', category: 'challenge',
+    blurb: 'Keep gameplay at full speed when the cartridge asks the 68000 to wait extra vblanks.',
+    effects: ['positive cartridge slowdown arm -> one host logic period; Z80 and ICS2115 cadence unchanged'],
+  }),
   'boss-enrage': mod({
     name: 'Boss Enrage', category: 'challenge',
     blurb: 'Add six speed steps to newly spawned enemy bullets during authentic boss phases.',
@@ -283,6 +288,7 @@ export function resolveLoadout(ids = []) {
   const timing = Object.freeze({
     scale: has('bullet-time') ? 2 : has('turbo') ? 0.5 : 1,
     adaptive: has('adaptive-slow-motion'),
+    noSlowdown: has('no-slowdown'),
   });
   const presentation = Object.freeze({
     invert: has('invert-colors'), monochrome: has('monochrome'), ghost: has('ghost-trail'),
@@ -864,6 +870,13 @@ export function adaptiveSlowMotionScale(bulletDensity) {
     ? Math.max(0, Math.min(210, Math.trunc(bulletDensity))) : 0;
   if (density <= 48) return 1;
   return 1 + (density - 48) * 1.25 / 162;
+}
+
+/** Suppress only extra cartridge-armed waits for an active No Slowdown run. */
+export function transformCartridgeSlowdown(state, armedVblanks) {
+  if (!modRunActive(state) || !state.loadout.timing.noSlowdown
+      || armedVblanks <= 0) return armedVblanks;
+  return 1;
 }
 
 /** Transform only host cadence. Game still receives every logic frame. */

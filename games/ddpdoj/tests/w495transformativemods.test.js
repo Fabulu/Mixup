@@ -54,9 +54,9 @@ function convertedSlots() {
   return slots;
 }
 
-test('W495 catalogue has 35 entries and both mods block replay v1', () => {
+test('W495 catalogue has 36 entries and both mods block replay v1', () => {
   const ids = ['friendly-converted-bullets', 'loop-2-from-stage-1'];
-  assert.equal(MOD_IDS.length, 35);
+  assert.equal(MOD_IDS.length, 36);
   for (const id of ids) {
     assert.equal(MODS[id].replaySafe, false);
     assert.ok(MODS[id].name && MODS[id].effects.length);

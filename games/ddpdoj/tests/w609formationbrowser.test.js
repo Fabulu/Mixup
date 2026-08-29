@@ -355,10 +355,9 @@ test('W609 catch-up batches project only the final canonical frame',
       projections++;
       return project(word);
     };
-    demo.acc = 1000;
     demo.last = 100;
 
-    demo.loop(100);
+    demo.loop(236);
 
     assert.equal(demo.game.logicFrame, 8);
     assert.equal(projections, 1);
@@ -536,7 +535,7 @@ test('W609 menu and runtime expose both P1-owned formations and disabled White L
   const browser = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../src/web/app.js', import.meta.url), 'utf8');
 
-  assert.equal(MOD_IDS.length, 35);
+  assert.equal(MOD_IDS.length, 36);
   assert.equal(Object.hasOwn(MODS, ID), false);
   assert.equal([...start.matchAll(/id="formation-side-by-side"/g)].length, 1);
   assert.equal([...start.matchAll(/id="formation-three"/g)].length, 1);

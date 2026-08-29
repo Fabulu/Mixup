@@ -19,8 +19,8 @@ import { RUNAHEAD_EXTERNAL_STATE } from '../src/runahead-state.js';
 import {
   MODS, MOD_IDS, MOD_RAM, resolveLoadout, createModState, prepareModCabinetBoot,
   loadoutToHash, hashToLoadout, applyPreFrameMods, applyPostFrameMods,
-  transformModInput, transformModTiming, applyPresentationMods,
-  replayPolicy, modGameOptions,
+  transformCartridgeSlowdown, transformModInput, transformModTiming,
+  applyPresentationMods, replayPolicy, modGameOptions,
 } from '../src/mods.js';
 
 const TABLES = JSON.parse(readFileSync(
@@ -36,8 +36,8 @@ function policyRam(id) {
   return { ram, state };
 }
 
-test('W477 catalogue ships thirty-five functional mods after runahead additions', () => {
-  assert.equal(MOD_IDS.length, 35);
+test('W477 catalogue ships thirty-six functional mods after No Slowdown', () => {
+  assert.equal(MOD_IDS.length, 36);
   assert.deepEqual(new Set(Object.values(MODS).map((m) => m.category)),
     new Set(['survival', 'arsenal', 'challenge', 'presentation']));
   for (const [id, entry] of Object.entries(MODS)) {
@@ -45,6 +45,7 @@ test('W477 catalogue ships thirty-five functional mods after runahead additions'
     assert.ok(entry.effects.length > 0, `${id} names its concrete behavior`);
   }
   assert.ok(MODS.invincibility, 'Invincibility is shipped');
+  assert.ok(MODS['no-slowdown'], 'No Slowdown is shipped default-off');
 });
 
 test('W477 resolver drops unknown ids, deduplicates, and orders by catalogue', () => {
@@ -151,6 +152,54 @@ test('W477 timing transforms use mutually exclusive host periods', () => {
   assert.equal(transformModTiming(stateOf('turbo'), 16.896), 8.448);
   assert.equal(transformModTiming(stateOf('bullet-time'), 16.896), 33.792);
   assert.equal(transformModTiming(null, 16.896), 16.896);
+});
+
+test('W477 No Slowdown removes only active extra cartridge waits', () => {
+  assert.equal(transformCartridgeSlowdown(null, 5), 5,
+    'the null path preserves the cartridge arm exactly');
+  assert.equal(transformCartridgeSlowdown(stateOf('turbo'), 5), 5,
+    'a loadout without No Slowdown preserves the cartridge arm');
+
+  const noSlowdown = stateOf('no-slowdown');
+  assert.equal(transformCartridgeSlowdown(noSlowdown, 0), 0,
+    'cold arm zero remains an immediate fallthrough');
+  assert.equal(transformCartridgeSlowdown(noSlowdown, 1), 1);
+  assert.equal(transformCartridgeSlowdown(noSlowdown, 5), 1,
+    'positive extra-vblank arms collapse to one logic period');
+
+  for (const [id, expected] of [
+    ['turbo', 8.448],
+    ['bullet-time', 33.792],
+  ]) {
+    const state = stateOf('no-slowdown', id);
+    const period = 16.896 * transformCartridgeSlowdown(state, 5);
+    assert.equal(transformModTiming(state, period), expected,
+      `No Slowdown composes with ${id}`);
+  }
+
+  const adaptive = stateOf('no-slowdown', 'adaptive-slow-motion');
+  adaptive.runtime.bulletDensity = 210;
+  const period = 16.896 * transformCartridgeSlowdown(adaptive, 5);
+  assert.equal(transformModTiming(adaptive, period), 16.896 * 2.25,
+    'Adaptive Slow Motion applies after cartridge slowdown suppression');
+});
+
+test('W477 pending No Slowdown activates only at credited cabinet handoff', () => {
+  const state = stateOf('no-slowdown');
+  prepareModCabinetBoot(state);
+  const options = modGameOptions(state);
+  const ram = new Ram();
+  assert.equal(transformCartridgeSlowdown(state, 4), 4,
+    'warning, attract, and selector cadence remains cartridge-owned');
+  options.cabinetRunStartHook(ram, { demo: true });
+  assert.equal(transformCartridgeSlowdown(state, 4), 4,
+    'attract gameplay retains authentic slowdown');
+  options.cabinetRunStartHook(ram, { demo: false });
+  assert.equal(transformCartridgeSlowdown(state, 4), 1,
+    'the credited run suppresses extra waits');
+  options.cabinetRunEndHook(ram);
+  assert.equal(transformCartridgeSlowdown(state, 4), 4,
+    'returning to the cabinet restores authentic slowdown');
 });
 
 test('W629 cabinet loadouts stay pending through attract and activate at credited handoff', () => {
@@ -292,8 +341,16 @@ test('W477 replay v1 permits only presentation-only loadouts', () => {
   const sim = replayPolicy(stateOf('invincibility', 'turbo'));
   assert.equal(sim.compatible, false);
   assert.deepEqual(sim.blocking, ['invincibility', 'turbo']);
+  assert.deepEqual(replayPolicy(stateOf('no-slowdown')),
+    { compatible: false, blocking: ['no-slowdown'] },
+    'No Slowdown changes host simulation timing and blocks REC and PLAY');
+  assert.throws(() => Demo.prototype.playFrom.call({ mods: stateOf('no-slowdown') }, {}),
+    /PLAY is unavailable.*No Slowdown/);
   assert.throws(() => Demo.prototype.playFrom.call({ mods: stateOf('precision-ship') }, {}),
     /PLAY is unavailable.*Precision Ship/);
+  assert.rejects(() => Demo.prototype.armRecording.call({
+    mods: stateOf('no-slowdown'), recorder: null,
+  }), /REC is unavailable.*No Slowdown/);
   assert.rejects(() => Demo.prototype.armRecording.call({
     mods: stateOf('invincibility'), recorder: null,
   }), /REC is unavailable.*Invincibility/);

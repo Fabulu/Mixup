@@ -617,7 +617,7 @@ test('W615 ordering, privacy, replay refusal, and public formation closure stay 
   assert.strictEqual(formationMode(id), THREE_PILOT_FORMATION_MODE);
   assert.strictEqual(hashToFormation(`#formation=${id}`), THREE_PILOT_FORMATION_MODE);
   assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE), `formation=${id}`);
-  assert.equal(MOD_IDS.length, 35);
+  assert.equal(MOD_IDS.length, 36);
   assert.equal(MOD_IDS.includes(id), false);
   assert.equal(Object.hasOwn(MODS, id), false);
   const start = readFileSync(new URL('../start.html', import.meta.url), 'utf8');

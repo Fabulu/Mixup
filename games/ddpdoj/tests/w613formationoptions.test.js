@@ -391,7 +391,7 @@ test('W613 sidecars are per-Game and the public formation remains outside mods',
     assert.notDeepEqual(sidecarBytes(a.state.memory, P3_VIRTUAL.options, OPT.stride),
       sidecarBytes(b.state.memory, P3_VIRTUAL.options, OPT.stride));
     assert.equal(b.state.weapons.calls, 0);
-    assert.equal(MOD_IDS.length, 35);
+    assert.equal(MOD_IDS.length, 36);
     assert.equal(MOD_IDS.includes(THREE_PILOT_FORMATION_MODE.id), false);
     assert.equal(Object.hasOwn(MODS, THREE_PILOT_FORMATION_MODE.id), false);
     assert.strictEqual(formationMode(THREE_PILOT_FORMATION_MODE.id),

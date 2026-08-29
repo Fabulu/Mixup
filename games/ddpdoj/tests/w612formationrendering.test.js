@@ -410,7 +410,7 @@ test('W612 attachment exclusively installs a validated seam and emits no deferre
 
 test('W612 public formation is selectable while the mod catalogue remains closed', () => {
   const id = THREE_PILOT_FORMATION_MODE.id;
-  assert.equal(MOD_IDS.length, 35);
+  assert.equal(MOD_IDS.length, 36);
   assert.equal(MOD_IDS.includes(id), false);
   assert.equal(Object.hasOwn(MODS, id), false);
   assert.strictEqual(formationMode(id), THREE_PILOT_FORMATION_MODE);

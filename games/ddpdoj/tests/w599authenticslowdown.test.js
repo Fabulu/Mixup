@@ -9,6 +9,7 @@ import { RAM } from '../src/machine.js';
 import { Ram } from '../src/ram.js';
 import { frameSync } from '../src/framesync.js';
 import { DdpdojCadence } from '../src/cadence.js';
+import { createModState, resolveLoadout } from '../src/mods.js';
 import { Demo } from '../src/web/app.js';
 
 const GOV = {
@@ -17,6 +18,8 @@ const GOV = {
   t23C416: [4],
   t23C420: [4],
 };
+
+const stateOf = (...ids) => createModState(resolveLoadout(ids));
 
 function loopStub(armedVblanks, afterStep = null, mods = null) {
   let calls = 0;
@@ -93,6 +96,13 @@ test('W599 browser honors every cartridge arm value and composes timing mods', (
   Demo.prototype.loop.call(modded, 110);
   assert.equal(modded.calls, 1, 'turbo halves the authentic two-vblank interval');
   assert.equal(modded.soundTicks, 1, 'turbo does not accelerate sound hardware');
+
+  const noSlowdown = loopStub(5, null, stateOf('no-slowdown'));
+  Demo.prototype.loop.call(noSlowdown, 150);
+  assert.equal(noSlowdown.calls, 5,
+    'No Slowdown turns five cartridge vblanks into five full-speed logic frames');
+  assert.equal(noSlowdown.soundTicks, 5,
+    'No Slowdown preserves every independent Z80 and ICS2115 sound interval');
 });
 
 test('W599 catch-up recalculates slowdown after every complete logic iteration', () => {

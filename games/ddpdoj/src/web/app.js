@@ -224,7 +224,8 @@ import { CLAIMED } from '../state.js';
 import {
   MODS, MOD_RAM, createModState, prepareModCabinetBoot,
   applyPreFrameMods, applyPostFrameMods,
-  transformModInput, transformModTiming, applyPresentationMods, applyHitboxOverlay,
+  transformCartridgeSlowdown, transformModInput, transformModTiming,
+  applyPresentationMods, applyHitboxOverlay,
   assertReplayCompatible, modGameOptions,
 } from '../mods.js';
 import { projectRunahead, RunaheadProjectionError } from '../runahead.js';
@@ -1905,7 +1906,9 @@ export class Demo {
     const timing = this.cadence.advance(dt, {
       logicPeriodMs: () => transformModTiming(
         this.mods,
-        this.periodMs * this.game.armedVblanks,
+        this.periodMs * transformCartridgeSlowdown(
+          this.mods, this.game.armedVblanks,
+        ),
       ),
       stepLogic: () => {
         liveRawPw = this.step({ project: false });

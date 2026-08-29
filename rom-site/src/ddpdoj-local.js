@@ -11,7 +11,7 @@ import { APPROVED_SOUND_POLICIES } from '/games/ddpdoj/src/soundpolicy.js';
 import {
   applyHitboxOverlay, applyPostFrameMods, applyPreFrameMods, applyPresentationMods,
   assertReplayCompatible, createModState, modGameOptions, prepareModCabinetBoot,
-  transformModInput, transformModTiming,
+  transformCartridgeSlowdown, transformModInput, transformModTiming,
 } from '/games/ddpdoj/src/mods.js';
 import { projectRunahead, RunaheadProjectionError } from '/games/ddpdoj/src/runahead.js';
 import {
@@ -666,7 +666,9 @@ export class LocalDdpdojRuntime {
       const timing = this.cadence.advance(elapsed, {
         logicPeriodMs: () => transformModTiming(
           this.modState,
-          BASE_FRAME_MS * this.game.armedVblanks,
+          BASE_FRAME_MS * transformCartridgeSlowdown(
+            this.modState, this.game.armedVblanks,
+          ),
         ),
         stepLogic: () => {
           liveRawWord = this.step({ project: false });

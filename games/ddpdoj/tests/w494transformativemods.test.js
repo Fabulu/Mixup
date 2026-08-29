@@ -67,7 +67,7 @@ function driveEnemy(options, rec, handler) {
 
 test('W494 catalogue remains present after later additions and all three mods block replay v1', () => {
   const ids = ['revenge-bullets', 'bullet-polarity', 'score-multiplier-mayhem'];
-  assert.equal(MOD_IDS.length, 35);
+  assert.equal(MOD_IDS.length, 36);
   for (const id of ids) {
     assert.equal(MODS[id].category, 'challenge');
     assert.equal(MODS[id].replaySafe, false);
