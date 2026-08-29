@@ -19,8 +19,8 @@
 //   2. it comes off in the `port` source ONLY -- `capture` is deliberately the
 //      recording, and it is the one correctness check this repo has that does
 //      not need MAME;
-//   3. **NOT ONE PALETTE WORD MOVES.**  W91-W93 moved 1,760 of 2,560 palette
-//      words to the cartridge and 160 of the 240 TEXT words are among them.
+//   3. **NOT ONE PALETTE WORD MOVES.**  W91-W93 moved 1,776 of 2,560 palette
+//      words to the cartridge and 176 of the 240 TEXT words are among them.
 //      The picture and the colours are two separate retirements and only the
 //      picture is retired here.
 //
@@ -126,7 +126,7 @@ test('W98/H4 NOT ONE PALETTE WORD IS REMOVED, and the two paths are separate',
       + 'cannot remove a palette word');
     assert.ok(/paletteSourced = this\.palMerged\.fromCartridge/.test(s),
       'and the page still reports how many words are the cartridge\'s -- '
-      + 'W91-W93 moved 1,760 of 2,560 and 160 of the 240 TEXT words are among '
-      + 'them; the other 80 have no cartridge source yet and none is dropped');
+      + 'W91-W93 moved 1,776 of 2,560 and 176 of the 240 TEXT words are among '
+      + 'them; the other 64 have no cartridge source yet and none is dropped');
     void { SCREEN_W, SCREEN_H };
   });

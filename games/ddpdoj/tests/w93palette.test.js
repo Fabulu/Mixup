@@ -15,7 +15,7 @@
 //     `$80FA66` is the next word, so an unbounded D0 sets a flag with colour
 //     data.  The port throws by address; it does NOT clamp.
 //  3. **THE WITNESS, NOT THE BYTE MATCH, IS THE WARRANT FOR `$2605C8`.**  W92
-//     refused ten text banks whose bytes matched, because "the bytes match,
+//     refused eleven text-bank installs whose bytes matched, because "the bytes match,
 //     therefore replay it" is what would have installed its own wrong sprite
 //     bank 1, 7 and 8.  W93 replays them because the seed's `$80E240` slot
 //     array says type $0A reached state 1 -- so a seed WITHOUT that witness
@@ -63,7 +63,7 @@ class FakeRom {
  *  reading the wrong bank OR the wrong entry of the right one. */
 const txWord = (b, i) => (0x0400 + b * 16 + i) & 0x7fff;
 
-/** The five reset blocks and the ten `$2605C8` blocks, at their REAL addresses,
+/** The five reset blocks and the eleven `$2605C8`-chain blocks, at their REAL addresses,
  *  each filled with the words of the bank its own site names. */
 function txRom() {
   const rom = new FakeRom();
@@ -195,7 +195,7 @@ test('W93/8 with NO witness the catch-up installs the RESET FIVE and no more',
     assert.strictEqual(pal.txCatchUp.reset, 5);
     assert.strictEqual(pal.txCatchUp.obj0A, 0);
     assert.strictEqual(pal.txCatchUp.witness, null);
-    // banks 0..4 sourced, banks 5..14 NOT -- and 5, 6, 7, 8 and 11 are exactly
+    // banks 0..4 sourced, banks 5..14 NOT -- and 5, 6, 7, 8, 11 and 13 are exactly
     // the ones whose bytes are in the fixture and would have matched.
     for (let b = 0; b < TX_BANKS; b++) {
       assert.strictEqual(pal.stageSourced.tx[b * TX_BANK_WORDS], b < 5 ? 1 : 0,
@@ -203,21 +203,21 @@ test('W93/8 with NO witness the catch-up installs the RESET FIVE and no more',
     }
     // ...and the refusal is NAMED rather than silent.
     assert.ok(notes.some(([a, w]) => a === 0x2605c8
-      && /banks 5, 6, 7, 8 and 11 stay the recording/.test(w)),
+      && /banks 5, 6, 7, 8, 11 and 13 stay the recording/.test(w)),
     `the $2605C8 refusal must be noted; got ${JSON.stringify(notes)}`);
   });
 
-test('W93/9 with a witness the catch-up installs TEN more, and bank 11 not 9',
+test('W93/9 with a witness the catch-up installs ELEVEN more, including banks 11 and 13',
   () => {
     const ram = freshRam();
     putObj0A(ram, 3, 1);
     const pal = new PaletteState();
     catchUpTextPalette(ram, txRom(), pal, {});
     assert.strictEqual(pal.txCatchUp.reset, 5);
-    assert.strictEqual(pal.txCatchUp.obj0A, 10);
-    // The ten are banks 0..8 and ELEVEN.  Bank 9 and 10 are NOT installed, and
-    // that is the off-by-one a port which read the list as 0..9 would make.
-    const want = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 11]);
+    assert.strictEqual(pal.txCatchUp.obj0A, 11);
+    // The eleven are banks 0..8, 11 and 13. Banks 9, 10 and 12 are NOT installed,
+    // which preserves the holes in the cartridge's initializer chain.
+    const want = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 11, 13]);
     for (let b = 0; b < TX_BANKS; b++) {
       assert.strictEqual(pal.stageSourced.tx[b * TX_BANK_WORDS], want.has(b) ? 1 : 0,
         `TX bank ${b} sourced?`);
@@ -228,8 +228,8 @@ test('W93/9 with a witness the catch-up installs TEN more, and bank 11 not 9',
           `TX bank ${b} entry ${i}`);
       }
     }
-    // banks 9, 10, 12, 13, 14 keep the fill: 80 words still the recording's.
-    for (const b of [9, 10, 12, 13, 14]) {
+    // Banks 9, 10, 12 and 14 keep the fill: 64 words still come from the recording.
+    for (const b of [9, 10, 12, 14]) {
       assert.strictEqual(ram.u16(PALSTAGE.tx.stage + b * 32), 0x3333,
         `TX bank ${b} must be untouched`);
     }
@@ -243,7 +243,7 @@ test('W93/10 the two routines OVERLAP on banks 0..4 and are idempotent there',
     catchUpTextPalette(ram, txRom(), pal, {});
     // 80 words were written twice, and `sameAsReset` counts exactly them.
     assert.strictEqual(pal.txCatchUp.sameAsReset, 5 * TX_BANK_WORDS);
-    assert.strictEqual(pal.txCatchUp.banks, 15);   // 5 + 10 INSTALLS, 10 banks
+    assert.strictEqual(pal.txCatchUp.banks, 16);   // 5 + 11 INSTALLS, 11 unique banks
     // ...and the second pass left the same values, which is the property that
     // makes running both in board order safe.
     for (let i = 0; i < TX_BANK_WORDS; i++) {
@@ -251,7 +251,7 @@ test('W93/10 the two routines OVERLAP on banks 0..4 and are idempotent there',
     }
   });
 
-test('W93/11 the RESET five and the $2605C8 ten name the SAME block for 0..4',
+test('W93/11 the RESET five and the initializer-chain eleven name the SAME block for 0..4',
   () => {
     // Derived from the two tables rather than typed: if a future edit points
     // one of them at a different block, the port's two arms would disagree and
@@ -264,7 +264,7 @@ test('W93/11 the RESET five and the $2605C8 ten name the SAME block for 0..4',
         + `path names $${reset.get(bank).toString(16)}`);
     }
     assert.strictEqual(reset.size, 5);
-    assert.strictEqual(TX_OBJ0A_INSTALLS.length, 10);
+    assert.strictEqual(TX_OBJ0A_INSTALLS.length, 11);
   });
 
 test('W93/12 a block outside the ROM window is NAMED, not fatal, not silent',
@@ -280,7 +280,7 @@ test('W93/12 a block outside the ROM window is NAMED, not fatal, not silent',
     assert.strictEqual(pal.stageSourced.tx[6 * TX_BANK_WORDS], 0,
       'bank 6 must stay the recording\'s');
     assert.strictEqual(pal.stageSourced.tx[7 * TX_BANK_WORDS], 1,
-      'bank 7 must still be installed -- one bad block is not nine');
+      'bank 7 must still be installed -- one bad block is not ten');
     assert.ok(notes.some(([a, w]) => a === 0x260630
       && /outside every ROM window/.test(w)));
   });
@@ -296,25 +296,25 @@ test('W93/13 the flush carries TEXT provenance into palette words $800..$8EF',
     flush24133C(ram, pal);
     // The TEXT third is palette words $800..$8EF and NOWHERE ELSE.  A port that
     // flushed it to $000 or $400 would redden this and W91/W92's tests too.
-    for (const b of [0, 5, 11]) {
+    for (const b of [0, 5, 11, 13]) {
       for (let i = 0; i < TX_BANK_WORDS; i++) {
         const w = 0x800 + b * TX_BANK_WORDS + i;
         assert.strictEqual(pal.words[w], txWord(b, i), `palette word ${w}`);
         assert.strictEqual(pal.sourced[w], 1, `provenance of word ${w}`);
       }
     }
-    for (const b of [9, 10, 12, 13, 14]) {
+    for (const b of [9, 10, 12, 14]) {
       assert.strictEqual(pal.sourced[0x800 + b * TX_BANK_WORDS], 0,
         `TX bank ${b} must NOT be claimed`);
     }
     const led = pal.ledger();
-    assert.strictEqual(led.tx, 10 * TX_BANK_WORDS);   // 160 of 240
+    assert.strictEqual(led.tx, 11 * TX_BANK_WORDS);   // 176 of 240
     assert.strictEqual(led.of.tx, 240);
     assert.strictEqual(led.spr, 0);                   // this wave touched neither
     assert.strictEqual(led.bg, 0);
   });
 
-test('W93/14 mergePalette keeps the recording for the FIVE unsourced TX banks',
+test('W93/14 mergePalette keeps the recording for the FOUR unsourced TX banks',
   () => {
     const ram = freshRam();
     putObj0A(ram, 3, 1);
@@ -327,5 +327,5 @@ test('W93/14 mergePalette keeps the recording for the FIVE unsourced TX banks',
     assert.strictEqual(out[0x800 + 9 * 16], 0x7abc, 'bank 9 stays the recording');
     assert.strictEqual(out[0x800 + 14 * 16], 0x7abc, 'bank 14 stays the recording');
     assert.strictEqual(out[0], 0x7abc, 'the SPRITE third is untouched by W93');
-    assert.strictEqual(out.fromCartridge, 10 * TX_BANK_WORDS);
+    assert.strictEqual(out.fromCartridge, 11 * TX_BANK_WORDS);
   });

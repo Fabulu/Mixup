@@ -504,18 +504,16 @@ export class Game {
       // and this one takes NOTHING from the recording, not even an integer.
       catchUpBgPalette(this.ram, this.rom, this.palette,
         { note: (a, w) => this.unportedLog.note(a, w) });
-      // WAVE 93 -- FIVE of the fifteen TEXT banks, and this is the one palette
-      // catch-up whose code path is the RESET PATH: `$23BF86..$23BFCC`, five
-      // unconditional installs with no branch between them, in the routine
-      // `$23BEEA` that both `$23B7D8` (cold) and `$23B7F2` (warm) jmp to.  The
-      // machine cannot be mid-stage-1 without having run it.
+      // WAVE 93 -- ELEVEN of the fifteen TEXT banks.  The reset path
+      // `$23BF86..$23BFCC` contributes five unconditional installs in `$23BEEA`,
+      // which both `$23B7D8` (cold) and `$23B7F2` (warm) jmp to.  The machine
+      // cannot be mid-stage-1 without having run them.
       //
-      // THE OTHER TEN BANKS ARE NOT TAKEN and `catchUpTextPalette`'s header
-      // says exactly why per bank.  Five of them are installed only by
-      // `$2605C8`, which [M] has ZERO references anywhere in the 6 MiB image,
-      // so its bytes match and its code path cannot be named -- and "the bytes
-      // match, therefore replay it" is what would have installed W92's wrong
-      // sprite bank 1, 7 and 8.  Broken and declared beats fabricated.
+      // The seed's active state>0 type-$0A object separately proves `$2605C8`'s
+      // initializer chain ran.  Catch-up therefore replays its eleven entries:
+      // ten direct installs plus bank 13 through `$260704 -> $288574 -> $288590`.
+      // Banks 0..4 overlap the reset list, leaving eleven unique sourced banks:
+      // 0..8, 11, and 13.  Banks 9, 10, 12, and 14 remain the recording's.
       catchUpTextPalette(this.ram, this.rom, this.palette,
         { note: (a, w) => this.unportedLog.note(a, w) });
       // The first flush, so the port has a palette before frame 1 rather than

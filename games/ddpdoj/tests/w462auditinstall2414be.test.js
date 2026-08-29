@@ -6,7 +6,7 @@
 // absent-palette guards and deferred ROM reads were caller behavior that had to
 // survive. This regression pins the complete body, every static entry and first
 // continuation, machine ownership, all production and ESM identities, both real
-// front-end caller families, the live duplicate registers and unchanged windows.
+// front-end caller families, the live duplicate registers, and exact data windows.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -135,8 +135,7 @@ const CALL_ARGUMENTS = Object.freeze([
   [0x28f394, 0, 0x222638],
 ]);
 
-const SOURCE_REPRESENTED_SITES = Object.freeze(EXTERNAL_CALLERS
-  .filter((site) => site !== 0x288590));
+const SOURCE_REPRESENTED_SITES = EXTERNAL_CALLERS;
 
 const TRANSFER_COUNTS = Object.freeze({
   'Bcc.B': 119480, 'Bcc.W': 10851,
@@ -514,8 +513,8 @@ test('SECTION 5: one public canonical identity, direct callers and no private ad
       'the two private declarations and every private call are gone rather than aliased');
 
     assert.equal((allCode.match(/\bexport\s+function\s+install2414BE\s*\(/g) ?? []).length, 1);
-    assert.equal((allCode.match(/\binstall2414BE\s*\(/g) ?? []).length, 14,
-      'thirteen production invocations plus the sole declaration remain');
+    assert.equal((allCode.match(/\binstall2414BE\s*\(/g) ?? []).length, 15,
+      'fourteen production invocations plus the sole declaration remain');
     assert.doesNotMatch(allCode, /\binstall2414BE\s*:/,
       'no context callback or object property creates a second identity');
     assert.doesNotMatch(allCode, /\.install2414BE\s*\(/,
@@ -533,7 +532,7 @@ test('SECTION 5: one public canonical identity, direct callers and no private ad
 
     const expectedCalls = Object.freeze([
       ['frontend.js', 1], ['objslot12.js', 1], ['objslot17.js', 1],
-      ['objslot8.js', 5], ['objslot9.js', 1], ['palette.js', 3], ['rank.js', 2],
+      ['objslot8.js', 5], ['objslot9.js', 1], ['palette.js', 3], ['rank.js', 3],
     ]);
     for (const [name, count] of expectedCalls) {
       assert.equal((stripComments(sourceMap.get(name)).match(/\binstall2414BE\s*\(/g) ?? []).length,
@@ -543,8 +542,9 @@ test('SECTION 5: one public canonical identity, direct callers and no private ad
     const namedTestImports = readdirSync(TESTS).filter((name) => name.endsWith('.test.js'))
       .filter((name) => /import\s*\{[^}]*\binstall2414BE\b[^}]*\}\s*from\s*['"]\.\.\/src\/palette\.js['"]/
         .test(readFileSync(join(TESTS, name), 'utf8'))).sort();
-    assert.deepEqual(namedTestImports, ['w462auditinstall2414be.test.js', 'w93palette.test.js'].sort(),
-      'the public function keeps both exact named test imports; no private name ever had one');
+    assert.deepEqual(namedTestImports,
+      ['w418continuepanel.test.js', 'w462auditinstall2414be.test.js', 'w93palette.test.js'].sort(),
+      'the public function keeps its exact named test imports; no private name ever had one');
   });
 
 test('SECTION 5b: former adapters preserve argument adaptation at each direct caller site', () => {
@@ -579,12 +579,10 @@ test('SECTION 5b: former adapters preserve argument adaptation at each direct ca
   assert.match(body, /ram\.setU16\(PALSTAGE\.tx\.dirty, 1\)/);
 });
 
-test('SECTION 5c: source-represented callers, the one static gap and dependency direction are exact', () => {
-  assert.equal(SOURCE_REPRESENTED_SITES.length, 28);
-  assert.deepEqual([...SOURCE_REPRESENTED_SITES, 0x288590].sort((a, b) => a - b),
-    [...EXTERNAL_CALLERS]);
-  assert.deepEqual(EXTERNAL_CALLERS.filter((site) => !SOURCE_REPRESENTED_SITES.includes(site)),
-    [0x288590], '$288590 bank 13 remains the sole static source gap');
+test('SECTION 5c: every static caller has a source representation and dependency direction is exact', () => {
+  assert.equal(SOURCE_REPRESENTED_SITES.length, 29);
+  assert.deepEqual(SOURCE_REPRESENTED_SITES, EXTERNAL_CALLERS,
+    '$288590 joins the other 28 static sites through continueInit288574');
 
   const sourceMap = new Map(sources());
   assert.match(sourceMap.get('objslot8.js'), /from '\.\/palette\.js';/);
@@ -627,15 +625,15 @@ test('SECTION 6: live registers reconcile to 17 narrow, 72 widened, 27 pairs and
     'body-only is derived from live headIndex(); W603 removes the body-only score-hit pair');
 });
 
-test('SECTION 6b: all existing palette windows remain exact and executable bytes remain unexported', () => {
-  const relevant = windows().filter(({ base, len }) => base >= 0x222618 && base < 0x222838)
+test('SECTION 6b: palette windows are exact and executable bytes remain unexported', () => {
+  const relevant = windows().filter(({ base }) => base >= 0x222618 && base < 0x222838)
     .map(({ base, len }) => [base, len]).sort((a, b) => a[0] - b[0]);
   assert.deepEqual(relevant, [
     [0x222618, 0x20], [0x222638, 0xc0], [0x2226f8, 0x80],
-    [0x222778, 0x80], [0x2227f8, 0x20],
-  ], 'the five existing data windows retain their exact bases and lengths');
-  assert.equal(windows().some(({ base, len }) => base <= 0x222818 && base + len >= 0x222838), false,
-    '$288590\'s unproved bank-13 block remains deliberately unexported');
+    [0x222778, 0x80], [0x2227f8, 0x20], [0x222818, 0x20],
+  ], 'the six data windows retain their exact bases and lengths');
+  assert.deepEqual(relevant.filter(([base]) => base === 0x222818), [[0x222818, 0x20]],
+    '$288590 gets exactly one 32-byte bank-13 window without either neighbor');
   assert.equal(windows().some(({ base, len }) => base <= BODY_START && base + len >= BODY_END), false,
     'the executable proof adds no ROM window');
 

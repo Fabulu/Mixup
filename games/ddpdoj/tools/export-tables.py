@@ -2135,11 +2135,13 @@ SHOT_WINDOWS.append(
 #
 # AND THE SECOND ROUTINE, `$2605C8` -- type $0A's state-0 init, reached by
 # `$260798 beq.w` from the handler `$240F62[$0A] = $260794`, which the object
-# walker `$2410BC` calls from the main loop.  It installs TEN banks: 0..8 and
-# 11.  Banks 0..4 are the SAME five blocks the reset path uses, so the first
-# window covers 0..5 contiguously ($222638..$2226F8) and the second covers
-# 6, 7, 8 and 11 ($222778..$2227F8).  Bank 9's block $2226F8 is deliberately
-# EXCLUDED -- no site in the image installs it, so the port never reads it.
+# walker `$2410BC` calls from the main loop. It installs TEN banks directly:
+# 0..8 and 11. Banks 0..4 are the SAME five blocks the reset path uses, so the
+# first window covers 0..5 contiguously ($222638..$2226F8) and the second covers
+# 6, 7, 8 and 11 ($222778..$2227F8). `$260704` then calls `$288574`, whose
+# `$288590` installs bank 13 from the separate 32-byte block `$222818`.
+# Bank 9's block $2226F8 is excluded because this catch-up chain does not read it;
+# the independent tally installer is ported separately.
 SHOT_WINDOWS.extend([
     (0x222638, 0x00C0, "W93: TEXT palette banks 0..5, 32 bytes each = 16 "
                        "entries ($2414BE lsl.w #$5). $23BF86..$23BFCC (the "
@@ -2147,12 +2149,17 @@ SHOT_WINDOWS.extend([
                        "$0A's init) uploads 0..5; src/palette.js "
                        "catchUpTextPalette replays both. High end is bank 5's "
                        "$2226D8 plus its own 32 bytes -- bank 9's $2226F8 is "
-                       "OUTSIDE on purpose, because nothing installs it"),
+                       "OUTSIDE because this catch-up chain does not read it"),
     (0x222778, 0x0080, "W93: TEXT palette banks 6, 7, 8 and 11 ($222778 "
                        "$222798 $2227B8 $2227D8), the four $2605C8 installs "
                        "above bank 5. They ABUT. $2227F8 -- bank 12's block, "
                        "whose only site $25C600 does NOT match the seed -- is "
                        "the first byte past the end and stays outside"),
+    (0x222818, 0x0020, "Continue TEXT palette bank 13, installed from $222818 "
+                       "by $288590 inside $288574. $260704 calls that routine "
+                       "unconditionally after the ten direct $2605C8 installs. "
+                       "The exact 32-byte bank excludes bank 12 before it and "
+                       "the unrelated $222838 block after it"),
 ])
 
 # ============ W94: THE STAGE-1 BOSS'S EIGHT WAYPOINTS ========================
@@ -10137,6 +10144,13 @@ def check_text_palette_boot(d: bytes) -> None:
             f"the W93 upper text-palette window is declared {decl2} and must be "
             f"($222778, $80) -- banks 6, 7, 8 and 11, the four $2605C8 installs "
             f"above bank 5.")
+    decl3 = [(a, ln) for a, ln, _ in SHOT_WINDOWS if a == 0x222818]
+    if decl3 != [(0x222818, 0x20)]:
+        raise SystemExit(
+            f"the Continue text-palette window is declared {decl3} and must be "
+            f"($222818, $20) -- the one 32-byte bank installed by $288590 "
+            f"inside $288574, without bank 12 before it or the unrelated block "
+            f"at $222838 after it.")
     # ---- $2414BE itself.  The shift is the whole difference from $24150A.
     if u16(d, 0x2414C2) != 0x43F9 or u32(d, 0x2414C4) != 0x80F886:
         raise SystemExit(
@@ -10217,7 +10231,7 @@ def check_text_palette_boot(d: bytes) -> None:
             "PALETTE STAGING CLEAR, 2,294 words = $80E886..$80FA71, all three "
             "regions and the fade state. src/palette.js names it as the one "
             "boot routine it must NOT replay: the port arrives after every "
-            "install the board made, so clearing here would erase the ten text "
+            "install the board made, so clearing here would erase the eleven text "
             "banks and nine sprite banks still taken from the recording.")
     # ---- and the ambiguity that is NOT observable: bank 0's two blocks.
     if d[0x222618:0x222638] != d[0x222638:0x222658]:
@@ -10251,8 +10265,8 @@ def check_text_palette_boot(d: bytes) -> None:
     check_text_palette_obj0A(d)
 
 
-# W93.  `$2605C8` -- type $0A's state-0 init, ten TEXT installs.
-TX_OBJ0A = ((0x2605D4, 0, 0x222638), (0x2605E2, 1, 0x222658),
+# W93.  `$2605C8` -- type $0A's state-0 init, ten direct TEXT installs.
+TX_OBJ0A_DIRECT = ((0x2605D4, 0, 0x222638), (0x2605E2, 1, 0x222658),
             (0x2605F0, 2, 0x222678), (0x2605FE, 3, 0x222698),
             (0x26060C, 4, 0x2226B8), (0x26061A, 5, 0x2226D8),
             (0x260628, 6, 0x222778), (0x260636, 7, 0x222798),
@@ -10263,9 +10277,10 @@ OBJ_TYPE_0A_IDX = 0x0A
 
 def check_text_palette_obj0A(d: bytes) -> None:
     """W93.  The chain main loop -> `$2410BC` -> `$240F62[$0A]` -> `$260794`
-    -> `beq.w $2605C8`, and the ten installs at the end of it.
+    -> `beq.w $2605C8`, the ten direct installs, and the unconditional
+    `$260704 -> $288574 -> $288590` Continue-bank tail.
 
-    THE POINT OF THIS CHECK.  `92-impl` Â§5.2 refused these ten banks because
+    THE POINT OF THIS CHECK.  `92-impl` Â§5.2 refused these banks because
     `$2605C8`'s ENTRY could not be named, and this wave names it.  Everything
     below is a link in that chain: if any one breaks, the port is replaying a
     routine it can no longer show the board reaches, and the build stops.
@@ -10281,7 +10296,7 @@ def check_text_palette_obj0A(d: bytes) -> None:
             f"$260798 is not `beq.w $2605C8` -- it is the ONLY reference to "
             f"$2605C8 in the whole 6 MiB image (no jsr, no jmp, no bsr, no "
             f"longword at any byte offset). src/palette.js replays that "
-            f"routine's ten TEXT installs; without this branch it is "
+            f"routine's eleven-entry TEXT chain; without this branch it is "
             f"unreachable code and replaying it would be fabrication.")
     if u16(d, 0x2605C8) != 0x1B7C or u16(d, 0x2605CA) != 0x0001 \
             or u16(d, 0x2605CC) != 0x0002:
@@ -10321,7 +10336,7 @@ def check_text_palette_obj0A(d: bytes) -> None:
             "object in STATE 0, so a state of $01 in the seed would no longer "
             "mean $2605C8 had run.")
     # ---- the ten installs.
-    for i, (p, bank, block) in enumerate(TX_OBJ0A):
+    for i, (p, bank, block) in enumerate(TX_OBJ0A_DIRECT):
         if u16(d, p) != 0x41F9 or u32(d, p + 2) != block:
             raise SystemExit(
                 f"${p:06X} is not `lea ${block:06X}.l,A0` -- install {i} of "
@@ -10332,21 +10347,64 @@ def check_text_palette_obj0A(d: bytes) -> None:
             raise SystemExit(
                 f"${p + 6:06X} is ${u16(d, p + 6):04X}, not `moveq #${bank:X},D0` "
                 f"-- install {i} of $2605C8 targets a different TEXT bank. NOTE "
-                f"the tenth is bank $B and NOT bank 9: banks 9, 10, 12, 13 and "
-                f"14 are not installed here and the port does not claim them.")
+                f"the tenth direct install is bank $B and NOT bank 9: this block "
+                f"omits banks 9, 10, 12, 13 and 14, while the separately checked "
+                f"$288574 tail installs bank 13.")
         if u16(d, p + 8) != 0x4EB9 or u32(d, p + 10) != 0x2414BE:
             raise SystemExit(
                 f"${p + 8:06X} is not `jsr $2414BE.l` -- install {i} of "
                 f"$2605C8 no longer goes through the TEXT upload.")
-    # ---- and that the ten are STRAIGHT-LINE, for $23BF86's reason.
+    # ---- and that the ten direct installs are STRAIGHT-LINE, for $23BF86's reason.
     for a in range(0x2605D4, 0x260660, 2):
         w = u16(d, a)
         if 0x6000 <= w <= 0x6FFF:
             raise SystemExit(
                 f"${a:06X} is ${w:04X}, a BRANCH inside $2605D4..$260660. The "
-                f"ten installs are replayed UNCONDITIONALLY once the seed's "
-                f"witness is found; a branch among them means some are "
+                f"ten direct installs are replayed UNCONDITIONALLY once the "
+                f"seed's witness is found; a branch among them means some are "
                 f"conditional on state the witness does not carry.")
+    # ---- the two joins and final calls make the Continue tail unconditional.
+    if u16(d, 0x260674) != 0x6600 \
+            or 0x260676 + s16(u16(d, 0x260676)) != 0x260680 \
+            or u16(d, 0x26067C) != 0x6000 \
+            or 0x26067E + s16(u16(d, 0x26067E)) != 0x2606CA:
+        raise SystemExit(
+            "$260674/$26067C no longer join both loop arms at $2606CA. "
+            "$260704's Continue initializer is replayed as an unconditional "
+            "tail only because both sides of the $813098 test reach that join.")
+    if u16(d, 0x2606E4) != 0x6600 \
+            or 0x2606E6 + s16(u16(d, 0x2606E6)) != 0x260700 \
+            or u16(d, 0x260700) != 0x6100 \
+            or 0x260702 + s16(u16(d, 0x260702)) != 0x25FE42 \
+            or u16(d, 0x260704) != 0x4EB9 \
+            or u32(d, 0x260706) != 0x288574 \
+            or u16(d, 0x26070A) != 0x4E75:
+        raise SystemExit(
+            "$2606E4..$26070A no longer joins at `bsr.w $25FE42`, calls "
+            "$288574, and returns. The witnessed state-0 chain no longer proves "
+            "that its Continue reset and bank-13 upload ran.")
+
+    # ---- $288574: clear 22 Continue words, then upload bank 13 from $222818.
+    if u16(d, 0x288574) != 0x41F9 or u32(d, 0x288576) != 0x81B706 \
+            or u16(d, 0x28857A) != 0x303C or u16(d, 0x28857C) != 0x0015 \
+            or u16(d, 0x28857E) != 0x30FC or u16(d, 0x288580) != 0:
+        raise SystemExit(
+            "$288574..$288580 is not `lea $81B706,A0 / move.w #$15,D0 / "
+            "move.w #$0,(A0)+`. #$15 plus DBRA must clear exactly 22 words, "
+            "the complete Continue record block and no guessed neighbour.")
+    if u16(d, 0x288582) != 0x51C8 \
+            or 0x288584 + s16(u16(d, 0x288584)) != 0x28857E:
+        raise SystemExit(
+            "$288582 is not `dbra D0,$28857E`; the 22-word Continue clear "
+            "loop no longer has the exact cartridge bound or destination.")
+    if u16(d, 0x288586) != 0x41F9 or u32(d, 0x288588) != 0x222818 \
+            or u16(d, 0x28858C) != 0x303C or u16(d, 0x28858E) != 0x000D \
+            or u16(d, 0x288590) != 0x4EB9 or u32(d, 0x288592) != 0x2414BE \
+            or u16(d, 0x288596) != 0x4E75:
+        raise SystemExit(
+            "$288586..$288596 is not `lea $222818,A0 / move.w #$D,D0 / "
+            "jsr $2414BE / rts`. The Continue initializer no longer proves "
+            "TEXT bank 13 comes from the exact declared 32-byte block.")
 
 
 def _merge_intervals(intervals: list[tuple[int, int]]) -> list[tuple[int, int]]:

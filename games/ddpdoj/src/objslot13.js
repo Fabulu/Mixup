@@ -314,28 +314,23 @@ function state2(ram, a5) {
  *  and its state 4 ran this line on frame +4,079 and killed the run. W385 made it a counted note,
  *  which stopped the crash and left the game over silent. This wave is the other half.
  *
- *  **`$28C0FC` ON THE NEXT LINE IS STILL A NOTE, AND FOR A DIFFERENT REASON ENTIRELY** -- do not
- *  convert it by analogy. `$28C0FC` is not a wrapper at all: `sound.js` lists it in `ENTRY`, as
- *  the streaming type-`$10` routine the wrappers CALL. It has no id, pan or channel of its own,
- *  because the cartridge really does `jsr` the entry directly here:
+ *  **`$28C0FC` ON THE NEXT LINE IS THE GLOBAL IMMEDIATE-SFX RELEASE.** W567 proved
+ *  that this preserving entry needs no inherited id, pan, or channel: its no-tail
+ *  type-`$10` post is always `$10000000`, and `sound.js` deliberately dispatches
+ *  the address with zeroed fields. The cartridge places it between the game-over
+ *  BGM stop and the object-table reset so looping voices owned by objects about to
+ *  be destroyed cannot survive forever:
  *
  *      288A3C  4eb9 0028C170     jsr $28C170
- *      288A42  4eb9 0028C0FC     jsr $28C0FC     <- no immediates loaded, four back-to-back 4EB9s
+ *      288A42  4eb9 0028C0FC     jsr $28C0FC
  *      288A48  4eb9 0024631C     jsr $24631C
  *      288A4E  4eb9 0024107C     jsr $24107C
- *
- *  so its id, pan and channel are the caller's INHERITED D0..D3, which this port does not track.
- *  A post would have to invent all three, so THAT line stays counted. */
+ */
 function state4(ram, rom, ctx) {
-  // $288A3C jsr $28C170 -- slot [13] state 4's GAME-OVER BGM cue. $28C170 -> $28BBAC D0=$15,
-  // posted through sound.js's second path, no WRAPPERS row and no gate. D58 / W425.
+  // The cartridge posts both stops before destroying the objects whose own
+  // selector-specific stop calls can no longer run after $24107C.
   ctx.soundPost?.(0x28c170);                                 // $288A3C jsr $28C170
-  // $288A42 jsr $28C0FC -- the ENTRY routine, not a wrapper, entered with the caller's registers.
-  ctx.unported?.note(0x28c0fc, '$288A42 jsr $28C0FC -- slot [13] state 4 calls the STREAMING '
-    + 'ENTRY $28C0FC ($28BB76, type $10) DIRECTLY, with no id/pan/channel immediates: the four '
-    + 'jsr\'s at $288A3C..$288A4E are back to back, so D0..D3 are whatever the caller left. '
-    + 'sound.js keeps $28C0FC in ENTRY, not in WRAPPERS, so postWrapper throws on it. Posting '
-    + 'it would mean inventing three fields the port does not track');
+  ctx.soundPost?.(0x28c0fc);                                 // $288A42 jsr $28C0FC
   clear24631C(ram);                                          // $288A48
   // $288A4E jsr $24107C -- UNCONDITIONAL, four back-to-back `4EB9`s from $288A3C
   // with nothing between them.  It destroys ALL TWENTY object slots (including

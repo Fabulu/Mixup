@@ -49,12 +49,11 @@
 //    is right and the site is not. On a real cold boot the throw arrives from
 //    **`objslot13.js`** (`$288A3C`, slot [13] state 4, the GAME-OVER screen) at frame +4,079,
 //    because a run with no input loses its last life at +4,075 -- it never gets near the boss.
-//    And there are TWO unmapped posts at that site, not one: `$288A42 jsr $28C0FC` throws as well,
-//    because `$28C0FC` is in `sound.js`'s `ENTRY` table and not in `WRAPPERS` (SECTION 7).
-//    **W425 (D58) CLOSED THE FIRST OF THOSE TWO AND NOT THE SECOND**, and the split is the
-//    finding: `$28C170` reaches `$28BBAC` and now has its own posting path, while `$28C0FC`
-//    reaches `$28BB76` -- a third packer, entered with the caller's inherited registers -- and
-//    is still a counted gap. They only ever looked like one defect.
+//    And there are TWO posts at that site: `$288A42 jsr $28C0FC` follows `$28C170`.
+//    **W425 closed `$28C170`; W567 proved the preserving `$28C0FC` entry is also
+//    address-dispatchable with zeroed fields, and the Game Over fix now posts it.** The resulting
+//    type-`$10` word is `$10000000`, the global immediate-SFX release that stops looping voices
+//    before the object table is destroyed.
 //
 // ===============================================================================================
 // AND THE HONEST ANSWER TO "DOES STAGE 1 END"
@@ -191,6 +190,7 @@ const RUN = (() => {
     // moves one longword per frame into `doorLog`, so this is what the sound hardware saw --
     // not what a call site intended.
     bgmCommands: g.sound.doorLog.filter((d) => d.word === 0x15000000).length,
+    globalReleases: g.sound.doorLog.filter((d) => d.word === 0x10000000).length,
   };
 })();
 
@@ -708,25 +708,17 @@ test('W385 the two deferrals W384 counted are GONE from the census', () => {
     '$260700 bsr.w $25FE42 is a call now -- rank.js playerRecords25FE42');
   assert.equal(noteCount(0x2603fe), 0,
     '$25D73E jsr $2603FE is a call now -- rank.js stagePair2603FE');
-  // POSITIVE CONTROL: the census is not simply empty. Its neighbours in the same INIT are still
-  // counted, so a broken `report()` cannot make the two assertions above pass.
-  // **W392 RE-BASE: 1 -> 3, and it is a count of INITS.** `$288574` and `$259C4A` are both
-  // inside `$2605C8`, the rank object's state-0 init, and until W392 the only thing that staged
-  // dispatch type $A was the ship-select handoff -- once per run. Arm 5's demo screen stages it
-  // too (`$25C5E2 move.w #$A,D0 / $25C5E6 jsr $241182`), on every attract lap, so this 14,000-
-  // frame run holds three inits: the game's, and one for each demo after the game over. Pinning
-  // 1 would pin "the demo does not stage the object the cartridge has it stage".
-  assert.equal(noteCount(0x288574), 3, '$260704 jsr $288574 is STILL deferred, once per init');
-  assert.equal(noteCount(0x259c4a), 3, '...as is $2605CE jsr $259C4A, and the two counts AGREE, '
-    + 'which is what says three whole inits ran and not three stray notes');
+  // POSITIVE CONTROL: the census is not simply empty. `$259C4A` remains the
+  // compatibility-chain note once per init, while `$288574` is now a live call.
+  assert.equal(noteCount(0x288574), 0, '$260704 jsr $288574 is no longer deferred');
+  assert.equal(noteCount(0x259c4a), 3, '$2605CE jsr $259C4A remains counted once per init');
 });
 
 // **W386 REWROTE PART (b) OF THIS TEST.** W385 asserted the run ends on a NAMED `Unreached` at
 // `$2252F8`, the game-over screen's fade target. W386 declares that 64-byte window, so the run
 // does not end there or anywhere else in 14,000 frames. Parts (a) and (c) -- it REACHED the game
-// over, and the two sound posts on the way are counted rather than thrown -- are exactly what
-// W385 measured and are unchanged. `tests/w386gameover.test.js` SECTION 3 ablates the one window
-// and reproduces this file's original ending, to the frame.
+// over, and both sound posts on the way now drain through the sound runtime. The historical
+// `$2252F8` ablation remains in `tests/w386gameover.test.js` SECTION 3.
 test('W386 the cold boot reaches GAME OVER, and no longer stops on the game-over screen\'s $2252F8',
   () => {
     // (a) IT GOT THERE. The lives counter BORROWED, which is $25FFA8's own end-of-game test
@@ -746,17 +738,20 @@ test('W386 the cold boot reaches GAME OVER, and no longer stops on the game-over
     assert.ok(RUN.lastLive > RUN.firstPlayerFrame,
       'well past the frame the player was created on, which is what W385 built');
 
-    // (c) THE TWO SOUND CALLS ON THE WAY THERE, AND W425 SPLIT THEM APART. They used to be a
-    // matched pair -- both counted, both unpostable -- and they are not the same defect:
-    // `$28C170` is `$28BBAC` and now POSTS, `$28C0FC` is `$28BB76` and still cannot, because it
-    // is entered with the caller's inherited D0..D3 and a post would invent all of them.
-    // Both are reached: this run walked through slot [13] state 4.
+    // (c) THE TWO SOUND CALLS ON THE WAY THERE. Both now post through their
+    // cartridge-faithful paths: `$28C170` drains `$15000000`, then `$28C0FC`
+    // drains the global immediate-SFX release `$10000000`.
     assert.equal(noteCount(0x28c170), 0,
-      '$288A3C jsr $28C170 is no longer counted -- it is posted (D58 / W425)');
+      '$288A3C jsr $28C170 is posted, not counted');
     assert.ok(RUN.bgmCommands >= 1,
-      'and $15000000 reached the sound ring and was DRAINED, which is the audible half');
-    assert.ok(noteCount(0x28c0fc) >= 1, '$288A42 jsr $28C0FC is STILL counted -- $28C0FC is in '
-      + 'sound.js ENTRY, not WRAPPERS, and $28BB76 is a third packer this wave did not close');
+      '$15000000 reached the sound ring and was drained');
+    const otherReleaseDeferrals = RUN.notes.filter((line) => line.includes(' x $28C0FC '));
+    assert.ok(otherReleaseDeferrals.length >= 1,
+      'positive control: the longer run still reaches separate $28C0FC deferrals');
+    assert.ok(otherReleaseDeferrals.every((line) => !line.includes('$288A42')),
+      '$288A42 posts while every counted $28C0FC call belongs to another cartridge site');
+    assert.ok(RUN.globalReleases >= 1,
+      '$10000000 reached the sound ring and released immediate SFX');
   });
 
 test('W385 the run is not a fixed point: the machine is doing work right up to the stop', () => {

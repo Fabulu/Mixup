@@ -39,9 +39,12 @@ import { COIN } from '../src/isr.js';
 import { COIN_BITS } from '../src/web/input.js';
 import {
   RANK, RANKBASE, STAGESTART, RANK_DEVIATION,
-  installRankBase26089E, stageStart260580, stageClear2604F4, recompute2608D2,
+  continueInit288574, installRankBase26089E, stageStart260580, stageClear2604F4,
+  recompute2608D2,
 } from '../src/rank.js';
 import { ALLOC } from '../src/objalloc.js';
+import { Ram } from '../src/ram.js';
+import { PaletteState, PALSTAGE } from '../src/palette.js';
 
 const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
 const tablesJson = JSON.parse(readFileSync(TABLES, 'utf8'));
@@ -143,7 +146,7 @@ test('W378 the gate the INIT raises is the SAME word the per-frame body tests', 
 // replaced by its inverse -- the census must carry NO note for $25FE42 -- so this test still fails
 // if the wiring is ever backed out, rather than quietly agreeing with either state. Nothing else
 // in the list moved.
-test('W378 the state-0 INIT does its own writes and counts four unread plus two compatibility resets',
+test('W378 the state-0 INIT does its own writes and counts three unread plus two compatibility resets',
   () => {
     const g = coldToStart();
     for (let i = 0; i < 30; i++) g.step(NO_PLAYER);
@@ -181,15 +184,34 @@ test('W378 the state-0 INIT does its own writes and counts four unread plus two 
         `$${target.toString(16).toUpperCase()} is a CALL now (${where}), not a deferral`);
     }
 
-    // Four calls are still genuinely deferred. `$259C4A` and `$2884E2` are now ports too, but a
+    assert.deepEqual(noteKeys(g, 0x288574), [],
+      '$260704 jsr $288574 is a live Continue initializer, not a deferral');
+    assert.deepEqual(
+      Array.from({ length: 22 }, (_, index) => g.ram.u16(0x81b706 + index * 2)),
+      new Array(22).fill(0),
+      '$28857E clears all 44 bytes of the two Continue records');
+    for (let index = 0; index < 16; index++) {
+      assert.equal(g.ram.u16(PALSTAGE.tx.stage + 13 * 32 + index * 2),
+        IMG.readUInt16BE(0x222818 + index * 2),
+        `$288590 installed cartridge TX bank 13 word ${index}`);
+    }
+    assert.equal(g.ram.u16(PALSTAGE.tx.dirty), 0,
+      'the frame flush consumed the dirty flag after the initializer installed bank 13');
+    for (let index = 0; index < 16; index++) {
+      const paletteWord = 0x800 + 13 * 16 + index;
+      assert.equal(g.palette.words[paletteWord], IMG.readUInt16BE(0x222818 + index * 2),
+        `$24133C copied Continue palette word ${index} into live palette RAM`);
+      assert.equal(g.palette.sourced[paletteWord], 1, `Continue palette word ${index} is sourced`);
+    }
+
+    // Three calls are still genuinely deferred. `$259C4A` and `$2884E2` are now ports too, but a
     // direct legacy `Game.boot()` keeps their exact counted notes and state; the production Demo
-    // opts into the cabinet chain and runs both. All six sites are reached on this compatibility
+    // opts into the cabinet chain and runs both. All five sites are reached on this compatibility
     // fixture's loop-1 arm because `$813098` is zero.
     for (const [site, target] of [
       [0x2605ce, 0x259c4a], [0x2606d2, 0x28d552],
       [0x2606d8, 0x28ebfe], [0x2606ee, 0x2884e2],
       [0x2606f4, 0x287024],
-      [0x260704, 0x288574],
     ]) {
       const keys = noteKeys(g, target);
       assert.equal(keys.length, 1,
@@ -201,6 +223,26 @@ test('W378 the state-0 INIT does its own writes and counts four unread plus two 
     }
     assert.match(RANK_DEVIATION[0x2605c8], /PARTIAL/, 'the summary says what is left');
   });
+
+test('W378 $288574 clears 44 bytes and installs the exact 16-word Continue palette', () => {
+  const ram = new Ram();
+  const palette = new PaletteState();
+  const rom = { bytes: (address, count) => IMG.subarray(address, address + count) };
+  for (let index = 0; index < 22; index++) ram.setU16(0x81b706 + index * 2, 0xa500 + index);
+
+  continueInit288574(ram, rom, { palette });
+
+  assert.deepEqual(
+    Array.from({ length: 22 }, (_, index) => ram.u16(0x81b706 + index * 2)),
+    new Array(22).fill(0),
+  );
+  assert.deepEqual(
+    Array.from({ length: 16 }, (_, index) => ram.u16(PALSTAGE.tx.stage + 13 * 32 + index * 2)),
+    Array.from({ length: 16 }, (_, index) => IMG.readUInt16BE(0x222818 + index * 2)),
+  );
+  assert.equal(ram.u16(PALSTAGE.tx.dirty), 1);
+  assert.equal(palette.stageSourced.tx[13 * 16], 1);
+});
 
 // =================================================================================================
 // 2b -- W445. THE THREE CLEARS ACTUALLY RUN, MEASURED ON THE COLD-BOOT PATH.

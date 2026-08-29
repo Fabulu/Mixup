@@ -52,7 +52,7 @@ const W572_TABLE = SKIP ? null : tableBeforeW573(TABLE_JSON);
 const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
-const LIVE_TABLE_HASH = '2d6a42d04b0dbd40119cda75b775b53fd7518ac99223bab57305ec3623221c95';
+const LIVE_TABLE_HASH = 'dbffbc266495d330397680b012a61ed3c2141e8c3fc9d979f1d752b835fe6914';
 const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
 const W572_HASH = '0f5e8c092c2d16abe958ba0edaa5ea681fd5b296a0b110e10f91d2c6aa1a6ba9';
@@ -157,9 +157,9 @@ const migrateToW587 = (document) => ({ ...document, tablesSha256: W587_TABLE_HAS
 
 test('W573 adds only the exact template and five-row pattern windows',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 943);
-    assert.equal(TABLE_JSON.rom.windows.length, 943);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457131);
+    assert.equal(ROM_WINDOW_COUNT, 944);
+    assert.equal(TABLE_JSON.rom.windows.length, 944);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457163);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(W575_TABLE.rom.windows.length, 848);
     assert.equal(W575_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452455);

@@ -439,12 +439,12 @@ test('W387 SECTION 4: $240FC2 -- "slot [12] has no handler" -- is no longer coun
     'before this wave $240FC2 was counted once per frame from +4,414 to the end of time');
 });
 
-test('W387 SECTION 4: this object counts exactly FOUR things on a real cold boot', () => {
-  // KEY ON THE CALL SITE IN THE MESSAGE, not on the note's address. Both $259C4A and $28C0FC
-  // ALREADY had notes before this wave -- `rank.js` counts $259C4A from $2605CE and
-  // `objslot13.js` counts $28C0FC from $288A42 -- so an address filter reports four and an
-  // address-and-count filter reports the wrong two. `frontend.js`'s RESET_PROLOGUE message also
-  // LISTS $259C4A and $24A810 inside its text, under $23BEEA, which a substring filter picks up.
+test('W387 SECTION 4: this object counts exactly TWO things on a real cold boot', () => {
+  // KEY ON THE CALL SITE IN THE MESSAGE, not only on the target address. Target-wide `$28C0FC`
+  // notes can belong to independent callers such as `$25A9DA` and this object's `$28F380`.
+  // `$288A42` now posts through the supported wrapper and must not enter this census.
+  // `frontend.js`'s RESET_PROLOGUE message also lists `$259C4A` and `$24A810` inside its text,
+  // under `$23BEEA`, which a substring filter would pick up.
   const parsed = RUN.notes.map((s) => {
     const m = s.trim().match(/^(\d+) x \$([0-9A-F]{6}) (.*)$/);
     return m ? { n: Number(m[1]), at: parseInt(m[2], 16), msg: m[3] } : null;
@@ -455,7 +455,8 @@ test('W387 SECTION 4: this object counts exactly FOUR things on a real cold boot
   // already transcribed and both proven end-to-end by SECTION 7 below -- so they have left the
   // census entirely. `$28F36E jsr $259C4A` stays counted because it is $6E bytes with its own
   // control flow ($259CA0 is a `jsr`), not a straight-line clear, and `$28F380 jsr $28C0FC` stays
-  // counted because `sound.js` has no posting path for it.
+  // counted because this slot-12 caller is still unwired even though `sound.js` supports the
+  // `$28C0FC` wrapper and other callers, including `$288A42`, post through it.
   const mine = parsed.filter((k) => /^\$28F[0-9A-F]{3} /.test(k.msg));
   assert.deepEqual(mine.map((k) => [k.msg.slice(0, 20), k.n]), [
     ['$28F36E jsr $259C4A ', 1],

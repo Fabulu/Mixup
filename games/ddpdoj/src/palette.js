@@ -866,8 +866,8 @@ export function paletteSet241688(ram, pal, rom, d0, d1) {
  * seed's bytes match this block" but "every code path in the cartridge that can
  * write this bank writes these bytes", which no later overwrite can falsify.
  *
- * Banks 5, 6, 7, 8 and 11 are taken too, and by a SECOND argument that is not
- * this one -- `TX_OBJ0A_INSTALLS` below.  The four that are NOT taken are:
+ * Banks 5, 6, 7, 8, 11, and 13 are taken too, by a SECOND argument that is not
+ * this one: `TX_OBJ0A_INSTALLS` below. The four that are NOT taken are:
  *
  *   [M] bank 9 ($2226F8) has NO installer anywhere in the image at all.
  *       **W274 CORRECTION: IT HAS ONE, AND IT IS NOW PORTED.** `$2416C0 lea
@@ -879,8 +879,6 @@ export function paletteSet241688(ram, pal, rom, d0, d1) {
  *       one line and always could have. The sentence is left standing above
  *       because the correction is the interesting part: an absence is only ever
  *       as strong as the scan behind it, and this one names its scan.
- *   [M] bank 13 ($222818) has one, `$288590`, whose reachability this wave did
- *       not establish.  It stays the recording's.
  *   [M] banks 10, 12, 14 are ZERO in the seed, and bank 12's only named site
  *       ($25C600 <- $2227F8) does NOT match, so that install never ran.  They
  *       are zero because `$2412FE` zeroed them and nothing wrote them since;
@@ -890,7 +888,7 @@ export function paletteSet241688(ram, pal, rom, d0, d1) {
  * **AND `$2412FE` IS NOT REPLAYED HERE, DELIBERATELY.**  [M] it is `lea
  * $80E886,A0 / move.w #$8F5,D0 / move.w #$0,(A0)+ / dbra` -- 2,294 words =
  * 4,588 bytes, which is $80E886..$80FA71: ALL THREE staging areas and the fade
- * state.  Running it here would erase the ten text banks and the nine sprite
+ * state. Running it here would erase the eleven text banks and the nine sprite
  * banks the port still takes from the recording, replacing visible recorded
  * colour with black.  The board ran it before every one of its own installs;
  * the port arrives after all of them, so replaying it would be running the
@@ -955,17 +953,19 @@ export const TX_BOOT_INSTALLS = [
  * and that is a STRONGER warrant than `catchUpBgPalette`'s, which has no seed
  * witness at all and rests on a stage index.
  *
- * [M] and the result agrees: all TEN banks this installs are byte-identical to
- * the staging area the seed carries, 160 of 160 words.  Compare `92-impl`
- * §5.1's sprite routines, where the same "the bytes match" reasoning gives
- * `$24A764` 1 of 2 and `$25BE72` 2 of 5 -- see `catchUpTextPalette`'s caller in
- * `93-impl` for why those two stay refused and this one does not.
+ * [M] and the result agrees: all ELEVEN palette banks reached through this init
+ * chain are byte-identical to the staging area the seed carries, 176 of 176
+ * words. Ten installs are inline in `$2605C8`; `$260704` unconditionally calls
+ * `$288574`, whose `$288590` installs bank 13 from `$222818`. Compare `92-impl`
+ * section 5.1's sprite routines, where the same "the bytes match" reasoning gives
+ * `$24A764` 1 of 2 and `$25BE72` 2 of 5. See `catchUpTextPalette`'s caller in
+ * `93-impl` for why those two stay refused and this chain does not.
  *
- * ONLY THE TEN INSTALLS ARE REPLAYED, not the routine.  `$2605C8` also does
- * `jsr $259C4A`, `clr.w $813080`, `move.w #$1,$813082` and a `$813098` branch;
- * none of that is executed here and none of it is written.  That is the same
- * partial replay `catchUpBgPalette` makes of `$261136` (one call out of a
- * per-stage init) and it is declared rather than implied.
+ * ONLY THE ELEVEN PALETTE INSTALLS ARE REPLAYED, not either routine. `$2605C8`
+ * also resets gameplay state, while `$288574` clears 44 bytes at
+ * `$81B706..$81B731`. None of those RAM writes is executed here. The execution
+ * witness licenses the palette values but does not prove that replaying an old
+ * initialization clear is safe on a seeded machine already in motion.
  *
  * [M] banks 0..4 are installed by BOTH this and the reset path, from the SAME
  * five blocks, so running both in board order is idempotent on them -- measured
@@ -975,7 +975,7 @@ export const TX_OBJ0A_INSTALLS = [
   [0x2605dc, 0, 0x222638], [0x2605ea, 1, 0x222658], [0x2605f8, 2, 0x222678],
   [0x260606, 3, 0x222698], [0x260614, 4, 0x2226b8], [0x260622, 5, 0x2226d8],
   [0x260630, 6, 0x222778], [0x26063e, 7, 0x222798], [0x26064c, 8, 0x2227b8],
-  [0x26065a, 11, 0x2227d8],
+  [0x26065a, 11, 0x2227d8], [0x288590, 13, 0x222818],
 ];
 
 /** `$80E240`, 20 slots of `$50` bytes; `(0,slot)` is `$8000|type` and
@@ -987,7 +987,7 @@ export const OBJ_TYPE_0A = 0x0a;
 
 /** Did type `$0A` reach state 1 or later before the seed instant?  Returns the
  *  slot and its state, or null -- and a null is what makes `catchUpTextPalette`
- *  leave the ten banks on the recording instead of replaying them blind. */
+ *  leave the eleven banks on the recording instead of replaying them blind. */
 export function obj0AWitness(ram) {
   for (let s = 0; s < OBJ_SLOT_COUNT; s++) {
     const a = OBJ_SLOTS + s * OBJ_SLOT_BYTES;
@@ -1043,8 +1043,8 @@ export function catchUpTextPalette(ram, rom, pal, opts = {}) {
   // 2. TYPE $0A's STATE-0 INIT, and ONLY if the seed's own object slot array
   //    says it ran.  A seed whose type-$0A object is still in state 0 -- or
   //    which has no type-$0A object at all -- gets NOTHING from this arm and
-  //    keeps the recording's ten banks, which is the whole point: the warrant
-  //    is the witness, not the byte match.
+  //    keeps the recording's eleven banks. The warrant is the witness, not the
+  //    byte match.
   const w = obj0AWitness(ram);
   res.witness = w;
   if (w) {
@@ -1052,8 +1052,8 @@ export function catchUpTextPalette(ram, rom, pal, opts = {}) {
       + `witnessed by slot ${w.slot} state $${w.state.toString(16)}`);
   } else {
     opts.note?.(0x2605c8, `no ACTIVE type $0A object past state 0 in the seed's `
-      + `$80E240 slot array, so $2605C8's ten TEXT installs are NOT replayed `
-      + `and banks 5, 6, 7, 8 and 11 stay the recording's. The bytes would have `
+      + `$80E240 slot array, so the init chain's eleven TEXT installs are NOT replayed `
+      + `and banks 5, 6, 7, 8, 11 and 13 stay the recording's. The bytes would have `
       + `matched; the witness is what makes replaying them a replay`);
   }
   return (pal.txCatchUp = res);

@@ -275,7 +275,7 @@ export const OBJ_TABLE_END_WORD = 0x80e880;
  *     $25A7C0   slot [8] -- a coin came in
  *     $25A9B2   slot [8] arm 5 -- restage
  *     $25AC92   slot [8] arm 14 -- the exit into gameplay
- *     $288A4E   (see objslot13.js:211, which deferred to here)
+ *     $288A4E   slot 13 state 4, after both Game Over sound posts
  *     $28D600   the big teardown
  *
  * There is no `jmp`/`bsr` form anywhere in the image.

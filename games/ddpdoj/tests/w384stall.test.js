@@ -157,6 +157,7 @@ import { BGRAM } from '../src/background.js';
 import { BOSS, livePlayers2428A6, bossTimeout294F32 } from '../src/boss.js';
 import { TALLY, tallyDriver25FF7A } from '../src/tally.js';
 import { RANK } from '../src/rank.js';
+import { PALSTAGE } from '../src/palette.js';
 // W386: the `Unreached` import is gone with the assertion that used it -- this run no longer
 // throws one. `tests/w386gameover.test.js` SECTION 3 holds the ablation that still does.
 
@@ -601,18 +602,18 @@ test('W384 $294F50 re-floors the timeout to $78 with no player, and does NOT wit
 test('W385 DEFERRAL 1 IS GONE: $25FE42 is rank.js playerRecords25FE42', () => {
   assert.equal(noteCount(0x25fe42), 0,
     '$260700 bsr.w $25FE42 is a CALL now -- no note at $25FE42 anywhere in the run');
-  // POSITIVE CONTROL: its next-door neighbour in the SAME INIT is still deferred and still
-  // counted, so the census is working and the assertion above means something.
-  // **W392 RE-BASE: 1 -> 3.** The count was 1 because the rank object's state-0 init ran ONCE,
-  // at the handoff that started this game. Arm 5 stages dispatch type $A on every attract lap
-  // (`$25C5E2`/`$25C5E6`), so a 14,000-frame run that ends in a game over now runs the same
-  // init twice more, at +6,032 and +10,064. The number is a count of INITS, and there are three
-  // of them; asserting 1 would be asserting that the demo does not stage the object it stages.
-  assert.equal(noteCount(0x288574), 3,
-    '$260704 jsr $288574, the very next instruction, is STILL deferred -- once for the game and '
-    + 'once for each of the two demos arm 5 runs after the game over');
-  assert.equal(noteCount(0x2605c8), 3, '  ...and the enclosing $2605C8 init is counted the same '
-    + 'three times, which is what says the extra two are WHOLE inits and not stray notes');
+  // POSITIVE CONTROL: an unread neighbour in the SAME INIT remains counted once
+  // per init, while `$288574` now runs and leaves cartridge bank 13 in staging.
+  assert.equal(noteCount(0x28d552), 3,
+    '$2606D2 remains counted once for the game and once for each later demo init');
+  assert.equal(noteCount(0x288574), 0,
+    '$260704 jsr $288574 is a live call now, never an unported note');
+  for (let index = 0; index < 16; index++) {
+    assert.equal(RUN.g.ram.u16(PALSTAGE.tx.stage + 13 * 32 + index * 2),
+      RUN.g.rom.u16(0x222818 + index * 2),
+      `$288590 left cartridge TX bank 13 word ${index} installed`);
+  }
+  assert.equal(noteCount(0x2605c8), 3, 'the enclosing $2605C8 init is counted three times');
 });
 
 test('W385 DEFERRAL 2 IS GONE: $2603FE is rank.js stagePair2603FE, and it ARMED REQUEST 4', () => {

@@ -172,6 +172,40 @@ test('live BGM attack may begin before its forward-loop return boundary', () => 
   assert.ok(voice.phase < boundaryPhase(voice.u16(0x02), voice.u16(0x03)));
 });
 
+test('Game Over global release stops the forward-looping Stage 2 helicopter SFX', () => {
+  const rt = runtime();
+  rt.frame(Uint8Array.of(0x02, 0xff, 0x28, 0x28));
+  const slot = rt.chain.engine.voices.find((candidate) => candidate.active
+    && candidate.selector === 0x28);
+  assert.ok(slot, 'selector $28 owns an active immediate-SFX slot');
+  assert.equal(slot.oscConf & 0x08, 0x08, 'command $02 selected forward-loop OscConf $08');
+  for (let guard = 0; slot.icsVoice < 0; guard++) {
+    assert.ok(guard < 4, 'the logical slot must reach the physical key-on path');
+    rt.frame(new Uint8Array(0), false);
+  }
+  const oscillator = slot.icsVoice;
+  assert.equal(rt.core.voices[oscillator].running, true);
+
+  for (let frame = 0; frame < 240; frame++) rt.frame(new Uint8Array(0), false);
+  assert.equal(slot.active, true, 'the helicopter loop does not end on its own');
+  assert.equal(rt.core.voices[oscillator].running, true);
+
+  rt.frame(Uint8Array.of(0x15, 0, 0, 0), false);
+  assert.equal(rt.chain.loop.dispatched.at(-1).cmd, 0x15);
+  assert.equal(slot.active, true, 'the BGM stop does not release immediate SFX');
+  assert.equal(rt.core.voices[oscillator].running, true);
+
+  rt.frame(Uint8Array.of(0x10, 0, 0, 0), false);
+  const release = rt.chain.loop.dispatched.at(-1);
+  assert.equal(release.cmd, 0x10);
+  assert.equal(release.affected, 1, 'the global release found the one live helicopter slot');
+  assert.equal(slot.active, false);
+  assert.equal(rt.chain.engine.icsShadow[oscillator][0], 0,
+    'the physical oscillator allocation was released');
+  assert.equal(rt.core.voices[oscillator].running, false,
+    'the keyoff reached the audio core instead of leaving an infinite loop');
+});
+
 test('fractional native clock, emit=false, and empty frames preserve one deterministic state', () => {
   const audible = runtime();
   const silent = runtime();

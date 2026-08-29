@@ -104,22 +104,23 @@
 //     SOURCED: sprites 576/1,024, background 1,024/1,024, text 0/240**, and the
 //     page prints it by third every frame.  W92 also threaded a `PaletteState`
 //     down to the enemy init bodies, so the MIDBOSS, the BOSS and types
-//     $24/$31 install their own eleven banks live: [M] 1,760 of 2,560 and 23 of
+//     $24/$31 install their own eleven banks live: [M] 1,776 of 2,560 and 23 of
 //     32 sprite banks after 6,500 steps of stage-1 flight.
 //
-//     **WAVE 93 TOOK 160 OF THE TEXT STRIP'S 240 WORDS**, ten of its fifteen
+//     **WAVE 93 TOOK 176 OF THE TEXT STRIP'S 240 WORDS**, eleven of its fifteen
 //     banks, and it took them on two warrants rather than on a byte match.
 //     Banks 0..4 come from the RESET PATH (`$23BF86..$23BFCC`, straight-line
 //     inside `$23BEEA`, which both `$23B7D8` and `$23B7F2` jmp to) and every
 //     site in the image that can write those banks writes the same block, so
 //     the answer cannot depend on which one ran.  Banks 0..8 and 11 come from
-//     `$2605C8`, type $0A's state-0 init -- and [M] the seed's own `$80E240`
-//     slot 0 reads type $0A, STATE $01, priority $1F, which is the cartridge
-//     saying in its own RAM that the routine executed.  [M] 160 of 160 equal
-//     the board's palette RAM on all 161 recorded frames.
+//     `$2605C8`, type $0A's state-0 init; `$260704 -> $288574 -> $288590` adds
+//     bank 13 to that same witnessed chain.  [M] the seed's own `$80E240` slot
+//     0 reads type $0A, STATE $01, priority $1F, which is the cartridge saying
+//     in its own RAM that the chain executed.  [M] 176 of 176 equal the board's
+//     palette RAM on all 161 recorded frames.
 //
-//     **WHAT IS STILL THE RECORDING'S: 80 words of the TEXT strip (banks 9,
-//     10, 12, 13, 14) and nine sprite banks (0..9 less 6), AND THE PAGE SAYS SO
+//     **WHAT IS STILL THE RECORDING'S: 64 words of the TEXT strip (banks 9,
+//     10, 12, 14) and nine sprite banks (0..9 less 6), AND THE PAGE SAYS SO
 //     EVERY FRAME.**  [M] W93 measured that NO routine in the cartridge
 //     reproduces those nine sprite banks: six of them (2, 4, 5, 7, 8, 9) have
 //     no call site anywhere that names the block the seed carries, and the
@@ -1537,9 +1538,9 @@ export class Demo {
     // not need MAME (the paragraph above says so).  Taking the HUD out of that
     // source would break the thing the source exists for.
     //
-    // AND THIS IS NOT THE PALETTE.  W91-W93 moved 1,760 of 2,560 palette words
-    // to the cartridge and 160 of the 240 TEXT words are among them; the other
-    // 80 have no cartridge source yet.  `mergePalette` below reads
+    // AND THIS IS NOT THE PALETTE.  W91-W93 moved 1,776 of 2,560 palette words
+    // to the cartridge and 176 of the 240 TEXT words are among them; the other
+    // 64 have no cartridge source yet.  `mergePalette` below reads
     // `this.game.palette` and the capture's, and neither has anything to do
     // with `st.tx`.  **Not one palette word is removed by this and none may
     // be** -- the picture and the colours are two separate retirements and only

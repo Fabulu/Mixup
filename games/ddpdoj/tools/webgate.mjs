@@ -2067,25 +2067,27 @@ try {
       // W92 §5.2 matched ELEVEN of the fifteen text banks to a named site and
       // REFUSED to wire any of them, because "the bytes match, therefore replay
       // it" is exactly what would have installed its own wrong sprite bank 1, 7
-      // and 8 (§5.1).  W93 takes TEN of them, and the thing that changed is not
-      // the byte match -- it is that both routines can now be shown to have
-      // RUN.  This stage asserts the difference, not the result.
+      // and 8 (§5.1).  W93 originally took ten of them; the Continue fix adds
+      // bank 13 through `$260704 -> $288574 -> $288590`.  The thing that permits
+      // either replay is not the byte match, but proof that both routines ran.
+      // This stage asserts the difference, not only the result.
       //
       // WHAT IS ASSERTED, and every number is independent of `src/`:
       //   * the RESET arm installs five banks from `$23BF86..$23BFCC`, which is
       //     straight-line code inside `$23BEEA`, the routine both `$23B7D8` and
       //     `$23B7F2` jmp to.  The machine cannot be mid-stage-1 without it;
-      //   * the `$2605C8` arm installs ten more -- and ONLY because the seed's
-      //     own `$80E240` slot array holds an ACTIVE type `$0A` past state 0.
-      //     `$2411AE clr.w $2(A0)` starts it at 0 and `$2605C8`'s own first
-      //     instruction is what makes it 1, so that byte is the cartridge
-      //     saying in the seed's RAM that the routine executed;
-      //   * **160 OF 160 SOURCED TEXT WORDS EQUAL THE BOARD'S OWN $A01000 ON
+      //   * the type-$0A initializer chain installs eleven more: ten direct
+      //     `$2605C8` banks plus bank 13 through `$260704 -> $288574 -> $288590`.
+      //     It does so ONLY because the seed's own `$80E240` slot array holds an
+      //     ACTIVE type `$0A` past state 0. `$2411AE clr.w $2(A0)` starts it at 0
+      //     and `$2605C8`'s own first instruction is what makes it 1, so that byte
+      //     is the cartridge saying in the seed's RAM that the chain executed;
+      //   * **176 OF 176 SOURCED TEXT WORDS EQUAL THE BOARD'S OWN $A01000 ON
       //     ALL 161 RECORDED FRAMES.**  The text third is CONSTANT across the
       //     recording, so this is a comparison that sits where two readings
-      //     agree -- which is why the mutation below matters more than it does.
+      //     agree, which is why the mutation below matters more than it does.
       // and TWO mutations: the catch-up refused (the page before this wave),
-      // and THE WITNESS REMOVED, which must drop the ten banks and keep five.
+      // and THE WITNESS REMOVED, which must drop the eleven banks and keep five.
       {
         const TX0 = 0x800, TXN = 0xf0;
         const mkG = (opts) => new Game(bundle.seed, bundle.tables, {
@@ -2095,7 +2097,7 @@ try {
         });
         // [M] read off the cartridge and the seed, not typed:
         const EXP93 = {
-          reset: 5, obj0A: 10, banks: 10, words: 160, same: 240, total: 240,
+          reset: 5, obj0A: 11, banks: 11, words: 176, same: 256, total: 256,
           sameAsReset: 80, witnessSlot: 0, witnessState: 1, witnessPrio: 0x1f,
         };
         const g93 = mkG();
@@ -2122,7 +2124,7 @@ try {
           && worst === EXP93.words;
         console.log(`${ok93 ? 'PASS' : 'FAIL'}: W93 THE TEXT STRIP -- the RESET `
           + `path $23BF86..$23BFCC installed ${tc?.reset} banks (expect `
-          + `${EXP93.reset}) and $2605C8 installed ${tc?.obj0A} more (expect `
+          + `${EXP93.reset}) and the type-$0A chain installed ${tc?.obj0A} more (expect `
           + `${EXP93.obj0A}), WITNESSED by $80E240 slot ${w?.slot} holding an `
           + `ACTIVE type $0A at state $${w?.state?.toString(16)} priority `
           + `$${w?.prio?.toString(16).toUpperCase()} (expect slot `
@@ -2149,10 +2151,10 @@ try {
         // MUTATION 2 -- **THE WITNESS REMOVED**, and this is the stage that
         // says W93 is not W92's refused reasoning with a coat of paint.  The
         // seed's type-$0A object is put back into state 0.  Every one of the
-        // ten banks' BYTES still matches the cartridge exactly; only the
-        // evidence that the routine ran is gone.  A port that had quietly gone
+        // eleven banks' BYTES still matches the cartridge exactly; only the
+        // evidence that the chain ran is gone.  A port that had quietly gone
         // back to trusting the byte match would install them anyway and this
-        // stage would read 160.
+        // stage would read 176.
         const gw = mkG();
         gw.ram.setU16(0x80e240 + 2, 0);        // $2(A5) := 0 -- "has not run"
         const { catchUpTextPalette: cu, PaletteState: PS, flush24133C: fl }
@@ -2166,9 +2168,9 @@ try {
         console.log(`${okW ? 'PASS' : 'FAIL'}: W93 --break the WITNESS -- with `
           + `the seed's type $0A object put back into state 0, the port sources `
           + `${lw.tx} of ${TXN} text words (expect ${EXP93.reset * 16} = the `
-          + `RESET five alone) and $2605C8's ten are REFUSED. **THE BYTES STILL `
-          + `MATCH THE CARTRIDGE EXACTLY** -- only the evidence that the `
-          + `routine ran is gone -- so a port that trusted the byte match `
+          + `RESET five alone) and the initializer chain's eleven are REFUSED. `
+          + `**THE BYTES STILL MATCH THE CARTRIDGE EXACTLY** -- only the evidence `
+          + `that the chain ran is gone -- so a port that trusted the byte match `
           + `would read ${EXP93.words} here. That is the W92 §5.1 trap made `
           + `into a check that can fail`);
         if (!okW) code = 1;
@@ -2178,8 +2180,8 @@ try {
           + `background ${led93.bg}/${led93.of.bg}, text `
           + `${led93.tx}/${led93.of.tx}, and ${led93.of.unwritten} words `
           + `($8F0..$9FF) that NO region of $24133C copies on the board either. `
-          + `STILL THE RECORDING'S: nine sprite banks (0..5,7,8,9) and five `
-          + `text banks (9,10,12,13,14)`);
+          + `STILL THE RECORDING'S: nine sprite banks (0..5,7,8,9) and four `
+          + `text banks (9,10,12,14)`);
       }
 
       // ================================================== WAVE 66 -- E6, THE BOMB

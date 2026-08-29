@@ -623,10 +623,18 @@
 // Measured: 942 -> 943 windows, 457,067 -> 457,131 bytes,
 // 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 943;
+// ---------------------------------------------------------------------------
+// THE CONTINUE PALETTE FIX ADDED ONE DISJOINT TEXT-BANK WINDOW.
+// ---------------------------------------------------------------------------
+// `$222818 + $20` holds exactly TX bank 13, installed by `$288590` inside
+// `$288574`. It excludes bank 12 before it and the unrelated block after it.
+// Measured: 943 -> 944 windows, 457,131 -> 457,163 bytes,
+// 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 944;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 457131;
+export const ROM_WINDOW_BYTES = 457163;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -659,11 +667,42 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const CONTINUE_PALETTE_WINDOW = Object.freeze({ base: '$222818', len: 0x0020 });
+const CONTINUE_TX_LOW_WHY = 'W93: TEXT palette banks 0..5, 32 bytes each = 16 '
+  + "entries ($2414BE lsl.w #$5). $23BF86..$23BFCC (the RESET path) uploads 0..4 "
+  + "and $2605DC..$260622 (type $0A's init) uploads 0..5; src/palette.js "
+  + 'catchUpTextPalette replays both. High end is bank 5\'s $2226D8 plus its own '
+  + "32 bytes -- bank 9's $2226F8 is OUTSIDE because this catch-up chain does not read it";
+const PRE_CONTINUE_TX_LOW_WHY = CONTINUE_TX_LOW_WHY.replace(
+  'OUTSIDE because this catch-up chain does not read it',
+  'OUTSIDE on purpose, because nothing installs it',
+);
+
+/** Reconstruct the exact pre-fix table, including its prior W93 ledger prose. */
+function tableBeforeContinuePalette(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const matches = copy.rom.windows.filter((window) =>
+    window.base === CONTINUE_PALETTE_WINDOW.base);
+  if (matches.length === 0) return copy;
+  if (matches.length !== 1 || matches[0].len !== CONTINUE_PALETTE_WINDOW.len
+      || matches[0].hex.length !== CONTINUE_PALETTE_WINDOW.len * 2
+      || !matches[0].why.startsWith('Continue TEXT palette bank 13')) {
+    throw new Error('$222818 is not the exact Continue palette additive shape');
+  }
+  copy.rom.windows = copy.rom.windows.filter((window) => window !== matches[0]);
+  const low = copy.rom.windows.filter((window) => window.base === '$222638');
+  if (low.length !== 1 || low[0].len !== 0x00c0 || low[0].why !== CONTINUE_TX_LOW_WHY) {
+    throw new Error('$222638 is not the exact corrected Continue-era W93 ledger shape');
+  }
+  low[0].why = PRE_CONTINUE_TX_LOW_WHY;
+  return copy;
+}
+
 const W627_WINDOW = Object.freeze({ base: '$2A4E16', len: 0x0040 });
 
 /** Reconstruct the exact pre-W627 table by removing only W627's art table. */
 export function tableBeforeW627(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeContinuePalette(tables);
   const matches = copy.rom.windows.filter((window) => window.base === W627_WINDOW.base);
   if (matches.length === 0) return copy;
   if (matches.length !== 1 || matches[0].len !== W627_WINDOW.len

@@ -248,19 +248,19 @@ test('defaultHandlers[10] is the rank object (priority $001F, runs first)',
   });
 
 // ===========================================================================
-// 7. THE DECLARED DEVIATION is state-0 INIT $2605C8 (deferred)
+// 7. THE DECLARED DEVIATION is the partial, live state-0 INIT $2605C8
 // ===========================================================================
 
-test('RANK_DEVIATION names $2605C8 (state-0 INIT) and the handler notes + advances',
+test('RANK_DEVIATION names the partial $2605C8 INIT and its live handler advances',
   { skip: SKIP }, () => {
-    assert.ok(RANK_DEVIATION[0x2605c8], 'the deferred INIT is declared');
+    assert.ok(RANK_DEVIATION[0x2605c8], 'the partial INIT is declared');
     const ram = seedRam();
     ram.setU8(SLOT0 + RANK.stateOff, 0);  // force state 0 (cold boot)
     const ctx = ctxOf();
     const rank = makeRankObject(ROM);
     rank(ram, SLOT0, 0, ctx);
     assert.equal(ram.u8(SLOT0 + RANK.stateOff), 1,
-      'state 0 -> 1 so the object cannot spin (the INIT body is deferred)');
+      'the translated state, RAM, palette, and Continue initialization advances state 0 -> 1');
     assert.ok(ctx.unportedLog.report().some((l) => l.includes('2605C8')),
-      'the deviation was noted, not silent');
+      'the remaining subcalls and compatibility behavior stay declared, not silent');
   });

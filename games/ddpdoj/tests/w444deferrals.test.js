@@ -311,17 +311,16 @@ test('SECTION 2b: OVERLAP_DECLARED carries no dead entry either', () => {
 // **THE REGISTER IS NOW EMPTY, AND AN EMPTY REGISTER IS THE WEAK CASE**: `deepEqual`
 // against `[]` also passes if the scan breaks, if `INIT_UNREAD` is emptied, or if the
 // `PORTED` index stops finding anything. So this test now carries its own floor: the
-// table must still hold the four targets that are GENUINELY out, by address, and the
-// five wired targets must be ABSENT from it AND present in `PORTED`.
-test('SECTION 3: rank.js INIT_UNREAD -- no target is ported any more, and the four that '
-  + 'remain are the four with no port', () => {
+// table must still hold the three targets that are GENUINELY out, by address, and the
+// six wired targets must be ABSENT from it AND present in `PORTED`.
+test('SECTION 3: rank.js INIT_UNREAD has only the three calls without a live port', () => {
   const targets = INIT_UNREAD.map(([, target]) => target).sort((a, b) => a - b);
   assert.deepEqual(targets.map(hex),
-    [0x287024, 0x288574, 0x28d552, 0x28ebfe].map(hex),
+    [0x287024, 0x28d552, 0x28ebfe].map(hex),
     'INIT_UNREAD\'s membership changed. It is the $2605C8 state-0 INIT\'s remaining '
-    + 'deferred sub-calls and nothing else. W445 removed $2603DA, $27F87C and $24A810, and '
-    + 'W621 removed $259C4A and $2884E2, by WIRING them; anything else leaving or joining '
-    + 'is a wave\'s work.');
+    + 'deferred sub-calls and nothing else. W445 removed $2603DA, $27F87C and $24A810, '
+    + 'W621 removed $259C4A and $2884E2, and the Continue repair removed $288574 by '
+    + 'WIRING them; anything else leaving or joining is a wave\'s work.');
 
   const portedTargets = targets.filter((t) => PORTED.has(t)).sort((a, b) => a - b);
   assert.deepEqual(portedTargets.map(hex), [],
@@ -341,13 +340,14 @@ test('SECTION 3: rank.js INIT_UNREAD -- no target is ported any more, and the fo
     + 'module-private clear28D552 and does not export it", which was TRUE at W444. Wire it.');
 });
 
-test('SECTION 3b: the five wired targets are still exported, so an empty register cannot '
+test('SECTION 3b: the six wired targets are still exported, so an empty register cannot '
   + 'be an empty INDEX', () => {
   for (const [a, where] of [[0x259c4a, 'frontend.js frontDrawReset259C4A'],
     [0x27f87c, 'bee.js clearPoolA'],
     [0x2603da, 'objslot12.js clearRankRam2603DA'],
     [0x24a810, 'objslot12.js clearPlayerRam24A810'],
-    [0x2884e2, 'hud.js resetHud2884E2']]) {
+    [0x2884e2, 'hud.js resetHud2884E2'],
+    [0x288574, 'rank.js continueInit288574']]) {
     assert.ok(PORTED.has(a), `${hex(a)} is no longer indexed as ported (${where}). Either the `
       + 'port was removed -- in which case rank.js is now calling nothing -- or the scan broke, '
       + 'in which case SECTION 3\'s empty register means nothing');

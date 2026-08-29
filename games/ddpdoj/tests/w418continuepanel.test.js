@@ -46,6 +46,9 @@ import {
   continuePrompt28864C, continueWipe28871C, continueCount28875E, continueClear288952,
 } from '../src/continuescreen.js';
 import { objSlot13, SCREEN13 } from '../src/objslot13.js';
+import { PaletteState, PALSTAGE, flush24133C, install2414BE } from '../src/palette.js';
+import { buildTxMap } from '../src/render/tiles.js';
+import { paletteRgb } from '../src/render/igs023.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const R = path.join(HERE, '..');
@@ -156,6 +159,59 @@ test('W418 the five new ROM windows exist and cover every byte the four bodies r
   assert.equal(ROM.u32(0x28886a), 0x0f8f001a);
   assert.equal(ROM.u32(0x2888b2), 0x2888da);
   assert.equal(ROM.u8(0x2886fc), 0x20);
+});
+
+test('W418 all 47 Continue pictures select TEXT palette bank 13',
+  { skip: SKIP }, () => {
+  const banner = Array.from({ length: 17 }, (_, index) => ROM.u32(0x28886a + index * 4));
+  const digits = Array.from({ length: 10 }, (_, digit) => ROM.u32(0x2888b2 + digit * 4))
+    .flatMap((group) => Array.from({ length: 3 }, (_, frame) => ROM.u32(group + frame * 4)));
+  assert.equal(banner.length, 17);
+  assert.equal(digits.length, 30);
+  for (const [kind, descriptors] of [['banner', banner], ['digit', digits]]) {
+    descriptors.forEach((descriptor, index) => {
+      const attr = descriptor & 0xffff;
+      assert.equal(attr, 0x001a, `${kind} descriptor ${index} has attribute $001A`);
+      assert.equal((attr & 0x003e) >> 1, 13,
+        `${kind} descriptor ${index} resolves through buildTxMap to TEXT bank 13`);
+    });
+  }
+});
+
+test('W418 installing $222818 turns the Continue silhouette from black into colour',
+  { skip: SKIP }, () => {
+  const descriptor = ROM.u32(0x28886a);
+  const tile = descriptor >>> 16;
+  const attr = descriptor & 0xffff;
+  const txram = new Uint16Array(64 * 32 * 2);
+  txram[0] = tile;
+  txram[1] = attr;
+  const transparent = new Uint8Array(64).fill(15);
+  const visible = new Uint8Array(transparent);
+  visible[0] = 1;
+  const cache = { txGet: (tileno) => tileno === tile ? visible : transparent };
+  const map = buildTxMap(cache, txram);
+  const paletteIndex = 0x800 + 13 * 16 + 1;
+  assert.equal(map[0], paletteIndex,
+    'a nontransparent Continue pen resolves to the palette entry inside TEXT bank 13');
+
+  const ram = new Ram();
+  const palette = new PaletteState();
+  install2414BE(ram, palette, 13, ROM.bytes(0x222818, 32), 0x288590,
+    'the $288574 Continue initializer');
+  assert.deepEqual(flush24133C(ram, palette), { spr: false, bg: false, tx: true });
+  const rgb = paletteRgb(palette.words);
+  assert.notDeepEqual(Array.from(rgb.subarray(paletteIndex * 3, paletteIndex * 3 + 3)), [0, 0, 0],
+    'the cartridge palette makes the representative Continue pixel visible');
+
+  for (let index = 0; index < 16; index++) {
+    ram.setU16(PALSTAGE.tx.stage + 13 * 32 + index * 2, 0);
+  }
+  ram.setU16(PALSTAGE.tx.dirty, 1);
+  flush24133C(ram, palette);
+  const black = paletteRgb(palette.words);
+  assert.deepEqual(Array.from(black.subarray(paletteIndex * 3, paletteIndex * 3 + 3)), [0, 0, 0],
+    'the same pixel becomes the reported black silhouette when bank 13 is absent');
 });
 
 // ===========================================================================

@@ -471,6 +471,8 @@ test('SECTION 4: the six W460 caller fixtures clear dirty edges and reach their 
     slot13.ram.setU8(a5 + SCREEN13.state, 4);
     objSlot13(slot13.ram, ROM, a5, slot13.ctx);
     assertPoolEdgesCleared(slot13.ram, '$288A48 slot 13 state 4');
+    assert.deepEqual(slot13.cues, [0x28c170, 0x28c0fc],
+      'slot 13 posts the BGM stop and global immediate-SFX release before clearing objects');
     assert.equal(slot13.ram.u16(ALLOC.createStage + ALLOC.typeOff),
       SCREEN13.childType | 0x8000, 'slot 13 staged type $E after both clears');
 
@@ -555,7 +557,7 @@ test('SECTION 5b: source caller ordering matches each cartridge context, not one
     'objTableInit24107C(ram)', 'clear24631C(ram)', 'clear25C57E(ram)', 'clearTx23C622(ctx.tx)',
   ], 'arm 5 teardown');
   assertOrder(functionText(sourceMap.get('objslot13.js'), 'state4'), [
-    'ctx.soundPost?.(0x28c170)', 'ctx.unported?.note(0x28c0fc', 'clear24631C(ram)',
+    'ctx.soundPost?.(0x28c170)', 'ctx.soundPost?.(0x28c0fc)', 'clear24631C(ram)',
     'objTableInit24107C(ram)', 'stageCreate(ram, SCREEN13.childType',
   ], 'slot 13 state 4');
   assertOrder(functionText(sourceMap.get('objslot14.js'), 'state2'), [

@@ -116,31 +116,29 @@ export const RANK = {
   disp25FF7AJump: 0x25FF52, // $25FF92 lea (PC) -- the jump table
 };
 
-/** W378 -- what is STILL deferred inside state-0 INIT `$2605C8`.  The INIT's own
- *  RAM writes and its ten `$2414BE` TEXT installs are ported now (`rankInit2605C8`
- *  below); what remains are its calls into subsystems no wave has read, and each of
- *  those is counted at ITS OWN call site rather than as one blanket skip.
- *  The entry left here is the summary, kept because it is the routine's name and
- *  because the deferral is still real.
+/** W378 -- what is STILL deferred inside state-0 INIT `$2605C8`. The INIT's own
+ *  RAM writes, ten direct `$2414BE` TEXT installs, and the `$288574` Continue
+ *  initializer are ported now (`rankInit2605C8` below). What remains is counted
+ *  at each call site rather than as one blanket skip.
  *
- *  W385 removed `$25FE42` from the list below -- `$260700 bsr.w $25FE42` is a CALL
- *  now, `playerRecords25FE42`, so ten remain and not eleven. Leaving it in would be
- *  a stale deferral of exactly the kind trap 13 is about. */
+ *  W385 removed `$25FE42`; the Continue fix removes `$288574`. On the authentic
+ *  cabinet chain three calls remain unread. Seeded compatibility additionally
+ *  keeps the historical `$259C4A` and `$2884E2` reset notes. */
 export const RANK_DEVIATION = Object.freeze({
   [0x2605c8]: 'PARTIAL -- $2605C8, the state-0 INIT, $2605C8..$26070A. W378 ports '
-    + 'its RAM writes (the $2(A5) state byte, the ten $2414BE TEXT installs, '
+    + 'its RAM writes (the $2(A5) state byte, the ten direct $2414BE TEXT installs, '
     + '$813080 = 0, $813082 = 1, the $813098 loop branch and the loop-2+ clears at '
     + '$260680..$2606C9) and $2606CE bsr $25FD0C; W385 adds $260700 bsr.w $25FE42, '
     + 'which fills both $25FF7A dispatcher records and creates the HUD and the two '
-    + 'announcement objects. W445 wires three more -- $260678 jsr $2603DA '
-    + '(objslot12.js clearRankRam2603DA), $2606E8 jsr $27F87C (bee.js clearPoolA) and '
-    + '$2606FA jsr $24A810 (objslot12.js clearPlayerRam24A810) -- so its SIX remaining '
-    + 'calls ($259C4A, $28D552, $28EBFE, $2884E2, $287024, $288574) are counted at '
-    + 'their own call sites, and none of the six has a port under either naming '
-    + 'convention. $260666 move.w '
-    + '#$1,$813082 is the one that matters here: it is the gate $2607A8 tests, and '
-    + 'while the whole INIT was deferred the gate stayed 0, so the per-frame body '
-    + 'ran before $26089E had installed the rank base pointer $81315C.',
+    + 'announcement objects. W445 wires $260678 jsr $2603DA, $2606E8 jsr $27F87C '
+    + 'and $2606FA jsr $24A810; W621 runs $259C4A and $2884E2 on the authentic '
+    + 'cabinet chain; the Continue fix runs $260704 jsr $288574, including its bank-13 '
+    + 'TEXT install. Five calls remain counted on seeded compatibility chains '
+    + '($259C4A, $28D552, $28EBFE, $2884E2, $287024), while the authentic cabinet '
+    + 'chain runs the two reset calls and leaves only the three unread targets. '
+    + '$260666 move.w #$1,$813082 is the gate $2607A8 tests; while the whole INIT '
+    + 'was deferred it stayed 0, so the per-frame body ran before $26089E installed '
+    + 'the rank base pointer $81315C.',
 });
 
 const note = (ctx, a, w) => (ctx?.unportedLog ?? ctx?.unported)?.note(a, w);
@@ -575,9 +573,10 @@ export function stageStart260580(ram, rom, ctx, d6, d7, a5) {
   tallyDriver25FF7A(ram, rom, ctx, a5);                     // $26059E bsr.w $25FF7A
 }
 
-/** `$2605C8..$26070A` -- the state-0 INIT's ten `$2414BE` TEXT installs, at their
- *  real call sites. The same ten `palette.js TX_OBJ0A_INSTALLS` replays for a
- *  SEEDED run (W93); this is the cartridge doing them itself on a cold one. */
+/** `$2605C8..$26070A` -- the state-0 INIT's ten direct `$2414BE` TEXT installs,
+ *  at their real call sites. `$260704 -> $288574 -> $288590` then adds bank 13,
+ *  so `palette.js TX_OBJ0A_INSTALLS` replays the full eleven-entry witnessed
+ *  chain for a SEEDED run (W93); this is the cartridge doing it on a cold one. */
 const INIT_TX_INSTALLS = Object.freeze([
   Object.freeze([0x2605dc, 0x0, 0x222638]), Object.freeze([0x2605ea, 0x1, 0x222658]),
   Object.freeze([0x2605f8, 0x2, 0x222678]), Object.freeze([0x260606, 0x3, 0x222698]),
@@ -606,7 +605,6 @@ export const INIT_UNREAD = Object.freeze([
     + 'clear28D552 and does not export it']),
   Object.freeze([0x2606d8, 0x28ebfe, 'unread anywhere in this port']),
   Object.freeze([0x2606f4, 0x287024, 'unread anywhere in this port']),
-  Object.freeze([0x260704, 0x288574, 'unread anywhere in this port']),
 ]);
 
 // W445 -- THREE ROWS LEFT THIS TABLE, and every one of their `why` strings was FALSE.
@@ -763,6 +761,20 @@ export function playerRecords25FE42(ram, rom, ctx) {
   return made;
 }
 
+/** `$288574..$288596`: reset the Continue records and install TX palette bank 13. */
+export function continueInit288574(ram, rom, ctx) {
+  for (let index = 0; index < 22; index++) {                  // $28857E..$288582 dbra D0
+    ram.setU16(0x81b706 + index * 2, 0);
+  }
+  if (ctx?.palette) {
+    install2414BE(ram, ctx.palette, 13, rom.bytes(0x222818, 32), 0x288590,
+      'the $288574 Continue initializer');                    // $288590 jsr $2414BE
+  } else {
+    note(ctx, 0x288590,
+      '$288590 jsr $2414BE -- TEXT bank 13 <- $222818, with no PaletteState');
+  }
+}
+
 /**
  * `$2605C8..$26070A` -- **THE STATE-0 INIT**, and `$260666 move.w #$1,$813082` is
  * why a board never reads a null `$81315C`.
@@ -848,7 +860,7 @@ function rankInit2605C8(ram, rom, a5, ctx) {
     clearPlayerRam24A810(ram);                              // $2606FA jsr $24A810
   }
   playerRecords25FE42(ram, rom, ctx);                       // $260700 bsr.w $25FE42
-  defer(0x260704);                                          // $260704 jsr $288574
+  continueInit288574(ram, rom, ctx);                        // $260704 jsr $288574
 }
 
 // ---------------------------------------------------------- the recompute $2608D2
@@ -1035,7 +1047,9 @@ function perFrame2607A8(ram, rom, ctx) {
 /**
  * `$260794` -- THE RANK OBJECT.  `makeRankObject(rom)` returns the handler
  *  `(ram, slot, index, ctx) => {...}` wired into `main.js defaultHandlers[10]`.
- *  State byte at `($2,A5)`; state 0 INIT (DEFERRED), state 1 per-frame body,
+ *  State byte at `($2,A5)`; state 0 runs the translated state, RAM, palette, and
+ *  Continue initialization while counting the remaining unported subcalls;
+ *  state 1 per-frame body,
  *  state 2 teardown (self-kill).
  */
 export function makeRankObject(rom) {

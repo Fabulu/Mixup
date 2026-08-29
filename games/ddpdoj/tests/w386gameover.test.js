@@ -12,7 +12,7 @@
 //
 //   +4,075  the life counter borrows to -1 ($25FFC4), `$25FFA8` arms bonus-line request 2
 //   +4,077  `$260056` creates dispatch type $D -- objslot13.js, the GAME-OVER object
-//   +4,079  its state 4 ($288A3C) counts its two sound posts, wipes the object table and
+//   +4,079  its state 4 ($288A3C) posts both sound commands, wipes the object table and
 //           stages dispatch type $E
 //   +4,080  slot [14] state 0 ($288BCE) runs `$288C14 lea ($18,PC),A0 / $288C1A jsr $246410`
 //           on the table at $288C2E, whose ONE entry targets $2252F8. **W385 DIED HERE.**
@@ -85,6 +85,8 @@ import { ALLOC } from '../src/objalloc.js';
 import { ANIM_OBJECT, loadAnimObjects246410, runAnimObjects24683E } from '../src/animobjects.js';
 import { RomWindows } from '../src/rom.js';
 import { Unreached } from '../src/unported.js';
+import { SCREEN13, objSlot13 } from '../src/objslot13.js';
+import { SoundState, dequeue, postWrapper } from '../src/sound.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const tablesJson = JSON.parse(readFileSync(here('../rip/port/player.tables.json'), 'utf8'));
@@ -170,6 +172,7 @@ const RUN = (() => {
     notesAt4079, current: cur(), currentAtFadeDone, rom, notes: g.unportedLog.report(),
     // W425 (D58): the `$28BBAC`-tier command as the DRAIN saw it, not as a call site meant it.
     bgmCommands: g.sound.doorLog.filter((d) => d.word === 0x15000000).length,
+    globalReleases: g.sound.doorLog.filter((d) => d.word === 0x10000000).length,
   };
 })();
 
@@ -509,25 +512,58 @@ test('W386 the fade RUNS: 32 staging words converge on the 32 ROM words, exactly
 // 6 -- WHAT IS BEHIND IT. COUNTED, WITH THE EXTENTS MEASURED.
 // ===============================================================================================
 
-// **W425 (D58) SPLIT THIS TEST'S PAIR, AND THE PAIR WAS THE MISTAKE.** W386 treated `$288A3C` and
-// `$288A42` as one fact: two back-to-back `4EB9`s, both unpostable, both counted. The BYTES are a
-// pair -- that half is still asserted below and is unchanged -- but the PACKERS are not:
+// `$288A3C` and `$288A42` are back-to-back cartridge posts with different packers:
 //
-//   $288A3C  jsr $28C170  ->  $28BBAC   D0=$15, D1=0 set by the callee itself. POSTS since W425.
-//   $288A42  jsr $28C0FC  ->  $28BB76   entered with the caller's inherited D0..D3. Still counted.
+//   $288A3C  jsr $28C170  -> $28BBAC -> $15000000, stop BGM.
+//   $288A42  jsr $28C0FC  -> $28BB76 -> $10000000, release every immediate SFX voice.
 //
-// The game-over screen makes a sound now. `$28C0FC` is a THIRD packer and closing it means
-// tracking registers across four back-to-back calls, which is a different unit.
-test('W425 the game-over cue $28C170 POSTS; its neighbour $28C0FC is still counted', () => {
-  assert.equal(noteCount(0x28c170), 0,
-    '$288A3C jsr $28C170 is no longer deferred -- it is posted');
-  assert.ok(RUN.bgmCommands >= 1,
-    'and $15000000 was DRAINED from the ring, so the game over is audible, not just non-throwing');
-  assert.ok(noteCount(0x28c0fc) >= 1, '$288A42 jsr $28C0FC is STILL counted');
+// The second command must run before `$24107C` destroys the objects that otherwise own
+// selector-specific stop calls.
+test('Game Over posts BGM stop then global SFX release before clearing objects', () => {
+  assert.equal(noteCount(0x28c170), 0, '$288A3C is posted, not counted');
+  assert.equal(noteCount(0x28c0fc), 1,
+    'only slot [12]\'s separate $28F380 -> $28C0FC deferral remains counted');
+  assert.match(noteFor(0x28c0fc), /^\s*1 x \$28C0FC \$28F380\b/,
+    '$288A42 posts while the sole counted $28C0FC call belongs to $28F380');
+  assert.ok(RUN.bgmCommands >= 1, '$15000000 drained from the live run');
+  assert.ok(RUN.globalReleases >= 1, '$10000000 drained from the live run');
   assert.equal(l(0x288a3c), 0x4eb90028, '$288A3C is a 4EB9...');
   assert.equal(l(0x288a3e), 0x0028c170, '  ...jsr $28C170');
-  assert.equal(l(0x288a42), 0x4eb90028, '$288A42 is the next 4EB9, back to back...');
-  assert.equal(l(0x288a44), 0x0028c0fc, '  ...jsr $28C0FC, with no immediates between them');
+  assert.equal(l(0x288a42), 0x4eb90028, '$288A42 is the next 4EB9...');
+  assert.equal(l(0x288a44), 0x0028c0fc, '  ...jsr $28C0FC');
+
+  const ram = new Ram();
+  const sound = new SoundState();
+  const a5 = ALLOC.table;
+  const posts = [];
+  const objectWordsAtPost = [];
+  const notes = [];
+  ram.setU16(a5, 0x800d);
+  ram.setU8(a5 + SCREEN13.state, 4);
+  ram.setU32(a5 + SCREEN13.idAt, 0x12345678);
+  const rom = {
+    u16(address) {
+      assert.equal(address, SCREEN13.dispatch + SCREEN13.childType * 8 + 4);
+      return 9;
+    },
+  };
+  objSlot13(ram, rom, a5, {
+    soundPost(address) {
+      posts.push(address);
+      objectWordsAtPost.push(ram.u16(a5));
+      return postWrapper(ram, sound, address);
+    },
+    unported: { note: (...args) => notes.push(args) },
+  });
+
+  assert.deepEqual(posts, [0x28c170, 0x28c0fc]);
+  assert.deepEqual(objectWordsAtPost, [0x800d, 0x800d],
+    'both commands post before $24107C clears the object table');
+  assert.deepEqual(notes, [], '$28C0FC no longer creates an unported note');
+  assert.equal(ram.u16(a5), 0, '$24107C clears the former Game Over object');
+  assert.equal(dequeue(ram), 0x15000000);
+  assert.equal(dequeue(ram), 0x10000000);
+  assert.equal(dequeue(ram), null);
 });
 
 test('W386 the deferrals behind the screen are slot [12]\'s, and they stop nothing', () => {
@@ -546,12 +582,13 @@ test('W386 the deferrals behind the screen are slot [12]\'s, and they stop nothi
     '$240FC2 is NOT counted at all any more -- W387 registered the handler');
   // **W388: the list drops to TWO.** Unit C calls `$24A810` and `$2603DA` for real
   // (`clearPlayerRam24A810` / `clearRankRam2603DA` in `objslot12.js`), so `$28F368` and `$28F374`
-  // are no longer counted anywhere. `$28F36E` ($259C4A, $6E bytes with its own `jsr`) and
-  // `$28F380` ($28C0FC, which `sound.js` cannot post) are the two that remain.
+  // are no longer counted. `$28F36E` ($259C4A) and slot [12]'s still-deferred
+  // `$28F380` call are the two that remain. The Game Over call at `$288A42` is
+  // no longer in this census.
   const sites = grown
     .map((k) => (k.match(/^\$[0-9A-F]{6} (\$28F[0-9A-F]{3}) /) ?? [])[1]).filter(Boolean);
   assert.deepEqual(sites.sort(), ['$28F36E', '$28F380'],
-    'the new notes are slot [12]\'s ONE unported clear and its $28C0FC stream post');
+    'the new notes are slot [12]\'s unported clear and its own deferred stream post');
   for (const line of RUN.notes.filter((s) => sites.some((x) => s.includes(x)))) {
     assert.match(line, /^\s+1 x /, 'each fires EXACTLY ONCE -- the teardown is a single frame');
   }
