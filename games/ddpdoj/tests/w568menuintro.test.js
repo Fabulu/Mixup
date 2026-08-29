@@ -15,7 +15,7 @@ import { RomWindows } from '../src/rom.js';
 import { loadBundle } from '../src/web/assets.js';
 import { restoreCheckpoint } from '../tools/progression-checkpoint.mjs';
 import {
-  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569, tableBeforeW570,
+  ROM_OVERLAP_PAIRS, overlappingPairs, tableBeforeW569, tableBeforeW570, tableBeforeW623,
 } from './romwindowset.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -58,7 +58,7 @@ const SKIP = required.every(existsSync) ? false
   : 'exact W568 tables, image, assets, or checkpoints absent. This is a skip, not a pass.';
 const IMG = SKIP ? null : readFileSync(IMAGE);
 const LIVE_TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
-const W569_TABLE_JSON = SKIP ? null : tableBeforeW570(LIVE_TABLE_JSON);
+const W569_TABLE_JSON = SKIP ? null : tableBeforeW623(tableBeforeW570(LIVE_TABLE_JSON));
 const TABLE_JSON = SKIP ? null : tableBeforeW569(W569_TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : (() => {
   const copy = JSON.parse(JSON.stringify(TABLE_JSON));

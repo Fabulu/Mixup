@@ -150,7 +150,7 @@ test('W558 pins object 3, its complete table, object 4, and the additive window 
     for (let i = 0; i < HIBACHI_A2.object3ArtFrames; i++) {
       assert.equal(ROM.u32(HIBACHI_A2.object3Art + i * 4), beU32(HIBACHI_A2.object3Art + i * 4));
     }
-    const w568 = tableBeforeW569(TABLE_JSON);
+    const w568 = tableBeforeW569(TABLE_JSON, { preserveW623: true });
     const w558 = { ...w568, rom: { ...w568.rom,
       windows: w568.rom.windows.filter((w) => !POST_W558_BASES.has(w.base)) } };
     assert.equal(w558.rom.windows.length, 816);

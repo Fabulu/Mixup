@@ -700,15 +700,34 @@ function tableBeforeContinuePalette(tables) {
 
 const W627_WINDOW = Object.freeze({ base: '$2A4E16', len: 0x0040 });
 
-/** Reconstruct the exact pre-W627 table by removing only W627's art table. */
-export function tableBeforeW627(tables) {
-  const copy = tableBeforeContinuePalette(tables);
+/** Reconstruct the exact pre-W627 table by removing only W627's art table.
+ *  The isolated W627 additive proof may retain the later Continue migration. */
+export function tableBeforeW627(tables, { preserveContinue = false } = {}) {
+  const copy = preserveContinue
+    ? JSON.parse(JSON.stringify(tables))
+    : tableBeforeContinuePalette(tables);
   const matches = copy.rom.windows.filter((window) => window.base === W627_WINDOW.base);
   if (matches.length === 0) return copy;
   if (matches.length !== 1 || matches[0].len !== W627_WINDOW.len
       || matches[0].hex.length !== W627_WINDOW.len * 2
       || !matches[0].why.startsWith('W627:')) {
     throw new Error('$2A4E16 is not the exact W627 additive shape');
+  }
+  copy.rom.windows = copy.rom.windows.filter((window) => window !== matches[0]);
+  return copy;
+}
+
+const W623_WINDOW = Object.freeze({ base: '$259512', len: 0x0008 });
+
+/** Reconstruct the exact W621 table by removing only W623's operator block. */
+export function tableBeforeW623(tables) {
+  const copy = tableBeforeW627(tables);
+  const matches = copy.rom.windows.filter((window) => window.base === W623_WINDOW.base);
+  if (matches.length === 0) return copy;
+  if (matches.length !== 1 || matches[0].len !== W623_WINDOW.len
+      || matches[0].hex.length !== W623_WINDOW.len * 2
+      || !matches[0].why.startsWith('W623:')) {
+    throw new Error('$259512 is not the exact W623 additive shape');
   }
   copy.rom.windows = copy.rom.windows.filter((window) => window !== matches[0]);
   return copy;
@@ -1138,9 +1157,12 @@ const W568_CHAIN_WHY = 'W113: chain-bar stage pointers $28809E (2 longs to '
   + '$2880A6/$28811A) + per-stage meter data (loop 0: 56 words, loop 1: 90 words), '
   + 'far end $2881CE pinned by the panel tile table $2881F2';
 
-/** Reconstruct the exact W568 table from W569's one-word chain-meter widening. */
-export function tableBeforeW569(tables) {
-  const copy = tableBeforeW570(tables);
+/** Reconstruct the exact W568 table from W569's one-word chain-meter widening.
+ *  W558, W560, and W562 also assert the later W623 compatibility identity, so
+ *  those callers may retain that one validated window explicitly. */
+export function tableBeforeW569(tables, { preserveW623 = false } = {}) {
+  const later = tableBeforeW570(tables);
+  const copy = preserveW623 ? later : tableBeforeW623(later);
   const index = copy.rom.windows.findIndex((w) => w.base === '$28809E');
   if (index === -1) throw new Error('the $28809E chain-meter window is absent');
   const window = copy.rom.windows[index];

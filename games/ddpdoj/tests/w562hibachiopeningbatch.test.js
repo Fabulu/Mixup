@@ -75,12 +75,12 @@ const POST_W563_BASES = new Set([
   '$2A9A68', '$2A9E50', '$2AA004', '$2AA040', ...W568_BASES,
 ]);
 const CHECKPOINT_TABLE = SKIP ? null : (() => {
-  const copy = tableBeforeW569(TABLE_JSON);
+  const copy = tableBeforeW569(TABLE_JSON, { preserveW623: true });
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W563_BASES.has(w.base));
   return copy;
 })();
 const W562_TABLE = SKIP ? null : (() => {
-  const copy = tableBeforeW569(TABLE_JSON);
+  const copy = tableBeforeW569(TABLE_JSON, { preserveW623: true });
   copy.rom.windows = copy.rom.windows.filter((w) => !POST_W562_BASES.has(w.base));
   return copy;
 })();

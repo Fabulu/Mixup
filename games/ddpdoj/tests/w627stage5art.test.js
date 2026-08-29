@@ -247,7 +247,7 @@ test('W627 object 18 has one exact data window and one registered script',
     assert.throws(() => ROM.u32(0x2a4e54), faultAt(0x2a4e54),
       'a long read cannot cross the exact table end');
 
-    const prior = tableBeforeW627(TABLE_JSON);
+    const prior = tableBeforeW627(TABLE_JSON, { preserveContinue: true });
     assert.deepEqual([
       TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0),
@@ -258,7 +258,7 @@ test('W627 object 18 has one exact data window and one registered script',
       prior.rom.windows.reduce((sum, window) => sum + window.len, 0),
       overlappingPairs(windowShape(prior)),
     ], [ROM_WINDOW_COUNT - 1, ROM_WINDOW_BYTES - 0x40, ROM_OVERLAP_PAIRS]);
-    assert.deepEqual(tableBeforeW627(prior), prior,
+    assert.deepEqual(tableBeforeW627(prior, { preserveContinue: true }), prior,
       'the exact additive migration is idempotent');
   });
 
