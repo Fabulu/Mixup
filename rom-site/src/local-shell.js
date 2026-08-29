@@ -13,6 +13,8 @@ const DDP_CONTROL_SCHEMES = Object.freeze(['auto', 'fixed', 'float']);
 const DDP_CONTROL_STORE = 'ddpdoj.controls';
 const DDP_MODE_STORE = 'ddpdoj.mode';
 const DDP_LOCK_STORE = 'ddpdoj.orientationLock';
+const MAX_REPLAY_BYTES = 32 * 1024 * 1024;
+const REPLAY_PORTABILITY = 'Playback requires the exact Black Label ROM identity to be selected locally in Mixup. Mixup-local replay files contain no cartridge ROM windows and are not automatically standalone headless verifier artifacts.';
 
 function storedChoice(key, choices, fallback) {
   try {
@@ -230,6 +232,10 @@ class LocalShell {
     this.sound = document.querySelector('#local-sound');
     this.controls = document.querySelector('#local-controls');
     this.orientationLock = document.querySelector('#local-lock');
+    this.record = document.querySelector('#local-record');
+    this.play = document.querySelector('#local-play');
+    this.replayFile = document.querySelector('#local-replay-file');
+    this.replayStatus = document.querySelector('#local-replay-status');
     this.fullscreen = document.querySelector('#local-fullscreen');
     this.stage = document.querySelector('#local-stage');
     this.viewport = document.querySelector('#local-viewport');
@@ -254,13 +260,16 @@ class LocalShell {
     this.dpadMask = 0;
     this.stickBackstop = null;
     this.p2Joined = false;
+    this.replayRecording = false;
+    this.replayBusy = false;
     this.gradiusAudio = null;
     this.ddpdojAudio = null;
     this.opener = null;
     this.backgroundStates = new Map();
 
     if (!this.shell || !this.stage || !this.canvas || !this.pickerContent
-        || !this.controls || !this.orientationLock || !this.padRows || !this.padOwner
+        || !this.controls || !this.orientationLock || !this.record || !this.play
+        || !this.replayFile || !this.replayStatus || !this.padRows || !this.padOwner
         || !this.formationPadNote || !this.stickZone || !this.stickOrigin || !this.stickKnob) {
       throw new Error('The local game shell markup is incomplete.');
     }
@@ -281,6 +290,11 @@ class LocalShell {
     this.picture.addEventListener('click', () => this.togglePicture());
     this.controls.addEventListener('click', () => this.cycleTouchScheme());
     this.orientationLock.addEventListener('click', () => this.toggleOrientationLock());
+    this.record.addEventListener('click', () => this.toggleRecording());
+    this.play.addEventListener('click', () => {
+      if (!this.play.disabled) this.replayFile.click();
+    });
+    this.replayFile.addEventListener('change', () => this.loadReplayFile());
     this.padOwner.addEventListener('click', () => {
       const owner = DdpInput.currentTouchOwner() === 'P1' ? 'P2' : 'P1';
       this.applyPadOwner(owner);
@@ -700,6 +714,15 @@ class LocalShell {
     this.sound.hidden = this.gameId === 'batman';
     this.controls.hidden = this.gameId !== 'ddpdoj';
     this.orientationLock.hidden = this.gameId !== 'ddpdoj' || !this.canOrientationLock();
+    this.record.hidden = this.gameId !== 'ddpdoj';
+    this.play.hidden = this.gameId !== 'ddpdoj';
+    this.replayRecording = false;
+    this.replayBusy = false;
+    this.replayFile.value = '';
+    this.replayStatus.hidden = true;
+    this.replayStatus.textContent = '';
+    delete this.replayStatus.dataset.kind;
+    this.paintReplayControls();
     this.p2Joined = false;
     if (this.gameId !== 'batman') {
       this.armCurrentAudio();
@@ -731,6 +754,9 @@ class LocalShell {
         onP2Joined: (joined) => {
           if (generation === this.generation) this.updateP2Joined(joined);
         },
+        onReplayUpdate: (state) => {
+          if (generation === this.generation) this.updateReplayStatus(state);
+        },
         onError: (error) => this.runtimeError(error, generation),
       });
       if (generation !== this.generation || this.gameScreen.hidden) {
@@ -738,6 +764,7 @@ class LocalShell {
         return;
       }
       this.runtime = runtime;
+      this.paintReplayControls();
       runtime.start();
       this.fit();
       this.canvas.focus();
@@ -783,6 +810,13 @@ class LocalShell {
       this.clearInput();
       DdpInput.selectTouchOwner('P1');
       this.p2Joined = false;
+      this.replayRecording = false;
+      this.replayBusy = false;
+      this.replayFile.value = '';
+      this.replayStatus.hidden = true;
+      this.replayStatus.textContent = '';
+      delete this.replayStatus.dataset.kind;
+      this.paintReplayControls();
     }
     cancelAnimationFrame(this.fitRequest);
     this.fitRequest = 0;
@@ -968,6 +1002,134 @@ class LocalShell {
     if (!DdpInput.selectTouchOwner(owner, { p2Joined })) return false;
     this.paintPadOwner();
     return true;
+  }
+
+  replayContextCurrent(generation, runtime) {
+    return generation === this.generation && runtime === this.runtime;
+  }
+
+  paintReplayControls() {
+    const runtimeReady = this.gameId === 'ddpdoj' && Boolean(this.runtime);
+    const playing = Boolean(this.runtime?.inPlayback?.());
+    this.record.textContent = this.replayRecording ? 'STOP & SAVE' : 'REC';
+    this.record.setAttribute('aria-pressed', String(this.replayRecording));
+    this.record.disabled = !runtimeReady || this.replayBusy || playing;
+    this.play.disabled = !runtimeReady || this.replayBusy
+      || this.replayRecording || playing;
+  }
+
+  showReplayStatus(kind, message) {
+    this.replayStatus.hidden = false;
+    this.replayStatus.dataset.kind = kind;
+    this.replayStatus.textContent = message;
+  }
+
+  updateReplayStatus(state) {
+    if (!state || this.gameId !== 'ddpdoj') return;
+    if (state.kind === 'playing') {
+      this.showReplayStatus('playing',
+        `PLAY: verifying ${state.count} recorded frames. Live controls and coin input are ignored.`);
+    } else if (state.kind === 'divergent') {
+      const period = state.divergent;
+      this.showReplayStatus('red',
+        `Replay mismatch: first divergent digest period ${period.index + 1}, frames ${period.from}-${period.to}. Playback is continuing to the final check.`);
+    } else if (state.kind === 'green') {
+      this.showReplayStatus('green',
+        `GREEN: all ${state.result.compared} recorded frames and the final digest matched. ${REPLAY_PORTABILITY}`);
+    } else if (state.kind === 'red') {
+      const period = state.result.divergentPeriod;
+      const detail = period
+        ? `first divergent digest period ${period.index + 1}, frames ${period.from}-${period.to}`
+        : 'the final cumulative digest did not match';
+      this.showReplayStatus('red',
+        `RED: replay verification failed, ${detail}. ${REPLAY_PORTABILITY}`);
+    } else if (state.kind === 'error') {
+      this.showReplayStatus('error', `Replay error: ${state.error}`);
+    }
+    this.paintReplayControls();
+  }
+
+  async toggleRecording() {
+    const runtime = this.runtime;
+    if (this.gameId !== 'ddpdoj' || !runtime || this.replayBusy
+        || runtime.inPlayback?.()) return;
+    const generation = this.generation;
+    this.replayBusy = true;
+    this.paintReplayControls();
+    try {
+      if (!runtime.isRecording?.()) {
+        await runtime.armRecording();
+        if (!this.replayContextCurrent(generation, runtime)) return;
+        this.replayRecording = true;
+        this.showReplayStatus('recording',
+          'REC armed. Coin input is paused because replay v1 records gameplay controls only. Press STOP & SAVE when finished.');
+      } else {
+        const replay = await runtime.stopRecording();
+        if (!this.replayContextCurrent(generation, runtime)) return;
+        this.replayRecording = false;
+        if (replay) {
+          this.downloadReplay(replay);
+          this.showReplayStatus('saved',
+            `Replay saved locally with ${replay.portin.count} recorded frames. ${REPLAY_PORTABILITY}`);
+        }
+      }
+    } catch (error) {
+      if (!this.replayContextCurrent(generation, runtime)) return;
+      const message = error instanceof Error ? error.message : String(error);
+      this.showReplayStatus('error', `Replay error: ${message}`);
+    } finally {
+      if (this.replayContextCurrent(generation, runtime)) {
+        this.replayRecording = Boolean(runtime.isRecording?.());
+        this.replayBusy = false;
+        this.paintReplayControls();
+      }
+    }
+  }
+
+  downloadReplay(replay) {
+    const blob = new Blob([JSON.stringify(replay, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'ddpdoj-mixup-local.replay';
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  async loadReplayFile() {
+    const file = this.replayFile.files?.[0] ?? null;
+    this.replayFile.value = '';
+    const runtime = this.runtime;
+    if (!file || this.gameId !== 'ddpdoj' || !runtime || this.replayBusy
+        || this.replayRecording || runtime.inPlayback?.()) return;
+    if (file.size < 1 || file.size > MAX_REPLAY_BYTES) {
+      this.showReplayStatus('error',
+        `Replay error: choose a non-empty .replay file no larger than ${MAX_REPLAY_BYTES / 1024 / 1024} MiB.`);
+      return;
+    }
+
+    const generation = this.generation;
+    this.replayBusy = true;
+    this.paintReplayControls();
+    try {
+      const text = await file.text();
+      if (!this.replayContextCurrent(generation, runtime)) return;
+      const replay = JSON.parse(text);
+      runtime.playFrom(replay);
+    } catch (error) {
+      if (!this.replayContextCurrent(generation, runtime)) return;
+      const message = error instanceof Error ? error.message : String(error);
+      this.showReplayStatus('error', `Replay error: ${message}`);
+    } finally {
+      if (this.replayContextCurrent(generation, runtime)) {
+        this.replayBusy = false;
+        this.paintReplayControls();
+      }
+    }
   }
 
   async toggleSound() {

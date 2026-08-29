@@ -995,6 +995,33 @@ body[data-local-view="true"] { overflow: hidden; }
   box-shadow: none;
 }
 
+#local-record[aria-pressed="true"] {
+  border-color: #d84c5a;
+  color: #ffb5bd;
+  background: #34131c;
+}
+
+.local-replay-status {
+  position: absolute;
+  z-index: 6;
+  top: 10px;
+  right: 10px;
+  max-width: min(420px, calc(100% - 20px));
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #3a5670;
+  border-left: 3px solid var(--cyan);
+  color: #c8d8e7;
+  background: rgba(8, 13, 23, 0.94);
+  font: 0.68rem/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+  pointer-events: none;
+}
+
+.local-replay-status[data-kind="recording"] { border-left-color: #e75968; }
+.local-replay-status[data-kind="green"] { border-left-color: #6fda89; color: #baf5c7; }
+.local-replay-status[data-kind="red"],
+.local-replay-status[data-kind="error"] { border-left-color: #ff626f; color: #ffc1c7; }
+
 .local-stage {
   grid-area: stage;
   position: relative;
@@ -1266,7 +1293,12 @@ canvas:focus-visible {
   .local-game-bar { flex-wrap: wrap; gap: 6px 10px; padding: 6px 8px; }
   .local-game-identity { flex: 1 1 120px; }
   #local-game-status { order: 3; flex-basis: 100%; }
-  .local-game-actions { gap: 5px; }
+  .local-game-actions {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 5px;
+  }
   .local-game-actions button { min-height: 31px; padding-inline: 7px; font-size: 0.59rem; }
   .local-control-hint { display: none; }
   footer { flex-direction: column; }

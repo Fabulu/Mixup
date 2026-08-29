@@ -183,6 +183,9 @@
           <button id="local-sound" type="button" class="secondary" hidden>SOUND ON</button>
           <button id="local-controls" type="button" class="secondary" hidden>AUTO</button>
           <button id="local-lock" type="button" class="secondary" hidden aria-pressed="false">LOCK</button>
+          <button id="local-record" type="button" class="secondary" hidden aria-pressed="false">REC</button>
+          <button id="local-play" type="button" class="secondary" hidden>PLAY</button>
+          <input id="local-replay-file" type="file" accept=".replay,application/json" hidden>
           <button id="local-fullscreen" type="button" class="secondary">FULLSCREEN</button>
           <button id="local-game-mods" type="button" class="secondary">MODS</button>
           <button id="local-game-games" type="button" class="quiet">GAMES</button>
@@ -196,6 +199,7 @@
             <i id="local-stick-knob" aria-hidden="true"></i>
           </div>
         </div>
+        <p id="local-replay-status" class="local-replay-status" role="status" aria-live="polite" hidden></p>
         <div id="local-pad" class="local-pad" aria-label="On-screen game controls">
           <div id="local-dpad" class="local-dpad" aria-label="Direction pad">
             <i data-cell="UP LEFT">◤</i><i data-cell="UP">▲</i><i data-cell="UP RIGHT">◥</i>

@@ -1,4 +1,4 @@
-import { Game, RAM } from '/games/ddpdoj/src/main.js';
+import { Game, MACHINE, RAM } from '/games/ddpdoj/src/main.js';
 import { FullRom } from '/games/ddpdoj/src/rom.js';
 import {
   buildMainCpu, soundAssetsFromLocalRoms, tablesFromMainCpu,
@@ -7,12 +7,12 @@ import { soundRuntimeFromStage1Seed } from '/games/ddpdoj/src/soundruntime.js';
 import { APPROVED_SOUND_POLICIES } from '/games/ddpdoj/src/soundpolicy.js';
 import {
   applyHitboxOverlay, applyPostFrameMods, applyPreFrameMods, applyPresentationMods,
-  createModState, modGameOptions, prepareModCabinetBoot, transformModInput,
-  transformModTiming,
+  assertReplayCompatible, createModState, modGameOptions, prepareModCabinetBoot,
+  transformModInput, transformModTiming,
 } from '/games/ddpdoj/src/mods.js';
 import {
-  beginFormationCreditedRun, createFormationState, prepareFormationFrame,
-  resolveFormationAuthenticSelection,
+  assertFormationReplayCompatible, beginFormationCreditedRun, createFormationState,
+  prepareFormationFrame, resolveFormationAuthenticSelection,
 } from '/games/ddpdoj/src/formation.js';
 import { loadRegions } from '/games/ddpdoj/src/render/regions.js';
 import {
@@ -25,7 +25,12 @@ import {
   tickCoinPulse, attachCoinKeys, clearCoin, clearKeyboard, clearTouch,
 } from '/games/ddpdoj/src/web/input.js';
 import {
-  authenticP2Joined, latchAuthenticP2Joined,
+  armPlayback, armRecorder, b64, beBytesFromWords, PERIOD_FRAMES,
+  sha256Hex, stopRecorder, validateReplay,
+} from '/games/ddpdoj/src/web/replay.js';
+import {
+  authenticP2Joined, latchAuthenticP2Joined, localReplaySeedArm,
+  localReplayTables, localReplayTablesMatch,
 } from './ddpdoj-local-state.js';
 
 const GRAPHICS = Object.freeze([
@@ -125,6 +130,14 @@ function copySpriteList(game, out) {
   }
 }
 
+function beWords(bytes) {
+  const words = new Uint16Array(bytes.length / 2);
+  for (let index = 0; index < words.length; index++) {
+    words[index] = (bytes[index * 2] << 8) | bytes[index * 2 + 1];
+  }
+  return words;
+}
+
 export class LocalDdpdojRuntime {
   static async prepare(summary, options = {}) {
     if (!summary?.complete || summary.gameId !== 'ddpdoj') {
@@ -192,6 +205,8 @@ export class LocalDdpdojRuntime {
       audio,
       modState,
       formationState,
+      tables,
+      rom,
       mode: config.mode,
     });
   }
@@ -209,9 +224,16 @@ export class LocalDdpdojRuntime {
     if (!this.context) throw new Error('A 2D canvas context is unavailable.');
     this.onError = options.onError ?? null;
     this.onP2Joined = options.onP2Joined ?? null;
+    this.onReplayUpdate = options.onReplayUpdate ?? null;
     this.audio = options.audio ?? null;
     this.modState = options.modState ?? null;
     this.formationState = options.formationState ?? null;
+    this.preparedTables = options.tables;
+    this.tables = options.tables;
+    this.rom = options.rom;
+    this.recorder = null;
+    this.playback = null;
+    this.replayGeneration = 0;
     this.p2Joined = authenticP2Joined(game.ram.u16(RAM.playerCountM1), this.formationState);
     this.rowscroll = new Uint16Array(SCREEN_H);
     this.zoomram = zoomRamWords();
@@ -244,6 +266,184 @@ export class LocalDdpdojRuntime {
     this.onP2Joined?.(joined);
   }
 
+  isRecording() {
+    return Boolean(this.recorder);
+  }
+
+  inPlayback() {
+    return Boolean(this.playback && !this.playback.ended);
+  }
+
+  emitReplay(state) {
+    try { this.onReplayUpdate?.(state); } catch { /* status UI cannot stop play */ }
+  }
+
+  async armRecording() {
+    assertFormationReplayCompatible(this.formationState, 'REC');
+    assertReplayCompatible(this.modState, 'REC');
+    if (this.recorder) return this.recorder;
+    if (this.inPlayback()) {
+      throw new Error('REC is unavailable while a replay is playing.');
+    }
+    if (this.playback?.ended) this.playback = null;
+
+    clearCoin();
+    const replayGeneration = this.replayGeneration;
+    const game = this.game;
+    const tables = localReplayTables(this.tables);
+    const tablesBytes = new TextEncoder().encode(JSON.stringify(tables));
+    const tablesSha256 = await sha256Hex(tablesBytes);
+    if (this.replayGeneration !== replayGeneration
+        || this.game !== game || this.inPlayback()) {
+      throw new Error('REC could not arm because the active game changed.');
+    }
+    this.recorder = armRecorder(game, {
+      periodFrames: PERIOD_FRAMES,
+      seed: {
+        lf: game.logicFrame,
+        vf: game.videoFrame,
+        arm: game.armedVblanks,
+        ramB64: b64(game.ram.b.slice()),
+        bgB64: b64(beBytesFromWords(game.vram.w)),
+        tablesB64: b64(tablesBytes),
+      },
+      version: {
+        git: 'unknown',
+        tablesSha256,
+        buildId: 'mixup-local',
+      },
+      scenario: 'mixup-local',
+      poke: '',
+    });
+    return this.recorder;
+  }
+
+  async stopRecording() {
+    if (!this.recorder) return null;
+    const recorder = this.recorder;
+    this.recorder = null;
+    if (recorder.n < 1) {
+      throw new Error('REC needs at least one complete logic frame before it can save.');
+    }
+    return stopRecorder(recorder);
+  }
+
+  playFrom(obj) {
+    assertFormationReplayCompatible(this.formationState, 'PLAY');
+    assertReplayCompatible(this.modState, 'PLAY');
+    if (this.recorder) {
+      throw new Error('Stop and save REC before loading a replay.');
+    }
+    if (this.inPlayback()) {
+      throw new Error('A replay is already playing.');
+    }
+
+    const parsed = validateReplay(obj);
+    const replayTables = localReplayTables(parsed.tables);
+    if (!localReplayTablesMatch(replayTables, this.preparedTables)) {
+      throw new Error('Replay tables do not match the exact local Black Label ROM identity selected in Mixup.');
+    }
+    const seedArm = localReplaySeedArm(
+      obj.seed,
+      parsed.ram,
+      RAM.semaphore - MACHINE.ramBase,
+    );
+    const game = new Game(parsed.ram, this.preparedTables, {
+      rom: this.rom,
+      logicFrame: obj.seed.lf,
+      videoFrame: obj.seed.vf,
+      seedArm,
+      bgSeed: beWords(parsed.bg),
+      coinTick: tickCoinPulse,
+      ...(this.audio ? { soundSink: this.audio } : {}),
+      ...(modGameOptions(this.modState) ?? {}),
+    });
+
+    clearKeyboard();
+    clearTouch();
+    clearCoin();
+    this.game = game;
+    this.tables = this.preparedTables;
+    if (this.modState) this.modState.runtime.ghost = null;
+    this.hitboxRam = this.modState?.loadout.presentation.hitboxes
+      ? game.ram.clone() : null;
+    copySpriteList(game, this.spritebuffer);
+    this.p2Joined = authenticP2Joined(game.ram.u16(RAM.playerCountM1));
+    this.onP2Joined?.(this.p2Joined);
+    this.accumulator = 0;
+    this.lastTime = performance.now();
+    this.playback = {
+      obj,
+      words: parsed.words,
+      pokes: parsed.pokes,
+      count: parsed.words.length,
+      index: 0,
+      verifier: armPlayback(game, obj),
+      ended: false,
+      pending: null,
+      needCheck: false,
+      result: null,
+    };
+    this.emitReplay({
+      kind: 'playing',
+      lf: obj.seed.lf,
+      count: this.playback.count,
+    });
+    return this.playback;
+  }
+
+  endPlayback() {
+    if (!this.playback || this.playback.ended) return;
+    const playback = this.playback;
+    playback.ended = true;
+    clearKeyboard();
+    clearTouch();
+    clearCoin();
+    const prior = playback.pending;
+    const pending = Promise.resolve(prior)
+      .then(() => playback.verifier.finalize())
+      .then((result) => {
+        playback.result = result;
+        this.emitReplay({
+          kind: result.green ? 'green' : 'red',
+          result,
+          lf: playback.obj.seed.lf,
+          count: playback.count,
+        });
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        playback.result = { green: false, error: message };
+        this.emitReplay({ kind: 'error', error: message });
+      });
+    playback.pending = pending;
+  }
+
+  pollPlayback() {
+    const playback = this.playback;
+    if (!playback || playback.ended || playback.pending || !playback.needCheck) return;
+    playback.needCheck = false;
+    let pending;
+    pending = playback.verifier.check()
+      .then((divergent) => {
+        if (divergent) {
+          this.emitReplay({
+            kind: 'divergent',
+            divergent,
+            compared: playback.verifier.n,
+          });
+        }
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        this.emitReplay({ kind: 'error', error: message });
+      })
+      .finally(() => {
+        if (playback.pending === pending) playback.pending = null;
+      });
+    playback.pending = pending;
+  }
+
   setMode(mode) {
     const next = mode === 'yoko' ? 'yoko' : 'tate';
     if (next === this.mode && this.image) return;
@@ -274,7 +474,11 @@ export class LocalDdpdojRuntime {
 
   stop() {
     this.running = false;
+    this.replayGeneration++;
     cancelAnimationFrame(this.request);
+    this.recorder = null;
+    if (this.playback) this.playback.ended = true;
+    this.playback = null;
     this.audio?.setMuted(true);
     this.audio?.resync();
     clearKeyboard();
@@ -299,26 +503,46 @@ export class LocalDdpdojRuntime {
       let steps = 0;
       while (this.accumulator >= period && steps < 8) {
         this.accumulator -= period;
-        copySpriteList(this.game, this.spritebuffer);
-        if (this.hitboxRam) this.hitboxRam.b.set(this.game.ram.b);
-        applyPreFrameMods(this.modState, this.game.ram);
-        const modWord = transformModInput(this.modState,
-          currentPortWord(), this.game.logicFrame);
+        const game = this.game;
+        const inPlayback = this.inPlayback();
+        copySpriteList(game, this.spritebuffer);
+        if (this.hitboxRam) this.hitboxRam.b.set(game.ram.b);
+        if (inPlayback) {
+          for (const [address, value] of this.playback.pokes) {
+            game.ram.setU8(address, value);
+          }
+        }
+        applyPreFrameMods(this.modState, game.ram);
+        const rawWord = inPlayback
+          ? this.playback.words[this.playback.index++]
+          : currentPortWord();
+        const modWord = transformModInput(this.modState, rawWord, game.logicFrame);
         const portWord = this.formationState
-          ? prepareFormationFrame(this.formationState, this.game, modWord)
+          ? prepareFormationFrame(this.formationState, game, modWord)
           : modWord;
-        this.game.coinPort = currentCoinWord();
-        this.game.step(portWord);
+        if (this.recorder) this.recorder.input(portWord);
+        game.coinPort = inPlayback || this.recorder ? 0xffff : currentCoinWord();
+        game.step(portWord);
         this.updateP2Joined();
         if (this.modState?.loadout.presentation.dropSpriteHold) {
-          copySpriteList(this.game, this.spritebuffer);
-          if (this.hitboxRam) this.hitboxRam.b.set(this.game.ram.b);
+          copySpriteList(game, this.spritebuffer);
+          if (this.hitboxRam) this.hitboxRam.b.set(game.ram.b);
         }
-        applyPostFrameMods(this.modState, this.game.ram);
+        applyPostFrameMods(this.modState, game.ram);
+        if (this.recorder) this.recorder.feed();
+        if (inPlayback) {
+          const bounds = this.playback.verifier.periodBounds.length;
+          this.playback.verifier.feed();
+          if (this.playback.verifier.periodBounds.length > bounds) {
+            this.playback.needCheck = true;
+          }
+          if (this.playback.index >= this.playback.count) this.endPlayback();
+        }
         steps++;
         period = transformModTiming(this.modState,
-          BASE_FRAME_MS * Math.max(1, this.game.armedVblanks || 1));
+          BASE_FRAME_MS * Math.max(1, game.armedVblanks || 1));
       }
+      this.pollPlayback();
       this.audio?.pump();
       this.draw();
       this.request = requestAnimationFrame((next) => this.frame(next));

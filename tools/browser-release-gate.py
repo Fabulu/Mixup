@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import io
+import json
 import re
 import sys
 import threading
@@ -250,6 +252,7 @@ class BrowserGate:
         self.asset_free = asset_free
 
     def run(self, name: str, body, expected_console_errors: tuple[str, ...] = (),
+            expected_downloads: tuple[str, ...] = (),
             context_options: dict | None = None) -> None:
         options = {
             "viewport": {"width": 1280, "height": 900},
@@ -264,6 +267,7 @@ class BrowserGate:
         closing_context = False
         extra_pages: list = []
         expected = list(expected_console_errors)
+        pending_downloads = list(expected_downloads)
 
         def intercept(route) -> None:
             violation = request_violation(route.request, self.origin, self.asset_free)
@@ -330,11 +334,16 @@ class BrowserGate:
                         != "application/wasm":
                     failures.append(f"wrong WASM content type: {response.url}")
 
+        def download_started(download) -> None:
+            filename = download.suggested_filename
+            if pending_downloads and filename == pending_downloads[0]:
+                pending_downloads.pop(0)
+            else:
+                failures.append(f"download started: {filename}")
+
         def instrument_page(candidate) -> None:
             candidate.on("pageerror", lambda error: failures.append(f"page error: {error}"))
-            candidate.on("download", lambda download: failures.append(
-                f"download started: {download.suggested_filename}"
-            ))
+            candidate.on("download", download_started)
             candidate.on("websocket", lambda websocket: failures.append(
                 f"websocket opened: {websocket.url}"
             ))
@@ -435,6 +444,8 @@ class BrowserGate:
             )
         if expected:
             failures.append(f"expected console error was not observed: {expected[0]}")
+        if pending_downloads:
+            failures.append(f"expected download was not observed: {pending_downloads[0]}")
 
         details = []
         if body_error is not None:
@@ -1743,6 +1754,21 @@ def gate_asset_free(browser, origin: str) -> None:
         assert_running()
         assert_no_runtime_globals()
         canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
+        record = page.locator("#local-record")
+        require(record.is_visible() and not record.is_disabled(),
+                "Mixup formation launch did not expose REC")
+        record.click()
+        wait_for_condition(
+            page,
+            "document.querySelector('#local-replay-status').dataset.kind === 'error'",
+            timeout=30000,
+        )
+        formation_replay_status = page.locator("#local-replay-status").inner_text()
+        require("REC is unavailable while formation mode is active"
+                in formation_replay_status,
+                f"Mixup formation REC refusal is unclear: {formation_replay_status!r}")
+        require(record.get_attribute("aria-pressed") == "false",
+                "Mixup formation REC armed despite the replay refusal")
         for width, height in ((1280, 900), (700, 900), (360, 900), (900, 360)):
             assert_stage_size(width, height)
         page.set_viewport_size({"width": 1280, "height": 900})
@@ -2040,6 +2066,31 @@ def gate_asset_free(browser, origin: str) -> None:
         screen_select.select_option("tate")
         require(page.evaluate("localStorage.getItem('ddpdoj.mode')") == "tate",
                 "the Mixup screen picker did not persist its TATE selection")
+        page.evaluate("""async () => {
+          const [{ LocalDdpdojRuntime }, { RAM }] = await Promise.all([
+            import('/src/ddpdoj-local.js'),
+            import('/games/ddpdoj/src/main.js'),
+          ]);
+          const prototype = LocalDdpdojRuntime.prototype;
+          const key = Symbol.for('mixup.releaseGate.slowReplayArm');
+          if (prototype[key]) return;
+          const armRecording = prototype.armRecording;
+          Object.defineProperty(prototype, key, { value: armRecording });
+          prototype.armRecording = async function(...args) {
+            const wasRunning = this.running;
+            if (wasRunning) {
+              this.running = false;
+              cancelAnimationFrame(this.request);
+            }
+            this.game.armedVblanks = 2;
+            this.game.ram.setU8(RAM.semaphore, 2);
+            try {
+              return await Reflect.apply(armRecording, this, args);
+            } finally {
+              if (wasRunning) this.start();
+            }
+          };
+        }""")
         page.locator("#local-start").click()
         wait_for_condition(
             page,
@@ -2062,6 +2113,212 @@ def gate_asset_free(browser, origin: str) -> None:
         canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
         require_no_post_preparation_reads(page, "DaiOuJou")
 
+        record = page.locator("#local-record")
+        play = page.locator("#local-play")
+        replay_status = page.locator("#local-replay-status")
+        require(record.is_visible() and play.is_visible()
+                and not record.is_disabled() and not play.is_disabled(),
+                "a fresh original launch did not enable REC and PLAY")
+        record.click()
+        wait_for_condition(
+            page,
+            "document.querySelector('#local-record').getAttribute('aria-pressed') === 'true' "
+            "&& document.querySelector('#local-replay-status').dataset.kind === 'recording'",
+            timeout=30000,
+        )
+        require(record.inner_text() == "STOP & SAVE" and play.is_disabled(),
+                "Mixup REC did not expose stop or disable PLAY")
+        page.wait_for_timeout(1800)
+        with page.expect_download(timeout=120000) as download_info:
+            record.click()
+        download = download_info.value
+        require(download.suggested_filename == "ddpdoj-mixup-local.replay",
+                f"unexpected local replay filename {download.suggested_filename!r}")
+        replay_path = download.path()
+        require(replay_path is not None, "Chrome did not retain the local replay download")
+        replay_bytes = Path(replay_path).read_bytes()
+        try:
+            replay = json.loads(replay_bytes.decode("utf-8"))
+            tables_bytes = base64.b64decode(replay["seed"]["tablesB64"], validate=True)
+            replay_tables = json.loads(tables_bytes.decode("utf-8"))
+            ram_bytes = base64.b64decode(replay["seed"]["ramB64"], validate=True)
+            bg_bytes = base64.b64decode(replay["seed"]["bgB64"], validate=True)
+        except (KeyError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise GateFailure(f"downloaded local replay is malformed: {error}") from error
+        require(replay.get("format") == "ddpdoj.replay/v1"
+                and replay.get("build") == "B"
+                and replay.get("version", {}).get("buildId") == "mixup-local",
+                "downloaded replay lost its Mixup-local v1 identity")
+        require(replay.get("seed", {}).get("arm") == 2,
+                "Mixup-local replay did not retain active slowdown in its seed")
+        require(replay.get("poke") == "",
+                "Mixup-local recording acquired an undeclared RAM poke")
+        require(isinstance(replay.get("portin", {}).get("count"), int)
+                and replay["portin"]["count"] >= 30,
+                f"Mixup REC captured too few complete frames: {replay.get('portin')!r}")
+        require(len(ram_bytes) == 0x20000 and len(bg_bytes) == 0x1000,
+                "Mixup-local replay seeds have the wrong RAM or BG size")
+        require(isinstance(replay_tables, dict) and "rom" not in replay_tables,
+                "Mixup-local replay embedded packaged cartridge ROM windows")
+        require(replay.get("version", {}).get("tablesSha256")
+                == hashlib.sha256(tables_bytes).hexdigest(),
+                "Mixup-local replay table digest does not match its seed")
+        require(replay_status.get_attribute("data-kind") == "saved",
+                "Mixup REC did not report a local save")
+        saved_status = replay_status.inner_text()
+        for wording in (
+            "exact Black Label ROM identity",
+            "contain no cartridge ROM windows",
+            "not automatically standalone headless verifier artifacts",
+        ):
+            require(wording in saved_status,
+                    f"Mixup replay portability warning omits {wording!r}: {saved_status!r}")
+        require(not record.is_disabled() and not play.is_disabled()
+                and record.get_attribute("aria-pressed") == "false",
+                "Mixup replay controls did not recover after save")
+
+        replay_payload = {
+            "name": download.suggested_filename,
+            "mimeType": "application/json",
+            "buffer": replay_bytes,
+        }
+        with page.expect_file_chooser(timeout=30000) as chooser_info:
+            play.click()
+        chooser_info.value.set_files(replay_payload)
+        wait_for_condition(
+            page,
+            "document.querySelector('#local-replay-status').dataset.kind === 'playing'",
+            timeout=30000,
+        )
+        require(record.is_disabled() and play.is_disabled(),
+                "Mixup left REC or PLAY enabled during replay playback")
+        page.keyboard.down("5")
+        try:
+            live_coin_word = page.evaluate("""async () => {
+              const input = await import('/games/ddpdoj/src/web/input.js');
+              return input.currentCoinWord();
+            }""")
+            require((live_coin_word & 1) == 0,
+                    f"release gate did not press live COIN during PLAY: {live_coin_word:#06x}")
+            wait_for_condition(
+                page,
+                "document.querySelector('#local-replay-status').dataset.kind === 'green'",
+                timeout=120000,
+            )
+        finally:
+            page.keyboard.up("5")
+        green_status = replay_status.inner_text()
+        require(green_status.startswith("GREEN: all ")
+                and "recorded frames and the final digest matched" in green_status,
+                f"Mixup local replay did not report final GREEN: {green_status!r}")
+        require(not record.is_disabled() and not play.is_disabled(),
+                "Mixup replay controls did not recover after GREEN")
+        require_no_post_preparation_reads(page, "DaiOuJou replay")
+
+        divergent = json.loads(json.dumps(replay))
+        divergent["digest"]["periods"][0]["sha256"] = "0" * 64
+        divergent_payload = {
+            "name": "ddpdoj-divergent-local.replay",
+            "mimeType": "application/json",
+            "buffer": json.dumps(divergent).encode("utf-8"),
+        }
+        with page.expect_file_chooser(timeout=30000) as chooser_info:
+            play.click()
+        chooser_info.value.set_files(divergent_payload)
+        wait_for_condition(
+            page,
+            "document.querySelector('#local-replay-status').dataset.kind === 'red'",
+            timeout=120000,
+        )
+        red_status = replay_status.inner_text()
+        require(red_status.startswith("RED: replay verification failed")
+                and "first divergent digest period 1" in red_status,
+                f"Mixup local replay did not localize final RED: {red_status!r}")
+        require(not record.is_disabled() and not play.is_disabled(),
+                "Mixup replay controls did not recover after RED")
+        require_no_post_preparation_reads(page, "DaiOuJou divergent replay")
+
+        malformed = json.loads(json.dumps(replay))
+        malformed_tables = json.loads(base64.b64decode(
+            malformed["seed"]["tablesB64"], validate=True
+        ).decode("utf-8"))
+        del malformed_tables["dirTable"]["bytes"]
+        malformed["seed"]["tablesB64"] = base64.b64encode(
+            json.dumps(malformed_tables).encode("utf-8")
+        ).decode("ascii")
+        malformed_payload = {
+            "name": "ddpdoj-malformed-tables.replay",
+            "mimeType": "application/json",
+            "buffer": json.dumps(malformed).encode("utf-8"),
+        }
+        before_malformed = page.evaluate(
+            "() => CanvasRenderingContext2D.prototype["
+            "Symbol.for('mixup.releaseGate.putImageDataCount')]"
+        )
+        with page.expect_file_chooser(timeout=30000) as chooser_info:
+            play.click()
+        chooser_info.value.set_files(malformed_payload)
+        wait_for_condition(
+            page,
+            "document.querySelector('#local-replay-status').dataset.kind === 'error'",
+            timeout=30000,
+        )
+        malformed_status = replay_status.inner_text()
+        require("Replay tables do not match the exact local Black Label ROM identity"
+                in malformed_status,
+                f"Mixup accepted malformed replay tables: {malformed_status!r}")
+        page.wait_for_timeout(250)
+        after_malformed = page.evaluate(
+            "() => CanvasRenderingContext2D.prototype["
+            "Symbol.for('mixup.releaseGate.putImageDataCount')]"
+        )
+        require(after_malformed > before_malformed
+                and not record.is_disabled() and not play.is_disabled(),
+                "malformed replay input replaced or stopped the valid local game")
+
+        page.evaluate("""() => {
+          const key = Symbol.for('mixup.releaseGate.deferredReplayText');
+          const state = { original: File.prototype.text, reject: null };
+          Object.defineProperty(File.prototype, key, {
+            value: state, configurable: true,
+          });
+          File.prototype.text = function() {
+            return new Promise((_resolve, reject) => { state.reject = reject; });
+          };
+        }""")
+        with page.expect_file_chooser(timeout=30000) as chooser_info:
+            play.click()
+        chooser_info.value.set_files(replay_payload)
+        wait_for_condition(
+            page,
+            "typeof File.prototype[Symbol.for("
+            "'mixup.releaseGate.deferredReplayText')].reject === 'function'",
+            timeout=30000,
+        )
+        page.locator("#local-game-mods").click()
+        require(page.locator("#local-picker").is_visible(),
+                "deferred replay read did not allow a return to MODS")
+        page.locator("#local-start").click()
+        wait_for_condition(
+            page,
+            "() => { const record = document.querySelector('#local-record'); "
+            "return !document.querySelector('#game-screen').hidden "
+            "&& record && !record.disabled; }",
+            timeout=300000,
+        )
+        page.evaluate("""() => {
+          const key = Symbol.for('mixup.releaseGate.deferredReplayText');
+          const state = File.prototype[key];
+          File.prototype.text = state.original;
+          state.reject(new Error('stale replay file read'));
+        }""")
+        page.wait_for_timeout(250)
+        require(replay_status.is_hidden() and not record.is_disabled()
+                and not play.is_disabled()
+                and record.get_attribute("aria-pressed") == "false",
+                "a stale replay read changed the replacement local session")
+        require_no_post_preparation_reads(page, "DaiOuJou stale replay read")
+
         draw_count = page.evaluate(
             "() => CanvasRenderingContext2D.prototype["
             "Symbol.for('mixup.releaseGate.putImageDataCount')]"
@@ -2083,7 +2340,8 @@ def gate_asset_free(browser, origin: str) -> None:
         return recheck
 
     gate.run("asset-free local DaiOuJou", local_ddpdoj,
-             context_options={"has_touch": True})
+             expected_downloads=("ddpdoj-mixup-local.replay",),
+             context_options={"has_touch": True, "accept_downloads": True})
 
 
 def parse_args() -> argparse.Namespace:
