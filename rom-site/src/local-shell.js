@@ -615,11 +615,25 @@ class LocalShell {
     }
   }
 
+  hasDdpFormationRunaheadConflict(loadout = this.resolvedLoadout()) {
+    const state = this.state();
+    return this.gameId === 'ddpdoj' && !!state.formation
+      && (loadout?.presentation?.runaheadFrames ?? 0) > 0;
+  }
+
+  syncStartButton() {
+    const conflict = this.gameId && this.state()
+      ? this.hasDdpFormationRunaheadConflict()
+      : false;
+    this.startButton.disabled = Boolean(this.runtime || this.booting || conflict);
+  }
+
   renderSummary() {
     const state = this.state();
     const loadout = this.resolvedLoadout();
     const ids = resolvedIds(loadout, state.mods).filter(Boolean);
     const conflicts = conflictMessages(loadout);
+    const formationRunaheadConflict = this.hasDdpFormationRunaheadConflict(loadout);
     const parts = [];
     if (this.gameId === 'ddpdoj' && state.formation) {
       parts.push(state.formation === Formation.FORMATION_THREE_MODE?.id
@@ -629,10 +643,15 @@ class LocalShell {
     this.summary.replaceChildren();
     const strong = element('b', '', this.options.title);
     this.summary.append(strong, document.createTextNode(`: ${parts.join(', ')}`));
-    if (conflicts.length) {
+    if (conflicts.length || formationRunaheadConflict) {
       this.summary.append(document.createTextNode(' '));
-      this.summary.append(element('span', 'warning', conflicts.join(' ')));
+      const warnings = [...conflicts];
+      if (formationRunaheadConflict) {
+        warnings.push('Formation cannot be combined with runahead.');
+      }
+      this.summary.append(element('span', 'warning', warnings.join(' ')));
     }
+    this.syncStartButton();
   }
 
   runtimeConfig() {
@@ -702,6 +721,10 @@ class LocalShell {
 
   async startGame() {
     if (this.runtime || this.booting) return;
+    if (this.hasDdpFormationRunaheadConflict()) {
+      this.renderSummary();
+      return;
+    }
     const generation = ++this.generation;
     this.booting = true;
     this.startButton.disabled = true;
@@ -779,7 +802,7 @@ class LocalShell {
       this.runtimeError(error, generation);
     } finally {
       this.booting = false;
-      this.startButton.disabled = Boolean(this.runtime);
+      this.syncStartButton();
     }
   }
 
@@ -798,7 +821,7 @@ class LocalShell {
     const ddpdojAudio = this.ddpdojAudio;
     this.runtime = null;
     this.ddpdojAudio = null;
-    this.startButton.disabled = this.booting;
+    this.syncStartButton();
     try {
       runtime?.stop();
     } finally {

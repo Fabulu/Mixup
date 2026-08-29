@@ -195,7 +195,9 @@ import { attachInput, pollInput, currentPortWord } from './input.js';
 // PORT: `currentPortWord()` is the inverse of build A's `$13D464` shuffle and
 // `currentCoinWord()` is a plain active-low word with no shuffle at all. The
 // two must never be mixed (src/web/input.js:126).
-import { currentCoinWord, tickCoinPulse, attachCoinKeys, clearCoin } from './input.js';
+import {
+  createCoinProjection, currentCoinWord, tickCoinPulse, attachCoinKeys, clearCoin,
+} from './input.js';
 // W375 -- `COIN.idle` ($FFFF, ACTIVE LOW = nothing pressed) is what the coin
 // port is pinned to during `.replay` PLAYBACK. The literal is never written out
 // here: it is the cartridge's idle level and it lives with the rest of $13CFBA.
@@ -222,6 +224,7 @@ import {
   transformModInput, transformModTiming, applyPresentationMods, applyHitboxOverlay,
   assertReplayCompatible, modGameOptions,
 } from '../mods.js';
+import { projectRunahead, RunaheadProjectionError } from '../runahead.js';
 import {
   assertFormationReplayCompatible, createFormationState, formationGameOptions,
   initializeFormation, prepareFormationFrame, resolveFormationAuthenticSelection,
@@ -818,6 +821,10 @@ export function portSpriteList(ram, map, opts = {}) {
   return { words, records, drawn, skipped, blank, missing, pending };
 }
 
+function detachPortList(list) {
+  return { words: list.words };
+}
+
 /** The status line's version of a miss set: the worst `n` by count, as text. */
 export function namedMisses(missing, n = 3) {
   return [...missing.entries()].sort((a, b) => b[1] - a[1]).slice(0, n)
@@ -861,6 +868,11 @@ export class Demo {
     // A recognized mode owns exactly one mutable state object for this Demo.
     // Missing and unknown formation ids produce null and add no Game callback.
     this.formation = createFormationState(formationModeValue);
+    this.runaheadFrames = modState?.loadout.presentation.runaheadFrames ?? 0;
+    if (this.formation && this.runaheadFrames) {
+      throw new Error('formation mode cannot be combined with runahead');
+    }
+    this.runaheadView = null;
     // Authentic cartridge content is not a mod. Formation resolves only P1;
     // every additional ship is a private P1-owned companion. Native P2 fields
     // are incompatible and must fail before Game construction or RAM mutation.
@@ -989,6 +1001,19 @@ export class Demo {
     this.spriteSource = DEFAULT_SPRITE_SOURCE;
     this.listBuf = new Uint16Array(PORT_LIST_WORDS);
     this.listOpts.out = this.listBuf;
+    this.runaheadListBuf = new Uint16Array(PORT_LIST_WORDS);
+    this.runaheadListOpts = {
+      out: this.runaheadListBuf,
+      shardReady: this.listOpts.shardReady,
+    };
+    this.runaheadBg = this.runaheadFrames ? new Uint16Array(this.game.vram.w.length) : null;
+    this.runaheadTx = this.runaheadFrames ? new Uint16Array(this.game.txvram.w.length) : null;
+    this.runaheadVideo = this.runaheadFrames ? {} : null;
+    this.runaheadPalette = this.runaheadFrames ? {
+      words: new Uint16Array(this.game.palette.words.length),
+      sourced: new Uint8Array(this.game.palette.sourced.length),
+    } : null;
+    this.runaheadHitboxRam = null;
     this.portList = portSpriteList(this.game.ram, this.romToPacked, this.listOpts);
     if (this.authenticLaunchPending) {
       // Do not pair the selected palette with the captured default hardware list.
@@ -1073,10 +1098,95 @@ export class Demo {
     if (!this.inPlayback()) tickCoinPulse();
   }
 
+  _captureRunaheadHold() {
+    const g = this.game;
+    let hitboxRam = null;
+    if (this.mods?.loadout.presentation.hitboxes) {
+      if (!this.runaheadHitboxRam) this.runaheadHitboxRam = g.ram.clone();
+      else this.runaheadHitboxRam.b.set(g.ram.b);
+      hitboxRam = this.runaheadHitboxRam;
+    }
+    return {
+      prevPos: [g.ram.u16(RAM.player1 + P.posY), g.ram.u16(RAM.player1 + P.posX)],
+      prevTilt: g.ram.u16(RAM.player1 + P.tilt) << 16 >> 16,
+      prevShipSel: g.ram.u16(RAM.player1 + P.shipSel),
+      portList: detachPortList(portSpriteList(
+        g.ram, this.romToPacked, this.runaheadListOpts,
+      )),
+      hitboxRam,
+    };
+  }
+
+  _captureRunaheadView(baseLogicFrame, depth, hold) {
+    const g = this.game;
+    const bg = this.runaheadBg ?? new Uint16Array(g.vram.w.length);
+    const tx = this.runaheadTx ?? new Uint16Array(g.txvram.w.length);
+    const video = this.runaheadVideo ?? {};
+    const palette = this.runaheadPalette ?? {
+      words: new Uint16Array(g.palette.words.length),
+      sourced: new Uint8Array(g.palette.sourced.length),
+    };
+    this.runaheadBg = bg;
+    this.runaheadTx = tx;
+    this.runaheadVideo = video;
+    this.runaheadPalette = palette;
+    bg.set(g.vram.w);
+    tx.set(g.txvram.w);
+    Object.assign(video, {
+      bg_xscroll: g.video.bg_xscroll,
+      bg_yscroll: g.video.bg_yscroll,
+      tx_xscroll: g.video.tx_xscroll,
+      tx_yscroll: g.video.tx_yscroll,
+    });
+    palette.words.set(g.palette.words);
+    palette.sourced.set(g.palette.sourced);
+    return {
+      baseLogicFrame,
+      logicFrame: g.logicFrame,
+      depth,
+      bg,
+      tx,
+      video,
+      palette,
+      ...hold,
+    };
+  }
+
+  _projectRunahead(rawPw) {
+    const depth = this.runaheadFrames;
+    if (!depth || this.inPlayback()) return null;
+    const g = this.game;
+    const baseLogicFrame = g.logicFrame;
+    const pokes = this.progressionPokes ?? [];
+    const coin = createCoinProjection();
+    const dropSpriteHold = this.mods?.loadout.presentation.dropSpriteHold;
+    let hold = null;
+    try {
+      return projectRunahead(g, depth, (target, frame) => {
+        const finalFrame = frame === depth - 1;
+        if (finalFrame && !dropSpriteHold) hold = this._captureRunaheadHold();
+        for (const [a, val] of pokes) target.ram.setU8(a, val);
+        applyPreFrameMods(this.mods, target.ram);
+        const pw = transformModInput(this.mods, rawPw, target.logicFrame);
+        target.coinPort = coin.currentWord();
+        const phase = target.ram.u16(COIN.irq4Phase);
+        const videoFrame = target.videoFrame;
+        target.step(pw);
+        coin.advanceVblanks(phase, target.videoFrame - videoFrame);
+        if (finalFrame && dropSpriteHold) hold = this._captureRunaheadHold();
+        applyPostFrameMods(this.mods, target.ram);
+      }, () => this._captureRunaheadView(baseLogicFrame, depth, hold));
+    } catch (error) {
+      if (error instanceof RunaheadProjectionError) return null;
+      throw error;
+    }
+  }
+
   /** ONE LOGIC FRAME of the port.  No pixel work happens in here. */
-  step() {
+  step({ project = true } = {}) {
     const g = this.game;
     const inPlayback = this.inPlayback();
+    this.runaheadView = null;
     if (this.recorder) assertPrivateFormationReplayCompatible(g, 'REC');
     if (inPlayback) assertPrivateFormationReplayCompatible(g, 'PLAY');
     this.prevPos = [g.ram.u16(RAM.player1 + P.posY), g.ram.u16(RAM.player1 + P.posX)];
@@ -1169,6 +1279,10 @@ export class Demo {
     // Everything is queued at boot anyway (`prefetchAll`); this decides ORDER,
     // which is what matters when the link is slow.
     this.bundle.bg?.followColumn(this.streamColumn());
+    if (project && !inPlayback && this.runaheadFrames) {
+      this.runaheadView = this._projectRunahead(rawPw);
+    }
+    return inPlayback ? null : rawPw;
   }
 
   /**
@@ -1336,6 +1450,7 @@ export class Demo {
     // PLAY owns an exact replay seed and must never inherit an unfinished
     // ordinary-launch selector seam from the Game it replaces.
     this.authenticLaunchPending = false;
+    this.runaheadView = null;
     this.portList = portSpriteList(game.ram, this.romToPacked, this.listOpts);
     this.dirty = true;                  // repaint with the new Game's picture
     this.recorder = null;
@@ -1437,9 +1552,12 @@ export class Demo {
   }
 
   /** The picture for the port's CURRENT logic frame. */
-  draw() {
+  draw(view) {
+    view ??= this.runaheadView;
+    const g = this.game;
+    const logicFrame = view?.logicFrame ?? g.logicFrame;
     const n = this.cap.length;
-    const k = (this.game.logicFrame - this.seedLf) % n;
+    const k = (logicFrame - this.seedLf) % n;
     const fi = k < 0 ? k + n : k;
     const st = this.cap.state(fi);
     // WAVE 13 -- THE SCROLL IS THE PORT'S.  `st.bg` and the four scroll
@@ -1451,13 +1569,14 @@ export class Demo {
     // ring asks for tiles the sheet does not hold; `bundle.missingBgTiles`
     // counts every one and the status line prints it.  That is W15's job and
     // it is stated on the page rather than hidden behind a still picture.
-    st.bg = this.game.vram.w;
+    st.bg = view?.bg ?? g.vram.w;
+    const video = view?.video ?? g.video;
     st.regs = {
       ...st.regs,
-      bg_xscroll: this.game.video.bg_xscroll,   // $B03000, from $141018/$14101C
-      bg_yscroll: this.game.video.bg_yscroll,   // $B02000
-      tx_xscroll: this.game.video.tx_xscroll,   // $23C5FC, written once
-      tx_yscroll: this.game.video.tx_yscroll,   // $23C5F2
+      bg_xscroll: video.bg_xscroll,   // $B03000, from $141018/$14101C
+      bg_yscroll: video.bg_yscroll,   // $B02000
+      tx_xscroll: video.tx_xscroll,   // $23C5FC, written once
+      tx_yscroll: video.tx_yscroll,   // $23C5F2
     };
     // THE SPLICE, through the shared module the packer proves round-trips.
     // `prevPos`, not the current position: the sprite buffer lags main RAM by
@@ -1471,8 +1590,11 @@ export class Demo {
     // position, so the ship BANKS.  `prevTilt`, not the current one, for the
     // same measured reason the position is one frame behind: the sprite buffer
     // lags main RAM by one frame.
-    this.spliced = this.cap.splice(st, fi, this.prevPos[0], this.prevPos[1],
-      { tilt: this.prevTilt, shipSel: this.prevShipSel,
+    const prevPos = view?.prevPos ?? this.prevPos;
+    const prevTilt = view?.prevTilt ?? this.prevTilt;
+    const prevShipSel = view?.prevShipSel ?? this.prevShipSel;
+    this.spliced = this.cap.splice(st, fi, prevPos[0], prevPos[1],
+      { tilt: prevTilt, shipSel: prevShipSel,
         ship: this.bundle.manifest.ship ?? null });
     // WAVE 37 -- AND NOW THE RECORDED ENEMIES COME OFF.  AFTER the splice, for
     // the reason `stripToAttached`'s header gives: the splice addresses records
@@ -1501,7 +1623,7 @@ export class Demo {
     // CONSTRUCTOR's bag (`render/igs023.js:36-41` vs :74-78), and
     // `tools/pixgate.mjs:327-332` builds its `drawOpts` from exactly the four
     // mutations and passes neither `spriteStride` nor `scrollSign`.
-    const port = this.portList;
+    const port = view?.portList ?? this.portList;
     const usedPort = this.spriteSource === 'port';
     if (usedPort) st.spritebuffer = port.words;
     // ----------------------------------------------------------- WAVE 98 (H1)
@@ -1556,7 +1678,7 @@ export class Demo {
     // number renders as real text tiles.  The OTHER text (lives, bombs,
     // credits, chain-high-water) is still blank -- those ride the unported
     // `$141258` flush (Wave C') and the cells stay zero / transparent here.
-    if (usedPort) st.tx = this.game.txvram.w;
+    if (usedPort) st.tx = view?.tx ?? g.txvram.w;
     const idx = this.renderer.renderIndexed(st,
       usedPort ? { spriteStride: RAM_STRIDE } : undefined);
     // `txDropped` now means "the WHOLE TX layer is the recording's".  In
@@ -1577,13 +1699,15 @@ export class Demo {
     if (!this.palMerged || this.palMerged.length !== capPal.length) {
       this.palMerged = new Uint16Array(capPal.length);
     }
-    mergePalette(this.game.palette, capPal, this.palMerged);
+    mergePalette(view?.palette ?? g.palette, capPal, this.palMerged);
     this.paletteSourced = this.palMerged.fromCartridge;
     this.paletteTotal = capPal.length;
     paletteRgb(this.palMerged, this.pal);
     resolveRgb(idx, this.pal, this.rgb);
     applyPresentationMods(this.mods, this.rgb);
-    if (usedPort) applyHitboxOverlay(this.mods, this.hitboxRam ?? this.game.ram, this.rgb);
+    if (usedPort) applyHitboxOverlay(
+      this.mods, view?.hitboxRam ?? this.hitboxRam ?? g.ram, this.rgb,
+    );
     // TATE rotates the BUFFER; yoko blits the board's own 448x224 buffer.
     // Either way the canvas backing store already matches (`setMode`).
     if (PICTURES[this.mode].rotate) {
@@ -1624,6 +1748,9 @@ export class Demo {
       mode: this.mode,
       modIds: this.mods?.loadout.ids ?? [],
       modNames: this.mods?.loadout.ids.map((id) => MODS[id].name) ?? [],
+      runaheadConfigured: this.runaheadFrames,
+      runaheadActive: this.runaheadView?.depth ?? 0,
+      displayLogicFrame: this.runaheadView?.logicFrame ?? g.logicFrame,
       formationId: this.formation?.mode.id ?? null,
       formationName: this.formation?.mode.name ?? null,
       formationControl: this.formation
@@ -1748,11 +1875,15 @@ export class Demo {
     if (dt > 200) dt = period;
     this.acc += dt;
     let n = 0;
+    let liveRawPw = null;
     while (this.acc >= period && n < 8) {
       this.acc -= period;
-      this.step();
+      liveRawPw = this.step({ project: false });
       n++;
       period = transformModTiming(this.mods, this.periodMs * this.game.armedVblanks);
+    }
+    if (liveRawPw !== null && this.runaheadFrames) {
+      this.runaheadView = this._projectRunahead(liveRawPw);
     }
     // WAVE 132 -- PLAYBACK LIVE BOUNDARY CHECK.  After the step batch, if a
     // period window closed, hash it fresh and surface the first divergence now

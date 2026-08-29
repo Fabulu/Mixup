@@ -450,7 +450,7 @@ test('Demo.draw() really calls them in that order', () => {
   // is weak evidence in general and strong here: there is exactly one call site
   // of each and their order is the entire question.
   const src = read('src/web/app.js');
-  const body = src.slice(src.indexOf('  draw() {'));
+  const body = src.slice(src.indexOf('  draw(view) {'));
   const iSplice = body.indexOf('this.cap.splice(');
   const iStrip = body.indexOf('stripToAttached(');
   assert.ok(iSplice >= 0 && iStrip >= 0, 'draw() must call both');
@@ -696,7 +696,7 @@ test('Demo.draw() renders the HELD list, and step() takes it BEFORE the frame',
     // there is exactly one snapshot and one `g.step()` and their order is the
     // entire question.
     const src = read('src/web/app.js');
-    const body = src.slice(src.indexOf('  step() {'));
+    const body = src.slice(src.indexOf('  step({ project = true } = {}) {'));
     // The exact call sites, not a substring: the prose above them says "BEFORE
     // `g.step()`" and a looser search finds the COMMENT rather than the code.
     // WAVE 131: the argument is now `pw` (computed once from

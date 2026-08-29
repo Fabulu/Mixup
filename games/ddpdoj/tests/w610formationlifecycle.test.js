@@ -299,7 +299,7 @@ test('W610 vanilla exact-bundle Demo leaves native P2 controls and actors untouc
       assert.equal(demo.game.ram.u16(TALLY.side1), 0);
       assert.deepEqual(bytes(demo.game.ram, RAM.player2, P.stride), p2Before);
       assert.deepEqual(allocatorActors(demo.game.ram, 3), []);
-      assert.equal(MOD_IDS.length, 32);
+      assert.equal(MOD_IDS.length, 35);
       assert.equal(MOD_IDS.includes(FORMATION_MODE.id), false);
       assert.equal(MOD_IDS.includes(FORMATION_THREE_MODE.id), false);
     } finally {

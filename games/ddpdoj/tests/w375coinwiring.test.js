@@ -37,7 +37,9 @@ import { fileURLToPath } from 'node:url';
 
 import { Game } from '../src/main.js';
 import { COIN, coinRead13CFBA } from '../src/isr.js';
-import { COIN_BITS, setCoinKey, clearCoin, currentCoinWord } from '../src/web/input.js';
+import {
+  COIN_BITS, setCoinKey, clearCoin, createCoinProjection, currentCoinWord, tickCoinPulse,
+} from '../src/web/input.js';
 import { SOUND_WRAPPERS, postWrapperWithRuntime, SoundState } from '../src/sound.js';
 import { UnportedLog } from '../src/unported.js';
 import { OBJ } from '../src/objdriver.js';
@@ -74,6 +76,24 @@ function run(g, word, n) {
   g.coinPort = word;
   for (let i = 0; i < n; i++) g.step(NO_PLAYER);
 }
+
+test('runahead coin projection advances a detached copy at IRQ4 cadence', () => {
+  clearCoin();
+  try {
+    setCoinKey('COIN1', true);
+    for (let call = 1; call < 12; call++) tickCoinPulse();
+    const projection = createCoinProjection();
+
+    assert.notEqual(projection.currentWord(), COIN.idle);
+    projection.advanceVblanks(1, 1);
+    assert.equal(projection.currentWord(), COIN.idle,
+      'a calling speculative vblank spends the detached pulse');
+    assert.notEqual(currentCoinWord(), COIN.idle,
+      'speculation cannot spend the canonical browser pulse');
+  } finally {
+    clearCoin();
+  }
+});
 
 // ---------------------------------------------------------------------------------------------
 // 1 -- END TO END. THE TEST THAT PROVES THE CHAIN.

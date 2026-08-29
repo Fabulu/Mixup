@@ -686,6 +686,8 @@ const modLoadout = resolvedMods.ids.length ? resolvedMods : null;
 const selectedFormation = hashToFormation(location.hash);
 const formationP2Conflict = !!selectedFormation
   && ['p2', 'p2ship', 'p2style'].some((name) => params.has(name));
+const formationRunaheadConflict = !!selectedFormation
+  && resolvedMods.presentation.runaheadFrames > 0;
 const ordinaryAuthenticSelection = authenticSelectionFromParams(params);
 const formationOverrides = formationAuthenticOverridesFromParams(params);
 const authenticSelection = selectedFormation
@@ -1211,6 +1213,9 @@ try {
   if (formationP2Conflict) {
     throw new Error('formation mode cannot be combined with a native P2 selection');
   }
+  if (formationRunaheadConflict) {
+    throw new Error('formation mode cannot be combined with runahead');
+  }
   statusEl.textContent = 'loading the asset bundle…';
   const app = await boot(canvas, {
     ...(modLoadout ? { mods: modLoadout } : {}),
@@ -1487,6 +1492,10 @@ try {
     paintSound();
     statsEl.innerHTML = [
       `lf ${s.logicFrame}`,
+      s.runaheadConfigured
+        ? `RA ${s.runaheadConfigured}f ${s.runaheadActive
+          ? `active display lf${s.displayLogicFrame}` : 'suspended'}`
+        : '',
       s.formationId ? '<b>FORMATION: P1 BOTH / P1 BUTTON 2</b>' : '',
       `${s.pyPx.toFixed(1)},${s.pxPx.toFixed(1)}px`,
       `tilt ${s.tilt}`,

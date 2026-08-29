@@ -111,6 +111,13 @@ import {
 import { runAnimObjects24683E } from './animobjects.js';
 import { installBulletSpeedTransform, installBulletSpawnHook } from './bullets.js';
 import { installScoreAddendTransform } from './score.js';
+import {
+  assertRunaheadInactive,
+  beginRunaheadStep,
+  restoreRunaheadState,
+  RUNAHEAD_EXTERNAL_STATE,
+  saveRunaheadState,
+} from './runahead-state.js';
 
 /** THE BUCKETS `pgm.py shipgate` SUBSTITUTES, in drain (= depth) order.
  *
@@ -317,6 +324,9 @@ function slotObject(fn, rom) {
 
 export class Game {
   #cabinetFrontend = false;
+  #runaheadHandlers = null;
+  #runaheadVideo = null;
+  #runaheadExternalState = null;
 
   /**
    * @param seed     Uint8Array(0x20000) -- a snapshot of the board's main RAM
@@ -357,10 +367,12 @@ export class Game {
     // `video`, for NOTES-replay.md §2's reason.
     this.txvram = new TxVram();
     this.video = opts.video ?? new VideoRegs();
+    this.#runaheadVideo = opts.video == null ? this.video : null;
     this.scrollEvents = [];
     this.bgMutate = opts.bgMutate ?? null;
     this.handlers = opts.handlers
       ?? defaultHandlers(this.rom, this.vram, { mutate: opts.bgMutate ?? null });
+    this.#runaheadHandlers = opts.handlers == null ? new Map(this.handlers) : null;
     // Seeded, not counted from zero: the port starts mid-game, and a counter
     // that started at 0 would compare against nothing.
     this.logicFrame = opts.logicFrame ?? 0;
@@ -438,6 +450,19 @@ export class Game {
     if (this.bulletSpawnHook) installBulletSpawnHook(this.ram, this.bulletSpawnHook);
     if (this.scoreAddendTransform) {
       installScoreAddendTransform(this.ram, this.scoreAddendTransform);
+    }
+    this.#runaheadExternalState = opts[RUNAHEAD_EXTERNAL_STATE] ?? null;
+    if (this.#runaheadExternalState != null) {
+      const external = this.#runaheadExternalState;
+      if (typeof external.save !== 'function' || typeof external.restore !== 'function'
+          || !external.callbacks || typeof external.callbacks !== 'object') {
+        throw new TypeError('Game runahead external state adapter is invalid');
+      }
+      for (const [name, callback] of Object.entries(external.callbacks)) {
+        if (typeof callback !== 'function' || this[name] !== callback) {
+          throw new TypeError(`Game runahead callback ${name} does not match its adapter`);
+        }
+      }
     }
     this.wallHits = [];
     this.allocEvents = new Map();
@@ -531,7 +556,7 @@ export class Game {
   }
 
   /** The context every ported routine gets.  No clock is reachable from it. */
-  #ctx() {
+  #ctx(speculative = false) {
     const installedPrivateShotHook = /** @type {any} */ (this).privateShotObjectHook;
     const privateShotObjectHook = installedPrivateShotHook
       ? (invokingCtx) => installedPrivateShotHook(this, invokingCtx)
@@ -694,7 +719,12 @@ export class Game {
         // `$28CAFC->$28B884` synchronously installs the selected score group
         // before the leaf posts its ordinary four-byte door. Keep that side
         // effect ordered at the sound boundary; it is not a fifth payload byte.
-        return postWrapperWithRuntime(this.ram, this.sound, this.soundSink, addr);
+        return postWrapperWithRuntime(
+          this.ram,
+          this.sound,
+          speculative ? null : this.soundSink,
+          addr,
+        );
       },
       // W426 -- THE SIBLING API, AND THE REASON THE ADDRESS-ONLY ONE CANNOT
       // CARRY IT. `$28C186` is `$28C170`'s twin in the `$28BBAC` tier, except
@@ -964,6 +994,20 @@ export class Game {
    * $C08000 -- one word per LOGIC frame, which is exactly what a replay
    * records (NOTES-replay.md constraint 3; measured input lead is ZERO).
    */
+  saveRunaheadState(depth) {
+    return saveRunaheadState(
+      this,
+      this.#runaheadHandlers,
+      this.#runaheadVideo,
+      this.#runaheadExternalState,
+      depth,
+    );
+  }
+
+  restoreRunaheadState(checkpoint) {
+    restoreRunaheadState(this, checkpoint);
+  }
+
   /**
    * Boots the front end from zeroed RAM and stores its setup result.
    *
@@ -971,6 +1015,7 @@ export class Game {
    *   section flag and the control register ended at, and the staged record.
    */
   boot({ cabinetFrontend = false } = {}) {
+    assertRunaheadInactive(this, 'Game boot');
     /*
      * `$23BF74..$23BFDB` -- THE FRONT-END BOOT BLOCK, and the gap it closes.
      *
@@ -1013,7 +1058,8 @@ export class Game {
   }
 
   step(portWord) {
-    const ctx = this.#ctx();
+    const speculative = beginRunaheadStep(this);
+    const ctx = this.#ctx(speculative);
     this.budget.beginFrame();
     this.irq6Count = 0; this.releases = 0;
     this.frameRequests = []; this.frameRequestsOther = [];
@@ -1058,7 +1104,7 @@ export class Game {
         // the debounce is called. Ticking it per video frame would halve the
         // hold the ROM counts; ticking it twice per call would quarter it, and
         // either way a held key credits at the wrong rate or not at all.
-        this.coinTick?.();
+        if (!speculative) this.coinTick?.();
       }
       if (irq6(this.ram, portWord, ctx)) this.releases++;
     }
@@ -1192,7 +1238,7 @@ export class Game {
     // src/sound.js drainFrame for the dead-code-trap and ACK notes.
     this.soundFrame = drainFrame(this.ram, this.sound, this.logicFrame);
     this.soundInput = soundFrameInput(this.soundFrame);
-    if (this.soundSink) this.soundSink.frame(this.soundInput);
+    if (!speculative && this.soundSink) this.soundSink.frame(this.soundInput);
     this.logicFrame++;
     return this;
   }

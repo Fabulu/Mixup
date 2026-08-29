@@ -572,7 +572,8 @@ export function createBatmanRomProvider(bytes) {
         const data = buildLevelData(rom, level);
         levels.set(level, { info: manifest.levels[level - 1], cells: data.cells, vram: data.vram });
       }
-      return levels.get(level);
+      const cached = levels.get(level);
+      return { info: cached.info, cells: cached.cells.slice(), vram: cached.vram.slice() };
     },
   });
 }

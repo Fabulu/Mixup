@@ -213,14 +213,37 @@ export function setCoinKey(name, down) {
  * frame) and `$13CEC8` once per two. Advancing the pulse in here would make the answer depend on
  * who asked last. `tickCoinPulse()` below is the advance, and it belongs next to the debounce.
  */
-export function currentCoinWord() {
-  let w = 0xffff;                                            // ACTIVE LOW: idle is all ones
+function coinWordFor(pulse, held) {
+  let w = 0xffff;
   for (const [name, b] of Object.entries(COIN_BITS)) {
-    // A pulsed switch reports its PULSE, not the key; the others report the key.
-    const on = (name in coinPulse) ? coinPulse[name] > 0 : (coinHeld & (1 << b)) !== 0;
-    if (on) w &= ~(1 << b);                                  // held -> bit CLEARED
+    const on = (name in pulse) ? pulse[name] > 0 : (held & (1 << b)) !== 0;
+    if (on) w &= ~(1 << b);
   }
   return w & 0xffff;
+}
+
+export function currentCoinWord() {
+  return coinWordFor(coinPulse, coinHeld);
+}
+
+/** A detached coin-input timeline for speculative runahead frames. */
+export function createCoinProjection() {
+  const pulse = { ...coinPulse };
+  const held = coinHeld;
+  return Object.freeze({
+    currentWord: () => coinWordFor(pulse, held),
+    advanceVblanks(startPhase, count) {
+      let phase = startPhase & 1;
+      for (let frame = 0; frame < count; frame++) {
+        phase = (phase + 1) & 1;
+        if (phase === 0) {
+          for (const name of Object.keys(pulse)) {
+            if (pulse[name] > 0) pulse[name]--;
+          }
+        }
+      }
+    },
+  });
 }
 
 /** Advance the coin pulse by one `coinDebounce13CEC8` call. CALL IT EXACTLY WHERE THE DEBOUNCE IS

@@ -121,7 +121,7 @@ test('W611 publishes the exact P1-owned three-ship mode outside the mod catalogu
   assert.strictEqual(formationMode(id), THREE_PILOT_FORMATION_MODE);
   assert.strictEqual(hashToFormation(`#formation=${id}`), THREE_PILOT_FORMATION_MODE);
   assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE), `formation=${id}`);
-  assert.equal(MOD_IDS.length, 32);
+  assert.equal(MOD_IDS.length, 35);
   assert.equal(MOD_IDS.includes(id), false);
   assert.equal(Object.hasOwn(MODS, id), false);
 

@@ -727,6 +727,125 @@ def gate_asset_backed(browser, origin: str) -> None:
 
     gate.run("asset-backed mod-only cabinet flow", mod_only_cabinet)
 
+    def runahead_projection(page):
+        page.add_init_script("""
+        (() => {
+          Object.defineProperty(globalThis, 'requestAnimationFrame', {
+            configurable: true,
+            writable: true,
+            value: () => 1,
+          });
+          Object.defineProperty(globalThis, 'cancelAnimationFrame', {
+            configurable: true,
+            writable: true,
+            value: () => {},
+          });
+        })();
+        """)
+        open_page(page, origin, "/games/ddpdoj/start.html")
+        for depth in (1, 2, 3):
+            option = page.locator(f'[data-id="runahead-{depth}"]')
+            require(option.count() == 1 and option.is_visible(),
+                    f"runahead {depth} is not uniquely visible in the mod menu")
+
+        page.locator('[data-id="runahead-2"]').click()
+        page.locator("#formation-side-by-side").click()
+        require(page.locator("#conflict").inner_text()
+                == " | Formation cannot be combined with runahead",
+                "formation and runahead conflict text is not exact")
+        require(page.locator("#launch").is_disabled(),
+                "formation and runahead conflict left LAUNCH enabled")
+
+        open_page(page, origin, "/games/ddpdoj/start.html")
+        page.locator('[data-id="runahead-2"]').click()
+        page.locator("#launch").click()
+        page.wait_for_url("**/games/ddpdoj/index.html*", timeout=30000)
+        require(urlsplit(page.url).fragment == "mods=runahead-2",
+                f"unexpected runahead launch URL {page.url}")
+        wait_for_condition(page, "window.__mixup !== undefined", timeout=180000)
+        page.evaluate("() => { window.__mixup.demo.running = false; }")
+
+        state = page.evaluate("""() => {
+          const demo = window.__mixup.demo;
+          const hash = values => {
+            let digest = 2166136261;
+            for (let index = 0; index < values.length; index++) {
+              digest = Math.imul(digest ^ values[index], 16777619);
+            }
+            return digest >>> 0;
+          };
+          const canonical = () => ({
+            logicFrame: demo.game.logicFrame,
+            videoFrame: demo.game.videoFrame,
+            ram: hash(demo.game.ram.b),
+            bg: hash(demo.game.vram.w),
+            tx: hash(demo.game.txvram.w),
+            palette: hash(demo.game.palette.words),
+          });
+          const initial = window.__mixup.stats();
+          demo.step();
+          const view = demo.runaheadView;
+          const stepped = window.__mixup.stats();
+          const beforeDraw = canonical();
+          demo.draw();
+          const afterDraw = canonical();
+          const playback = demo.playback;
+          demo.playback = {};
+          const playbackSuspended = demo._projectRunahead(0xffff) === null;
+          demo.playback = playback;
+          return {
+            initial,
+            stepped,
+            view: view && {
+              baseLogicFrame: view.baseLogicFrame,
+              logicFrame: view.logicFrame,
+              depth: view.depth,
+              detachedBg: view.bg !== demo.game.vram.w,
+              detachedTx: view.tx !== demo.game.txvram.w,
+              detachedPalette: view.palette.words !== demo.game.palette.words,
+              detachedPortList: view.portList.words !== demo.portList.words,
+            },
+            beforeDraw,
+            afterDraw,
+            playbackSuspended,
+          };
+        }""")
+        require(state["initial"]["runaheadConfigured"] == 2
+                and state["initial"]["runaheadActive"] == 0,
+                f"runahead did not start configured and idle: {state['initial']}")
+        require(state["stepped"]["logicFrame"] == 1
+                and state["stepped"]["runaheadConfigured"] == 2
+                and state["stepped"]["runaheadActive"] == 2
+                and state["stepped"]["displayLogicFrame"] == 3,
+                f"runahead did not keep one canonical frame and project two: {state['stepped']}")
+        require(state["view"] == {
+            "baseLogicFrame": 1,
+            "logicFrame": 3,
+            "depth": 2,
+            "detachedBg": True,
+            "detachedTx": True,
+            "detachedPalette": True,
+            "detachedPortList": True,
+        }, f"runahead projection is not a detached two-frame future: {state['view']}")
+        require(state["beforeDraw"] == state["afterDraw"],
+                "drawing the runahead projection mutated canonical state")
+        require(state["playbackSuspended"],
+                "runahead projection remained active during replay playback")
+
+        def recheck() -> None:
+            current = page.evaluate("""() => ({
+              stats: window.__mixup.stats(),
+              viewDepth: window.__mixup.demo.runaheadView?.depth ?? 0,
+            })""")
+            require(current["stats"]["logicFrame"] == 1
+                    and current["stats"]["displayLogicFrame"] == 3
+                    and current["viewDepth"] == 2,
+                    f"runahead state changed while its loop was stopped: {current}")
+
+        return recheck
+
+    gate.run("asset-backed runahead projection", runahead_projection)
+
     def side_by_side(page):
         open_page(page, origin, "/games/ddpdoj/start.html")
         white = page.locator("#edition-white-label")
@@ -1503,6 +1622,7 @@ def gate_asset_free(browser, origin: str) -> None:
             if sound is not None:
                 require(sound.inner_text() == "SOUND OFF",
                         "Gradius sound preference was lost on restart")
+            page.wait_for_timeout(750)
             canvas_identity(
                 page, "#game-canvas", width, height, timeout=120000,
                 min_colors=4 if game_id == "batman" else 8,
@@ -1650,6 +1770,19 @@ def gate_asset_free(browser, origin: str) -> None:
         require("three-ship formation" in page.locator(
             "#local-loadout-summary").inner_text().lower(),
                 "Mixup did not retain the three-ship quick choice")
+        page.locator(".local-customizer summary").click()
+        runahead = page.locator('[data-mod-id="runahead-2"]')
+        require(runahead.count() == 1 and runahead.is_visible(),
+                "Mixup has no unique two-frame runahead choice")
+        runahead.click()
+        conflict_summary = page.locator("#local-loadout-summary").inner_text()
+        require("Formation cannot be combined with runahead." in conflict_summary,
+                f"Mixup formation/runahead refusal is unclear: {conflict_summary!r}")
+        require(page.locator("#local-start").is_disabled(),
+                "Mixup formation/runahead conflict left START GAME enabled")
+        page.locator('[data-mod-id="runahead-2"]').click()
+        require(not page.locator("#local-start").is_disabled(),
+                "Mixup START GAME stayed disabled after clearing runahead")
 
         def assert_picker_width(width: int) -> None:
             page.set_viewport_size({"width": width, "height": 900})
@@ -2077,6 +2210,29 @@ def gate_asset_free(browser, origin: str) -> None:
         require(page.locator("#local-picker").is_visible()
                 and page.evaluate("document.activeElement?.id") == "local-picker-games",
                 "DaiOuJou MODS did not return focus to the picker")
+        page.locator("#local-picker-content .local-fields select").nth(1).select_option("")
+        page.locator(".local-customizer summary").click()
+        page.locator('[data-mod-id="runahead-2"]').click()
+        require("1 mod" in page.locator("#local-loadout-summary").inner_text()
+                and not page.locator("#local-start").is_disabled(),
+                "Mixup could not prepare one-ship two-frame runahead")
+        page.evaluate("""async () => {
+          const { LocalDdpdojRuntime } = await import('/src/ddpdoj-local.js');
+          const prototype = LocalDdpdojRuntime.prototype;
+          const key = Symbol.for('mixup.releaseGate.runaheadRuntime');
+          if (prototype[key]) return;
+          const capture = prototype._captureRunaheadView;
+          Object.defineProperty(prototype, key, { value: capture });
+          prototype._captureRunaheadView = function(...args) {
+            const view = Reflect.apply(capture, this, args);
+            const previous = document[key];
+            document[key] = {
+              runtime: this,
+              captures: previous?.runtime === this ? previous.captures + 1 : 1,
+            };
+            return view;
+          };
+        }""")
         page.locator("#local-start").click()
         wait_for_condition(
             page,
@@ -2084,20 +2240,121 @@ def gate_asset_free(browser, origin: str) -> None:
             arg=RUNNING_DDPDOJ,
             timeout=300000,
         )
+        wait_for_condition(
+            page,
+            "() => document[Symbol.for('mixup.releaseGate.runaheadRuntime')]?.captures > 0",
+            timeout=120000,
+        )
         assert_running()
         assert_no_runtime_globals()
         require(page.locator("#local-controls").inner_text() == "FIXED"
                 and page.locator("#local-dpad").bounding_box() is not None
                 and page.locator("#local-stick-zone").is_hidden(),
-                "Mixup restart did not retain the persisted fixed touch scheme")
+                "Mixup runahead restart did not retain the persisted fixed touch scheme")
         require(page.locator("#local-pad-owner").is_hidden()
-                and page.locator("#local-formation-pad-note").is_visible(),
-                "Mixup restart changed formation touch ownership")
+                and page.locator("#local-formation-pad-note").is_hidden(),
+                "Mixup runahead launch exposed formation or P2 touch ownership")
+        runahead_state = page.evaluate("""() => {
+          const key = Symbol.for('mixup.releaseGate.runaheadRuntime');
+          const runtime = document[key].runtime;
+          runtime.running = false;
+          cancelAnimationFrame(runtime.request);
+          const hash = values => {
+            let digest = 2166136261;
+            for (let index = 0; index < values.length; index++) {
+              digest = Math.imul(digest ^ values[index], 16777619);
+            }
+            return digest >>> 0;
+          };
+          const canonical = () => ({
+            logicFrame: runtime.game.logicFrame,
+            videoFrame: runtime.game.videoFrame,
+            ram: hash(runtime.game.ram.b),
+            bg: hash(runtime.game.vram.w),
+            tx: hash(runtime.game.txvram.w),
+            palette: hash(runtime.game.palette.words),
+          });
+          const calls = [];
+          const gameStep = runtime.game.step.bind(runtime.game);
+          runtime.game.step = word => {
+            calls.push({ logicFrame: runtime.game.logicFrame, word });
+            return gameStep(word);
+          };
+          let recorderInputs = 0;
+          let recorderFeeds = 0;
+          let p2Updates = 0;
+          const updateP2Joined = runtime.updateP2Joined.bind(runtime);
+          runtime.updateP2Joined = () => {
+            p2Updates++;
+            return updateP2Joined();
+          };
+          runtime.recorder = {
+            input() { recorderInputs++; },
+            feed() { recorderFeeds++; },
+          };
+          runtime.step();
+          runtime.recorder = null;
+          const view = runtime.runaheadView;
+          const beforeDraw = canonical();
+          runtime.draw();
+          const afterDraw = canonical();
+          const playback = runtime.playback;
+          runtime.playback = {};
+          const playbackSuspended = runtime._projectRunahead(0xffff) === null;
+          runtime.playback = playback;
+          return {
+            configured: runtime.runaheadFrames,
+            canonicalLogicFrame: runtime.game.logicFrame,
+            view: view && {
+              baseLogicFrame: view.baseLogicFrame,
+              logicFrame: view.logicFrame,
+              depth: view.depth,
+              detachedBg: view.bg !== runtime.game.vram.w,
+              detachedTx: view.tx !== runtime.game.txvram.w,
+              detachedPalette: view.palette !== runtime.game.palette.words,
+              detachedSprites: view.spritebuffer !== runtime.spritebuffer,
+              dedicatedSprites: view.spritebuffer === runtime.runaheadSpritebuffer,
+            },
+            calls,
+            recorderInputs,
+            recorderFeeds,
+            p2Updates,
+            beforeDraw,
+            afterDraw,
+            playbackSuspended,
+          };
+        }""")
+        calls = runahead_state["calls"]
+        require(runahead_state["configured"] == 2
+                and len(calls) == 3
+                and [call["logicFrame"] for call in calls]
+                == [runahead_state["canonicalLogicFrame"] - 1,
+                    runahead_state["canonicalLogicFrame"],
+                    runahead_state["canonicalLogicFrame"] + 1]
+                and len({call["word"] for call in calls}) == 1,
+                f"Mixup runahead did not reuse one input across one real and two future frames: {runahead_state}")
+        require(runahead_state["view"] == {
+            "baseLogicFrame": runahead_state["canonicalLogicFrame"],
+            "logicFrame": runahead_state["canonicalLogicFrame"] + 2,
+            "depth": 2,
+            "detachedBg": True,
+            "detachedTx": True,
+            "detachedPalette": True,
+            "detachedSprites": True,
+            "dedicatedSprites": True,
+        }, f"Mixup runahead projection is not detached: {runahead_state['view']}")
+        require(runahead_state["recorderInputs"] == 1
+                and runahead_state["recorderFeeds"] == 1
+                and runahead_state["p2Updates"] == 1,
+                f"Mixup runahead leaked speculative host callbacks: {runahead_state}")
+        require(runahead_state["beforeDraw"] == runahead_state["afterDraw"],
+                "Mixup runahead draw mutated canonical simulation state")
+        require(runahead_state["playbackSuspended"],
+                "Mixup runahead projection remained active during PLAY")
         canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
-        require_no_post_preparation_reads(page, "DaiOuJou")
+        require_no_post_preparation_reads(page, "DaiOuJou runahead")
 
-        # A MODS restart reuses the LocalShell singleton. Reload the document so
-        # this final pass proves a fresh shell restores browser preferences,
+        # Reload the document so this final pass proves a fresh shell restores
         # rather than passing on its in-memory state.
         page.locator("#local-picture").click()
         require(page.evaluate("localStorage.getItem('ddpdoj.mode')") == "yoko",

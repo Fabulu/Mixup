@@ -104,9 +104,9 @@
 
   <div class="policy">Replay v1 does not carry formation state or simulation mods. REC and PLAY
     are refused while a ship formation or any survival, arsenal, challenge, input,
-    or timing mod is active. Invert Colors, Monochrome, Ghost Trail, Drop the Sprite Hold, and
-    Show Hitboxes remain replay-compatible because they change only the displayed frame or its
-    finished RGB.</div>
+    or timing mod is active. Runahead and the other presentation choices remain replay-compatible;
+    projection is suspended during PLAY, and REC records canonical frames only. Runahead cannot be
+    combined with a formation because private companion state cannot yet be rolled back safely.</div>
 
   <div class="bar">
     <div id="summary"></div>
@@ -311,7 +311,9 @@ function sync({ writeHistory = true } = {}) {
   }
   summary.appendChild(authentic);
   const formationP2Conflict = !!formationActive && explicitP2Joined;
-  if (lastConflicts.length || formationP2Conflict) {
+  const formationRunaheadConflict = !!formationActive
+    && resolved.presentation.runaheadFrames > 0;
+  if (lastConflicts.length || formationP2Conflict || formationRunaheadConflict) {
     const warning = document.createElement('span');
     warning.id = 'conflict';
     const messages = lastConflicts.map((c) =>
@@ -319,10 +321,14 @@ function sync({ writeHistory = true } = {}) {
     if (formationP2Conflict) {
       messages.push('Formation cannot be combined with an explicit native P2 selection');
     }
+    if (formationRunaheadConflict) {
+      messages.push('Formation cannot be combined with runahead');
+    }
     warning.textContent = ` | ${messages.join(' | ')}`;
     summary.appendChild(warning);
   }
-  document.getElementById('launch').disabled = formationP2Conflict;
+  document.getElementById('launch').disabled = formationP2Conflict
+    || formationRunaheadConflict;
   const launchHash = [
     loadoutToHash(resolved.ids),
     formationToHash(formationActive),
@@ -369,7 +375,9 @@ document.getElementById('games').addEventListener('click', () => {
   location.href = '../../index.html';
 });
 document.getElementById('launch').addEventListener('click', () => {
-  if (formationActive && explicitP2Joined) return;
+  const resolved = resolveLoadout([...selected]);
+  if (formationActive && (explicitP2Joined
+      || resolved.presentation.runaheadFrames > 0)) return;
   const hash = [
     loadoutToHash([...selected]),
     formationToHash(formationActive),

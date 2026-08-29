@@ -26,8 +26,10 @@ import {
 import { AssetError, loadBundle } from '../src/web/assets.js';
 import { Demo } from '../src/web/app.js';
 import {
-  clearCoin, clearTouch, selectTouchOwner, setTouchButton, setTouchDirections,
+  clearCoin, clearTouch, selectTouchOwner, setCoinKey, setTouchButton, setTouchDirections,
+  tickCoinPulse,
 } from '../src/web/input.js';
+import { COIN } from '../src/isr.js';
 
 const ID = 'fly-both-ships-side-by-side';
 const DEFAULT_SELECTION = { ship: 0, style: 2 };
@@ -124,6 +126,13 @@ test('W609 every credited formation handoff restores its declared P1 pair', () =
   }
 });
 
+test('W609 formation and runahead are rejected before private state is installed', () => {
+  const runahead = resolveLoadout(['runahead-1']);
+  assert.throws(() => new Demo(null, { cap: null }, MACHINE.refreshHz,
+    undefined, null, null, runahead, null, FORMATION_MODE),
+  /formation mode cannot be combined with runahead/);
+});
+
 test('W609 Demo step applies catalogue input before private companion input', () => {
   clearCoin();
   clearTouch();
@@ -213,6 +222,148 @@ function fakeCanvas() {
     getContext() { return context; },
   };
 }
+
+test('W609 packaged runahead projects a detached future without advancing canonical state',
+  { skip: SKIP_ASSETS }, async () => {
+    clearCoin();
+    clearTouch();
+    const bundle = await localBundle();
+    const projected = new Demo(fakeCanvas(), bundle, MACHINE.refreshHz,
+      undefined, null, null, resolveLoadout(['runahead-2']));
+    const control = new Demo(fakeCanvas(), bundle, MACHINE.refreshHz);
+
+    projected.step();
+    control.step();
+
+    assert.equal(projected.game.logicFrame, 1);
+    assert.equal(projected.runaheadView.baseLogicFrame, 1);
+    assert.equal(projected.runaheadView.logicFrame, 3);
+    assert.equal(projected.runaheadView.depth, 2);
+    assert.notStrictEqual(projected.runaheadView.bg, projected.game.vram.w);
+    assert.notStrictEqual(projected.runaheadView.tx, projected.game.txvram.w);
+    assert.strictEqual(projected.runaheadView.portList.words, projected.runaheadListBuf);
+    assert.notStrictEqual(projected.runaheadView.portList.words, projected.portList.words);
+    assert.deepEqual(projected.game.ram.b, control.game.ram.b);
+    assert.deepEqual(projected.game.vram.w, control.game.vram.w);
+    assert.deepEqual(projected.game.txvram.w, control.game.txvram.w);
+    assert.deepEqual(projected.game.palette.words, control.game.palette.words);
+    const canonical = projected.game.ram.b.slice();
+    projected.draw();
+    assert.deepEqual(projected.game.ram.b, canonical);
+    assert.equal(projected.stats().runaheadConfigured, 2);
+    assert.equal(projected.stats().runaheadActive, 2);
+    assert.equal(projected.stats().displayLogicFrame, 3);
+
+    projected.playback = { ended: false };
+    assert.equal(projected._projectRunahead(0xffff), null);
+  });
+
+test('W609 runahead reuses raw P1/P2 input and transforms each future logic frame',
+  { skip: SKIP_ASSETS }, async () => {
+    clearCoin();
+    clearTouch();
+    assert.equal(selectTouchOwner('P1'), true);
+    setTouchDirections(1 << BIT.right);
+    try {
+      const bundle = await localBundle();
+      const demo = new Demo(fakeCanvas(), bundle, MACHINE.refreshHz,
+        undefined, null, null, resolveLoadout(['precision-ship', 'runahead-2']));
+      demo.mods.runtime.cabinetRunActive = true;
+      demo.mods.runtime.cabinetBoot = false;
+      const calls = [];
+      const realStep = demo.game.step.bind(demo.game);
+      demo.game.step = (word) => {
+        calls.push({ logicFrame: demo.game.logicFrame, word });
+        return realStep(word);
+      };
+
+      demo.step();
+
+      assert.deepEqual(calls.map(({ logicFrame }) => logicFrame), [0, 1, 2]);
+      assert.equal(calls[0].word, calls[2].word,
+        'the same raw word is transformed identically on even logic frames');
+      assert.notEqual(calls[0].word, calls[1].word,
+        'the input transform is rerun for the odd speculative logic frame');
+      assert.equal(demo.game.logicFrame, 1,
+        'only the canonical frame remains committed');
+      assert.equal(demo.runaheadView.logicFrame, 3);
+    } finally {
+      clearTouch();
+      clearCoin();
+    }
+  });
+
+test('W609 packaged runahead falls back when only a speculative future throws',
+  { skip: SKIP_ASSETS }, async () => {
+    clearCoin();
+    clearTouch();
+    const bundle = await localBundle();
+    const demo = new Demo(fakeCanvas(), bundle, MACHINE.refreshHz,
+      undefined, null, null, resolveLoadout(['runahead-2']));
+    const realStep = demo.game.step.bind(demo.game);
+    demo.game.step = (word) => {
+      if (demo.game.logicFrame === 1) throw new Error('future path is not ported');
+      return realStep(word);
+    };
+
+    assert.doesNotThrow(() => demo.step());
+    assert.equal(demo.game.logicFrame, 1);
+    assert.equal(demo.runaheadView, null);
+  });
+
+test('W609 runahead projects the detached future coin pulse at IRQ4 cadence',
+  { skip: SKIP_ASSETS }, async () => {
+    clearCoin();
+    clearTouch();
+    try {
+      const bundle = await localBundle();
+      const demo = new Demo(fakeCanvas(), bundle, MACHINE.refreshHz,
+        undefined, null, null, resolveLoadout(['runahead-2']));
+      demo.game.armedVblanks = 1;
+      demo.game.ram.setU8(RAM.semaphore, 1);
+      demo.game.ram.setU16(COIN.irq4Phase, 1);
+      setCoinKey('COIN1', true);
+      for (let call = 1; call < 12; call++) tickCoinPulse();
+      const calls = [];
+      const realStep = demo.game.step.bind(demo.game);
+      demo.game.step = (word) => {
+        calls.push(demo.game.coinPort);
+        return realStep(word);
+      };
+
+      demo.step();
+
+      assert.deepEqual(calls, [calls[0], COIN.idle, COIN.idle]);
+      assert.notEqual(calls[0], COIN.idle,
+        'the canonical frame receives the final pressed pulse word');
+    } finally {
+      clearTouch();
+      clearCoin();
+    }
+  });
+
+test('W609 catch-up batches project only the final canonical frame',
+  { skip: SKIP_ASSETS }, async () => {
+    clearCoin();
+    clearTouch();
+    const bundle = await localBundle();
+    const demo = new Demo(fakeCanvas(), bundle, MACHINE.refreshHz,
+      undefined, null, null, resolveLoadout(['runahead-3']));
+    let projections = 0;
+    const project = demo._projectRunahead.bind(demo);
+    demo._projectRunahead = (word) => {
+      projections++;
+      return project(word);
+    };
+    demo.acc = 1000;
+    demo.last = 100;
+
+    demo.loop(100);
+
+    assert.equal(demo.game.logicFrame, 8);
+    assert.equal(projections, 1);
+    assert.equal(demo.runaheadView.logicFrame, 11);
+  });
 
 test('W609 Demo constructs both P1-owned formations and keeps native P2 separate',
   { skip: SKIP_ASSETS }, async () => {
@@ -347,10 +498,13 @@ test('W609 start keeps explicit native P2 separate and blocks every formation co
   assert.doesNotMatch(formationHandlers, /explicitP2Joined\s*=/,
     'formation toggles never manufacture or erase a genuine P2 join');
   assert.match(start, /const formationP2Conflict = !!formationActive && explicitP2Joined/);
-  assert.match(start, /document\.getElementById\('launch'\)\.disabled = formationP2Conflict/);
+  assert.match(start,
+    /document\.getElementById\('launch'\)\.disabled = formationP2Conflict[\s\S]*formationRunaheadConflict/);
   assert.match(start,
     /Formation cannot be combined with an explicit native P2 selection/);
-  assert.match(launchHandler, /if \(formationActive && explicitP2Joined\) return/);
+  assert.match(start, /Formation cannot be combined with runahead/);
+  assert.match(launchHandler,
+    /if \(formationActive && \(explicitP2Joined[\s\S]*runaheadFrames > 0\)\) return/);
   assert.match(start,
     /formationActive[\s\S]*P1-owned companion[\s\S]*Native P2 not joined/);
   assert.doesNotMatch(start, /FORMATION_MODE\.authenticSelection\.p2/,
@@ -382,7 +536,7 @@ test('W609 menu and runtime expose both P1-owned formations and disabled White L
   const browser = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../src/web/app.js', import.meta.url), 'utf8');
 
-  assert.equal(MOD_IDS.length, 32);
+  assert.equal(MOD_IDS.length, 35);
   assert.equal(Object.hasOwn(MODS, ID), false);
   assert.equal([...start.matchAll(/id="formation-side-by-side"/g)].length, 1);
   assert.equal([...start.matchAll(/id="formation-three"/g)].length, 1);
@@ -403,6 +557,10 @@ test('W609 menu and runtime expose both P1-owned formations and disabled White L
     /const formationP2Conflict = !!selectedFormation[\s\S]*\['p2', 'p2ship', 'p2style'\]/);
   assert.match(browser,
     /if \(formationP2Conflict\)[\s\S]*formation mode cannot be combined with a native P2 selection/);
+  assert.match(browser,
+    /const formationRunaheadConflict = !!selectedFormation[\s\S]*runaheadFrames > 0/);
+  assert.match(browser,
+    /if \(formationRunaheadConflict\)[\s\S]*formation mode cannot be combined with runahead/);
   assert.match(browser, /selectedFormation[\s\S]*selectTouchOwner\(owner, \{ p2Joined: false \}\)/,
     'formation touch input stays routed through P1');
   assert.match(app,

@@ -13,6 +13,7 @@ import { spawnConvertedShot } from './shots.js';
 import { SPAWN } from './spawn.js';
 import { DMG, bulletWindowSlots } from './damage.js';
 import { i16 } from './ram.js';
+import { RUNAHEAD_EXTERNAL_STATE } from './runahead-state.js';
 
 export const CATEGORIES = Object.freeze(['survival', 'arsenal', 'challenge', 'presentation']);
 
@@ -160,6 +161,24 @@ export const MODS = Object.freeze({
     effects: ['$242952 next-stage value: 1->2, 3->1, 2->3, 4->4, 5->5'],
   }),
 
+  'runahead-1': mod({
+    name: 'Runahead: 1 Frame', category: 'presentation', replaySafe: true,
+    conflict: 'runahead-depth', priority: 10,
+    blurb: 'Display one speculatively simulated future frame while canonical cabinet state stays unchanged.',
+    effects: ['one canonical logic frame per cabinet period; one detached speculative render frame'],
+  }),
+  'runahead-2': mod({
+    name: 'Runahead: 2 Frames', category: 'presentation', replaySafe: true,
+    conflict: 'runahead-depth', priority: 20,
+    blurb: 'Display two speculatively simulated future frames while canonical cabinet state stays unchanged.',
+    effects: ['one canonical logic frame per cabinet period; two detached speculative render frames'],
+  }),
+  'runahead-3': mod({
+    name: 'Runahead: 3 Frames', category: 'presentation', replaySafe: true,
+    conflict: 'runahead-depth', priority: 30,
+    blurb: 'Display three speculatively simulated future frames while canonical cabinet state stays unchanged.',
+    effects: ['one canonical logic frame per cabinet period; three detached speculative render frames'],
+  }),
   'invert-colors': mod({
     name: 'Invert Colors', category: 'presentation', replaySafe: true,
     blurb: 'Invert the resolved RGB framebuffer.',
@@ -268,6 +287,7 @@ export function resolveLoadout(ids = []) {
   const presentation = Object.freeze({
     invert: has('invert-colors'), monochrome: has('monochrome'), ghost: has('ghost-trail'),
     dropSpriteHold: has('drop-sprite-hold'), hitboxes: has('show-hitboxes'),
+    runaheadFrames: has('runahead-3') ? 3 : has('runahead-2') ? 2 : has('runahead-1') ? 1 : 0,
   });
   const replayBlocking = Object.freeze(kept.filter((id) => !MODS[id].replaySafe));
 
@@ -287,6 +307,74 @@ export function createModState(loadout) {
     resurrectionPositions: [null, null],
     cabinetRamRestore: [],
   } };
+}
+
+const MOD_RUNAHEAD_TOKENS = new WeakMap();
+
+function ownProperty(target, name) {
+  return { present: Object.hasOwn(target, name), value: target[name] };
+}
+
+function restoreOwnProperty(target, name, saved) {
+  if (saved.present) target[name] = saved.value;
+  else delete target[name];
+}
+
+export function saveModRunaheadState(state) {
+  if (!state?.runtime) return null;
+  const runtime = state.runtime;
+  const token = Object.freeze(Object.create(null));
+  MOD_RUNAHEAD_TOKENS.set(token, {
+    state,
+    runtime,
+    used: false,
+    hyperGauge: runtime.hyperGauge,
+    bulletDensity: runtime.bulletDensity,
+    grazedBulletsOwner: runtime.grazedBullets,
+    grazedBulletSets: [...runtime.grazedBullets],
+    grazedBullets: runtime.grazedBullets.map((seen) => [...seen]),
+    grazeCountOwner: runtime.grazeCount,
+    grazeCount: [...runtime.grazeCount],
+    resurrectionPositionsOwner: runtime.resurrectionPositions,
+    resurrectionPositions: [...runtime.resurrectionPositions],
+    cabinetRamRestoreOwner: runtime.cabinetRamRestore,
+    cabinetRamRestore: [...runtime.cabinetRamRestore],
+    cabinetBoot: ownProperty(runtime, 'cabinetBoot'),
+    cabinetRunActive: ownProperty(runtime, 'cabinetRunActive'),
+  });
+  return token;
+}
+
+export function restoreModRunaheadState(state, token) {
+  if (token == null && !state) return;
+  const saved = MOD_RUNAHEAD_TOKENS.get(token);
+  if (!saved) throw new TypeError('Unknown mod runahead checkpoint.');
+  if (saved.state !== state || saved.runtime !== state?.runtime) {
+    throw new Error('Mod runahead checkpoint belongs to another state.');
+  }
+  if (saved.used) throw new Error('Mod runahead checkpoint was already restored.');
+  const runtime = saved.runtime;
+  runtime.hyperGauge = saved.hyperGauge;
+  runtime.bulletDensity = saved.bulletDensity;
+  runtime.grazedBullets = saved.grazedBulletsOwner;
+  for (let side = 0; side < runtime.grazedBullets.length; side++) {
+    runtime.grazedBullets[side] = saved.grazedBulletSets[side];
+    runtime.grazedBullets[side].clear();
+    for (const rec of saved.grazedBullets[side]) runtime.grazedBullets[side].add(rec);
+  }
+  runtime.grazeCount = saved.grazeCountOwner;
+  runtime.grazeCount.splice(0, runtime.grazeCount.length, ...saved.grazeCount);
+  runtime.resurrectionPositions = saved.resurrectionPositionsOwner;
+  runtime.resurrectionPositions.splice(
+    0, runtime.resurrectionPositions.length, ...saved.resurrectionPositions,
+  );
+  runtime.cabinetRamRestore = saved.cabinetRamRestoreOwner;
+  runtime.cabinetRamRestore.splice(
+    0, runtime.cabinetRamRestore.length, ...saved.cabinetRamRestore,
+  );
+  restoreOwnProperty(runtime, 'cabinetBoot', saved.cabinetBoot);
+  restoreOwnProperty(runtime, 'cabinetRunActive', saved.cabinetRunActive);
+  saved.used = true;
 }
 
 function resetRunRuntime(state) {
@@ -668,7 +756,16 @@ export function modGameOptions(state) {
     options.stageAdvanceTransform = (value) => modRunActive(state)
       ? remixNextStageValue(value) : value;
   }
-  return Object.keys(options).length ? Object.freeze(options) : null;
+  const callbacks = Object.freeze({ ...options });
+  if (!state.loadout.presentation.runaheadFrames) {
+    return Object.keys(callbacks).length ? Object.freeze(options) : null;
+  }
+  options[RUNAHEAD_EXTERNAL_STATE] = Object.freeze({
+    callbacks,
+    save: () => saveModRunaheadState(state),
+    restore: (token) => restoreModRunaheadState(state, token),
+  });
+  return Object.freeze(options);
 }
 
 function applyRamMods(state, ram) {

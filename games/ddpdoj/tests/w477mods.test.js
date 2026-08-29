@@ -15,6 +15,7 @@ import { ALLOC } from '../src/objalloc.js';
 import { DEATH, playerDead24A130, updatePlayer } from '../src/player.js';
 import { bonusLine125FFA8 } from '../src/tally.js';
 import { Demo, progressionPokesForRung } from '../src/web/app.js';
+import { RUNAHEAD_EXTERNAL_STATE } from '../src/runahead-state.js';
 import {
   MODS, MOD_IDS, MOD_RAM, resolveLoadout, createModState, prepareModCabinetBoot,
   loadoutToHash, hashToLoadout, applyPreFrameMods, applyPostFrameMods,
@@ -35,8 +36,8 @@ function policyRam(id) {
   return { ram, state };
 }
 
-test('W477 catalogue ships thirty-two functional mods after W600 additions', () => {
-  assert.equal(MOD_IDS.length, 32);
+test('W477 catalogue ships thirty-five functional mods after runahead additions', () => {
+  assert.equal(MOD_IDS.length, 35);
   assert.deepEqual(new Set(Object.values(MODS).map((m) => m.category)),
     new Set(['survival', 'arsenal', 'challenge', 'presentation']));
   for (const [id, entry] of Object.entries(MODS)) {
@@ -58,18 +59,23 @@ test('W477 conflicts have fixed winners independent of selection order', () => {
   const a = resolveLoadout([
     'low-rank', 'maximum-rank', 'turbo', 'bullet-time',
     'bottomless-bombs', 'infinite-hyper-stock',
+    'runahead-1', 'runahead-2', 'runahead-3',
   ]);
   const b = resolveLoadout([
+    'runahead-3', 'runahead-2', 'runahead-1',
     'infinite-hyper-stock', 'bottomless-bombs', 'bullet-time', 'turbo',
     'maximum-rank', 'low-rank',
   ]);
   assert.deepEqual(a.ids, b.ids);
   assert.deepEqual(a.conflicts, b.conflicts);
-  assert.deepEqual(a.ids, ['infinite-hyper-stock', 'maximum-rank', 'bullet-time']);
+  assert.deepEqual(a.ids, [
+    'infinite-hyper-stock', 'maximum-rank', 'bullet-time', 'runahead-3',
+  ]);
   assert.equal(a.sim.rank, 'maximum');
   assert.equal(a.timing.scale, 2);
   assert.equal(a.sim.infiniteHyperStock, true);
-  assert.equal(a.conflicts.length, 3);
+  assert.equal(a.presentation.runaheadFrames, 3);
+  assert.equal(a.conflicts.length, 4);
 });
 
 test('W477 hash is deterministic, round-trips, and unknown-only is empty', () => {
@@ -83,6 +89,16 @@ test('W477 hash is deterministic, round-trips, and unknown-only is empty', () =>
 test('W477 empty and unknown-only loadouts create no mod state', () => {
   assert.equal(createModState(resolveLoadout([])), null);
   assert.equal(createModState(hashToLoadout('#mods=unknown')), null);
+});
+
+test('W477 runahead-only loadouts carry hidden rollback state without callback keys', () => {
+  const state = stateOf('runahead-2');
+  const options = modGameOptions(state);
+  assert.deepEqual(Object.keys(options), []);
+  assert.equal(typeof options[RUNAHEAD_EXTERNAL_STATE].save, 'function');
+  assert.equal(typeof options[RUNAHEAD_EXTERNAL_STATE].restore, 'function');
+  assert.deepEqual(options[RUNAHEAD_EXTERNAL_STATE].callbacks, {});
+  assert.equal(modGameOptions(stateOf('ghost-trail')), null);
 });
 
 test('W477 RAM mods drive their concrete cartridge seams', () => {

@@ -76,6 +76,27 @@ test('compact Game boundary preserves precisely zero or four door bytes', () => 
   assert.equal(noSound.logicFrame, 1);
 });
 
+test('speculative Game frames leave the sound runtime and PCM queues untouched', () => {
+  const rt = runtime();
+  const g = game(rt);
+  emptyMailbox(g);
+  assert.equal(postWrapper(g.ram, g.sound, 0x28c714), true);
+  const lastFrame = structuredClone(rt.lastFrame);
+  const checkpoint = g.saveRunaheadState(1);
+  g.step(0xffff);
+
+  assert.equal(rt.frameCount, 0);
+  assert.equal(rt.core.frameCount, 0);
+  assert.equal(rt.outLen, 0);
+  assert.deepEqual(rt.lastFrame, lastFrame);
+  g.restoreRunaheadState(checkpoint);
+
+  g.step(0xffff);
+  assert.equal(rt.frameCount, 1);
+  assert.equal(rt.core.frameCount, 1);
+  assert.ok(rt.outLen > 0);
+});
+
 test('runtime loudly refuses missing assets, malformed inputs, and every implicit policy', () => {
   assert.throws(() => soundRuntimeFromAssets({}, POLICIES), /missing asset driverParams/);
   assert.throws(() => soundRuntimeFromAssets({ ...ASSETS, sampleShard: [] }, POLICIES),

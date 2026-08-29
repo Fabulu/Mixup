@@ -60,6 +60,26 @@ test('exact local ROM extraction matches runtime-critical generated assets', asy
   assert.equal(provider.soundData.bankBase, expectedSound.bankBase);
 });
 
+test('local provider returns fresh mutable level images for every boot', async (t) => {
+  if (!fs.existsSync(ROM)) {
+    t.skip('ignored exact Batman ROM absent');
+    return;
+  }
+
+  const provider = localProvider();
+  const first = await provider.loadLevel(1);
+  const expectedCells = first.cells.slice();
+  const expectedVram = first.vram.slice();
+  first.cells.fill(0);
+  first.vram.fill(0);
+
+  const second = await provider.loadLevel(1);
+  assert.notStrictEqual(second.cells, first.cells);
+  assert.notStrictEqual(second.vram, first.vram);
+  assert.deepEqual(second.cells, expectedCells);
+  assert.deepEqual(second.vram, expectedVram);
+});
+
 class EventTargetStub {
   constructor() { this.listeners = new Map(); }
   addEventListener(type, listener) {
