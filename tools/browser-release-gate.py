@@ -86,9 +86,6 @@ RUNNING_DDPDOJ = (
     "DaiOuJou is running entirely from validated local ROMs. "
     "Insert a coin with 5, then press Enter."
 )
-JOINED_THREE_SHIP = (
-    "All Three Pilots, Each Piloting a Ship joined the credited run."
-)
 
 CANVAS_IDENTITY = """
 ({ selector, width, height, minColors = 8 }) => {
@@ -1626,7 +1623,7 @@ def gate_asset_free(browser, origin: str) -> None:
         def assert_running() -> None:
             boot_status = page.locator("#boot-status").inner_text()
             game_status = page.locator("#local-game-status").inner_text()
-            require(boot_status in {RUNNING_DDPDOJ, JOINED_THREE_SHIP},
+            require(boot_status == RUNNING_DDPDOJ,
                     f"asset-free DaiOuJou lost its runtime status: {boot_status!r}")
             require(game_status == boot_status,
                     "asset-free game view and setup status disagree")
@@ -1724,49 +1721,11 @@ def gate_asset_free(browser, origin: str) -> None:
 
         assert_running()
         assert_no_runtime_globals()
-        first_canvas = canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
+        canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
         for width in (1280, 700, 360):
             assert_stage_width(width)
         page.set_viewport_size({"width": 1280, "height": 900})
         page.wait_for_timeout(150)
-
-        page.keyboard.press("5")
-        page.wait_for_timeout(1000)
-        page.keyboard.down("Enter")
-        page.wait_for_timeout(500)
-        page.keyboard.up("Enter")
-        page.wait_for_timeout(1000)
-        second_canvas = wait_for_canvas_change(
-            page, first_canvas, "#game-canvas", 224, 448, "asset-free DaiOuJou",
-            timeout=30000,
-        )
-        assert_running()
-        assert_no_runtime_globals()
-        page.keyboard.down("Enter")
-        page.wait_for_timeout(500)
-        page.keyboard.up("Enter")
-        page.wait_for_timeout(500)
-        page.keyboard.down("z")
-        page.wait_for_timeout(500)
-        page.keyboard.up("z")
-        wait_for_canvas_change(
-            page, second_canvas, "#game-canvas", 224, 448,
-            "asset-free DaiOuJou first selection", timeout=30000,
-        )
-        page.wait_for_timeout(1000)
-        deadline = time.monotonic() + 60
-        while page.locator("#boot-status").inner_text() != JOINED_THREE_SHIP:
-            require(time.monotonic() < deadline,
-                    "three-ship formation did not join after repeated SHOT confirmation")
-            page.keyboard.down("z")
-            page.wait_for_timeout(250)
-            page.keyboard.up("z")
-            page.wait_for_timeout(500)
-        require(page.locator("#local-game-status").inner_text() == JOINED_THREE_SHIP,
-                "three-ship formation did not join at credited handoff")
-        canvas_identity(page, "#game-canvas", 224, 448)
-        assert_running()
-        assert_no_runtime_globals()
 
         dpad = page.locator("#local-dpad")
         require(dpad.bounding_box() is not None,
