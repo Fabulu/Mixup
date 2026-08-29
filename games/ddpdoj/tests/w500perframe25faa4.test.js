@@ -9,6 +9,7 @@ import { RomWindows } from '../src/rom.js';
 import {
   HANDLER7, PERFRAME_25FAA4 as P, SCREEN17, perFrame25FAA4, phase7_25D560,
 } from '../src/objslot17.js';
+import { LEAVES9 } from '../src/objslot9.js';
 
 const TABLES = 'games/ddpdoj/rip/port/player.tables.json';
 const SKIP = existsSync(TABLES) ? false : 'no exported tables';
@@ -23,6 +24,45 @@ function draws() {
     'draw25EF30', 'draw25F074']) out[name] = () => {};
   return out;
 }
+
+test('W500 seeded input delay keeps the current loop choice visibly selected',
+  { skip: SKIP }, () => {
+    const tables = JSON.parse(readFileSync(TABLES, 'utf8'));
+    const rom = new RomWindows(tables.rom);
+    const ram = new Ram();
+    const tx = new TxVram();
+    const sounds = [];
+    const ctx = { tx, soundPost: (addr) => sounds.push(addr) };
+
+    ram.setU16(P.delayAt, LEAVES9.b.seed);
+    ram.setU16(P.modeAt, 0);
+    ram.setU16(P.selectors[0], 0);
+    ram.setU16(P.selectors[1], 0x00ff);
+    ram.setU16(P.rawInputs[0], 0x0001);
+
+    perFrame25FAA4(ram, rom, ctx);
+    assert.equal(ram.u16(P.delayAt), LEAVES9.b.seed - 1);
+    assert.equal(ram.u16(P.modeAt), 0, 'direction remains locked during the seeded delay');
+    assert.deepEqual(sounds, []);
+    assert.equal(txCell(tx, P.cursor[0].d0, P.cursor[0].d1), 0xc0200002);
+    assert.equal(txCell(tx, P.cursor[1].d0, P.cursor[1].d1), 0xc03e0002,
+      'mode zero keeps its valid second cursor visibly highlighted');
+    const stream = P.labels[1];
+    const glyph = rom.u8(stream + 3);
+    assert.equal(txCell(tx, rom.u8(stream), rom.u8(stream + 1)),
+      ((((0xc000 | glyph) << 16) >>> 0) | 2) >>> 0,
+      'the current label stays selected throughout the input lock');
+
+    for (let i = 0; i < LEAVES9.b.seed - 1; i++) perFrame25FAA4(ram, rom, ctx);
+    assert.equal(ram.u16(P.delayAt), 0);
+    assert.equal(ram.u16(P.modeAt), 0);
+    assert.deepEqual(sounds, []);
+    assert.equal(txCell(tx, P.cursor[1].d0, P.cursor[1].d1), 0xc03e0002);
+
+    perFrame25FAA4(ram, rom, ctx);
+    assert.equal(ram.u16(P.modeAt), 1, 'direction takes effect after the input lock');
+    assert.deepEqual(sounds, [P.moveSound]);
+  });
 
 test('W500 state 7 runs $25FAA4 cartridge mode selection, confirmation, blink, and retirement',
   { skip: SKIP }, () => {
