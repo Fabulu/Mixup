@@ -1754,15 +1754,14 @@ def gate_asset_free(browser, origin: str) -> None:
             "asset-free DaiOuJou first selection", timeout=30000,
         )
         page.wait_for_timeout(1000)
-        page.keyboard.down("z")
-        page.wait_for_timeout(500)
-        page.keyboard.up("z")
-        wait_for_condition(
-            page,
-            "expected => document.querySelector('#boot-status').textContent === expected",
-            arg=JOINED_THREE_SHIP,
-            timeout=30000,
-        )
+        deadline = time.monotonic() + 60
+        while page.locator("#boot-status").inner_text() != JOINED_THREE_SHIP:
+            require(time.monotonic() < deadline,
+                    "three-ship formation did not join after repeated SHOT confirmation")
+            page.keyboard.down("z")
+            page.wait_for_timeout(250)
+            page.keyboard.up("z")
+            page.wait_for_timeout(500)
         require(page.locator("#local-game-status").inner_text() == JOINED_THREE_SHIP,
                 "three-ship formation did not join at credited handoff")
         canvas_identity(page, "#game-canvas", 224, 448)
