@@ -1484,9 +1484,28 @@ def gate_asset_free(browser, origin: str) -> None:
               return Reflect.apply(descriptor.value, this, args);
             },
           });
+
+          const orientation = screen.orientation;
+          const calls = [];
+          Object.defineProperty(orientation, Symbol.for('mixup.releaseGate.orientationCalls'), {
+            value: calls,
+          });
+          Object.defineProperty(orientation, 'lock', {
+            configurable: true,
+            value: async (value) => { calls.push(['lock', value]); },
+          });
+          Object.defineProperty(orientation, 'unlock', {
+            configurable: true,
+            value: () => { calls.push(['unlock']); },
+          });
         })();
         """)
         open_page(page, origin, "/")
+        page.evaluate("""() => {
+          localStorage.removeItem('ddpdoj.controls');
+          localStorage.removeItem('ddpdoj.mode');
+          localStorage.removeItem('ddpdoj.orientationLock');
+        }""")
         baseline_globals = page.evaluate("() => Object.getOwnPropertyNames(window)")
         page.locator("#files").set_input_files(str(DDPDOJ_7Z_FIXTURE))
         wait_for_condition(
@@ -1651,8 +1670,8 @@ def gate_asset_free(browser, origin: str) -> None:
                     f"unexpected TATE canvas dimensions {dimensions}")
             require_no_post_preparation_reads(page, "DaiOuJou")
 
-        def assert_stage_width(width: int) -> None:
-            page.set_viewport_size({"width": width, "height": 900})
+        def assert_stage_size(width: int, height: int) -> None:
+            page.set_viewport_size({"width": width, "height": height})
             page.wait_for_timeout(150)
             layout = page.evaluate("""() => {
               const screen = document.querySelector('#game-screen').getBoundingClientRect();
@@ -1670,6 +1689,7 @@ def gate_asset_free(browser, origin: str) -> None:
                 .map(button => {
                   const rect = button.getBoundingClientRect();
                   return { left: rect.left, right: rect.right,
+                           top: rect.top, bottom: rect.bottom,
                            width: rect.width, height: rect.height };
                 });
               return {
@@ -1696,8 +1716,8 @@ def gate_asset_free(browser, origin: str) -> None:
             require(abs(layout["screen"]["left"]) <= 1
                     and abs(layout["screen"]["right"] - width) <= 1
                     and abs(layout["screen"]["top"]) <= 1
-                    and abs(layout["screen"]["bottom"] - 900) <= 1,
-                    f"Mixup game view does not cover {width}px viewport: {layout!r}")
+                    and abs(layout["screen"]["bottom"] - height) <= 1,
+                    f"Mixup game view does not cover {width}x{height} viewport: {layout!r}")
             require(layout["stage"]["width"] > 0 and layout["stage"]["height"] > 0
                     and layout["viewport"]["width"] > 0
                     and layout["viewport"]["height"] > 0,
@@ -1716,16 +1736,80 @@ def gate_asset_free(browser, origin: str) -> None:
                     f"Mixup touch controls cover the canvas at {width}px: {layout!r}")
             for bounds in layout["actions"]:
                 require(bounds["width"] > 0 and bounds["height"] > 0
-                        and bounds["left"] >= -1 and bounds["right"] <= width + 1,
-                        f"Mixup game action escapes {width}px viewport: {bounds!r}")
+                        and bounds["left"] >= -1 and bounds["right"] <= width + 1
+                        and bounds["top"] >= -1 and bounds["bottom"] <= height + 1,
+                        f"Mixup game action escapes {width}x{height} viewport: {bounds!r}")
 
         assert_running()
         assert_no_runtime_globals()
         canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
-        for width in (1280, 700, 360):
-            assert_stage_width(width)
+        for width, height in ((1280, 900), (700, 900), (360, 900), (900, 360)):
+            assert_stage_size(width, height)
         page.set_viewport_size({"width": 1280, "height": 900})
         page.wait_for_timeout(150)
+
+        controls = page.locator("#local-controls")
+        stick = page.locator("#local-stick-zone")
+        dpad = page.locator("#local-dpad")
+        require(controls.inner_text() == "AUTO"
+                and controls.get_attribute("aria-pressed") == "false",
+                "Mixup DaiOuJou touch scheme did not start in AUTO")
+        require(stick.bounding_box() is not None and dpad.is_hidden(),
+                "Mixup DaiOuJou AUTO did not choose the floating stick on touch")
+        stick.evaluate("""element => {
+          element.setPointerCapture = () => {};
+          const bounds = element.getBoundingClientRect();
+          const x = bounds.left + bounds.width / 2;
+          const y = bounds.top + bounds.height / 2;
+          element.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true, cancelable: true, pointerId: 40, pointerType: 'touch',
+            clientX: x, clientY: y,
+          }));
+          element.dispatchEvent(new PointerEvent('pointermove', {
+            bubbles: true, cancelable: true, pointerId: 40, pointerType: 'touch',
+            clientX: x - 60, clientY: y - 60,
+          }));
+        }""")
+        stick_state = page.evaluate("""async () => {
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          return {
+            mask: input.currentMask(),
+            expected: (1 << input.CONTROLS.UP) | (1 << input.CONTROLS.LEFT),
+            originVisible: document.querySelector('#local-stick-origin')
+              .getAttribute('aria-hidden') === 'false',
+            knobVisible: document.querySelector('#local-stick-knob')
+              .getAttribute('aria-hidden') === 'false',
+          };
+        }""")
+        require(stick_state["mask"] == stick_state["expected"]
+                and stick_state["originVisible"] and stick_state["knobVisible"],
+                f"Mixup floating stick did not reach DaiOuJou input: {stick_state!r}")
+        stick.evaluate("""element => element.dispatchEvent(new PointerEvent('pointerup', {
+          bubbles: true, cancelable: true, pointerId: 40, pointerType: 'touch',
+        }))""")
+        require(page.evaluate("""async () => {
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          return input.currentMask() === 0
+            && document.querySelector('#local-stick-origin').getAttribute('aria-hidden') === 'true'
+            && document.querySelector('#local-stick-knob').getAttribute('aria-hidden') === 'true';
+        }"""), "Mixup floating stick stayed held or visible after release")
+
+        controls.click()
+        require(controls.inner_text() == "FIXED"
+                and controls.get_attribute("aria-pressed") == "true"
+                and page.evaluate("localStorage.getItem('ddpdoj.controls')") == "fixed",
+                "Mixup DaiOuJou did not persist the FIXED touch scheme")
+        require(dpad.bounding_box() is not None and stick.is_hidden(),
+                "Mixup DaiOuJou did not switch from floating to fixed touch")
+        require(page.locator("#local-formation-pad-note").is_visible()
+                and page.locator("#local-pad-owner").is_hidden(),
+                "Mixup formation exposed P2 touch ownership")
+        owner_state = page.evaluate("""async () => {
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          return input.currentTouchOwner();
+        }""")
+        require(owner_state == "P1",
+                f"Mixup formation touch owner is not P1: {owner_state!r}")
 
         dpad = page.locator("#local-dpad")
         require(dpad.bounding_box() is not None,
@@ -1773,6 +1857,10 @@ def gate_asset_free(browser, origin: str) -> None:
         shot.evaluate("""element => element.dispatchEvent(new PointerEvent('pointerup', {
           bubbles: true, cancelable: true, pointerId: 42, pointerType: 'touch',
         }))""")
+        require(page.evaluate("""async () => {
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          return input.currentMask() === 0;
+        }"""), "Mixup DaiOuJou SHOT stayed held after pointer release")
 
         coin = page.locator("#local-pad-buttons .local-pad-button", has_text="COIN")
         require(coin.bounding_box() is not None,
@@ -1797,6 +1885,69 @@ def gate_asset_free(browser, origin: str) -> None:
           input.clearTouch();
           input.clearCoin();
         }""")
+
+        lock = page.locator("#local-lock")
+        require(lock.is_visible() and lock.inner_text() == "LOCK"
+                and lock.get_attribute("aria-pressed") == "false",
+                "Mixup orientation lock is unavailable or starts dishonest")
+
+        page.locator("#local-picture").click()
+        require(page.evaluate("localStorage.getItem('ddpdoj.mode')") == "yoko",
+                "Mixup did not persist WIDE picture mode")
+        lock.click()
+        wait_for_condition(
+            page,
+            "document.fullscreenElement?.id === 'local-stage'",
+            timeout=30000,
+        )
+        wait_for_condition(
+            page,
+            """() => screen.orientation[Symbol.for(
+              'mixup.releaseGate.orientationCalls')].some(
+                call => call[0] === 'lock' && call[1] === 'landscape')""",
+            timeout=30000,
+        )
+        require(lock.inner_text() == "LOCKED"
+                and lock.get_attribute("aria-pressed") == "true"
+                and page.evaluate(
+                    "localStorage.getItem('ddpdoj.orientationLock')") == "1",
+                "Mixup did not persist the desired orientation lock")
+        page.evaluate("document.exitFullscreen()")
+        wait_for_condition(page, "document.fullscreenElement === null", timeout=30000)
+        page.wait_for_timeout(150)
+
+        page.locator("#local-picture").click()
+        require(page.evaluate("localStorage.getItem('ddpdoj.mode')") == "tate",
+                "Mixup did not restore and persist TATE picture mode")
+        page.locator("#local-fullscreen").click()
+        wait_for_condition(
+            page,
+            "document.fullscreenElement?.id === 'local-stage'",
+            timeout=30000,
+        )
+        wait_for_condition(
+            page,
+            """() => screen.orientation[Symbol.for(
+              'mixup.releaseGate.orientationCalls')].some(
+                call => call[0] === 'lock' && call[1] === 'portrait')""",
+            timeout=30000,
+        )
+        page.evaluate("document.exitFullscreen()")
+        wait_for_condition(page, "document.fullscreenElement === null", timeout=30000)
+        page.wait_for_timeout(150)
+
+        lock.click()
+        wait_for_condition(
+            page,
+            """() => screen.orientation[Symbol.for(
+              'mixup.releaseGate.orientationCalls')].some(call => call[0] === 'unlock')""",
+            timeout=30000,
+        )
+        require(lock.inner_text() == "LOCK"
+                and lock.get_attribute("aria-pressed") == "false"
+                and page.evaluate(
+                    "localStorage.getItem('ddpdoj.orientationLock')") == "0",
+                "Mixup did not persist orientation unlock")
 
         page.locator("#local-fullscreen").click()
         wait_for_condition(
@@ -1840,6 +1991,74 @@ def gate_asset_free(browser, origin: str) -> None:
         )
         assert_running()
         assert_no_runtime_globals()
+        require(page.locator("#local-controls").inner_text() == "FIXED"
+                and page.locator("#local-dpad").bounding_box() is not None
+                and page.locator("#local-stick-zone").is_hidden(),
+                "Mixup restart did not retain the persisted fixed touch scheme")
+        require(page.locator("#local-pad-owner").is_hidden()
+                and page.locator("#local-formation-pad-note").is_visible(),
+                "Mixup restart changed formation touch ownership")
+        canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
+        require_no_post_preparation_reads(page, "DaiOuJou")
+
+        # A MODS restart reuses the LocalShell singleton. Reload the document so
+        # this final pass proves a fresh shell restores browser preferences,
+        # rather than passing on its in-memory state.
+        page.locator("#local-picture").click()
+        require(page.evaluate("localStorage.getItem('ddpdoj.mode')") == "yoko",
+                "Mixup did not prepare WIDE mode for the fresh-page persistence gate")
+        page.evaluate("localStorage.setItem('ddpdoj.orientationLock', '1')")
+        open_page(page, origin, "/")
+        baseline_globals = page.evaluate("() => Object.getOwnPropertyNames(window)")
+        page.locator("#files").set_input_files(str(DDPDOJ_7Z_FIXTURE))
+        wait_for_condition(
+            page,
+            "document.querySelector('#status').dataset.kind === 'good'",
+            timeout=300000,
+        )
+        block_post_preparation_reads(page)
+        page.evaluate("""() => {
+          Object.defineProperty(document, '__mixupReleaseGateMarker', {
+            value: {}, configurable: true,
+          });
+        }""")
+        card = page.locator('.game-card[data-game-id="ddpdoj"]')
+        card.click()
+        page.locator("#launch-game").click()
+        wait_for_condition(
+            page,
+            "() => { const shell = document.querySelector('#local-shell'); "
+            "const picker = document.querySelector('#local-picker'); "
+            "return shell && !shell.hidden && picker && !picker.hidden; }",
+            timeout=300000,
+        )
+        page.locator(".local-customizer summary").click()
+        screen_select = page.locator(
+            '#local-picker-content label:has-text("Screen") select')
+        require(screen_select.input_value() == "yoko",
+                "a fresh Mixup shell did not restore persisted WIDE mode")
+        screen_select.select_option("tate")
+        require(page.evaluate("localStorage.getItem('ddpdoj.mode')") == "tate",
+                "the Mixup screen picker did not persist its TATE selection")
+        page.locator("#local-start").click()
+        wait_for_condition(
+            page,
+            "expected => document.querySelector('#boot-status').textContent === expected",
+            arg=RUNNING_DDPDOJ,
+            timeout=300000,
+        )
+        assert_running()
+        assert_no_runtime_globals()
+        require(page.locator("#local-controls").inner_text() == "FIXED"
+                and page.locator("#local-dpad").bounding_box() is not None
+                and page.locator("#local-stick-zone").is_hidden(),
+                "a fresh Mixup shell did not restore the persisted fixed touch scheme")
+        require(page.locator("#local-lock").inner_text() == "LOCKED"
+                and page.locator("#local-lock").get_attribute("aria-pressed") == "true",
+                "a fresh Mixup shell did not restore the desired orientation lock")
+        require(page.locator("#local-formation-pad-note").is_hidden()
+                and page.locator("#local-pad-owner").is_hidden(),
+                "a fresh original launch exposed formation or P2 touch ownership")
         canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
         require_no_post_preparation_reads(page, "DaiOuJou")
 

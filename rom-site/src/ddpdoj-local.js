@@ -24,6 +24,9 @@ import {
   attachInput, pollInput, currentPortWord, currentCoinWord,
   tickCoinPulse, attachCoinKeys, clearCoin, clearKeyboard, clearTouch,
 } from '/games/ddpdoj/src/web/input.js';
+import {
+  authenticP2Joined, latchAuthenticP2Joined,
+} from './ddpdoj-local-state.js';
 
 const GRAPHICS = Object.freeze([
   'pgm_t01s.rom',
@@ -205,9 +208,11 @@ export class LocalDdpdojRuntime {
     this.context = canvas.getContext('2d', { alpha: false });
     if (!this.context) throw new Error('A 2D canvas context is unavailable.');
     this.onError = options.onError ?? null;
+    this.onP2Joined = options.onP2Joined ?? null;
     this.audio = options.audio ?? null;
     this.modState = options.modState ?? null;
     this.formationState = options.formationState ?? null;
+    this.p2Joined = authenticP2Joined(game.ram.u16(RAM.playerCountM1), this.formationState);
     this.rowscroll = new Uint16Array(SCREEN_H);
     this.zoomram = zoomRamWords();
     this.spritebuffer = new Uint16Array(SPRITE_LIMIT * RAM_STRIDE);
@@ -225,6 +230,18 @@ export class LocalDdpdojRuntime {
     this.lastTime = 0;
     this.accumulator = 0;
     copySpriteList(game, this.spritebuffer);
+    this.onP2Joined?.(this.p2Joined);
+  }
+
+  updateP2Joined() {
+    const joined = latchAuthenticP2Joined(
+      this.p2Joined,
+      this.game.ram.u16(RAM.playerCountM1),
+      this.formationState,
+    );
+    if (joined === this.p2Joined) return;
+    this.p2Joined = joined;
+    this.onP2Joined?.(joined);
   }
 
   setMode(mode) {
@@ -292,6 +309,7 @@ export class LocalDdpdojRuntime {
           : modWord;
         this.game.coinPort = currentCoinWord();
         this.game.step(portWord);
+        this.updateP2Joined();
         if (this.modState?.loadout.presentation.dropSpriteHold) {
           copySpriteList(this.game, this.spritebuffer);
           if (this.hitboxRam) this.hitboxRam.b.set(this.game.ram.b);

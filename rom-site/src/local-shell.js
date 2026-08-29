@@ -9,6 +9,31 @@ import * as DdpMods from '/games/ddpdoj/src/mods.js';
 import * as Formation from '/games/ddpdoj/src/formation.js';
 
 const GAME_IDS = new Set(['batman', 'gradius', 'ddpdoj']);
+const DDP_CONTROL_SCHEMES = Object.freeze(['auto', 'fixed', 'float']);
+const DDP_CONTROL_STORE = 'ddpdoj.controls';
+const DDP_MODE_STORE = 'ddpdoj.mode';
+const DDP_LOCK_STORE = 'ddpdoj.orientationLock';
+
+function storedChoice(key, choices, fallback) {
+  try {
+    const value = globalThis.localStorage?.getItem(key);
+    return choices.includes(value) ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function storedFlag(key) {
+  try {
+    return globalThis.localStorage?.getItem(key) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function storePreference(key, value) {
+  try { globalThis.localStorage?.setItem(key, value); } catch { /* private mode */ }
+}
 
 const BATMAN_ENTRIES = Object.freeze([
   Object.freeze({ id: 0, name: 'Title screen', kind: 'title' }),
@@ -203,6 +228,8 @@ class LocalShell {
     this.gameStatus = document.querySelector('#local-game-status');
     this.picture = document.querySelector('#local-picture');
     this.sound = document.querySelector('#local-sound');
+    this.controls = document.querySelector('#local-controls');
+    this.orientationLock = document.querySelector('#local-lock');
     this.fullscreen = document.querySelector('#local-fullscreen');
     this.stage = document.querySelector('#local-stage');
     this.viewport = document.querySelector('#local-viewport');
@@ -210,6 +237,12 @@ class LocalShell {
     this.hint = document.querySelector('#local-control-hint');
     this.dpad = document.querySelector('#local-dpad');
     this.padButtons = document.querySelector('#local-pad-buttons');
+    this.padRows = document.querySelector('#local-pad-rows');
+    this.padOwner = document.querySelector('#local-pad-owner');
+    this.formationPadNote = document.querySelector('#local-formation-pad-note');
+    this.stickZone = document.querySelector('#local-stick-zone');
+    this.stickOrigin = document.querySelector('#local-stick-origin');
+    this.stickKnob = document.querySelector('#local-stick-knob');
     this.states = new Map();
     this.runtime = null;
     this.options = null;
@@ -219,12 +252,16 @@ class LocalShell {
     this.fitRequest = 0;
     this.dpadPointer = null;
     this.dpadMask = 0;
+    this.stickBackstop = null;
+    this.p2Joined = false;
     this.gradiusAudio = null;
     this.ddpdojAudio = null;
     this.opener = null;
     this.backgroundStates = new Map();
 
-    if (!this.shell || !this.stage || !this.canvas || !this.pickerContent) {
+    if (!this.shell || !this.stage || !this.canvas || !this.pickerContent
+        || !this.controls || !this.orientationLock || !this.padRows || !this.padOwner
+        || !this.formationPadNote || !this.stickZone || !this.stickOrigin || !this.stickKnob) {
       throw new Error('The local game shell markup is incomplete.');
     }
 
@@ -242,6 +279,12 @@ class LocalShell {
     this.startButton.addEventListener('click', () => this.startGame());
     this.fullscreen.addEventListener('click', () => this.toggleFullscreen());
     this.picture.addEventListener('click', () => this.togglePicture());
+    this.controls.addEventListener('click', () => this.cycleTouchScheme());
+    this.orientationLock.addEventListener('click', () => this.toggleOrientationLock());
+    this.padOwner.addEventListener('click', () => {
+      const owner = DdpInput.currentTouchOwner() === 'P1' ? 'P2' : 'P1';
+      this.applyPadOwner(owner);
+    });
     this.sound.addEventListener('pointerdown', () => this.armCurrentAudio(), true);
     this.sound.addEventListener('keydown', (event) => {
       if (event.code === 'Enter' || event.code === 'Space') this.armCurrentAudio();
@@ -255,6 +298,7 @@ class LocalShell {
     document.addEventListener('fullscreenchange', () => {
       this.fullscreen.textContent = document.fullscreenElement ? 'EXIT FULL' : 'FULLSCREEN';
       this.scheduleFit();
+      this.applyOrientationLock();
     });
     globalThis.addEventListener('pagehide', () => this.stopGame());
     globalThis.addEventListener('blur', () => {
@@ -273,6 +317,9 @@ class LocalShell {
       }
     });
     this.attachDpad();
+    this.stickBackstop = DdpInput.attachStick(this.stickZone, {
+      onVisual: (origin, current) => this.paintStick(origin, current),
+    });
   }
 
   initialState(gameId) {
@@ -284,7 +331,13 @@ class LocalShell {
       weapon: 0, options: 0, missile: 0, shield: 0, speed: 0, meter: 0,
     };
     return {
-      mods: new Set(), preset: 'original', formation: '', mode: 'tate', sound: true,
+      mods: new Set(),
+      preset: 'original',
+      formation: '',
+      mode: storedChoice(DDP_MODE_STORE, ['tate', 'yoko'], 'tate'),
+      sound: true,
+      controls: storedChoice(DDP_CONTROL_STORE, DDP_CONTROL_SCHEMES, 'auto'),
+      orientationLock: storedFlag(DDP_LOCK_STORE),
     };
   }
 
@@ -490,7 +543,11 @@ class LocalShell {
     fields.append(selectField('Screen', [
       { value: 'tate', name: 'TATE, vertical' },
       { value: 'yoko', name: 'WIDE, unrotated' },
-    ], state.mode, (value) => { state.mode = value; this.renderSummary(); }));
+    ], state.mode, (value) => {
+      state.mode = value;
+      storePreference(DDP_MODE_STORE, state.mode);
+      this.renderSummary();
+    }));
     section.append(fields);
     root.append(section);
   }
@@ -641,11 +698,15 @@ class LocalShell {
     this.hint.textContent = GAME_COPY[this.gameId].hint;
     this.picture.hidden = this.gameId !== 'ddpdoj';
     this.sound.hidden = this.gameId === 'batman';
+    this.controls.hidden = this.gameId !== 'ddpdoj';
+    this.orientationLock.hidden = this.gameId !== 'ddpdoj' || !this.canOrientationLock();
+    this.p2Joined = false;
     if (this.gameId !== 'batman') {
       this.armCurrentAudio();
       this.sound.textContent = this.state().sound ? 'SOUND ON' : 'SOUND OFF';
     }
     this.picture.textContent = this.state().mode === 'yoko' ? 'WIDE' : 'TATE';
+    this.paintOrientationLock();
     this.renderPad();
     this.prepareCanvas();
     this.canvas.focus({ preventScroll: true });
@@ -667,6 +728,9 @@ class LocalShell {
           this.options?.onStatus?.(message);
         },
         onOptions: () => this.showPicker(),
+        onP2Joined: (joined) => {
+          if (generation === this.generation) this.updateP2Joined(joined);
+        },
         onError: (error) => this.runtimeError(error, generation),
       });
       if (generation !== this.generation || this.gameScreen.hidden) {
@@ -717,6 +781,8 @@ class LocalShell {
       BatmanInput.detachInput?.();
       GradiusInput.detachInput?.();
       this.clearInput();
+      DdpInput.selectTouchOwner('P1');
+      this.p2Joined = false;
     }
     cancelAnimationFrame(this.fitRequest);
     this.fitRequest = 0;
@@ -764,6 +830,7 @@ class LocalShell {
     try {
       if (document.fullscreenElement) await document.exitFullscreen();
       else await this.stage.requestFullscreen({ navigationUI: 'hide' });
+      await this.applyOrientationLock();
     } catch (error) {
       this.gameStatus.textContent = `Fullscreen unavailable: ${error.message}`;
     }
@@ -773,10 +840,134 @@ class LocalShell {
     if (this.gameId !== 'ddpdoj') return;
     const state = this.state();
     state.mode = state.mode === 'tate' ? 'yoko' : 'tate';
+    storePreference(DDP_MODE_STORE, state.mode);
     this.picture.textContent = state.mode === 'yoko' ? 'WIDE' : 'TATE';
     if (this.runtime?.setMode) this.runtime.setMode(state.mode);
     else this.prepareCanvas();
     this.fit();
+    this.applyOrientationLock();
+  }
+
+  cycleTouchScheme() {
+    if (this.gameId !== 'ddpdoj') return;
+    const state = this.state();
+    const index = DDP_CONTROL_SCHEMES.indexOf(state.controls);
+    state.controls = DDP_CONTROL_SCHEMES[(index + 1) % DDP_CONTROL_SCHEMES.length];
+    storePreference(DDP_CONTROL_STORE, state.controls);
+    this.clearInput();
+    this.applyTouchScheme();
+  }
+
+  applyTouchScheme() {
+    if (this.gameId !== 'ddpdoj') {
+      this.dpad.hidden = false;
+      this.stickZone.hidden = true;
+      return;
+    }
+    const scheme = this.state().controls;
+    const coarse = globalThis.matchMedia?.('(pointer: coarse)').matches === true;
+    const useFloat = scheme === 'auto' || scheme === 'float';
+    this.controls.textContent = scheme.toUpperCase();
+    this.controls.setAttribute('aria-pressed', String(scheme !== 'auto'));
+    this.dpad.hidden = coarse && useFloat;
+    this.stickZone.hidden = !coarse || !useFloat;
+  }
+
+  canOrientationLock() {
+    return typeof globalThis.screen?.orientation?.lock === 'function';
+  }
+
+  paintOrientationLock() {
+    if (this.gameId !== 'ddpdoj') return;
+    const wanted = Boolean(this.state().orientationLock);
+    this.orientationLock.textContent = wanted ? 'LOCKED' : 'LOCK';
+    this.orientationLock.setAttribute('aria-pressed', String(wanted));
+  }
+
+  async toggleOrientationLock() {
+    if (this.gameId !== 'ddpdoj' || !this.canOrientationLock()) return;
+    const state = this.state();
+    state.orientationLock = !state.orientationLock;
+    storePreference(DDP_LOCK_STORE, state.orientationLock ? '1' : '0');
+    this.paintOrientationLock();
+    if (state.orientationLock && document.fullscreenElement !== this.stage) {
+      try { await this.stage.requestFullscreen({ navigationUI: 'hide' }); } catch { /* preference stays */ }
+    }
+    await this.applyOrientationLock();
+  }
+
+  async applyOrientationLock() {
+    if (this.gameId !== 'ddpdoj' || !this.canOrientationLock()) return false;
+    const orientation = globalThis.screen.orientation;
+    const state = this.state();
+    try {
+      if (!state.orientationLock) {
+        orientation.unlock?.();
+        return true;
+      }
+      if (document.fullscreenElement !== this.stage) return false;
+      await orientation.lock(state.mode === 'tate' ? 'portrait' : 'landscape');
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  paintStick(origin, current) {
+    if (!origin || !current) {
+      this.stickOrigin.setAttribute('aria-hidden', 'true');
+      this.stickKnob.setAttribute('aria-hidden', 'true');
+      return;
+    }
+    const dx = current.x - origin.x;
+    const dy = current.y - origin.y;
+    const distance = Math.hypot(dx, dy);
+    const ratio = distance ? Math.min(1, 44 / distance) : 0;
+    this.stickOrigin.style.left = `${origin.x}px`;
+    this.stickOrigin.style.top = `${origin.y}px`;
+    this.stickKnob.style.left = `${origin.x + dx * ratio}px`;
+    this.stickKnob.style.top = `${origin.y + dy * ratio}px`;
+    this.stickOrigin.setAttribute('aria-hidden', 'false');
+    this.stickKnob.setAttribute('aria-hidden', 'false');
+  }
+
+  updateP2Joined(joined) {
+    if (this.gameId !== 'ddpdoj') return;
+    const formation = Boolean(this.state().formation);
+    this.p2Joined = Boolean(joined) && !formation;
+    if (!this.p2Joined && DdpInput.currentTouchOwner() === 'P2') {
+      this.applyPadOwner('P1');
+      return;
+    }
+    this.paintPadOwner();
+  }
+
+  paintPadOwner() {
+    if (this.gameId !== 'ddpdoj') {
+      this.padOwner.hidden = true;
+      this.formationPadNote.hidden = true;
+      return;
+    }
+    const formation = Boolean(this.state().formation);
+    const p2 = DdpInput.currentTouchOwner() === 'P2';
+    this.padOwner.hidden = !this.p2Joined || formation;
+    this.padOwner.disabled = !this.p2Joined || formation;
+    this.padOwner.textContent = p2 ? 'P2 PAD' : 'P1 PAD';
+    this.padOwner.setAttribute('aria-pressed', String(p2));
+    this.formationPadNote.hidden = !formation;
+    const coin = this.padRows.querySelector('[data-pad-coin]');
+    if (coin) coin.textContent = p2 ? 'P2 COIN' : 'P1 COIN';
+  }
+
+  applyPadOwner(owner) {
+    if (this.gameId !== 'ddpdoj') return false;
+    const formation = Boolean(this.state().formation);
+    const p2Joined = this.p2Joined && !formation;
+    if (owner === 'P2' && !p2Joined) return false;
+    this.clearInput();
+    if (!DdpInput.selectTouchOwner(owner, { p2Joined })) return false;
+    this.paintPadOwner();
+    return true;
   }
 
   async toggleSound() {
@@ -805,6 +996,7 @@ class LocalShell {
     DdpInput.clearKeyboard?.();
     DdpInput.clearTouch?.();
     DdpInput.clearCoin?.();
+    this.stickBackstop?.();
     for (const cell of this.dpad.querySelectorAll('[data-cell]')) delete cell.dataset.on;
     for (const button of this.padButtons.querySelectorAll('button')) delete button.dataset.on;
   }
@@ -878,7 +1070,7 @@ class LocalShell {
 
   renderPad() {
     this.clearInput();
-    this.padButtons.replaceChildren();
+    this.padRows.replaceChildren();
     const rows = [];
     if (this.gameId === 'batman') {
       rows.push([
@@ -900,13 +1092,28 @@ class LocalShell {
         { label: 'START', small: true, press: (down) => GradiusInput.setTouchButton?.(b.START, down) },
       ]);
     } else {
+      this.applyPadOwner('P1');
+      let heldCoin = null;
       rows.push([
         { label: 'SHOT', press: (down) => DdpInput.setTouchButton('SHOT', down) },
         { label: 'BOMB', press: (down) => DdpInput.setTouchButton('BOMB', down) },
         { label: 'AUTO', press: (down) => DdpInput.setTouchButton('AUTO', down) },
       ]);
       rows.push([
-        { label: 'COIN', small: true, press: (down) => DdpInput.setCoinKey('COIN1', down) },
+        {
+          label: 'P1 COIN',
+          small: true,
+          coin: true,
+          press: (down) => {
+            if (down) {
+              heldCoin = DdpInput.currentTouchOwner() === 'P2' ? 'COIN2' : 'COIN1';
+              DdpInput.setCoinKey(heldCoin, true);
+            } else if (heldCoin) {
+              DdpInput.setCoinKey(heldCoin, false);
+              heldCoin = null;
+            }
+          },
+        },
         { label: 'START', small: true, press: (down) => DdpInput.setTouchButton('START', down) },
       ]);
     }
@@ -915,6 +1122,7 @@ class LocalShell {
       for (const control of controls) {
         const button = element('button', `local-pad-button${control.small ? ' small' : ''}`, control.label);
         button.type = 'button';
+        if (control.coin) button.dataset.padCoin = 'true';
         let pointer = null;
         const set = (down) => {
           button.dataset.on = String(down);
@@ -936,8 +1144,10 @@ class LocalShell {
         }
         row.append(button);
       }
-      this.padButtons.append(row);
+      this.padRows.append(row);
     }
+    this.applyTouchScheme();
+    this.paintPadOwner();
   }
 }
 

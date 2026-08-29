@@ -181,6 +181,8 @@
         <div class="local-game-actions">
           <button id="local-picture" type="button" class="secondary" hidden>TATE</button>
           <button id="local-sound" type="button" class="secondary" hidden>SOUND ON</button>
+          <button id="local-controls" type="button" class="secondary" hidden>AUTO</button>
+          <button id="local-lock" type="button" class="secondary" hidden aria-pressed="false">LOCK</button>
           <button id="local-fullscreen" type="button" class="secondary">FULLSCREEN</button>
           <button id="local-game-mods" type="button" class="secondary">MODS</button>
           <button id="local-game-games" type="button" class="quiet">GAMES</button>
@@ -189,6 +191,10 @@
       <div id="local-stage" class="local-stage">
         <div id="local-viewport" class="local-viewport">
           <canvas id="game-canvas" tabindex="0" aria-label="Local game screen"></canvas>
+          <div id="local-stick-zone" class="local-stick-zone" aria-label="Floating movement stick" hidden>
+            <i id="local-stick-origin" aria-hidden="true"></i>
+            <i id="local-stick-knob" aria-hidden="true"></i>
+          </div>
         </div>
         <div id="local-pad" class="local-pad" aria-label="On-screen game controls">
           <div id="local-dpad" class="local-dpad" aria-label="Direction pad">
@@ -196,7 +202,13 @@
             <i data-cell="LEFT">◀</i><i data-cell="">·</i><i data-cell="RIGHT">▶</i>
             <i data-cell="DOWN LEFT">◣</i><i data-cell="DOWN">▼</i><i data-cell="DOWN RIGHT">◢</i>
           </div>
-          <div id="local-pad-buttons" class="local-pad-buttons"></div>
+          <div id="local-pad-buttons" class="local-pad-buttons">
+            <div class="local-pad-meta">
+              <button id="local-pad-owner" class="local-pad-owner" type="button" hidden disabled aria-pressed="false">P1 PAD</button>
+              <span id="local-formation-pad-note" hidden>P1 steers every formation ship</span>
+            </div>
+            <div id="local-pad-rows"></div>
+          </div>
         </div>
       </div>
       <p id="local-control-hint" class="local-control-hint"></p>
