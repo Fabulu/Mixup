@@ -151,7 +151,7 @@ test('folder searches skip malformed archives and keep reading valid candidates'
     [{ name: 'broken.zip', message: 'bad central directory' }]);
 });
 
-test('folder searches skip a duplicate archive atomically', async () => {
+test('folder searches keep same-named members from separate archives', async () => {
   const archives = [selectedFile('first.zip', zipMagic), selectedFile('second.zip', zipMagic)];
   const result = await expandArchives(archives, {
     archiveProbe: 'declared-only',
@@ -159,9 +159,11 @@ test('folder searches skip a duplicate archive atomically', async () => {
     createWorker: () => fakeWorker(workerFlow()),
     createFile: createdFile,
   });
-  assert.deepEqual([result.archives, result.members, result.skippedArchives], [1, 1, 1]);
-  assert.equal(result.files[0].mixupRelativePath, 'first.zip/set/member.rom');
-  assert.match(result.archiveErrors[0].message, /duplicate member basename/);
+  assert.deepEqual([result.archives, result.members, result.skippedArchives], [2, 2, 0]);
+  assert.deepEqual(result.files.map((file) => file.mixupRelativePath), [
+    'first.zip/set/member.rom', 'second.zip/set/member.rom',
+  ]);
+  assert.deepEqual(result.archiveErrors, []);
 });
 
 test('worker errors, listing mismatches, and nested archives fail closed', async () => {
@@ -287,7 +289,7 @@ test('aggregate expanded limits reject a later listing before extraction', async
   assert.equal(states[1].terminated, 1);
 });
 
-test('selection-wide archive limits and duplicate basenames are enforced', async () => {
+test('selection-wide archive limits are enforced without flattening member namespaces', async () => {
   const archives = Array.from({ length: ARCHIVE_LIMITS.maxArchives + 1 }, (_, index) =>
     selectedFile(`owned-${index}.zip`, zipMagic));
   const limitMessage = new RegExp(`at most ${ARCHIVE_LIMITS.maxArchives} archives`);
@@ -297,7 +299,7 @@ test('selection-wide archive limits and duplicate basenames are enforced', async
   }), limitMessage);
 
   let call = 0;
-  await assert.rejects(() => expandArchives(archives.slice(0, 2), {
+  const result = await expandArchives(archives.slice(0, 2), {
     createWorker: () => {
       const path = `set-${call++}/member.rom`;
       return fakeWorker(workerFlow({
@@ -317,5 +319,9 @@ test('selection-wide archive limits and duplicate basenames are enforced', async
       }));
     },
     createFile: createdFile,
-  }), /duplicate member basename/);
+  });
+  assert.deepEqual([result.archives, result.members, result.files.length], [2, 2, 2]);
+  assert.deepEqual(result.files.map((file) => file.mixupRelativePath), [
+    'owned-0.zip/set-0/member.rom', 'owned-1.zip/set-1/member.rom',
+  ]);
 });

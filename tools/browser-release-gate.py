@@ -43,7 +43,7 @@ DDPDOJ_ROM_NAMES = (
     "pgm_t01s.rom",
 )
 ROM_FIXTURES = tuple(ROOT / "games/ddpdoj/rip/rom" / name for name in DDPDOJ_ROM_NAMES)
-DDPDOJ_7Z_FIXTURE = Path("C:/oldpcsx2/ddpdojblk.7z")
+DDPDOJ_7Z_FIXTURE = Path("C:/oldpcsx2/mixup/ddpdojblk.7z")
 BATMAN_ARCHIVE_FIXTURE = Path(
     "C:/oldpcsx2/mixup/Batman - Return of the Joker (USA, Europe).zip"
 )
@@ -1112,6 +1112,46 @@ def gate_asset_free(browser, origin: str) -> None:
 
     gate.run("asset-free folder ROM discovery", folder_discovery)
 
+    def complete_archive_folder(page):
+        open_page(page, origin, "/")
+        folder_input = page.locator("#folder-files")
+        folder_input.evaluate("input => input.removeAttribute('webkitdirectory')")
+        folder_input.set_input_files((
+            str(BATMAN_ARCHIVE_FIXTURE),
+            str(GRADIUS_ARCHIVE_FIXTURE),
+            str(DDPDOJ_7Z_FIXTURE),
+        ))
+        wait_for_condition(
+            page,
+            "document.querySelector('#status').dataset.kind === 'good'",
+            timeout=300000,
+        )
+        cards = {
+            game_id: page.locator(f'.game-card[data-game-id="{game_id}"]')
+            for game_id in ("batman", "gradius", "ddpdoj")
+        }
+
+        def assert_complete_folder() -> None:
+            status = page.locator("#status").inner_text()
+            require("Read 14 members from 3 local archives." in status,
+                    f"complete folder archive count is not exact: {status!r}")
+            require("Ignored 2 non-ROM archive members before hashing." in status,
+                    f"complete folder extras were not ignored exactly: {status!r}")
+            require("Searched 3 folder files and ignored 0 non-candidates without opening them."
+                    in status, f"complete folder search count is not exact: {status!r}")
+            require("Skipped " not in status,
+                    f"complete folder skipped an exact archive: {status!r}")
+            for game_id, card in cards.items():
+                require(not card.is_disabled(),
+                        f"complete folder left {game_id} locked")
+                require(card.locator(".card-state").inner_text() == "Identity validated",
+                        f"complete folder did not validate {game_id}")
+
+        assert_complete_folder()
+        return assert_complete_folder
+
+    gate.run("asset-free complete archive folder", complete_archive_folder)
+
     def archive_rejections(page):
         def zipped(entries, compression=zipfile.ZIP_STORED):
             body = io.BytesIO()
@@ -1410,19 +1450,15 @@ def gate_asset_free(browser, origin: str) -> None:
         """)
         open_page(page, origin, "/")
         baseline_globals = page.evaluate("() => Object.getOwnPropertyNames(window)")
-        using_7z = DDPDOJ_7Z_FIXTURE.is_file()
-        inputs = [str(DDPDOJ_7Z_FIXTURE)] if using_7z \
-            else [str(path) for path in ROM_FIXTURES]
-        page.locator("#files").set_input_files(inputs)
+        page.locator("#files").set_input_files(str(DDPDOJ_7Z_FIXTURE))
         wait_for_condition(
             page,
             "document.querySelector('#status').dataset.kind === 'good'",
             timeout=300000,
         )
-        if using_7z:
-            archive_status = page.locator("#status").inner_text()
-            require("Read 10 members from 1 local archive." in archive_status,
-                    f"7z intake status is not exact: {archive_status!r}")
+        archive_status = page.locator("#status").inner_text()
+        require("Read 10 members from 1 local archive." in archive_status,
+                f"7z intake status is not exact: {archive_status!r}")
         card = page.locator('.game-card[data-game-id="ddpdoj"]')
         require(not card.is_disabled(), "validated DaiOuJou card remains disabled")
         require(card.locator(".card-state").inner_text() == "Identity validated",
@@ -1760,7 +1796,8 @@ def main() -> int:
     require_files(required, "release artifacts")
     if asset_free:
         require_files(ROM_FIXTURES, "exact DaiOuJou ROM fixtures")
-        require_files((BATMAN_ARCHIVE_FIXTURE, GRADIUS_ARCHIVE_FIXTURE),
+        require_files((BATMAN_ARCHIVE_FIXTURE, GRADIUS_ARCHIVE_FIXTURE,
+                       DDPDOJ_7Z_FIXTURE),
                       "exact local cartridge archive fixtures")
 
     handler = partial(NoCacheHandler, directory=str(supplied_root))

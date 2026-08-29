@@ -255,7 +255,6 @@ export async function expandArchives(files, options = {}) {
 
   const expanded = [];
   const summaries = [];
-  const memberBasenames = new Set();
   const maxExpandedTotal = options.maxExpandedTotal ?? ARCHIVE_LIMITS.maxExpandedTotal;
   const maxEntriesTotal = options.maxEntriesTotal ?? ARCHIVE_LIMITS.maxEntriesTotal;
   const maxExpandedArchive = options.maxExpandedArchive ?? ARCHIVE_LIMITS.maxExpandedArchive;
@@ -298,8 +297,8 @@ export async function expandArchives(files, options = {}) {
       for (const entry of validated.files) {
         const basename = entry.path.slice(entry.path.lastIndexOf('/') + 1);
         const folded = basename.toLocaleLowerCase('en-US');
-        if (memberBasenames.has(folded) || archiveBasenames.has(folded)) {
-          throw new Error(`Selected archives contain duplicate member basename ${basename}.`);
+        if (archiveBasenames.has(folded)) {
+          throw new Error(`${file.name} contains duplicate member basename ${basename}.`);
         }
         archiveBasenames.add(folded);
         const member = browserFile(validated.byPath.get(entry.path), basename, file, options);
@@ -310,7 +309,6 @@ export async function expandArchives(files, options = {}) {
         archiveMembers.push(member);
       }
       summaries.push(archiveSummary);
-      for (const folded of archiveBasenames) memberBasenames.add(folded);
       expanded.push(...archiveMembers);
     } catch (error) {
       if (!options.skipInvalidArchives || error?.name === 'AbortError'
