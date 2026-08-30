@@ -133,6 +133,26 @@ test('local visibility resync resets DaiOuJou host chronology', async () => {
     /if \(this\.gameId === 'ddpdoj'\) this\.runtime\?\.resyncTiming\?\.\(\);/);
 });
 
+test('Mixup exposes and routes every selectable formation member', async () => {
+  const shell = await readFile(new URL('../src/local-shell.js', import.meta.url), 'utf8');
+  const runtime = await readFile(new URL('../src/ddpdoj-local.js', import.meta.url), 'utf8');
+
+  assert.match(shell, /formationRoster: null/);
+  assert.match(shell,
+    /state\.formationRoster = value \? Formation\.defaultFormationRoster\(value\) : null/);
+  assert.match(shell,
+    /state\.formationRoster\.forEach\(\(selection, member\)[\s\S]*local-formation-member-\$\{member \+ 1\}-ship[\s\S]*local-formation-member-\$\{member \+ 1\}-style/);
+  assert.match(shell,
+    /formationRoster: state\.formation \? state\.formationRoster : null/);
+  assert.match(shell,
+    /attachGamepadMenu\(this\.picker,[\s\S]*primary: \(\) => this\.startButton/);
+  assert.match(runtime,
+    /createFormationState\(\s*config\.formation, config\.formationRoster \?\? null\)/);
+  assert.match(runtime,
+    /beginFormationCreditedRun\(formationState, game, formationSelection\)/,
+    'the selected roster remains pending until the credited cabinet handoff');
+});
+
 test('local replay refuses formations and simulation-changing mods', () => {
   const formation = createFormationState(FORMATION_MODE.id);
   assert.throws(() => assertFormationReplayCompatible(formation, 'REC'),

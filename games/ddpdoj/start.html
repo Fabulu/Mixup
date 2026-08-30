@@ -50,6 +50,26 @@
   #launch { padding-inline: 1.3rem; color: #171208; background: var(--accent);
     border-color: var(--accent); font-weight: 750; }
   .policy { margin-top: 1rem; color: var(--dim); font-size: 11px; }
+  #formation-roster { margin-top: .75rem; padding: .8rem; background: #101820;
+    border: 1px solid #3e4b5e; border-radius: 6px; }
+  #formation-roster[hidden] { display: none; }
+  #formation-roster h3 { margin: 0 0 .25rem; color: var(--fg); font-size: .86rem; }
+  .roster-hint { margin: 0 0 .7rem; color: var(--dim); font-size: 11px; }
+  #formation-members { display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .6rem; }
+  .formation-member { min-width: 0; margin: 0; padding: .65rem;
+    border: 1px solid var(--line); border-radius: 4px; }
+  .formation-member legend { padding: 0 .25rem; color: var(--accent); font-weight: 700; }
+  .formation-fields { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .formation-fields label { display: grid; gap: .25rem; color: var(--dim); font-size: 11px; }
+  .formation-fields select { width: 100%; min-height: 2.6rem; padding: .4rem;
+    color: var(--fg); background: #161d27; border: 1px solid #46536a; border-radius: 4px;
+    font: inherit; }
+  :focus-visible { outline: 3px solid #79bfff; outline-offset: 2px; }
+  @media (max-width: 420px) {
+    body { padding-inline: .65rem; }
+    .formation-fields { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
@@ -89,13 +109,18 @@
   <div class="grid" id="formations">
     <button class="card" id="formation-side-by-side" type="button" aria-pressed="false">
       <div class="name"><span>Fly Both Ships Side by Side</span><span class="mark">ON</span></div>
-      <div class="blurb">P1 Type-A style 2 with one private Type-B style-2 companion. Native P2 remains unjoined.</div>
+      <div class="blurb">Two private P1-owned ships. Choose an authentic Type and style for each below.</div>
     </button>
     <button class="card" id="formation-three" type="button" aria-pressed="false">
       <div class="name"><span>All Three Ships</span><span class="mark">ON</span></div>
-      <div class="blurb">P1 plus two private companion ships. All three weapons, hits, kills, score, and chain belong to P1.</div>
+      <div class="blurb">Three private P1-owned ships. Choose every Type and style below; every reward stays with P1.</div>
     </button>
   </div>
+  <section id="formation-roster" aria-labelledby="formation-roster-title" hidden>
+    <h3 id="formation-roster-title">Choose every formation ship</h3>
+    <p class="roster-hint">Keyboard or touch: use each list directly. Gamepad: D-pad moves and changes lists, A selects, Start launches.</p>
+    <div id="formation-members"></div>
+  </section>
 
   <h2>Survival</h2><div class="grid" data-category="survival"></div>
   <h2>Arsenal</h2><div class="grid" data-category="arsenal"></div>
@@ -124,12 +149,16 @@ import {
   authenticSelectionFromParams, authenticSelectionQuery,
 } from './src/authentic.js';
 import {
-  FORMATION_MODE, FORMATION_THREE_MODE, formationAuthenticOverridesFromParams,
-  formationToHash, hashToFormation, resolveFormationAuthenticSelection,
+  FORMATION_MODE, FORMATION_THREE_MODE, defaultFormationRoster,
+  formationAuthenticOverridesFromParams, formationRosterToHash, formationToHash,
+  hashToFormation, hashToFormationRoster, resolveFormationAuthenticSelection,
+  resolveFormationRoster,
 } from './src/formation.js';
+import { attachGamepadMenu } from './src/web/menu-gamepad.js';
 
 const selected = new Set();
 let formationActive = null;
+let formationRoster = null;
 let authenticShip = 0;
 let authenticStyle = 2;
 let authenticShipExplicit = false;
@@ -149,20 +178,24 @@ function restoreStateFromLocation() {
   formationActive = hashToFormation(location.hash);
 
   const params = new URLSearchParams(location.search);
+  const hashParams = new URLSearchParams(location.hash.replace(/^#/, ''));
   const overrides = formationAuthenticOverridesFromParams(params);
   const ordinary = authenticSelectionFromParams(params);
-  const p1Override = overrides ?? (ordinary
-    ? { ship: ordinary.ship, style: ordinary.style }
-    : null);
-  const formation = formationActive
-    ? resolveFormationAuthenticSelection(formationActive, p1Override)
-      ?? resolveFormationAuthenticSelection(formationActive)
-    : null;
-  const effective = formation ?? ordinary;
+  const parsedRoster = formationActive
+    ? hashToFormationRoster(location.hash, formationActive) : null;
+  formationRoster = formationActive
+    ? parsedRoster ?? defaultFormationRoster(formationActive) : null;
+  if (formationActive && overrides && !hashParams.has('roster')) {
+    const lead = resolveFormationAuthenticSelection(formationActive, overrides);
+    if (lead) formationRoster = Object.freeze([lead, ...formationRoster.slice(1)]);
+  }
+  const effective = formationActive && ordinary?.p2 == null
+    ? formationRoster?.[0] ?? ordinary
+    : ordinary ?? formationRoster?.[0];
   authenticShip = effective?.ship ?? 0;
   authenticStyle = effective?.style ?? 2;
-  authenticShipExplicit = ordinary != null && params.has('ship');
-  authenticStyleExplicit = ordinary != null && params.has('style');
+  authenticShipExplicit = !formationActive && ordinary != null && params.has('ship');
+  authenticStyleExplicit = !formationActive && ordinary != null && params.has('style');
 
   explicitP2Joined = ordinary?.p2 != null;
   authenticP2Ship = ordinary?.p2?.ship ?? 0;
@@ -177,16 +210,8 @@ function effectiveP2Selection() {
     : null;
 }
 
-function formationAuthenticQuery() {
-  const params = new URLSearchParams();
-  if (authenticShipExplicit) params.set('ship', String(authenticShip));
-  if (authenticStyleExplicit) params.set('style', String(authenticStyle));
-  const text = params.toString();
-  return text ? `?${text}` : '';
-}
-
 function launchAuthenticQuery() {
-  if (formationActive) return formationAuthenticQuery();
+  if (formationActive && !explicitP2Joined) return '';
   return authenticSelectionQuery({
     ship: authenticShip,
     style: authenticStyle,
@@ -263,7 +288,74 @@ for (const preset of Object.values(PRESETS)) {
   document.getElementById('presets').appendChild(button);
 }
 
-function sync({ writeHistory = true } = {}) {
+const SHIP_CHOICES = Object.freeze([
+  Object.freeze({ value: 0, label: 'Type A' }),
+  Object.freeze({ value: 2, label: 'Type B' }),
+]);
+const STYLE_CHOICES = Object.freeze([
+  Object.freeze({ value: 2, label: 'Style 2, shot' }),
+  Object.freeze({ value: 4, label: 'Style 4, laser' }),
+  Object.freeze({ value: 6, label: 'Style 6, expert' }),
+]);
+
+function rosterSelect(member, field, selectedValue, choices) {
+  const label = document.createElement('label');
+  label.textContent = field === 'ship' ? 'Ship type' : 'Pilot style';
+  const select = document.createElement('select');
+  select.id = `formation-member-${member + 1}-${field}`;
+  select.dataset.formationMember = String(member + 1);
+  select.dataset.formationField = field;
+  select.setAttribute('aria-label', `${label.textContent} for formation ship ${member + 1}`);
+  for (const choice of choices) {
+    const option = document.createElement('option');
+    option.value = String(choice.value);
+    option.textContent = choice.label;
+    option.selected = choice.value === selectedValue;
+    select.appendChild(option);
+  }
+  select.addEventListener('change', () => {
+    const roster = formationRoster.map((selection) => ({ ...selection }));
+    roster[member][field] = Number(select.value);
+    formationRoster = resolveFormationRoster(formationActive, roster);
+    sync({ renderRoster: false });
+  });
+  label.appendChild(select);
+  return label;
+}
+
+function renderFormationRoster() {
+  const section = document.getElementById('formation-roster');
+  const members = document.getElementById('formation-members');
+  if (!formationActive) {
+    section.hidden = true;
+    members.replaceChildren();
+    return;
+  }
+  formationRoster = resolveFormationRoster(formationActive, formationRoster)
+    ?? defaultFormationRoster(formationActive);
+  section.hidden = false;
+  const positions = formationRoster.length === 2
+    ? ['Left ship, lead', 'Right ship, companion']
+    : ['Left ship, lead', 'Center ship, companion', 'Right ship, companion'];
+  const fields = formationRoster.map((selection, member) => {
+    const fieldset = document.createElement('fieldset');
+    fieldset.className = 'formation-member';
+    fieldset.dataset.formationMember = String(member + 1);
+    const legend = document.createElement('legend');
+    legend.textContent = positions[member];
+    const controls = document.createElement('div');
+    controls.className = 'formation-fields';
+    controls.append(
+      rosterSelect(member, 'ship', selection.ship, SHIP_CHOICES),
+      rosterSelect(member, 'style', selection.style, STYLE_CHOICES),
+    );
+    fieldset.append(legend, controls);
+    return fieldset;
+  });
+  members.replaceChildren(...fields);
+}
+
+function sync({ writeHistory = true, renderRoster = true } = {}) {
   const resolved = resolveLoadout([...selected]);
   lastConflicts = resolved.conflicts;
   selected.clear();
@@ -277,6 +369,7 @@ function sync({ writeHistory = true } = {}) {
     'aria-pressed', String(formationActive?.id === FORMATION_MODE.id));
   document.getElementById('formation-three').setAttribute(
     'aria-pressed', String(formationActive?.id === FORMATION_THREE_MODE.id));
+  if (renderRoster) renderFormationRoster();
 
   const summary = document.getElementById('summary');
   summary.replaceChildren();
@@ -299,8 +392,10 @@ function sync({ writeHistory = true } = {}) {
   const diagnosticAuthentic = !formationActive
     && (authenticShipExplicit || authenticStyleExplicit || explicitP2Joined);
   if (formationActive) {
-    authentic.textContent = ` | ${formationActive.companions.length} P1-owned companion${
-      formationActive.companions.length === 1 ? '' : 's'} | Native P2 not joined`;
+    const rosterText = formationRoster.map((selection, index) =>
+      `${index + 1}: Type ${selection.ship === 0 ? 'A' : 'B'}, style ${selection.style}`)
+      .join(' / ');
+    authentic.textContent = ` | Ships ${rosterText} | Native P2 not joined`;
   } else if (diagnosticAuthentic) {
     const p1 = `P1 Type-${authenticShip === 0 ? 'A' : 'B'}, selector ${authenticStyle}`;
     const p2 = effectiveP2Selection();
@@ -332,12 +427,19 @@ function sync({ writeHistory = true } = {}) {
   const launchHash = [
     loadoutToHash(resolved.ids),
     formationToHash(formationActive),
+    formationRosterToHash(formationActive, formationRoster),
   ].filter(Boolean).join('&');
   if (writeHistory) pushStateUrl(launchHash);
 }
 
 function toggleFormation(mode) {
-  formationActive = formationActive?.id === mode.id ? null : mode;
+  if (formationActive?.id === mode.id) {
+    formationActive = null;
+    formationRoster = null;
+  } else {
+    formationActive = mode;
+    formationRoster = defaultFormationRoster(mode);
+  }
   sync();
 }
 document.getElementById('formation-side-by-side').addEventListener('click', () => {
@@ -362,12 +464,14 @@ function clearAuthenticDiagnostics() {
 document.getElementById('vanilla').addEventListener('click', () => {
   selected.clear();
   formationActive = null;
+  formationRoster = null;
   clearAuthenticDiagnostics();
   sync();
 });
 document.getElementById('clear').addEventListener('click', () => {
   selected.clear();
   formationActive = null;
+  formationRoster = null;
   clearAuthenticDiagnostics();
   sync();
 });
@@ -381,6 +485,7 @@ document.getElementById('launch').addEventListener('click', () => {
   const hash = [
     loadoutToHash([...selected]),
     formationToHash(formationActive),
+    formationRosterToHash(formationActive, formationRoster),
   ].filter(Boolean).join('&');
   const query = launchAuthenticQuery();
   location.href = `./index.html${query}${hash ? `#${hash}` : ''}`;
@@ -392,6 +497,9 @@ function restoreNavigationState() {
 }
 window.addEventListener('hashchange', restoreNavigationState);
 window.addEventListener('popstate', restoreNavigationState);
+attachGamepadMenu(document.querySelector('.wrap'), {
+  primary: () => document.getElementById('launch'),
+});
 restoreNavigationState();
 </script>
 </body>

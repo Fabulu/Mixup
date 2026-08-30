@@ -169,16 +169,28 @@ export class LocalDdpdojRuntime {
     const loadout = config.loadout ?? null;
     const modState = loadout?.ids?.length ? createModState(loadout) : null;
     if (modState) prepareModCabinetBoot(modState);
-    const formationState = createFormationState(config.formation);
+    const formationState = createFormationState(
+      config.formation, config.formationRoster ?? null);
     const runaheadFrames = modState?.loadout.presentation.runaheadFrames ?? 0;
     if (formationState && runaheadFrames) {
       throw new Error('Formation mode cannot be combined with runahead.');
     }
     const formationSelection = formationState
-      ? resolveFormationAuthenticSelection(formationState.mode, config.authenticSelection)
+      ? resolveFormationAuthenticSelection(
+          formationState.mode, config.authenticSelection ?? formationState.roster[0])
       : null;
     if (formationState && !formationSelection) {
       throw new Error('Formation mode received an invalid P1 selection.');
+    }
+    if (formationState && config.formationRoster != null && config.authenticSelection != null
+        && (formationSelection.ship !== formationState.roster[0].ship
+          || formationSelection.style !== formationState.roster[0].style)) {
+      throw new Error('Formation P1 selection does not match its roster.');
+    }
+    if (formationState && config.formationRoster == null && config.authenticSelection != null) {
+      formationState.roster = Object.freeze([
+        formationSelection, ...formationState.roster.slice(1),
+      ]);
     }
     let game = null;
     let gameOptions = { ...(modGameOptions(modState) ?? {}) };

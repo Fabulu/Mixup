@@ -148,8 +148,15 @@ function seedNativeP2Resources(ram) {
 }
 
 function activeDemo(bundle, mode = FORMATION_THREE_MODE) {
+  const rung = {
+    seed: bundle.seed,
+    lf: bundle.cap.frames[0].lf,
+    vf: bundle.cap.frames[0].vf,
+    bgSeed: bundle.cap.part(0, 'bg'),
+    poke: '',
+  };
   return new Demo(fakeCanvas(), bundle, MACHINE.refreshHz,
-    undefined, null, null, null, null, mode);
+    undefined, rung, null, null, null, mode);
 }
 
 function stepUntil(demo, predicate, limit, message) {

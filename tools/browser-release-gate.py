@@ -887,139 +887,565 @@ def gate_asset_backed(browser, origin: str) -> None:
     gate.run("asset-backed runahead projection", runahead_projection)
 
     def side_by_side(page):
+        page.add_init_script("""
+        (() => {
+          const buttons = Array.from({ length: 16 }, () => ({
+            pressed: false, value: 0,
+          }));
+          const pad = { connected: true, axes: [0, 0], buttons };
+          Object.defineProperty(globalThis, '__formationGatePad', { value: pad });
+          Object.defineProperty(navigator, 'getGamepads', {
+            configurable: true,
+            value: () => [pad],
+          });
+        })();
+        """)
         open_page(page, origin, "/games/ddpdoj/start.html")
         white = page.locator("#edition-white-label")
         require(white.is_disabled(), "White Label is selectable")
         require(white.get_attribute("aria-disabled") == "true", "White Label lacks aria-disabled")
         page.locator('[data-category="survival"] [data-id="invincibility"]').click()
-        page.locator("#formation-side-by-side").click()
-        page.locator("#launch").click()
+        page.locator("#formation-side-by-side").tap()
+        roster = page.locator("#formation-roster")
+        require(roster.is_visible(), "two-ship roster did not open after touch input")
+        require(page.locator("#formation-members .formation-member").count() == 2,
+                "two-ship picker does not expose exactly two members")
+        require(page.locator("#formation-members select").count() == 4,
+                "two-ship picker does not expose Type and style for both members")
+        defaults = page.evaluate("""() => [1, 2].map(member => ({
+          ship: document.querySelector(`#formation-member-${member}-ship`).value,
+          style: document.querySelector(`#formation-member-${member}-style`).value,
+        }))""")
+        require(defaults == [{"ship": "0", "style": "2"},
+                             {"ship": "2", "style": "2"}],
+                f"two-ship browser defaults are wrong: {defaults!r}")
+        touch_target = page.locator("#formation-member-2-style")
+        touch_target.evaluate("""select => select.addEventListener('touchstart', () => {
+          select.dataset.releaseGateTouch = 'yes';
+        }, { once: true })""")
+        touch_target.tap()
+        page.keyboard.press("Escape")
+        require(touch_target.get_attribute("data-release-gate-touch") == "yes",
+                "formation select did not receive native touch input")
+        bounds = page.locator("#formation-members select").evaluate_all(
+            "selects => selects.map(select => select.getBoundingClientRect().height)"
+        )
+        require(all(height >= 40 for height in bounds),
+                f"formation touch targets are too short: {bounds!r}")
+
+        lead_ship = page.locator("#formation-member-1-ship")
+        lead_ship.focus()
+        page.keyboard.press("ArrowDown")
+        require(lead_ship.input_value() == "2",
+                "keyboard did not change the lead from Type A to Type B")
+        lead_style = page.locator("#formation-member-1-style")
+        lead_style.focus()
+        page.evaluate("() => { const button = __formationGatePad.buttons[15]; "
+                      "button.pressed = true; button.value = 1; }")
+        page.wait_for_timeout(100)
+        page.evaluate("() => { const button = __formationGatePad.buttons[15]; "
+                      "button.pressed = false; button.value = 0; }")
+        page.wait_for_timeout(100)
+        require(lead_style.input_value() == "4",
+                "standard gamepad Right did not change the focused style")
+        page.locator("#formation-member-2-ship").select_option("0")
+        page.locator("#formation-member-2-style").select_option("6")
+        require("1: Type B, style 4 / 2: Type A, style 6"
+                in page.locator("#summary").inner_text(),
+                "two-ship summary does not list every selected member")
+        require(urlsplit(page.url).fragment
+                == "mods=invincibility&formation=fly-both-ships-side-by-side"
+                   "&roster=2-4.0-6",
+                f"unexpected live two-ship setup URL {page.url}")
+
+        page.evaluate("() => { const button = __formationGatePad.buttons[9]; "
+                      "button.pressed = true; button.value = 1; }")
         page.wait_for_url("**/games/ddpdoj/index.html*", timeout=30000)
         require(urlsplit(page.url).fragment
-                == "mods=invincibility&formation=fly-both-ships-side-by-side",
+                == "mods=invincibility&formation=fly-both-ships-side-by-side"
+                   "&roster=2-4.0-6",
                 f"unexpected side-by-side launch URL {page.url}")
         wait_for_condition(page, "window.__mixup !== undefined", timeout=180000)
-
-        def read_state() -> dict:
-            return page.evaluate("""() => ({
-              logicFrame: window.__mixup.stats().logicFrame,
-              modIds: window.__mixup.stats().modIds,
-              formationId: window.__mixup.stats().formationId,
-              companions: window.__mixup.demo.formation.foundation.companions.length,
-            })""")
-
-        def assert_state(state: dict) -> None:
-            require(state["modIds"] == ["invincibility"], f"wrong mod IDs {state['modIds']}")
-            require(state["formationId"] == "fly-both-ships-side-by-side",
-                    f"wrong formation ID {state['formationId']}")
-            require(state["companions"] == 1,
-                    f"expected one companion, got {state['companions']}")
-
-        initial = read_state()
-        assert_state(initial)
-        first_canvas = canvas_identity(page, "#screen", 224, 448)
+        live_frame = page.evaluate("() => window.__mixup.stats().logicFrame")
         wait_for_condition(
             page,
-            "minimum => window.__mixup.stats().logicFrame >= minimum",
-            arg=initial["logicFrame"] + 8,
+            "frame => window.__mixup.stats().logicFrame > frame + 2",
+            arg=live_frame,
+            polling=20,
+            timeout=5000,
+        )
+
+        def read_state() -> dict:
+            return page.evaluate("""() => {
+              const app = window.__mixup;
+              const formation = app.demo.formation;
+              const ram = app.game.ram;
+              return {
+                logicFrame: app.stats().logicFrame,
+                coldBoot: app.demo.coldBoot,
+                modIds: app.stats().modIds,
+                formationId: app.stats().formationId,
+                roster: formation.roster,
+                pending: formation.foundation === null,
+                companions: formation.foundation?.companions.map(companion => ({
+                  selection: companion.binding.selection,
+                  renderVariant: companion.binding.renderVariant,
+                  playerAddress: companion.binding.player,
+                })) ?? [],
+                render: (() => {
+                  const manager = formation.foundation;
+                  const list = app.demo.portList;
+                  const display = app.game.displayList;
+                  const privateBodies = manager?.companions.map(companion => {
+                    const request = companion.render.requests.find(({ bucket }) => bucket === 19);
+                    if (!request) return null;
+                    const original = (request.bytes[6] << 8) | request.bytes[7];
+                    const mapping = app.demo.romToPacked.get(original);
+                    const packed = mapping?.[0] ?? null;
+                    let inPortList = false;
+                    if (packed != null && list?.words) {
+                      for (let record = 0; record < 256; record++) {
+                        const at = record * 5;
+                        const size = list.words[at + 4];
+                        if ((size & 0x7fff) === 0) break;
+                        const offset = ((list.words[at + 2] & 0x7f) << 16)
+                          | list.words[at + 3];
+                        if (offset === packed && (size & 0x7e00) !== 0
+                            && (size & 0x01ff) !== 0) {
+                          inPortList = true;
+                          break;
+                        }
+                      }
+                    }
+                    return {
+                      original,
+                      mapped: mapping != null,
+                      ready: mapping != null && app.bundle.spr.state[mapping[2]] === 'ready',
+                      inPortList,
+                      hookCalls: companion.render.hookCalls,
+                    };
+                  }) ?? [];
+                  return {
+                    virtualRecords: display?.virtualRecords ?? 0,
+                    virtualDropped: display?.virtualDropped ?? 0,
+                    bodyVirtual: display?.perBucketVirtualRecords?.[19] ?? 0,
+                    portPending: list?.pending?.size ?? -1,
+                    privateBodies,
+                  };
+                })(),
+                lead: {
+                  ship: ram.u16(0x813084),
+                  style: ram.u16(0x813088),
+                },
+                nativeP2State: ram.u16(0x810448),
+                screenState: ram.u16(0x812e56),
+                credit: ram.u8(0x80395a),
+              };
+            }""")
+
+        initial = read_state()
+        require(initial["coldBoot"] is True and initial["pending"] is True,
+                f"formation did not remain pending through cold boot: {initial!r}")
+        require(initial["modIds"] == ["invincibility"],
+                f"wrong side-by-side mod IDs {initial['modIds']}")
+        require(initial["formationId"] == "fly-both-ships-side-by-side",
+                f"wrong formation ID {initial['formationId']}")
+        require(initial["roster"] == [{"ship": 2, "style": 4},
+                                     {"ship": 0, "style": 6}],
+                f"custom side-by-side roster did not reach Demo: {initial['roster']!r}")
+        page.evaluate("""() => {
+          const demo = window.__mixup.demo;
+          demo.__releaseGatePeriodMs = demo.periodMs;
+          demo.periodMs = 1;
+          demo.resyncTiming();
+        }""")
+        wait_for_condition(
+            page,
+            "() => window.__mixup.game.logicFrame >= 305 "
+            "&& window.__mixup.game.ram.u16(0x812e56) === 2",
+            polling=20,
+            timeout=15000,
+        )
+        scores = read_state()
+        require(scores["screenState"] == 2 and scores["pending"] is True,
+                f"formation activated before credit and Start: {scores!r}")
+        page.evaluate("""() => {
+          const demo = window.__mixup.demo;
+          demo.periodMs = demo.__releaseGatePeriodMs;
+          demo.resyncTiming();
+        }""")
+        page.keyboard.down("5")
+        wait_for_condition(
+            page,
+            "() => window.__mixup.game.ram.u8(0x80395a) === 1 "
+            "&& window.__mixup.game.ram.u16(0x812e56) === 3",
+            polling=10,
+            timeout=5000,
+        )
+        page.keyboard.up("5")
+        credited = read_state()
+        require(credited["credit"] == 1 and credited["screenState"] == 3
+                and credited["pending"] is True,
+                f"formation coin path is not a pending cabinet state: {credited!r}")
+        page.keyboard.down("Enter")
+        wait_for_condition(
+            page,
+            "() => window.__mixup.game.ram.u16(0x812e56) === 14",
+            polling=10,
+            timeout=5000,
+        )
+        page.keyboard.up("Enter")
+        selection_frame = read_state()
+        require(selection_frame["screenState"] == 14
+                and selection_frame["pending"] is True,
+                f"formation did not preserve fighter selection: {selection_frame!r}")
+        page.evaluate("""() => {
+          const demo = window.__mixup.demo;
+          demo.periodMs = 1;
+          demo.resyncTiming();
+        }""")
+        wait_for_condition(
+            page,
+            "() => window.__mixup.demo.formation.foundation?.companions.every("
+            "companion => companion.lifecycle === 'alive' "
+            "&& companion.memory.u16(companion.binding.player) === 0x8000 "
+            "&& companion.render.requests.some(request => request.bucket === 19)) === true",
+            polling=20,
             timeout=30000,
         )
-        page.wait_for_timeout(500)
-        second = read_state()
-        assert_state(second)
-        require(second["logicFrame"] >= initial["logicFrame"] + 8,
-                "side-by-side logic frames did not advance")
-        second_canvas = wait_for_canvas_change(
-            page, first_canvas, "#screen", 224, 448, "side-by-side"
+        page.evaluate("""() => {
+          const demo = window.__mixup.demo;
+          demo.periodMs = demo.__releaseGatePeriodMs;
+          demo.resyncTiming();
+        }""")
+        wait_for_condition(
+            page,
+            "() => [window.__mixup.bundle.bg, window.__mixup.bundle.spr]"
+            ".every(queue => { const state = queue.status(); "
+            "return state.ready === state.total && state.loading.length === 0; })",
+            polling=100,
+            timeout=180000,
         )
+        settled_frame = page.evaluate("() => window.__mixup.game.logicFrame")
+        wait_for_condition(
+            page,
+            "frame => window.__mixup.game.logicFrame > frame + 2",
+            arg=settled_frame,
+            polling=20,
+            timeout=5000,
+        )
+        gameplay = read_state()
+        require(gameplay["pending"] is False and len(gameplay["companions"]) == 1,
+                f"credited handoff did not attach one companion: {gameplay!r}")
+        require(gameplay["lead"] == {"ship": 2, "style": 4},
+                f"selected lead did not override cabinet selection: {gameplay['lead']!r}")
+        companion = gameplay["companions"][0]
+        require(companion["selection"] == {"ship": 0, "style": 6}
+                and companion["renderVariant"] == 0,
+                f"selected companion binding is wrong: {gameplay['companions']!r}")
+        require(companion["playerAddress"] != 0x810448,
+                "formation companion occupied the native P2 player record")
+        require(gameplay["nativeP2State"] == 0,
+                f"formation launch activated native P2: {gameplay['nativeP2State']}")
+        render = gameplay["render"]
+        require(render["bodyVirtual"] >= 1 and render["virtualRecords"] >= 1
+                and render["portPending"] == 0,
+                f"side-by-side companion did not reach the final display list: {gameplay!r}")
+        bodies = render["privateBodies"]
+        require(len(bodies) == 1 and bodies[0]["original"] == 0x1520
+                and bodies[0]["mapped"] and bodies[0]["ready"]
+                and bodies[0]["inPortList"] and bodies[0]["hookCalls"] > 0,
+                f"side-by-side companion body is not visibly renderable: {render!r}")
+        rendered = canvas_identity(page, "#screen", 224, 448)
 
         def recheck() -> None:
             current = read_state()
-            assert_state(current)
-            require(current["logicFrame"] >= second["logicFrame"] + 8,
-                    "side-by-side logic frames stopped during settling")
-            wait_for_canvas_change(
-                page, second_canvas, "#screen", 224, 448, "settled side-by-side"
-            )
-            page.evaluate("() => { window.__mixup.demo.running = false; }")
-            wait_for_condition(
-                page,
-                "() => [window.__mixup.bundle.bg, window.__mixup.bundle.spr]"
-                ".every(queue => { const state = queue.status(); "
-                "return state.ready === state.total && state.loading.length === 0; })",
-                timeout=180000,
-            )
+            require(current["logicFrame"] > gameplay["logicFrame"],
+                    "live side-by-side formation frame loop stopped during settling")
+            require(current["roster"] == gameplay["roster"]
+                    and current["companions"] == gameplay["companions"],
+                    "side-by-side roster or binding changed during settling")
+            require(current["render"]["bodyVirtual"] >= 1
+                    and all(body and body["ready"] and body["inPortList"]
+                            for body in current["render"]["privateBodies"]),
+                    f"live side-by-side companion rendering disappeared: {current['render']!r}")
+            current_canvas = canvas_identity(page, "#screen", 224, 448)
+            require_canvas_change(rendered, current_canvas,
+                                  "live side-by-side formation")
 
         return recheck
 
-    gate.run("asset-backed side-by-side formation", side_by_side)
+    gate.run(
+        "asset-backed side-by-side formation",
+        side_by_side,
+        context_options={"has_touch": True},
+    )
 
     def three_ship(page):
         open_page(page, origin, "/games/ddpdoj/start.html")
         page.locator("#formation-three").click()
+        require(page.locator("#formation-members .formation-member").count() == 3,
+                "three-ship picker does not expose exactly three members")
+        require(page.locator("#formation-members select").count() == 6,
+                "three-ship picker does not expose Type and style for all members")
+        defaults = page.evaluate("""() => [1, 2, 3].map(member => ({
+          ship: document.querySelector(`#formation-member-${member}-ship`).value,
+          style: document.querySelector(`#formation-member-${member}-style`).value,
+        }))""")
+        require(defaults == [
+                    {"ship": "0", "style": "2"},
+                    {"ship": "0", "style": "6"},
+                    {"ship": "2", "style": "4"},
+                ], f"three-ship browser defaults are wrong: {defaults!r}")
+        for selector, value in (
+            ("#formation-member-1-ship", "2"),
+            ("#formation-member-1-style", "4"),
+            ("#formation-member-2-ship", "0"),
+            ("#formation-member-2-style", "6"),
+            ("#formation-member-3-ship", "2"),
+            ("#formation-member-3-style", "2"),
+        ):
+            page.locator(selector).select_option(value)
+        expected_fragment = (
+            "formation=all-three-pilots-each-piloting-a-ship&roster=2-4.0-6.2-2"
+        )
+        require(urlsplit(page.url).fragment == expected_fragment,
+                f"unexpected three-ship setup URL {page.url}")
+        page.reload(wait_until="domcontentloaded", timeout=30000)
+        restored = page.evaluate("""() => [1, 2, 3].map(member => ({
+          ship: document.querySelector(`#formation-member-${member}-ship`).value,
+          style: document.querySelector(`#formation-member-${member}-style`).value,
+        }))""")
+        require(restored == [
+                    {"ship": "2", "style": "4"},
+                    {"ship": "0", "style": "6"},
+                    {"ship": "2", "style": "2"},
+                ], f"three-ship hash did not restore every selector: {restored!r}")
+        require("1: Type B, style 4 / 2: Type A, style 6 / 3: Type B, style 2"
+                in page.locator("#summary").inner_text(),
+                "restored three-ship summary does not list every member")
         page.locator("#launch").click()
         page.wait_for_url("**/games/ddpdoj/index.html*", timeout=30000)
+        require(urlsplit(page.url).fragment == expected_fragment,
+                f"unexpected three-ship launch URL {page.url}")
         wait_for_condition(page, "window.__mixup !== undefined", timeout=180000)
-
-        def read_state() -> dict:
-            return page.evaluate("""() => ({
-              logicFrame: window.__mixup.stats().logicFrame,
-              formationId: window.__mixup.stats().formationId,
-              companions: window.__mixup.demo.formation.foundation.companions.length,
-            })""")
-
-        def assert_state(state: dict) -> None:
-            require(state["formationId"] == "all-three-pilots-each-piloting-a-ship",
-                    f"wrong three-ship formation ID {state['formationId']}")
-            require(state["companions"] == 2,
-                    f"expected two companions, got {state['companions']}")
-
-        initial = read_state()
-        assert_state(initial)
-        first_canvas = canvas_identity(page, "#screen", 224, 448)
+        live_frame = page.evaluate("() => window.__mixup.stats().logicFrame")
         wait_for_condition(
             page,
-            "minimum => window.__mixup.stats().logicFrame >= minimum",
-            arg=initial["logicFrame"] + 8,
+            "frame => window.__mixup.stats().logicFrame > frame + 2",
+            arg=live_frame,
+            polling=20,
+            timeout=5000,
+        )
+
+        def read_state() -> dict:
+            return page.evaluate("""() => {
+              const app = window.__mixup;
+              const formation = app.demo.formation;
+              const ram = app.game.ram;
+              return {
+                logicFrame: app.stats().logicFrame,
+                coldBoot: app.demo.coldBoot,
+                formationId: app.stats().formationId,
+                roster: formation.roster,
+                pending: formation.foundation === null,
+                companions: formation.foundation?.companions.map(companion => ({
+                  selection: companion.binding.selection,
+                  renderVariant: companion.binding.renderVariant,
+                  playerAddress: companion.binding.player,
+                })) ?? [],
+                render: (() => {
+                  const manager = formation.foundation;
+                  const list = app.demo.portList;
+                  const display = app.game.displayList;
+                  const privateBodies = manager?.companions.map(companion => {
+                    const request = companion.render.requests.find(({ bucket }) => bucket === 19);
+                    if (!request) return null;
+                    const original = (request.bytes[6] << 8) | request.bytes[7];
+                    const mapping = app.demo.romToPacked.get(original);
+                    const packed = mapping?.[0] ?? null;
+                    let inPortList = false;
+                    if (packed != null && list?.words) {
+                      for (let record = 0; record < 256; record++) {
+                        const at = record * 5;
+                        const size = list.words[at + 4];
+                        if ((size & 0x7fff) === 0) break;
+                        const offset = ((list.words[at + 2] & 0x7f) << 16)
+                          | list.words[at + 3];
+                        if (offset === packed && (size & 0x7e00) !== 0
+                            && (size & 0x01ff) !== 0) {
+                          inPortList = true;
+                          break;
+                        }
+                      }
+                    }
+                    return {
+                      original,
+                      mapped: mapping != null,
+                      ready: mapping != null && app.bundle.spr.state[mapping[2]] === 'ready',
+                      inPortList,
+                      hookCalls: companion.render.hookCalls,
+                    };
+                  }) ?? [];
+                  return {
+                    virtualRecords: display?.virtualRecords ?? 0,
+                    virtualDropped: display?.virtualDropped ?? 0,
+                    bodyVirtual: display?.perBucketVirtualRecords?.[19] ?? 0,
+                    portPending: list?.pending?.size ?? -1,
+                    privateBodies,
+                  };
+                })(),
+                lead: {
+                  ship: ram.u16(0x813084),
+                  style: ram.u16(0x813088),
+                },
+                nativeP2State: ram.u16(0x810448),
+                screenState: ram.u16(0x812e56),
+                credit: ram.u8(0x80395a),
+              };
+            }""")
+
+        initial = read_state()
+        require(initial["coldBoot"] is True and initial["pending"] is True,
+                f"three-ship formation did not remain pending at cold boot: {initial!r}")
+        require(initial["formationId"] == "all-three-pilots-each-piloting-a-ship",
+                f"wrong three-ship formation ID {initial['formationId']}")
+        require(initial["roster"] == [
+                    {"ship": 2, "style": 4},
+                    {"ship": 0, "style": 6},
+                    {"ship": 2, "style": 2},
+                ], f"custom three-ship roster did not reach Demo: {initial['roster']!r}")
+        page.evaluate("""() => {
+          const demo = window.__mixup.demo;
+          demo.__releaseGatePeriodMs = demo.periodMs;
+          demo.periodMs = 1;
+          demo.resyncTiming();
+        }""")
+        wait_for_condition(
+            page,
+            "() => window.__mixup.game.logicFrame >= 305 "
+            "&& window.__mixup.game.ram.u16(0x812e56) === 2",
+            polling=20,
+            timeout=15000,
+        )
+        page.evaluate("""() => {
+          const demo = window.__mixup.demo;
+          demo.periodMs = demo.__releaseGatePeriodMs;
+          demo.resyncTiming();
+        }""")
+        page.keyboard.down("5")
+        wait_for_condition(
+            page,
+            "() => window.__mixup.game.ram.u8(0x80395a) === 1 "
+            "&& window.__mixup.game.ram.u16(0x812e56) === 3",
+            polling=10,
+            timeout=5000,
+        )
+        page.keyboard.up("5")
+        credited = read_state()
+        require(credited["credit"] == 1 and credited["screenState"] == 3
+                and credited["pending"] is True,
+                f"three-ship coin path is not a pending cabinet state: {credited!r}")
+        page.keyboard.down("Enter")
+        wait_for_condition(
+            page,
+            "() => window.__mixup.game.ram.u16(0x812e56) === 14",
+            polling=10,
+            timeout=5000,
+        )
+        page.keyboard.up("Enter")
+        selection_frame = read_state()
+        require(selection_frame["screenState"] == 14
+                and selection_frame["pending"] is True,
+                f"three-ship launch bypassed fighter selection: {selection_frame!r}")
+        page.evaluate("""() => {
+          const demo = window.__mixup.demo;
+          demo.periodMs = 1;
+          demo.resyncTiming();
+        }""")
+        wait_for_condition(
+            page,
+            "() => window.__mixup.demo.formation.foundation?.companions.every("
+            "companion => companion.lifecycle === 'alive' "
+            "&& companion.memory.u16(companion.binding.player) === 0x8000 "
+            "&& companion.render.requests.some(request => request.bucket === 19)) === true",
+            polling=20,
             timeout=30000,
         )
-        page.wait_for_timeout(500)
-        second = read_state()
-        assert_state(second)
-        require(second["logicFrame"] >= initial["logicFrame"] + 8,
-                "three-ship logic frames did not advance")
-        second_canvas = wait_for_canvas_change(
-            page, first_canvas, "#screen", 224, 448, "three-ship"
+        page.evaluate("""() => {
+          const demo = window.__mixup.demo;
+          demo.periodMs = demo.__releaseGatePeriodMs;
+          demo.resyncTiming();
+        }""")
+        wait_for_condition(
+            page,
+            "() => [window.__mixup.bundle.bg, window.__mixup.bundle.spr]"
+            ".every(queue => { const state = queue.status(); "
+            "return state.ready === state.total && state.loading.length === 0; })",
+            polling=100,
+            timeout=180000,
         )
+        settled_frame = page.evaluate("() => window.__mixup.game.logicFrame")
+        wait_for_condition(
+            page,
+            "frame => window.__mixup.game.logicFrame > frame + 2",
+            arg=settled_frame,
+            polling=20,
+            timeout=5000,
+        )
+        gameplay = read_state()
+        require(gameplay["pending"] is False and len(gameplay["companions"]) == 2,
+                f"credited handoff did not attach two companions: {gameplay!r}")
+        require(gameplay["lead"] == {"ship": 2, "style": 4},
+                f"selected three-ship lead did not reach RAM: {gameplay['lead']!r}")
+        require([entry["selection"] for entry in gameplay["companions"]] == [
+                    {"ship": 0, "style": 6}, {"ship": 2, "style": 2},
+                ], f"three-ship companion selections are wrong: {gameplay['companions']!r}")
+        require([entry["renderVariant"] for entry in gameplay["companions"]] == [0, 1],
+                f"Type A and Type B companion art variants are wrong: {gameplay['companions']!r}")
+        require(all(entry["playerAddress"] != 0x810448
+                    for entry in gameplay["companions"]),
+                "three-ship companion occupied the native P2 player record")
+        require(gameplay["nativeP2State"] == 0,
+                f"three-ship formation activated native P2: {gameplay['nativeP2State']}")
+        render = gameplay["render"]
+        bodies = render["privateBodies"]
+        require(render["bodyVirtual"] >= 2 and render["virtualRecords"] >= 2
+                and render["portPending"] == 0,
+                f"three-ship companions did not reach the final display list: {render!r}")
+        require(len(bodies) == 2
+                and [body["original"] for body in bodies] == [0x1520, 0x1BC4]
+                and all(body["mapped"] and body["ready"] and body["inPortList"]
+                        and body["hookCalls"] > 0 for body in bodies),
+                f"three-ship companion bodies are not visibly renderable: {render!r}")
+        rendered = canvas_identity(page, "#screen", 224, 448)
 
         def recheck() -> None:
             current = read_state()
-            assert_state(current)
-            require(current["logicFrame"] >= second["logicFrame"] + 8,
-                    "three-ship logic frames stopped during settling")
-            wait_for_canvas_change(
-                page, second_canvas, "#screen", 224, 448, "settled three-ship"
-            )
-            page.evaluate("() => { window.__mixup.demo.running = false; }")
-            wait_for_condition(
-                page,
-                "() => [window.__mixup.bundle.bg, window.__mixup.bundle.spr]"
-                ".every(queue => { const state = queue.status(); "
-                "return state.ready === state.total && state.loading.length === 0; })",
-                timeout=180000,
-            )
+            require(current["logicFrame"] > gameplay["logicFrame"],
+                    "live three-ship formation frame loop stopped during settling")
+            require(current["roster"] == gameplay["roster"]
+                    and current["companions"] == gameplay["companions"],
+                    "three-ship roster or bindings changed during settling")
+            require(current["render"]["bodyVirtual"] >= 2
+                    and all(body and body["ready"] and body["inPortList"]
+                            for body in current["render"]["privateBodies"]),
+                    f"live three-ship companion rendering disappeared: {current['render']!r}")
+            current_canvas = canvas_identity(page, "#screen", 224, 448)
+            require_canvas_change(rendered, current_canvas,
+                                  "live three-ship formation")
 
         return recheck
 
     gate.run("asset-backed three-ship formation", three_ship)
 
     def menu_conflict(page):
-        open_page(
-            page,
-            origin,
-            "/games/ddpdoj/start.html?p2=1&p2ship=2&p2style=6",
+        expected_query = "ship=2&style=6&p2=1&p2ship=2&p2style=4"
+        expected_path = (
+            f"/games/ddpdoj/start.html?{expected_query}"
+            "#formation=fly-both-ships-side-by-side"
         )
-        page.locator("#formation-side-by-side").click()
+        open_page(page, origin, expected_path)
 
         def assert_menu_conflict() -> None:
             conflict = page.locator("#conflict")
@@ -1027,9 +1453,28 @@ def gate_asset_backed(browser, origin: str) -> None:
                     == " | Formation cannot be combined with an explicit native P2 selection",
                     "formation and native P2 conflict text is not exact")
             require(page.locator("#launch").is_disabled(), "conflicted launch remains enabled")
+            parsed = urlsplit(page.url)
+            require(parsed.query == expected_query
+                    and parsed.fragment == "formation=fly-both-ships-side-by-side",
+                    f"formation deep link discarded explicit native P2 intent: {page.url}")
+
+        def assert_resolved_selection() -> None:
+            parsed = urlsplit(page.url)
+            require(parsed.query == expected_query and not parsed.fragment,
+                    f"disabling formation discarded the explicit P1 or P2 pair: {page.url}")
+            require(not page.locator("#launch").is_disabled(),
+                    "launch stayed disabled after resolving the formation conflict")
+            require(page.locator("#conflict").count() == 0,
+                    "formation conflict stayed visible after disabling formation")
+            summary = page.locator("#summary").inner_text()
+            require("P1 Type-B, selector 6" in summary
+                    and "P2 Type-B, selector 4" in summary,
+                    f"resolved formation conflict changed an explicit player pair: {summary!r}")
 
         assert_menu_conflict()
-        return assert_menu_conflict
+        page.locator("#formation-side-by-side").click()
+        assert_resolved_selection()
+        return assert_resolved_selection
 
     gate.run("asset-backed formation menu conflict", menu_conflict)
 
@@ -1056,6 +1501,38 @@ def gate_asset_backed(browser, origin: str) -> None:
         "asset-backed direct formation conflict",
         direct_conflict,
         expected_console_errors=(EXPECTED_FORMATION_ERROR,),
+    )
+
+    def malformed_roster(page):
+        open_page(
+            page,
+            origin,
+            "/games/ddpdoj/index.html"
+            "#formation=fly-both-ships-side-by-side&roster=2-6",
+        )
+        error = page.locator("#err")
+        error.wait_for(state="visible", timeout=30000)
+        expected = (
+            "The game could not start.\n\n"
+            "formation mode received an invalid per-ship roster\n\n"
+            "The frame loop has stopped. Reload to start again."
+        )
+
+        def assert_malformed() -> None:
+            require(error.inner_text() == expected,
+                    f"malformed formation roster error is not exact: {error.inner_text()!r}")
+            require(page.evaluate("() => window.__mixup === undefined"),
+                    "malformed formation roster constructed window.__mixup")
+
+        assert_malformed()
+        return assert_malformed
+
+    gate.run(
+        "asset-backed malformed formation roster",
+        malformed_roster,
+        expected_console_errors=(
+            "Error: formation mode received an invalid per-ship roster",
+        ),
     )
 
 
@@ -1754,6 +2231,16 @@ def gate_asset_free(browser, origin: str) -> None:
             configurable: true,
             value: () => { calls.push(['unlock']); },
           });
+
+          const buttons = Array.from({ length: 16 }, () => ({
+            pressed: false, value: 0,
+          }));
+          const pad = { connected: true, axes: [0, 0], buttons };
+          Object.defineProperty(globalThis, '__formationGatePad', { value: pad });
+          Object.defineProperty(navigator, 'getGamepads', {
+            configurable: true,
+            value: () => [pad],
+          });
         })();
         """)
         open_page(page, origin, "/")
@@ -1821,11 +2308,55 @@ def gate_asset_free(browser, origin: str) -> None:
                 "Mixup opens detailed mod customization by default")
         require(not page.locator("#local-start").is_disabled(),
                 "Mixup local start button is disabled")
-        ships = page.locator("#local-picker-content .local-fields select").nth(1)
-        ships.select_option("all-three-pilots-each-piloting-a-ship")
-        require("three-ship formation" in page.locator(
-            "#local-loadout-summary").inner_text().lower(),
-                "Mixup did not retain the three-ship quick choice")
+        formation_mode = page.locator("#local-formation-mode")
+        formation_mode.select_option("all-three-pilots-each-piloting-a-ship")
+        require(page.locator("#local-picker-content .local-formation-field").count() == 6,
+                "Mixup does not expose Type and style for all three formation members")
+        local_defaults = page.evaluate("""() => [1, 2, 3].map(member => ({
+          ship: document.querySelector(`#local-formation-member-${member}-ship`).value,
+          style: document.querySelector(`#local-formation-member-${member}-style`).value,
+        }))""")
+        require(local_defaults == [
+                    {"ship": "0", "style": "2"},
+                    {"ship": "0", "style": "6"},
+                    {"ship": "2", "style": "4"},
+                ], f"Mixup three-ship defaults are wrong: {local_defaults!r}")
+        local_touch = page.locator("#local-formation-member-2-style")
+        local_touch.evaluate("""select => select.addEventListener('touchstart', () => {
+          select.dataset.releaseGateTouch = 'yes';
+        }, { once: true })""")
+        local_touch.tap()
+        page.keyboard.press("Escape")
+        require(local_touch.get_attribute("data-release-gate-touch") == "yes",
+                "Mixup formation select did not receive native touch input")
+        local_heights = page.locator(".local-formation-field").evaluate_all(
+            "selects => selects.map(select => select.getBoundingClientRect().height)"
+        )
+        require(all(height >= 40 for height in local_heights),
+                f"Mixup formation touch targets are too short: {local_heights!r}")
+        local_lead_ship = page.locator("#local-formation-member-1-ship")
+        local_lead_ship.focus()
+        page.keyboard.press("ArrowDown")
+        require(local_lead_ship.input_value() == "2",
+                "Mixup keyboard did not change the lead to Type B")
+        local_lead_style = page.locator("#local-formation-member-1-style")
+        local_lead_style.focus()
+        page.evaluate("() => { const button = __formationGatePad.buttons[15]; "
+                      "button.pressed = true; button.value = 1; }")
+        page.wait_for_timeout(100)
+        page.evaluate("() => { const button = __formationGatePad.buttons[15]; "
+                      "button.pressed = false; button.value = 0; }")
+        page.wait_for_timeout(100)
+        require(local_lead_style.input_value() == "4",
+                "Mixup standard gamepad Right did not change the focused style")
+        page.locator("#local-formation-member-2-ship").select_option("0")
+        page.locator("#local-formation-member-2-style").select_option("6")
+        page.locator("#local-formation-member-3-ship").select_option("2")
+        page.locator("#local-formation-member-3-style").select_option("2")
+        local_summary = page.locator("#local-loadout-summary").inner_text()
+        require("three-ship formation" in local_summary.lower()
+                and "Type B/style 4, Type A/style 6, Type B/style 2" in local_summary,
+                f"Mixup did not retain every formation choice: {local_summary!r}")
         page.locator(".local-customizer summary").click()
         runahead = page.locator('[data-mod-id="runahead-2"]')
         require(runahead.count() == 1 and runahead.is_visible(),
@@ -1881,13 +2412,29 @@ def gate_asset_free(browser, origin: str) -> None:
         for width in (1280, 700, 360):
             assert_picker_width(width)
         page.set_viewport_size({"width": 1280, "height": 900})
-        page.locator("#local-start").click()
+        page.evaluate("""async () => {
+          const { Game } = await import('/games/ddpdoj/src/main.js');
+          const values = new WeakMap();
+          const key = Symbol.for('mixup.releaseGate.ddpdojGame');
+          Object.defineProperty(Game.prototype, 'cabinetRunStartHook', {
+            configurable: true,
+            get() { return values.get(this); },
+            set(value) {
+              values.set(this, value);
+              document[key] = this;
+            },
+          });
+        }""")
+        page.evaluate("() => { const button = __formationGatePad.buttons[9]; "
+                      "button.pressed = true; button.value = 1; }")
         wait_for_condition(
             page,
             "expected => document.querySelector('#boot-status').textContent === expected",
             arg=RUNNING_DDPDOJ,
             timeout=300000,
         )
+        page.evaluate("() => { const button = __formationGatePad.buttons[9]; "
+                      "button.pressed = false; button.value = 0; }")
 
         def assert_no_runtime_globals() -> None:
             exposure = page.evaluate("""baseline => {
@@ -2011,6 +2558,107 @@ def gate_asset_free(browser, origin: str) -> None:
 
         assert_running()
         assert_no_runtime_globals()
+        local_pending = page.evaluate("""() => {
+          const game = document[Symbol.for('mixup.releaseGate.ddpdojGame')];
+          if (!game) return null;
+          return {
+            logicFrame: game.logicFrame,
+            pending: game.playerPositionTransform == null,
+            screenState: game.ram.u16(0x812e56),
+          };
+        }""")
+        require(local_pending is not None and local_pending["pending"] is True,
+                f"Mixup formation did not remain pending at cold boot: {local_pending!r}")
+        page.evaluate("""async () => {
+          const game = document[Symbol.for('mixup.releaseGate.ddpdojGame')];
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          while (game.logicFrame < 305) {
+            game.coinPort = input.currentCoinWord();
+            game.step(input.currentPortWord());
+          }
+        }""")
+        page.evaluate("""async () => {
+          const game = document[Symbol.for('mixup.releaseGate.ddpdojGame')];
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          input.setCoinKey('COIN1', true);
+          for (let index = 0; index < 30; index++) {
+            game.coinPort = input.currentCoinWord();
+            game.step(input.currentPortWord());
+          }
+          input.setCoinKey('COIN1', false);
+        }""")
+        local_credited = page.evaluate("""() => {
+          const game = document[Symbol.for('mixup.releaseGate.ddpdojGame')];
+          return {
+            credit: game.ram.u8(0x80395a),
+            screenState: game.ram.u16(0x812e56),
+            pending: game.playerPositionTransform == null,
+          };
+        }""")
+        require(local_credited == {"credit": 1, "screenState": 3, "pending": True},
+                f"Mixup formation coin path is not pending: {local_credited!r}")
+        page.evaluate("""async () => {
+          const game = document[Symbol.for('mixup.releaseGate.ddpdojGame')];
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          input.setTouchButton('START', true);
+          for (let index = 0; index < 12; index++) {
+            game.coinPort = input.currentCoinWord();
+            game.step(input.currentPortWord());
+          }
+          input.setTouchButton('START', false);
+        }""")
+        local_selection = page.evaluate("""() => {
+          const game = document[Symbol.for('mixup.releaseGate.ddpdojGame')];
+          return {
+            screenState: game.ram.u16(0x812e56),
+            pending: game.playerPositionTransform == null,
+          };
+        }""")
+        require(local_selection == {"screenState": 14, "pending": True},
+                f"Mixup formation bypassed fighter selection: {local_selection!r}")
+        local_gameplay = page.evaluate("""async () => {
+          const game = document[Symbol.for('mixup.releaseGate.ddpdojGame')];
+          const input = await import('/games/ddpdoj/src/web/input.js');
+          const { threePilotFoundationForGame } = await import(
+            '/games/ddpdoj/src/formationactors.js'
+          );
+          const target = game.logicFrame + 2500;
+          while (game.logicFrame < target) {
+            game.coinPort = input.currentCoinWord();
+            game.step(input.currentPortWord());
+          }
+          const first = threePilotFoundationForGame(game);
+          const companions = first?.manager?.companions ?? [];
+          return {
+            logicFrame: game.logicFrame,
+            lead: {
+              ship: game.ram.u16(0x813084),
+              style: game.ram.u16(0x813088),
+            },
+            nativeP2State: game.ram.u16(0x810448),
+            playerCountM1: game.ram.u16(0x81308e),
+            companions: companions.map(companion => ({
+              selection: companion.binding.selection,
+              renderVariant: companion.binding.renderVariant,
+              playerAddress: companion.binding.player,
+              sharesP1Game: companion.game === game,
+            })),
+          };
+        }""")
+        require(local_gameplay["lead"] == {"ship": 2, "style": 4},
+                f"Mixup selected lead did not reach RAM: {local_gameplay['lead']!r}")
+        require([entry["selection"] for entry in local_gameplay["companions"]] == [
+                    {"ship": 0, "style": 6}, {"ship": 2, "style": 2},
+                ], f"Mixup companion roster is wrong: {local_gameplay['companions']!r}")
+        require([entry["renderVariant"] for entry in local_gameplay["companions"]] == [0, 1],
+                f"Mixup companion art variants are wrong: {local_gameplay['companions']!r}")
+        require(all(entry["sharesP1Game"]
+                    and entry["playerAddress"] != 0x810448
+                    for entry in local_gameplay["companions"]),
+                "Mixup companions are not private P1-owned actors")
+        require(local_gameplay["nativeP2State"] == 0
+                and local_gameplay["playerCountM1"] == 0,
+                f"Mixup formation activated native P2: {local_gameplay!r}")
         canvas_identity(page, "#game-canvas", 224, 448, timeout=120000)
         record = page.locator("#local-record")
         require(record.is_visible() and not record.is_disabled(),

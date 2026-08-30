@@ -379,6 +379,20 @@ test('W609 Demo constructs both P1-owned formations and keeps native P2 separate
     assert.equal(unknown.formation, null);
     assert.equal(Object.hasOwn(off.game, 'playerPositionTransform'), false);
     assert.equal(Object.hasOwn(unknown.game, 'playerPositionTransform'), false);
+    assert.equal(activeTwo.coldBoot, true,
+      'two-ship formation exposes a boolean cold-boot state');
+    assert.equal(activeThree.coldBoot, true,
+      'three-ship formation exposes a boolean cold-boot state');
+    assert.equal(activeTwo.formation.foundation, null,
+      'formation remains pending through the cold cabinet');
+    assert.equal(activeThree.formation.foundation, null,
+      'three-ship formation remains pending through the cold cabinet');
+    assert.equal(Object.hasOwn(activeTwo.game, 'playerPositionTransform'), false);
+    assert.equal(Object.hasOwn(activeThree.game, 'playerPositionTransform'), false);
+    assert.equal(typeof activeTwo.game.cabinetRunStartHook, 'function');
+    assert.equal(typeof activeThree.game.cabinetRunStartHook, 'function');
+    activeTwo.game.cabinetRunStartHook(activeTwo.game.ram, { demo: false });
+    activeThree.game.cabinetRunStartHook(activeThree.game.ram, { demo: false });
     assert.equal(activeTwo.formation.foundation.companions.length, 1);
     assert.equal(activeThree.formation.foundation.companions.length, 2);
     assert.equal(typeof activeTwo.game.playerPositionTransform, 'function');
@@ -505,7 +519,7 @@ test('W609 start keeps explicit native P2 separate and blocks every formation co
   assert.match(launchHandler,
     /if \(formationActive && \(explicitP2Joined[\s\S]*runaheadFrames > 0\)\) return/);
   assert.match(start,
-    /formationActive[\s\S]*P1-owned companion[\s\S]*Native P2 not joined/);
+    /formationRoster\.map\([\s\S]*Type \$\{selection\.ship[\s\S]*Native P2 not joined/);
   assert.doesNotMatch(start, /FORMATION_MODE\.authenticSelection\.p2/,
     'formation does not derive a native P2 pair');
 });
@@ -520,6 +534,9 @@ test('W609 start navigation restores URL state without writing a history loop', 
   assert.match(restore, /hashToFormation\(location\.hash\)/);
   assert.match(restore, /new URLSearchParams\(location\.search\)/);
   assert.match(restore, /formationAuthenticOverridesFromParams\(params\)/);
+  assert.match(restore,
+    /const effective = formationActive && ordinary\?\.p2 == null[\s\S]*\? formationRoster\?\.\[0\] \?\? ordinary[\s\S]*: ordinary \?\? formationRoster\?\.\[0\]/,
+  'a formation conflict retains the ordinary P1 pair for resolution');
   assert.match(start, /history\.pushState\(null, '', target\)/,
     'control changes make one shareable URL history entry');
   assert.match(navigation, /addEventListener\('hashchange', restoreNavigationState\)/);
@@ -544,10 +561,16 @@ test('W609 menu and runtime expose both P1-owned formations and disabled White L
   assert.match(start,
     /id="edition-white-label"[^>]*aria-pressed="false"[\s\S]*aria-disabled="true" disabled/);
   assert.match(start, /White Label remains non-selectable/);
-  assert.match(start, /loadoutToHash\(resolved\.ids\)[\s\S]*formationToHash/,
-    'start-page hash keeps deterministic mods-first formation ordering');
   assert.match(start,
-    /function launchAuthenticQuery\(\)[\s\S]*if \(formationActive\) return formationAuthenticQuery\(\)/);
+    /loadoutToHash\(resolved\.ids\)[\s\S]*formationToHash[\s\S]*formationRosterToHash/,
+    'start-page hash keeps deterministic mods-first formation roster ordering');
+  assert.match(start,
+    /function launchAuthenticQuery\(\)[\s\S]*if \(formationActive && !explicitP2Joined\) return ''/,
+  'formation suppresses only a P1-only diagnostic query and retains explicit P2 conflicts');
+  assert.match(start, /id="formation-roster"[\s\S]*id="formation-members"/);
+  assert.match(start,
+    /rosterSelect\(member, 'ship'[\s\S]*rosterSelect\(member, 'style'/);
+  assert.match(start, /attachGamepadMenu\(document\.querySelector\('\.wrap'\)/);
 
   assert.match(browser, /id="formation-active" role="status"/);
   assert.match(browser,

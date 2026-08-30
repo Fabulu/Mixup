@@ -7,6 +7,7 @@ import { AudioController } from '/shared/audio.js';
 import * as DdpInput from '/games/ddpdoj/src/web/input.js';
 import * as DdpMods from '/games/ddpdoj/src/mods.js';
 import * as Formation from '/games/ddpdoj/src/formation.js';
+import { attachGamepadMenu } from '/games/ddpdoj/src/web/menu-gamepad.js';
 
 const GAME_IDS = new Set(['batman', 'gradius', 'ddpdoj']);
 const DDP_CONTROL_SCHEMES = Object.freeze(['auto', 'fixed', 'float']);
@@ -88,6 +89,16 @@ const GRADIUS_START_OPTIONS = Object.freeze([
     Object.freeze({ value: 4, name: 'Laser' }), Object.freeze({ value: 5, name: 'Option' }),
     Object.freeze({ value: 6, name: 'Shield' }),
   ]) }),
+]);
+
+const DDP_FORMATION_SHIPS = Object.freeze([
+  Object.freeze({ value: 0, name: 'Type A' }),
+  Object.freeze({ value: 2, name: 'Type B' }),
+]);
+const DDP_FORMATION_STYLES = Object.freeze([
+  Object.freeze({ value: 2, name: 'Style 2, shot' }),
+  Object.freeze({ value: 4, name: 'Style 4, laser' }),
+  Object.freeze({ value: 6, name: 'Style 6, expert' }),
 ]);
 
 const GAME_COPY = Object.freeze({
@@ -199,10 +210,15 @@ function setFullscreenCanvasFit(canvas, viewport, logicalWidth, logicalHeight) {
   canvas.style.height = `${height * scale}px`;
 }
 
-function selectField(labelText, values, selected, onChange) {
+function selectField(labelText, values, selected, onChange, options = {}) {
   const label = element('label');
+  if (options.className) label.className = options.className;
   label.append(document.createTextNode(labelText));
   const select = document.createElement('select');
+  if (options.id) select.id = options.id;
+  for (const [name, value] of Object.entries(options.dataset ?? {})) {
+    select.dataset[name] = String(value);
+  }
   for (const value of values) {
     const option = document.createElement('option');
     option.value = String(value.value);
@@ -286,6 +302,10 @@ class LocalShell {
       if (event.code === 'Enter' || event.code === 'Space') this.armCurrentAudio();
     }, true);
     this.startButton.addEventListener('click', () => this.startGame());
+    this.detachMenuGamepad = attachGamepadMenu(this.picker, {
+      active: () => !this.shell.hidden && !this.picker.hidden,
+      primary: () => this.startButton,
+    });
     this.fullscreen.addEventListener('click', () => this.toggleFullscreen());
     this.picture.addEventListener('click', () => this.togglePicture());
     this.controls.addEventListener('click', () => this.cycleTouchScheme());
@@ -348,6 +368,7 @@ class LocalShell {
       mods: new Set(),
       preset: 'original',
       formation: '',
+      formationRoster: null,
       mode: storedChoice(DDP_MODE_STORE, ['tate', 'yoko'], 'tate'),
       sound: true,
       controls: storedChoice(DDP_CONTROL_STORE, DDP_CONTROL_SCHEMES, 'auto'),
@@ -495,8 +516,37 @@ class LocalShell {
       ];
       quickFields.append(selectField('Ships', formations, state.formation, (value) => {
         state.formation = value;
+        state.formationRoster = value ? Formation.defaultFormationRoster(value) : null;
         this.renderPicker();
-      }));
+      }, { id: 'local-formation-mode' }));
+      if (state.formation) {
+        state.formationRoster = Formation.resolveFormationRoster(
+          state.formation, state.formationRoster)
+          ?? Formation.defaultFormationRoster(state.formation);
+        const positions = state.formationRoster.length === 2
+          ? ['Left ship, lead', 'Right ship, companion']
+          : ['Left ship, lead', 'Center ship, companion', 'Right ship, companion'];
+        state.formationRoster.forEach((selection, member) => {
+          const update = (field, raw) => {
+            const roster = state.formationRoster.map((entry) => ({ ...entry }));
+            roster[member][field] = Number(raw);
+            state.formationRoster = Formation.resolveFormationRoster(state.formation, roster);
+            this.renderSummary();
+          };
+          quickFields.append(selectField(`${positions[member]} type`, DDP_FORMATION_SHIPS,
+            selection.ship, (value) => update('ship', value), {
+              className: 'local-formation-field',
+              id: `local-formation-member-${member + 1}-ship`,
+              dataset: { formationMember: member + 1, formationField: 'ship' },
+            }));
+          quickFields.append(selectField(`${positions[member]} style`, DDP_FORMATION_STYLES,
+            selection.style, (value) => update('style', value), {
+              className: 'local-formation-field',
+              id: `local-formation-member-${member + 1}-style`,
+              dataset: { formationMember: member + 1, formationField: 'style' },
+            }));
+        });
+      }
     }
     quick.append(quickFields);
     this.pickerContent.append(quick);
@@ -636,8 +686,12 @@ class LocalShell {
     const formationRunaheadConflict = this.hasDdpFormationRunaheadConflict(loadout);
     const parts = [];
     if (this.gameId === 'ddpdoj' && state.formation) {
-      parts.push(state.formation === Formation.FORMATION_THREE_MODE?.id
-        ? 'three-ship formation' : 'two-ship formation');
+      const label = state.formation === Formation.FORMATION_THREE_MODE?.id
+        ? 'three-ship formation' : 'two-ship formation';
+      const roster = Formation.resolveFormationRoster(state.formation, state.formationRoster);
+      const choices = roster?.map((selection) =>
+        `Type ${selection.ship === 0 ? 'A' : 'B'}/style ${selection.style}`).join(', ');
+      parts.push(choices ? `${label} (${choices})` : label);
     }
     parts.push(ids.length ? `${ids.length} mod${ids.length === 1 ? '' : 's'}` : 'original rules');
     this.summary.replaceChildren();
@@ -686,6 +740,7 @@ class LocalShell {
     return {
       loadout,
       formation: state.formation || null,
+      formationRoster: state.formation ? state.formationRoster : null,
       mode: state.mode,
       audio: this.ddpdojAudio,
     };

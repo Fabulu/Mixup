@@ -230,8 +230,9 @@ import {
 } from '../mods.js';
 import { projectRunahead, RunaheadProjectionError } from '../runahead.js';
 import {
-  assertFormationReplayCompatible, createFormationState, formationGameOptions,
-  initializeFormation, prepareFormationFrame, resolveFormationAuthenticSelection,
+  assertFormationReplayCompatible, beginFormationCreditedRun, createFormationState,
+  formationGameOptions, initializeFormation, prepareFormationFrame,
+  resolveFormationAuthenticSelection,
 } from '../formation.js';
 import { threePilotFoundationForGame } from '../formationactors.js';
 
@@ -862,7 +863,7 @@ export class Demo {
   //  are not in dist/, so on the published page `rung` is always null.
   constructor(canvas, bundle, frameHz, mode = DEFAULT_MODE, rung = null,
       soundController = null, loadout = null, authenticSelection = null,
-      formationModeValue = null) {
+      formationModeValue = null, formationRoster = null) {
     this.bundle = bundle;
     this.cap = bundle.cap;
     // No recognized selection means no mod runtime object. Direct index.html,
@@ -871,7 +872,7 @@ export class Demo {
     if (modState) this.mods = modState;
     // A recognized mode owns exactly one mutable state object for this Demo.
     // Missing and unknown formation ids produce null and add no Game callback.
-    this.formation = createFormationState(formationModeValue);
+    this.formation = createFormationState(formationModeValue, formationRoster);
     this.runaheadFrames = modState?.loadout.presentation.runaheadFrames ?? 0;
     if (this.formation && this.runaheadFrames) {
       throw new Error('formation mode cannot be combined with runahead');
@@ -881,13 +882,24 @@ export class Demo {
     // every additional ship is a private P1-owned companion. Native P2 fields
     // are incompatible and must fail before Game construction or RAM mutation.
     const formationAuthentic = this.formation
-      ? resolveFormationAuthenticSelection(this.formation.mode, authenticSelection)
+      ? resolveFormationAuthenticSelection(
+          this.formation.mode, authenticSelection ?? this.formation.roster[0])
       : null;
     if (this.formation && authenticSelection?.p2 != null) {
       throw new Error('formation mode cannot be combined with a native P2 selection');
     }
     if (this.formation && authenticSelection != null && formationAuthentic == null) {
       throw new Error('formation mode received an invalid P1 selection');
+    }
+    if (this.formation && formationRoster != null && authenticSelection != null
+        && (formationAuthentic.ship !== this.formation.roster[0].ship
+          || formationAuthentic.style !== this.formation.roster[0].style)) {
+      throw new Error('formation P1 selection does not match its roster');
+    }
+    if (this.formation && formationRoster == null && authenticSelection != null) {
+      this.formation.roster = Object.freeze([
+        formationAuthentic, ...this.formation.roster.slice(1),
+      ]);
     }
     const ordinaryAuthentic = rung
       ? null
@@ -933,10 +945,10 @@ export class Demo {
     //       half off the CAPTURE LEDGER.
     this.soundController = soundController;
     this.resetSound = null;
-    // A mod loadout configures the next credited run. It does not select the
-    // captured gameplay seed. Rungs, host-authentic shortcuts, and formations
-    // retain their explicit non-cabinet launch contracts.
-    const coldBoot = !rung && !this.formation && authenticSelection == null;
+    // Every public launch without a development rung starts at the cabinet. Mod
+    // and formation policies remain pending through attract and fighter select,
+    // then activate only at the credited gameplay handoff.
+    const coldBoot = !rung && (!!this.formation || authenticSelection == null);
     if (coldBoot && modState) prepareModCabinetBoot(modState);
     this.coldBoot = coldBoot;
     this.seedLf = coldBoot ? 0 : (rung ? rung.lf : this.cap.frames[0].lf);
@@ -949,7 +961,19 @@ export class Demo {
       : (rung
         ? replaySeedArm(null, launchSeed, RAM.semaphore - MACHINE.ramBase)
         : 1);
-    const gameMods = modGameOptions(modState);
+    let gameMods = modGameOptions(modState);
+    if (coldBoot && this.formation) {
+      const modRunStartHook = gameMods?.cabinetRunStartHook;
+      gameMods = {
+        ...(gameMods ?? {}),
+        cabinetRunStartHook: (ram, event) => {
+          modRunStartHook?.(ram, event);
+          if (event?.demo) return;
+          beginFormationCreditedRun(this.formation, this.game);
+          this.authenticLaunchPending = true;
+        },
+      };
+    }
     const gameFormation = this.formation ? formationGameOptions(this.formation) : null;
     this.game = new Game(launchSeed, bundle.tables, {
       logicFrame: this.seedLf,
@@ -969,14 +993,14 @@ export class Demo {
       coinTick: () => this.coinTick(),
     });
     if (coldBoot) this.game.boot({ cabinetFrontend: true });
-    if (authentic) applyAuthenticSelection(this.game, authentic);
-    if (this.formation) initializeFormation(this.formation, this.game);
+    if (authentic && !coldBoot) applyAuthenticSelection(this.game, authentic);
+    if (this.formation && !coldBoot) initializeFormation(this.formation, this.game);
     this.hitboxRam = modState?.loadout.presentation.hitboxes
       ? this.game.ram.clone() : null;
     // A non-default selector patch changes live RAM before frame 1, but the seed's
     // hardware list still contains the default ship. Keep the production port
     // source blank until the first ordinary step builds the selected list.
-    this.authenticLaunchPending = !!authentic;
+    this.authenticLaunchPending = !!authentic && !coldBoot;
     this.prevTilt = this.game.ram.u16(RAM.player1 + P.tilt) << 16 >> 16;
     this.prevShipSel = this.game.ram.u16(RAM.player1 + P.shipSel);
     this.prevPos = [this.game.ram.u16(RAM.player1 + P.posY),
@@ -2114,7 +2138,8 @@ export async function boot(canvas, opts = {}) {
   // until assets arrive, then advances the singleton runtime silently until a
   // gesture attaches AudioOut. No pre-gesture PCM becomes an audible backlog.
   const demo = new Demo(canvas, bundle, frameHz, opts.mode ?? DEFAULT_MODE, rung, sound,
-    opts.mods ?? null, opts.authentic ?? null, opts.formation ?? null);
+    opts.mods ?? null, opts.authentic ?? null, opts.formation ?? null,
+    opts.formationRoster ?? null);
   let soundAssets = null;
   let replacementSound = undefined;
   demo.resetSound = (seedLf, seedVf, snapshot = null) => {

@@ -36,19 +36,75 @@ export function formationMode(id) {
 
 function resolveMode(value) {
   if (typeof value === 'string') return formationMode(value);
-  return formationMode(value?.id);
+  if (typeof value?.mode === 'string') return formationMode(value.mode);
+  return formationMode(value?.id ?? value?.mode?.id);
 }
 
-/** Exact shareable form, without the leading hash marker. */
+function freezeSelection(value) {
+  if (!value || !AUTHENTIC_SHIPS.includes(value.ship)
+      || !AUTHENTIC_STYLES.includes(value.style)) return null;
+  return Object.freeze({ ship: value.ship, style: value.style });
+}
+
+/** Return the mode's complete immutable lead-plus-companion roster. */
+export function defaultFormationRoster(modeValue) {
+  const mode = resolveMode(modeValue);
+  if (!mode) return null;
+  return Object.freeze([
+    freezeSelection(mode.authenticSelection),
+    ...mode.companions.map(freezeSelection),
+  ]);
+}
+
+/** Validate one explicit selection for every ship in the chosen formation. */
+export function resolveFormationRoster(modeValue, rosterValue = null) {
+  const defaults = defaultFormationRoster(modeValue);
+  if (!defaults) return null;
+  if (rosterValue == null) return defaults;
+  if (!Array.isArray(rosterValue) || rosterValue.length !== defaults.length) return null;
+  const roster = rosterValue.map(freezeSelection);
+  return roster.every(Boolean) ? Object.freeze(roster) : null;
+}
+
+function sameRoster(left, right) {
+  return left.length === right.length && left.every((selection, index) =>
+    selection.ship === right[index].ship && selection.style === right[index].style);
+}
+
+/** Exact shareable mode form, without the leading hash marker. */
 export function formationToHash(value) {
   const mode = resolveMode(value);
   return mode ? `formation=${encodeURIComponent(mode.id)}` : '';
+}
+
+/** Add only a non-default per-member roster to a formation hash. */
+export function formationRosterToHash(modeValue, rosterValue) {
+  const mode = resolveMode(modeValue);
+  const roster = resolveFormationRoster(mode, rosterValue);
+  const defaults = defaultFormationRoster(mode);
+  if (!mode || !roster || sameRoster(roster, defaults)) return '';
+  return `roster=${roster.map(({ ship, style }) => `${ship}-${style}`).join('.')}`;
 }
 
 /** Resolve a formation hash. Missing and unknown values are off. */
 export function hashToFormation(hash = '') {
   const params = new URLSearchParams(String(hash).replace(/^#/, ''));
   return formationMode(params.get('formation'));
+}
+
+/** Resolve the complete roster in a hash. Missing means the declared defaults. */
+export function hashToFormationRoster(hash = '', modeValue = hashToFormation(hash)) {
+  const mode = resolveMode(modeValue);
+  if (!mode) return null;
+  const params = new URLSearchParams(String(hash).replace(/^#/, ''));
+  const encoded = params.getAll('roster');
+  if (encoded.length === 0) return defaultFormationRoster(mode);
+  if (encoded.length !== 1 || !encoded[0]) return null;
+  const roster = encoded[0].split('.').map((pair) => {
+    const match = /^(0|2)-(2|4|6)$/.exec(pair);
+    return match ? { ship: Number(match[1]), style: Number(match[2]) } : null;
+  });
+  return resolveFormationRoster(mode, roster);
 }
 
 /**
@@ -106,10 +162,12 @@ export function assertFormationReplayCompatible(state, action = 'replay') {
 }
 
 /** Return mutable runtime state only for the recognized active formation. */
-export function createFormationState(modeValue) {
+export function createFormationState(modeValue, rosterValue = null) {
   const mode = resolveMode(modeValue);
   if (!mode) return null;
-  return { mode, foundation: null, runtime: null };
+  const roster = resolveFormationRoster(mode, rosterValue ?? modeValue?.roster ?? null);
+  if (!roster) throw new RangeError(`${mode.name} received an invalid formation roster`);
+  return { mode, roster, foundation: null, runtime: null };
 }
 
 /** Formation no longer installs a native P2 player-position callback. */
@@ -123,10 +181,12 @@ export function initializeFormation(state, game, options = {}) {
   const mode = resolveMode(state?.mode);
   if (!mode) return null;
   if (state.foundation) return state;
+  const roster = resolveFormationRoster(mode, state.roster);
+  if (!roster) throw new RangeError(`${mode.name} has an invalid formation roster`);
   state.foundation = attachFormationCompanions(game, {
     mode,
-    companions: mode.companions,
-    layout: mode.companions.length === 2 ? 'three' : 'two',
+    companions: roster.slice(1),
+    layout: roster.length === 3 ? 'three' : 'two',
     ...(Object.hasOwn(options, 'inputWord') ? { inputWord: options.inputWord } : {}),
   });
   state.runtime = state.foundation.runtime;
@@ -134,9 +194,12 @@ export function initializeFormation(state, game, options = {}) {
 }
 
 /** Apply the declared P1 roster at every credited handoff, then attach once. */
-export function beginFormationCreditedRun(state, game, selection) {
-  if (!resolveMode(state?.mode)) return null;
-  if (!forceAuthenticP1Selection(game, selection)) return null;
+export function beginFormationCreditedRun(state, game, selection = null) {
+  const mode = resolveMode(state?.mode);
+  if (!mode) return null;
+  const roster = resolveFormationRoster(mode, state.roster);
+  const lead = selection ?? roster?.[0] ?? null;
+  if (!lead || !forceAuthenticP1Selection(game, lead)) return null;
   return initializeFormation(state, game);
 }
 
