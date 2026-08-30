@@ -96,8 +96,8 @@ test('W98/H2 the HUD comes off in the `port` source and STAYS in `capture`', () 
   assert.ok(/undefined\);/.test(s.slice(m.index, m.index + 300)),
     'the capture source passes no options at all, exactly as before');
   // W115: the port source now overrides st.tx with the port's TxVram.
-  assert.ok(/usedPort\) st\.tx = this\.game\.txvram\.w/.test(s),
-    'the port source sources st.tx from the port\'s TxVram (W115)');
+  assert.ok(/if \(usedPort\) st\.tx = view\?\.tx \?\? g\.txvram\.w/.test(s),
+    'the port source uses the canonical or projected TxVram (W115)');
 });
 
 test('W98/H3 the page keeps SAYING what the HUD layer is', () => {

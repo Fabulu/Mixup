@@ -173,7 +173,9 @@ test('W497 page wiring keeps authentic selection separate from mods, rungs, and 
     'a labelled rung must retain its exact selector state outside formation mode');
   assert.match(ctor, /const authentic = formationAuthentic \?\? ordinaryAuthentic/,
     'formation may supply its pair without weakening the ordinary rung fallback');
-  assert.match(ctor, /if \(authentic\) applyAuthenticSelection\(this\.game, authentic\)/);
+  assert.match(ctor,
+    /if \(authentic && !coldBoot\) applyAuthenticSelection\(this\.game, authentic\)/,
+  'direct seeds apply the browser selector while cold-cabinet runs defer to fighter selection');
 
   const replay = app.slice(app.indexOf('  playFrom(obj) {'), app.indexOf('  endPlayback() {'));
   assert.ok(!replay.includes('applyAuthenticSelection'),
