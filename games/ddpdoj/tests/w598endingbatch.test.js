@@ -52,7 +52,7 @@ const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW598(TABLE_JSON);
 
 const CURRENT_HASH = '1654f079b80372640f000e11aaa32f7e4ec24bb546a6d683623c7e82ef755944';
-const W597_HASH = 'aa95a237614054ef355d2d208c5daf289d699c27457d140a6d974959d624f536';
+const W597_HASH = '46064f29e4cde17e95d86b1a823e82d852346ca80325ed5ea9fbcbb6ddbda4c9';
 const STORED_CHECKPOINT_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const OPCODE_WIDTHS = new Map([
   [0x8000, 4], [0x8001, 6], [0x8002, 4], [0x8003, 4], [0x8005, 6],
@@ -174,7 +174,7 @@ test('W598 adds exactly six list-C scripts and nineteen picture pointers',
     assert.deepEqual([
       canonicalHash(PRIOR_TABLE), PRIOR_TABLE.rom.windows.length,
       PRIOR_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
-    ], [W597_HASH, 917, 455113]);
+    ], [W597_HASH, 912, 454767]);
     assert.deepEqual(tableBeforeW598(PRIOR_TABLE), PRIOR_TABLE,
       'the exact W597 reconstruction is idempotent');
 

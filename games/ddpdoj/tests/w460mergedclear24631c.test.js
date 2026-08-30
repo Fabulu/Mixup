@@ -594,7 +594,8 @@ test('SECTION 5c: cartridge and source reachability remain separate and dynamic 
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live scanner APIs reconcile to 17 narrow, 72 widened, 27 pairs and 21 body-only',
+test('SECTION 6: live scanner APIs reconcile to 17 narrow, 72 widened, 28 pairs and 22 body-only; '
+  + 'W630 adds the name-button/filter control-flow overlap',
   () => {
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
     const heads = headRegister();
@@ -614,16 +615,18 @@ test('SECTION 6: live scanner APIs reconcile to 17 narrow, 72 widened, 27 pairs 
       + 'the documented $249D2C native Type-B facade/resource implementation split');
     assert.equal(heads.includes(BODY_START), false, '$24631C leaves the widened head register');
     assert.equal(narrow.some(([at]) => at === BODY_START), false, '$24631C remains absent narrowly');
-    assert.equal(pairs.length, 27,
-      'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
+    assert.equal(pairs.length, 28,
+      'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after '
+      + 'generalizing both callers through one body; W630 adds the name-button/filter control-flow overlap');
     assert.equal(pairs.some(([pair]) => /24631C/i.test(pair)), false,
       '$24631C has no surviving body-pair edge');
     assert.equal(heads.includes(0x242e24), false, '$242E24 leaves the widened head register in W461');
     assert.equal(pairs.some(([pair]) => pair ===
       'initbody.js rankByte242E24 <> rng.js drawByte242E24'), false,
     '$242E24/$242E3A body pair leaves the register in W461');
-    assert.equal(bodyOnly.length, 21,
-      'body-only findings are derived live from headIndex(); W603 removes the body-only score-hit pair');
+    assert.equal(bodyOnly.length, 22,
+      'body-only findings are derived live from headIndex(); W603 removes the body-only score-hit '
+      + 'pair; W630 adds the name-button/filter control-flow overlap');
   });
 
 test('SECTION 6b: executable cartridge proof adds no production ROM window declaration', () => {

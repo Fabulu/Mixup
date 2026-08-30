@@ -325,7 +325,8 @@ test('SECTION 6: source keeps one $25D9E6 body and W458 leaves one $25DA60 body'
     '$25DA60 imports now share one function object');
 });
 
-test('SECTION 6b: live registers derive 17 narrow, 72 widened, 27 pairs and 21 body-only', () => {
+test('SECTION 6b: live registers derive 17 narrow, 72 widened, 28 pairs and 22 body-only; '
+  + 'W630 adds the name-button/filter control-flow overlap', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -346,10 +347,12 @@ test('SECTION 6b: live registers derive 17 narrow, 72 widened, 27 pairs and 21 b
   assert.equal(heads.length, 72,
     'W475 left 68; W497 adds three rows; Hibachi removes W554 $2A54E2; W614 registers '
     + 'the documented $249D2C native Type-B facade/resource implementation split');
-  assert.equal(pairs.length, 27,
-    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
-  assert.equal(bodyOnly.length, 21,
-    'body-only remains an executable headIndex() derivation; W603 removes the body-only score-hit pair');
+  assert.equal(pairs.length, 28,
+    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after '
+    + 'generalizing both callers through one body; W630 adds the name-button/filter control-flow overlap');
+  assert.equal(bodyOnly.length, 22,
+    'body-only remains an executable headIndex() derivation; W603 removes the body-only score-hit '
+    + 'pair; W630 adds the name-button/filter control-flow overlap');
   assert.equal(heads.includes(BODY_START), false, '$25D9E6 stays off the widened register');
   assert.equal(narrow.some(([at]) => at === BODY_START), false, '$25D9E6 stays off the narrow register');
   assert.equal(pairs.some(([pair]) => pair === removed), false, 'W457 merged body edge stays absent');

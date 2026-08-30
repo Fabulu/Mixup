@@ -356,8 +356,9 @@ test('SECTION 7: W454 merge stays absent after every later register change', () 
   assert.equal(heads.length, 72,
     'W475 left 68; W497 adds three rows; Hibachi removes W554 $2A54E2; W614 registers '
     + 'the documented $249D2C native Type-B facade/resource implementation split');
-  assert.equal(pairs.length, 27,
-    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
+  assert.equal(pairs.length, 28,
+    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after '
+    + 'generalizing both callers through one body; W630 adds the name-button/filter control-flow overlap');
   assert.ok(!pairs.some(([pair]) => pair === 'handlers.js fire11 <> turret.js turretStep'),
     'the seven-marker private fire11 body stays absent');
 });

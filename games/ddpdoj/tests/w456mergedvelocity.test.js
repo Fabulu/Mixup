@@ -529,7 +529,8 @@ test('SECTION 6: source census has one implementation and preserves every A5/A6 
     'player update retains its caller-specific D2/D3 continuation');
 });
 
-test('SECTION 6b: registers reconcile to 17 narrow, 72 widened, 27 pairs and 21 body-only', () => {
+test('SECTION 6b: registers reconcile to 17 narrow, 72 widened, 28 pairs and 22 body-only; '
+  + 'W630 adds the name-button/filter control-flow overlap', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -550,8 +551,9 @@ test('SECTION 6b: registers reconcile to 17 narrow, 72 widened, 27 pairs and 21 
   assert.equal(heads.length, 72,
     'W475 left 68; W497 adds three rows; Hibachi removes W554 $2A54E2; W614 registers '
     + 'the documented $249D2C native Type-B facade/resource implementation split');
-  assert.equal(pairs.length, 27,
-    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
+  assert.equal(pairs.length, 28,
+    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after '
+    + 'generalizing both callers through one body; W630 adds the name-button/filter control-flow overlap');
   const visibleHeads = new Set();
   for (const [, claims] of headIndex().idx) {
     if (claims.size < 2) continue;
@@ -559,8 +561,9 @@ test('SECTION 6b: registers reconcile to 17 narrow, 72 widened, 27 pairs and 21 
   }
   const bodyOnly = pairs.filter(([pair]) => pair.split(' <> ')
     .some((body) => !visibleHeads.has(body)));
-  assert.equal(bodyOnly.length, 21,
-    'headIndex() derives 21 after W603 removes the body-only score-hit pair');
+  assert.equal(bodyOnly.length, 22,
+    'headIndex() derives 22 after W603 removes the body-only score-hit pair and W630 adds '
+    + 'the name-button/filter control-flow overlap');
   for (const removed of [...headVisibleRemoved, ...bodyOnlyRemoved]) {
     assert.ok(!pairs.some(([pair]) => pair === removed), `${removed} stays absent`);
   }

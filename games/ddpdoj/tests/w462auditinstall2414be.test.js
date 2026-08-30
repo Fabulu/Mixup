@@ -600,7 +600,7 @@ test('SECTION 5c: every static caller has a source representation and dependency
 
 // ---------------------------------------------------------------- SECTION 6
 
-test('SECTION 6: live registers reconcile to 17 narrow, 72 widened, 27 pairs and 21 body-only', () => {
+test('SECTION 6: live registers reconcile to 17 narrow, 72 widened, 28 pairs and 22 body-only', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
   const pairs = bodyPairs();
@@ -618,11 +618,11 @@ test('SECTION 6: live registers reconcile to 17 narrow, 72 widened, 27 pairs and
     'W475 left 68; W497 adds three rows; Hibachi removes W554 $2A54E2; W614 registers '
     + 'the documented $249D2C native Type-B facade/resource implementation split');
   assert.equal(heads.includes(BODY_START), false);
-  assert.equal(pairs.length, 27,
-    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
+  assert.equal(pairs.length, 28,
+    'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body; W630 adds the name-button/filter control-flow overlap');
   assert.equal(pairs.some(([pair]) => /installTxBank/.test(pair)), false);
-  assert.equal(bodyOnly.length, 21,
-    'body-only is derived from live headIndex(); W603 removes the body-only score-hit pair');
+  assert.equal(bodyOnly.length, 22,
+    'body-only is derived from live headIndex(); W603 removes the body-only score-hit pair; W630 adds the name-button/filter control-flow overlap');
 });
 
 test('SECTION 6b: palette windows are exact and executable bytes remain unexported', () => {

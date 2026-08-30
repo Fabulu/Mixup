@@ -308,8 +308,9 @@ test('SECTION 6: live registers include W453 and every later proved merge',
       'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi consolidation '
       + 'removes W554 $2A54E2; W614 registers the documented $249D2C facade/resource split');
     assert.ok(!heads.includes(0x242494), '$242494 has one function head after the merge');
-    assert.equal(pairs.length, 27,
-      'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after generalizing both callers through one body');
+    assert.equal(pairs.length, 28,
+      'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after '
+      + 'generalizing both callers through one body; W630 adds the name-button/filter control-flow overlap');
     assert.ok(!pairs.some(([pair]) => pair === 'bossscripts.js dist242494 <> items.js dist242494'),
       'the deleted body must stay absent from the body-marker register');
     assert.equal(narrow.length, 17,

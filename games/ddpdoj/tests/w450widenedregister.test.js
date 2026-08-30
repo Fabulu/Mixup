@@ -35,7 +35,7 @@
 //     of the shipped 17                  17 still there, NONE dropped
 //     newly visible                      55
 //
-// ...plus a second register the old scan had no axis for at all: 27 PAIRS OF
+// ...plus a second register the old scan had no axis for at all: 28 PAIRS OF
 // BODIES that transcribe a shared RUN of ROM instructions. W456 removed four
 // pair edges by deleting one duplicate body; W457 removed the complete tally
 // cursor-map edge; W458 removed the complete tally cursor-load edge; W459
@@ -57,7 +57,7 @@
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
 //   3   THE HEAD REGISTER, exact, 72
-//   4   THE BODY REGISTER, exact, 27 pairs; 21 body-only findings
+//   4   THE BODY REGISTER, exact, 28 pairs; 22 body-only findings
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
 
@@ -396,6 +396,8 @@ const BODY_REGISTER = Object.freeze([
   // own negative control says a call target must not count as one; these three
   // are the residue of two calls landing in the same two handlers, and reading
   // them is how this wave knew there were six copies and not nine.
+  ['hiscorename.js nameButtons28F588 <> hiscorename.js nameFilter28F674',
+    [0x28f5bc, 0x28f674]],
   ['hud.js drainItems284468 <> hud.js perFrame28444E', [0x284468, 0x2844a6]],
   ['hud.js gates2844A6 <> hud.js playerBlock', [0x2844c8, 0x28465c]],
   ['initbody.js damageFirstFamily <> initbody.js init85Or86', [0x2637a2, 0x263808]],
@@ -420,7 +422,8 @@ const BODY_REGISTER = Object.freeze([
   ['stageend.js f4BonusPool28DB5E <> stageend.js result28D9AA', [0x28db5e, 0x28dc18, 0x28dc1c]],
 ]);
 
-test('SECTION 4: exactly these 27 pairs of bodies transcribe a shared run of ROM instructions',
+test('SECTION 4: exactly these 28 pairs of bodies transcribe a shared run of ROM instructions; '
+  + 'W630 adds the name-button/filter control-flow overlap',
   () => {
     const got = bodyPairs().map(([p, v]) => [p, v]);
     assert.deepEqual(got.map(([p]) => p), BODY_REGISTER.map(([p]) => p),
@@ -446,15 +449,16 @@ test('SECTION 4: exactly these 27 pairs of bodies transcribe a shared run of ROM
     }
     const bodyOnly = got.filter(([pair]) => pair.split(' <> ')
       .some((body) => !visibleHeads.has(body)));
-    assert.equal(bodyOnly.length, 21,
-      'body-only is derived from the live head register; W603 removes one body-only score pair');
+    assert.equal(bodyOnly.length, 22,
+      'body-only is derived from the live head register; W603 removes one body-only score pair; '
+      + 'W630 adds the name-button/filter control-flow overlap');
 
-    assert.equal(got.length, 27,
-      'the body register is 27 pairs: W450 through W461 reduced 39 to 27, W497 '
+    assert.equal(got.length, 28,
+      'the body register is 28 pairs: W450 through W461 reduced 39 to 27, W497 '
       + 'registered the seeded-browser selection adapter against playerObject2491C0, '
-      + 'and W603 generalized the two score-hit bodies into one implementation. '
-      + 'As a NUMBER as well as a set, because an empty list satisfies a deepEqual '
-      + 'against a shrunken array and reads as progress');
+      + 'W603 generalized the two score-hit bodies into one implementation, and W630 adds '
+      + 'the name-button/filter control-flow overlap. As a NUMBER as well as a set, because '
+      + 'an empty list satisfies a deepEqual against a shrunken array and reads as progress');
   });
 
 // ---------------------------------------------------------------- SECTION 5
