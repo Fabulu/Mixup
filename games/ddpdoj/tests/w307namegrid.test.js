@@ -15,6 +15,7 @@ import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
 import { BUCKETS, resolveEmitStub, enqueueRegistersThroughStub } from '../src/spritequeue.js';
+import { ANIM_OBJECT } from '../src/animobjects.js';
 import { hiscoreDefaults28841E } from '../src/hiscore.js';
 import {
   NAME_REC, NAME_OBJ, drawGrid28FCAA, drawSoleSide, drawGridFrame28F4C4, nameArmGrid28F4A6,
@@ -240,24 +241,61 @@ test('W307 the cursor and the furniture add up, and share no bucket record', { s
   assert.equal(recs.filter((r) => r.bucket === 3).length, 4, 'two grid parts and both furniture');
 });
 
-// ==================== 5. THE ARM, AND THE COUNTED TIER
+// ==================== 5. THE ARM AND LIVE ANIMATION LOAD
 
-test('W307 `$28F4A6` arms the cursor and counts the anim driver', { skip: SKIP }, () => {
-  // `$246410` is the tier `stageend.js` declares out of scope. W390 CORRECTION (trap 14): this
-  // comment used to add "and W303 counted `$246710`'s seeding for", which is no longer true --
-  // W388 found that gap and W389 folded the per-node seeding into `chainLoaderBody`, so
-  // `$246710` seeds content on every call and raises no note. Only `$246410` is counted here,
-  // which is exactly what the assertions below check.
+test('W307 `$28F4A6` arms the cursor and loads four animation nodes', { skip: SKIP }, () => {
   const ram = factory();
-  const w = world();
-  nameArmGrid28F4A6(ram, A4, w.ctx);
+  nameArmGrid28F4A6(ram, ROM, A4);
   assert.equal(ram.u16(A4 + NAME_REC.cursor), 1);
   assert.equal(ram.u16(0x81e0d6), 1, 'and the global active flag');
-  const hit = w.log.report().find((r) => r.includes('$246410'));
-  assert.ok(hit, 'the driver is counted');
-  assert.match(hit, /\$28FA98/, 'with the script it was handed');
-  assert.match(hit, /out\s*\n?\/\/\s*of scope|out of scope/, 'and why');
-  assert.match(hit, /\$28FCAA/, 'and what IS drawn');
+
+  const root = ANIM_OBJECT.roots;
+  assert.equal(ram.u16(root), 0x8000, 'the first animation root is claimed');
+  assert.equal(ram.u16(root + 0x04), 1, 'the cartridge entry mode is 1');
+  let node = ram.u32(root + 0x2c);
+  const linked = [];
+  while (node !== 0) {
+    linked.push(node);
+    assert.equal(ram.u16(node), 0x8000, 'each linked node is claimed');
+    node = ram.u32(node + 0x2c);
+  }
+  assert.equal(linked.length, 4, 'the count word builds exactly four linked nodes');
+
+  const expected = [
+    { current: 0x80e906, target: 0x2254b8 },
+    { current: 0x80e946, target: 0x2254f8 },
+    { current: 0x80e986, target: 0x225538 },
+    { current: 0x80e9c6, target: 0x225478 },
+  ];
+  for (const [index, nodeAt] of linked.entries()) {
+    const script = 0x28fa9a + index * 14;
+    assert.deepEqual([
+      ROM.u16(script), ROM.u16(script + 2), ROM.i16(script + 4), ROM.u32(script + 6),
+      ROM.u16(script + 10), ROM.u16(script + 12),
+    ], [0, 0, 0x80 + index * 0x40, expected[index].target, 0x1f, 3],
+    `script row ${index} is the pinned fill/family/current/target/length/timing tuple`);
+    assert.deepEqual({
+      writer: ram.u32(nodeAt + 0x06),
+      target: ram.u32(nodeAt + 0x0a),
+      current: ram.u32(nodeAt + 0x0e),
+      fill: ram.u16(nodeAt + 0x12),
+      countdown: ram.u16(nodeAt + 0x14),
+      reload: ram.u16(nodeAt + 0x16),
+      active: ram.u32(nodeAt + 0x18),
+      step: ram.u16(nodeAt + 0x1c),
+      wordsMinusOne: ram.u16(nodeAt + 0x04),
+    }, {
+      writer: 0x80fa66,
+      target: expected[index].target,
+      current: expected[index].current,
+      fill: 0,
+      countdown: 0,
+      reload: 0,
+      active: 0xffff0000,
+      step: 1,
+      wordsMinusOne: 0x1f,
+    }, `node ${index} carries the decoded script fields and timing`);
+  }
 });
 
 test('W307 arming then drawing produces the grid', { skip: SKIP }, () => {
@@ -266,7 +304,7 @@ test('W307 arming then drawing produces the grid', { skip: SKIP }, () => {
   const ram = factory();
   const w = world();
   ram.setU8(A5 + NAME_OBJ.owed, 0x02);
-  nameArmGrid28F4A6(ram, A4, w.ctx);
+  nameArmGrid28F4A6(ram, ROM, A4);
   assert.equal(drawGridFrame28F4C4(ram, ROM, A4, A5), 'p2');
   assert.equal(allEmitted(ram).length, 6);
 });

@@ -631,10 +631,19 @@
 // Measured: 943 -> 944 windows, 457,131 -> 457,163 bytes,
 // 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 944;
+// ---------------------------------------------------------------------------
+// W630 ADDED FIVE DISJOINT NAME-ENTRY PRESENTATION WINDOWS.
+// ---------------------------------------------------------------------------
+// Furniture tables at `$28F9AC + $78`, the 29-long panel table at `$28FA24 + $74`, the
+// four-entry animation script at `$28FA98 + $3A`, the score offsets at `$28FC16 + $20`, and the
+// header rows at `$28FC96 + $14` add 346 exact bytes. The first three abut one another and none
+// overlaps an earlier declaration. Measured: 944 -> 949 windows,
+// 457,163 -> 457,509 bytes, 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 949;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 457163;
+export const ROM_WINDOW_BYTES = 457509;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -1243,5 +1252,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "W596 added the abutting $29109C+$5A variant-2 third script and the sparse "
   + "$2904AE spawn pointer, adding 94 bytes and no overlap pair. W597 widened five "
   + "hyper option-shot and pod-template windows and added three disjoint rotation "
-  + "and template windows, adding 908 bytes and no overlap pair. "
+  + "and template windows, adding 908 bytes and no overlap pair. W630 added five "
+  + "disjoint name-entry presentation windows totalling 346 bytes and no overlap pair. "
   + "See tests/romwindowset.js.";

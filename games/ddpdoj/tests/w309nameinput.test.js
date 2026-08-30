@@ -13,7 +13,6 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
-import { UnportedLog } from '../src/unported.js';
 import { hiscoreDefaults28841E } from '../src/hiscore.js';
 import {
   NAME_REC, NAME_ALPHA, charName, bannedNames, nameButtons28F588, nameFilter28F674,
@@ -32,6 +31,7 @@ const SKIP_IMG = IMG ? SKIP : 'the ROM image is absent; skip, not pass';
 
 const A4 = 0x81f200;
 const BIG = 0x803838;
+const SETUP_FLAGS = 0x81e0d9;
 const INPUT_W = 0x36;
 const COUNT = 0x16;
 const GRIDPOS = 0x18;
@@ -50,8 +50,8 @@ function entering() {
   return ram;
 }
 const world = () => {
-  const log = new UnportedLog();
-  return { log, ctx: { rom: ROM, unported: log, unportedLog: log, notes: log } };
+  const posts = [];
+  return { posts, ctx: { rom: ROM, soundPost: (address) => posts.push(address) } };
 };
 const row = (ram) => [0, 1, 2].map((k) => ram.u32(BIG + k * 4));
 /** Press `bits` with the cursor on `pos`. */
@@ -86,24 +86,28 @@ test('W309 a selected character is the grid position TIMES FOUR', { skip: SKIP }
   assert.equal(NAME_ALPHA.letters, 26, 'A..Z is 26 of the 27 selectable cells');
 });
 
-test('W309 characters fill slots in order and stop at three', { skip: SKIP }, () => {
+test('W309 the third character commits in the same call', { skip: SKIP }, () => {
   // The slot is the count BEFORE the increment (`move.w ($16,A4),D1` then `addq`), so the first
-  // character goes to slot 0. Using the post-increment count would leave slot 0 untouched.
+  // character goes to slot 0. When the increment reaches three, `$28F664` continues through the
+  // filter and commit tail before another input frame can occur.
   const ram = entering();
-  for (const [i, pos] of [18, 4, 23].entries()) {
+  ram.setU16(A4 + NAME_REC.setupBit, 1);
+  ram.setU8(SETUP_FLAGS, 1 << 1);
+  for (const [i, pos] of [2, 0, 19].entries()) {
     assert.equal(press(ram, SELECT, pos), 'char');
     assert.equal(ram.u16(A4 + COUNT), i + 1);
   }
-  assert.deepEqual(row(ram), [18, 4, 23].map((p) => p * 4), 'S, E, X in slot order');
+  assert.deepEqual(row(ram), [2, 0, 19].map((p) => p * 4), 'C, A, T in slot order');
+  assert.equal(ram.u16(A4 + 0x1e), 0x70, 'the commit tail armed the countdown immediately');
+  assert.equal(ram.u8(SETUP_FLAGS), 0, 'and released the side setup bit');
+  assert.equal(ram.u32(A4 + 0x1a), 0, 'and cleared the panel animation state');
 });
 
-test('W309 a fourth select with three entered throws', { skip: SKIP }, () => {
-  // Nothing in `$28F652` bounds the count. The END arm caps it and the finish button consumes
-  // it, so reaching here with three already entered means an arm above was skipped -- worth a
-  // throw rather than a write past the entry.
+test('W309 a fourth live select is unreachable after the third commits', { skip: SKIP }, () => {
   const ram = entering();
-  for (const pos of [0, 1, 2]) press(ram, SELECT, pos);
-  assert.throws(() => press(ram, SELECT, 3), /an arm above/);
+  for (const pos of [2, 0, 19]) press(ram, SELECT, pos);
+  assert.equal(ram.u16(A4 + 0x1e), 0x70,
+    'the next name-entry frame takes the countdown arm instead of button input');
 });
 
 test('W309 either bit of the `$50` mask selects', { skip: SKIP }, () => {
@@ -170,19 +174,20 @@ test('W309 backspace un-counts and blanks the slot it frees', { skip: SKIP }, ()
   // `subq.w #1,($16,A4)` then `moveq #$0,D0` and the shared write at `$28F65E`. The slot written
   // is the NEW count, i.e. the one just freed.
   const ram = entering();
-  for (const pos of [18, 4, 23]) press(ram, SELECT, pos);
+  for (const pos of [18, 4]) press(ram, SELECT, pos);
   assert.equal(press(ram, BACKSPACE), 'backspace');
-  assert.equal(ram.u16(A4 + COUNT), 2);
-  assert.deepEqual(row(ram), [18 * 4, 4 * 4, 0], 'slot 2 is blanked, not slot 1');
+  assert.equal(ram.u16(A4 + COUNT), 1);
+  assert.deepEqual(row(ram), [18 * 4, 0, 0xdead0002], 'slot 1 is blanked, not slot 0');
 });
 
 test('W309 backspacing everything leaves `AAA`, which is banned entry 0', { skip: SKIP }, () => {
-  // Character 0 is 'A', so a fully backspaced name reads AAA -- and `AAA` is the first entry in
-  // W306's list. Both "the player did not really enter a name" outcomes are on that list, one
-  // per route: END gives index 28 three times and typing-then-deleting gives three zeroes.
+  // Character 0 is 'A'. The untouched third slot is already the panel's blank A, so typing two
+  // characters and deleting both restores the complete AAA row without ever reaching the
+  // three-character commit arm.
   const ram = entering();
-  for (const pos of [1, 2, 3]) press(ram, SELECT, pos);
-  for (let i = 0; i < 3; i++) assert.equal(press(ram, BACKSPACE), 'backspace');
+  ram.setU32(BIG + 2 * 4, 0);
+  for (const pos of [1, 2]) press(ram, SELECT, pos);
+  for (let i = 0; i < 2; i++) assert.equal(press(ram, BACKSPACE), 'backspace');
   assert.equal(ram.u16(A4 + COUNT), 0);
   assert.deepEqual(row(ram), [0, 0, 0]);
   assert.deepEqual(row(ram), bannedNames(ROM)[0], 'which is entry 0');
@@ -200,25 +205,25 @@ test('W309 backspace with nothing entered is a bare `rts`', { skip: SKIP }, () =
 
 // ==================== 4. `DDP` IS THE DEFAULT, NOT ONLY THE PUNISHMENT
 
-test('W309 finishing with an EMPTY name writes `DDP` directly', { skip: SKIP }, () => {
+test('W309 finishing with an EMPTY name writes and commits `DDP` directly', { skip: SKIP }, () => {
   // `$28F598 tst.w ($16,A4) / $28F59C bne $28F606` falls THROUGH into the write W306 ported as
-  // the banned-name replacement. So `$28F59E` has two callers and W306's reading was right and
-  // incomplete: `DDP` is the default name, and being caught by the filter is the other way to
-  // get it.
+  // the banned-name replacement, then branches to the common commit tail in this same call.
   const ram = entering();
   assert.equal(press(ram, FINISH), 'finish-empty');
   assert.deepEqual(row(ram), NAME_ALPHA.replacement);
   assert.equal(row(ram).map(charName).join(''), 'DDP');
   assert.equal(ram.u16(A4 + COUNT), 3, 'and it is marked complete');
+  assert.equal(ram.u16(A4 + 0x1e), 0x70, 'the countdown is already armed');
 });
 
-test('W309 finishing with anything entered hands over to `$28F606`', { skip: SKIP }, () => {
+test('W309 finishing with anything entered runs `$28F606` and commits', { skip: SKIP }, () => {
   const ram = entering();
   press(ram, SELECT, 18);
-  const before = row(ram);
   assert.equal(press(ram, FINISH), 'finish');
-  assert.deepEqual(row(ram), before, 'and it writes nothing itself');
-  assert.equal(ram.u16(A4 + COUNT), 1, 'nor touches the count');
+  assert.deepEqual(row(ram), [18 * 4, 0, NAME_ALPHA.last * 4],
+    'the cursor character and END padding were written in the same call');
+  assert.equal(ram.u16(A4 + COUNT), 3);
+  assert.equal(ram.u16(A4 + 0x1e), 0x70, 'and the common commit tail ran');
 });
 
 test('W309 the two callers of `$28F59E` write the same three longs', { skip: SKIP_IMG }, () => {
@@ -236,12 +241,13 @@ test('W309 the two callers of `$28F59E` write the same three longs', { skip: SKI
 // ==================== 5. THE ORDER OF THE ARMS
 
 test('W309 finish is tested BEFORE select, so a combined press finishes', { skip: SKIP }, () => {
-  // The ROM tests `btst #$F` first and returns on it. A port that checked select first would
-  // commit a character on the frame the player finished.
+  // The finish arm still commits the character under the cursor, but unlike the select arm it pads
+  // the remaining slot and commits immediately. That makes the branch order observable.
   const ram = entering();
   press(ram, SELECT, 18);
   assert.equal(press(ram, FINISH | SELECT, 4), 'finish', 'finish wins');
-  assert.equal(ram.u16(A4 + COUNT), 1, 'and no character was added');
+  assert.deepEqual(row(ram), [18 * 4, 4 * 4, NAME_ALPHA.last * 4], 'SE<28>, not two entered');
+  assert.equal(ram.u16(A4 + 0x1e), 0x70, 'the finish path committed');
 });
 
 test('W309 backspace is tested before select', { skip: SKIP }, () => {
@@ -252,17 +258,13 @@ test('W309 backspace is tested before select', { skip: SKIP }, () => {
   assert.equal(ram.u16(A4 + COUNT), 0);
 });
 
-test('W309 every press fires the SFX cue the port already knows', { skip: SKIP }, () => {
-  // `$28C6E0` is SFX id `$1A` in `sound.js`, so this needed nothing new -- but it is counted so
-  // a reader can see the screen is not silent.
+test('W309 finish and select post the live `$28C6E0` sound exactly once', { skip: SKIP }, () => {
   for (const bits of [FINISH, SELECT]) {
     const ram = entering();
     const w = world();
     ram.setU16(A4 + INPUT_W, bits);
     ram.setU16(A4 + GRIDPOS, 5);
     nameButtons28F588(ram, ROM, A4, w.ctx);
-    const hit = w.log.report().find((r) => r.includes('$28C6E0'));
-    assert.ok(hit, `$${bits.toString(16)} fires the cue`);
-    assert.match(hit, /\$1A/, 'and names the id');
+    assert.deepEqual(w.posts, [0x28c6e0], `$${bits.toString(16)} posts SFX id $1A once`);
   }
 });

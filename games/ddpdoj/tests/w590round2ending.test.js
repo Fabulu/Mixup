@@ -35,9 +35,9 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W588_TABLE = SKIP ? null : tableBeforeW589(TABLE_JSON);
 const CHECKPOINT_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 
-const LIVE_TABLE_HASH = 'dbffbc266495d330397680b012a61ed3c2141e8c3fc9d979f1d752b835fe6914';
-const W588_TABLE_HASH = '5dd4830d8759db1fbfbeddef529225a76b264739a9c7375ba00f2be5ce47a837';
-const CHECKPOINT_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
+const LIVE_TABLE_HASH = '1654f079b80372640f000e11aaa32f7e4ec24bb546a6d683623c7e82ef755944';
+const W588_TABLE_HASH = '59ca3e5b4ad6d2ea24c0a085d21aa5fc7dcaba4954527e0814c631e40b167366';
+const CHECKPOINT_TABLE_HASH = '2abf60b7ef24c74a57522d3a37b1007aee9e0177fde43ba501182806fbd77296';
 const STORED_CHECKPOINT_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 
 const PROVENANCE = Object.freeze([
@@ -136,20 +136,20 @@ const PERIODIC_IDENTITIES = Object.freeze([
     '23c0154b87077ca62b275f01c15545c0c042a0a87653760f5525a919a748ea97',
     '5e8d565c5df325773d385a68a0d71bcda15dabe3d8236b0f5c930ec2d855c280']),
   Object.freeze([12000, 165631, 176292,
-    'cc3387b547029908ce93fc79a6c8d1733cf203becb7106fa18b9554592c834c1',
-    '6c1bc51d6787401bdcfc5686a6d9b70f13f0507e41fad5172d382f980c21f018']),
+    '60d9c3c451a38c7d68782104d0835619986a6c24748067f0aaa75b8d3a9164dd',
+    '76c1f75c6ff66a4263621008fafe24bd28fa3a42b475014307493513006f30ec']),
   Object.freeze([12500, 166131, 176792,
-    '5c372a609761bf7227f4c94452bf372ef4a03f0659ffcbaf6c3ed0610a2149a6',
-    '9e093987fecf210de5f92b50e87087a79f1488a30a01233ea0995b2cc6bd6a54']),
+    '5d5e42ab92c69148e0849318999f7f10ed272d63e6449249b8e20f90047d233e',
+    'fc05484bbb49cce4164f2b117f9c2a3112b21c2fe5ac2b7c06e8ea1c628538b2']),
   Object.freeze([13000, 166631, 177292,
-    '86f240ced6e22c11399b0ae8d5efd172fc11c3dcd0c8213d21f25ab96ee1cbc0',
-    '33fa2bfcd893db3f9d4869ecee11a45d961a39f2a741bab876203602eade86a1']),
+    '890c289a807b29677bab5423502f0d9937b2099f76360b5b574ac7bfb392e597',
+    'd8704912165cbedcd93e5fdf442108141d0ce3bbfbc4110fffe990cb11cb555d']),
   Object.freeze([13500, 167131, 177792,
-    'eb9ef084bae3afaa0be45db8ba4f60d2670a75c669b52a148229c56d16c84589',
-    'c948c4feca4d0497513ec658c0e0954a5896bc28e9b650551b03c793be118b4f']),
+    '294e4271dada18595ce6c80d1d8aa9e4b3fcd61f272a6ae9122bb0841a77c836',
+    'd3df433ace3cb3e4c6e0610b43b7b71087cf303a3bf058563361ff070becaa71']),
   Object.freeze([14000, 167631, 178292,
-    '36290a21d8dae67d568e42c797d1a4f57da5dd1418c33cc02e72764da828ea1b',
-    '709df564ebe950de5dda9e44248aea0dfc68b5fbc8b0819e892bdd65912146e4']),
+    'b4cb46e38cc67b7c9fb9d8a65822ca88003f281042fad869969cd7d9db83ff49',
+    '95c9d945d80973b9628ccc83ad0e78bac6f0faccbcdb58e61e35e3d8239736d8']),
 ]);
 
 const canonicalHash = (value) => createHash('sha256')
@@ -194,9 +194,9 @@ test('W590 exact checkpoint reaches P1 name entry, resets round 2, and hands to 
       canonicalHash(CHECKPOINT_TABLE), CHECKPOINT_TABLE.rom.windows.length,
       CHECKPOINT_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
     ], [
-      LIVE_TABLE_HASH, 944, 457163,
-      W588_TABLE_HASH, 855, 452797,
-      CHECKPOINT_TABLE_HASH, 852, 452697,
+      LIVE_TABLE_HASH, 949, 457509,
+      W588_TABLE_HASH, 860, 453143,
+      CHECKPOINT_TABLE_HASH, 857, 453043,
     ]);
     assert.deepEqual(tableBeforeW589(W588_TABLE), W588_TABLE,
       'W589 removal is idempotent on the exact W588 table');
@@ -248,7 +248,7 @@ test('W590 exact checkpoint reaches P1 name entry, resets round 2, and hands to 
     const migrated = { ...adoptedCheckpoint, tablesSha256: LIVE_TABLE_HASH };
     assert.deepEqual(
       { ...migrated, tablesSha256: adoptedCheckpoint.tablesSha256 }, adoptedCheckpoint,
-      'in-memory W627 adoption changes only the cartridge-table identity',
+      'in-memory W630 adoption changes only the cartridge-table identity',
     );
     const resumed = restoreCheckpoint(migrated, currentAssets, migrated.selection);
     const probe = {
@@ -430,6 +430,10 @@ test('W590 exact checkpoint reaches P1 name entry, resets round 2, and hands to 
 
     assert.equal(fault, null,
       `no ROM fault through attempt 14000${fault ? `; attempt ${fault.attempt}: ${fault.error}` : ''}`);
-    assert.deepEqual(periodic, PERIODIC_IDENTITIES,
-      'every exact 500-frame RAM/Game identity retains its expected LF/VF cadence');
+    assert.equal(periodic.length, PERIODIC_IDENTITIES.length,
+      'every exact 500-frame identity is present');
+    for (let index = 0; index < PERIODIC_IDENTITIES.length; index++) {
+      assert.deepEqual(periodic[index], PERIODIC_IDENTITIES[index],
+        `exact 500-frame RAM/Game identity ${index} retains its expected LF/VF cadence`);
+    }
   });

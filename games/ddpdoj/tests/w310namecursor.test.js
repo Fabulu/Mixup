@@ -13,7 +13,6 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram, i16 } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
-import { UnportedLog } from '../src/unported.js';
 import { hiscoreDefaults28841E } from '../src/hiscore.js';
 import {
   NAME_REC, NAME_SCREEN, CURSOR, NAME_ALPHA,
@@ -40,8 +39,8 @@ const factory = () => {
   return ram;
 };
 const world = () => {
-  const log = new UnportedLog();
-  return { log, ctx: { rom: ROM, unported: log, unportedLog: log, notes: log } };
+  const posts = [];
+  return { posts, ctx: { rom: ROM, soundPost: (address) => posts.push(address) } };
 };
 /** `($2A,A4)` set and one axis engaged, so a `cursorMove` is legal. */
 function at(cell, bits) {
@@ -282,12 +281,10 @@ test('W310 the per-side blocks differ in the cursor\'s STARTING CELL and its X',
   assert.equal(((w(0, 0) << 16) | w(0, 1)) >>> 0, ROM.u32(CURSOR.positions));
 });
 
-test('W310 the move cue is one `sound.js` already knows', { skip: SKIP }, () => {
+test('W310 a real move posts the live `$28C6FA` cue exactly once', { skip: SKIP }, () => {
   const ram = at(0, RIGHT);
   const w = world();
   cursorMove28FE7A(ram, ROM, A4, w.ctx);
-  const hit = w.log.report().find((r) => r.includes('$28C6FA'));
-  assert.ok(hit, 'counted');
-  assert.match(hit, /\$1B/, 'and named');
+  assert.deepEqual(w.posts, [0x28c6fa]);
   assert.equal(CURSOR.cue, 0x28c6fa);
 });

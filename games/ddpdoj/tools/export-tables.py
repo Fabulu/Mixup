@@ -2896,11 +2896,20 @@ SHOT_WINDOWS.extend([
     # after it. Sizing this to whole entries would overlap that block.
     (0x28F8AC, 0x00D0, "W306: $28F674's seventeen banned names plus the four-byte $FFFFFFFF "
                        "sentinel at $28F978; abuts $28F97C seam-free"),
+    # W630: cartridge data consumed directly by the four type-$800C presentation routines.
+    (0x28F9AC, 0x0078, "W630: name-entry furniture art and delta tables; ends at panel table"),
+    (0x28FA24, 0x0074, "W630: name-entry panel's 29 sprite-stream longwords; ends at script"),
+    # W630: `$28F4B4 lea ($28FA98,PC),A0 / jsr $246410`. One count word followed by four
+    # fourteen-byte palette-animation entries, ending exactly where W308's chain script starts.
+    (0x28FA98, 0x003A, "W630: $28F4B4's four-entry name-grid animation script for $246410; "
+                       "ends exactly at $28FAD2"),
     # W308: `$28F520 lea ($28FAD2,PC),A0 / jsr $246704` -- the countdown's anim-object chain
     # script. Same format as W303's `$25BAAA`: a node-count word then FOUR words per node, so
     # 2 + 4*8 = $22, ending exactly at `$28FAF4` which is the next routine `$28F580` calls.
     (0x28FAD2, 0x0022, "W308: $28F520's anim-object chain script, FOUR nodes; ends at $28FAF4, "
                        "the routine $28F580 bsr's"),
+    (0x28FC16, 0x0020, "W630: name-entry score's sixteen digit-offset words; abuts header code"),
+    (0x28FC96, 0x0014, "W630: name-entry header's five row-selected sprite longwords"),
     # W310: the name-entry CURSOR's three tables, contiguous and all 28 cells long:
     #   $28FED0 + $70    28 pointers, consecutive `$28FF40 + i*$14`
     #   $28FF40 + $230   28 adjacency tables of TEN words (index = direction bits - 1)

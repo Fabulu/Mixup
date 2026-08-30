@@ -67,72 +67,29 @@
 // land on `$28F368`, and that is the whole of the difference: one screen ran, one did not.
 //
 // ===============================================================================================
-// WHAT THIS FILE PORTS AND WHAT IT COUNTS
+// WHAT THIS FILE PORTS AND CALLS
 // ===============================================================================================
 //
-// PORTED AND CALLED, with byte extents measured off the raw image:
+// The object head and every type-$800C presentation call now execute in cartridge order:
 //
 //     $28F2BA..$28F367   $AE   state 0, the init
-//     $28F368..$28F3AB   $44   the teardown, which stages dispatch type 8
-//     $28F3AC..$28F3F7   $4C   the dispatcher
-//     $28F3F8..$28F44F   $58   the P1 arm's head
-//     $28F450..$28F4C3   $74   the P2 arm's head, and the shared `$28F4A6` grid arm
-//                        $154  of new transcription, and it makes ~700 lines of hiscorename.js
-//                              reachable for the first time
+//     $28F368..$28F3AB   $44   teardown, including $259C4A reset and $28C0FC sound post
+//     $28F3AC..$28F3F7   $4C   dispatcher
+//     $28F3F8..$28F44F   $58   P1 arm head
+//     $28F450..$28F4C3   $74   P2 arm head and shared $28F4A6 animation-grid arm
+//     $28F4F4            --    score
+//     $28F4F8            --    header
+//     $28F580            --    animated furniture
+//     $28F584            --    panel
 //
-// COUNTED, every extent measured the same way:
+// `hiscorename.js` also executes the panel at its other three cartridge call sites. The four
+// presentation bodies retain their measured extents in `SLOT12.draws` and `panelDrawBytes`, but
+// those rows are source measurements rather than deferrals.
 //
-//     $259C4A..$259CB7   $6E   `$28F36E`'s clear -- and this one is not transcribed ANYWHERE:
-//                              `$259CA0 jsr $25A182` is a call out of the middle of it, so
-//                              porting the visible half would put the whole routine's name on
-//                              two thirds of its behaviour.
-//     $28C0FC            --    the stream post every front-end teardown counts (objslot8.js)
-//     $28F7F4..$28F8AB   $B8   the panel draw.  Already counted by `hiscorename.js`, from three
-//                              of its four call sites; this file adds the fourth ($28F584).
-//     $28FAF4..$28FB89   $96   the animated furniture: three draws through $23DFEA/$23E020 off
-//                              the six tables at $28F9AC..$28FA23
-//     $28FB8A..$28FC35   $AC   the SCORE draw, $8C of code and the $20-byte digit-offset table
-//                              at $28FC16 it indexes with the score's nibbles
-//     $28FC36..$28FCA9   $74   the header draw, $60 of code and the five art longwords at
-//                              $28FC96 it indexes with the row index ($38,A4)
-//
-// ===============================================================================================
-// THE CLEARS: TRANSCRIBED, TESTED, AND -- SINCE W388 -- CALLED. THE PRICE WAS PAID.
-// ===============================================================================================
-//
-// `$24A810..$24A823` ($14) and `$2603DA..$2603FD` ($24) are six and seven instructions with no
-// branch and no call, and both are transcribed here as `clearPlayerRam24A810` and
-// `clearRankRam2603DA`, with `w387slot12.test.js` SECTION 7 proving both ends of both spans.
-//
-// Between them they wipe `$8103E6..$812977` (9,618 bytes) and `$81308C..$813157` (204 bytes) --
-// which is the whole player subsystem, the rank subsystem's pointers, `$8130FA` (tally.js's
-// `TALLY.side0`) and `$8130BE` (the lives counter).
-//
-// **W387 COUNTED THEM RATHER THAN CALLING THEM, and priced the change at six assertions in three
-// files. W388 CALLED THEM AND THE PRICE WAS EXACTLY RIGHT.** Every one of the six was a
-// measurement taken at the LAST FRAME of a run that had no teardown in it, and every one has been
-// re-based to the frame on which its subject still exists rather than weakened:
-//
-//     w384stall.test.js  "the odometer stops short of the boss lock"      -> `RUN.odoPeak`
-//                        "the two dispatcher entries $25FE42 fills"       -> `RUN.atTeardown`
-//                        "the boss is NEVER REACHED ... and it SURVIVES"  -> `RUN.atTeardown`
-//                        "DEFERRAL 2 IS GONE: $2603FE is stagePair2603FE" -> `RUN.atTeardown`
-//     w385player.test.js "the lives counter is seeded from the DIP"       -> its own +2,500 boot
-//     w386gameover.test.js / w387slot12.test.js -- the note census, which LOSES two lines
-//
-// `w384stall.test.js`'s run now carries an eleven-word snapshot refreshed while the tally block is
-// live, so "the last frame" and "the last frame the player subsystem existed" are separate and
-// both assertable. The teardown's own effect is asserted positively in
-// `w388hiscorechain.test.js` SECTION 6, on the real game-over path, with both spans' ends checked
-// and the first word past each end proved untouched.
-//
-// **`$259C4A` IS STILL COUNTED and is the only one of the three that is not ported**: `$259CA0` is
-// a `jsr` out of the middle of it, so it is not a straight-line clear and porting the visible half
-// would put the whole routine's name on two thirds of its behaviour.
-//
-// Total counted below this object: $258 bytes of draw code and $6E of clear.  NONE of it is on
-// the cold-boot path except the `$259C4A` note and `$28C0FC` -- SECTION 4 of the test file
-// pins the whole set at exactly two notes, one fire each.
+// The teardown calls all three modeled reset bodies. `$24A810` clears player RAM, `$259C4A`
+// clears front-end draw state, and `$2603DA` clears rank RAM before the object posts `$28C0FC`,
+// queues its own kill, and stages dispatch type 8. `w387slot12.test.js` proves those effects and
+// the cold-boot path now leaves no slot-$C deferral.
 
 import { clearTx23C622 } from './background.js';
 import { install24150A, install2414BE } from './palette.js';
@@ -140,9 +97,12 @@ import { stageCreate, queueKill } from './objalloc.js';
 import { hiscoreCheck287BD2, hiscoreCheck287C08 } from './hiscore.js';
 import { readInput23D186 } from './tallyscreen.js';
 import { startRaw23D16C } from './objslot8.js';
+import { frontDrawReset259C4A } from './frontend.js';
 import {
   NAME_OBJ, NAME_REC, nameArm28F428, nameArmGrid28F4A6, drawGridFrame28F4C4,
   nameCountdown28F4FC, nameFrameBands28F542, nameButtons28F588, cursorFrame28F55E,
+  drawNamePanel28F7F4, drawNameFurniture28FAF4, drawNameScore28FB8A,
+  drawNameHeader28FC36,
 } from './hiscorename.js';
 
 export const SLOT12 = Object.freeze({
@@ -178,10 +138,8 @@ export const SLOT12 = Object.freeze({
   flagBits: Object.freeze([0x01, 0x02]),          // $28F32C ori.b #$1 / $28F348 ori.b #$2
   entryCue: 0x28cb74,          // $28F360 jsr -- sound.js STREAMING_LEAVES, id 10
 
-  // The teardown's chain, in the cartridge's order, with the extent and the exact RAM span each
-  // one wipes. **ONLY THE MIDDLE ONE IS STILL COUNTED** -- W388 calls the other two; their rows
-  // stay here because the extents are the measurement, and `w387slot12.test.js` SECTION 4 reads
-  // them. See the CLEARS block in this file's header.
+  // The teardown chain in cartridge order. These rows retain the measured extents and exact RAM
+  // spans for `w387slot12.test.js`; every reset is modeled and called below.
   clears: Object.freeze([
     Object.freeze({ at: 0x24a810, site: 0x28f368,
       why: '$28F368 jsr $24A810 -- $24A810..$24A823, $14 bytes: `move.w #$12C8,D0 / moveq #$0,D1 '
@@ -191,9 +149,8 @@ export const SLOT12 = Object.freeze({
         + 'extent, not a deferral, and nothing counts this address any more' }),
     Object.freeze({ at: 0x259c4a, site: 0x28f36e,
       why: '$28F36E jsr $259C4A -- $259C4A..$259CB7, $6E bytes: clears $81E0DA, the eight '
-        + 'longwords at $812E08, and $812E28/$812E48/$812E4A. NOT transcribed at all, because '
-        + '$259CA0 jsr $25A182 is a call out of the middle of it, so porting the visible half '
-        + 'would put the whole routine\'s name on two thirds of its behaviour' }),
+        + 'longwords at $812E08..$812E24, $812E28, and the six words at $812E48..$812E52. '
+        + '`frontDrawReset259C4A` in frontend.js models the complete reset, and this object calls it' }),
     Object.freeze({ at: 0x2603da, site: 0x28f374,
       why: '$28F374 jsr $2603DA -- $2603DA..$2603FD, $24 bytes: $66 words (trap 2) from $81308C '
         + '= $81308C..$813157, then $FFFF into $8130BE and $8130C0, which are INSIDE that span. '
@@ -249,12 +206,6 @@ function clearTxOrNote(ctx, site) {
   }
   clearTx23C622(ctx.tx);
 }
-
-// `$28C0FC -> $28BB76` is an ENTRY that posts bare `$10000000`, not an address-only
-// WRAPPERS row. Keep this call as the same counted gap as the three slot [8] sites.
-const CUE_STREAM_NOTE = ' jsr $28C0FC -- $28C0FC -> $28BB76 posts the bare longword '
-  + '$10000000 (type $10), NOT the $28BB04 packer every sound.js WRAPPERS row describes, so '
-  + 'posting it throws. Counted with the three slot [8] call sites';
 
 // ---------------------------------------------------------------------------------------------
 
@@ -363,23 +314,13 @@ export function init28F2BA(ram, rom, a5, ctx) {
  * makes the kill silently miss (`killById` compares 16 bits of the id and never matches).
  */
 export function teardown28F368(ram, rom, a5, ctx) {
-  // $28F368 / $28F36E / $28F374 -- THE THREE CLEARS.
-  //
-  // **W388 TURNS THE TWO TRANSCRIBED ONES ON, and pays the price the CLEARS block priced.** They
-  // are six and seven instructions with no branch and no call, both proven end-to-end by
-  // `w387slot12.test.js` SECTION 7, and the only thing that ever kept them from being called was
-  // that six assertions in three other files measured the resting RAM of runs that had no
-  // teardown in them. Those six are re-based in `w388hiscorechain.test.js`'s companion edits,
-  // named one by one, and none of them was weakened: each now measures what the cartridge
-  // actually leaves behind once the game-over screen tears the player subsystem down.
-  //
-  // `$259C4A` STAYS COUNTED and is the only one of the three that is not ported: it is $6E bytes
-  // with its own control flow, not a straight-line clear, and inventing it is not this wave's.
+  // $28F368 / $28F36E / $28F374 run the three reset bodies in cartridge order. Their exact
+  // RAM spans are retained in `SLOT12.clears` and proven by `w387slot12.test.js` SECTION 7.
   clearPlayerRam24A810(ram);                                 // $28F368 jsr $24A810
-  ctx?.unported?.note(SLOT12.clears[1].at, SLOT12.clears[1].why);  // $28F36E jsr $259C4A
+  frontDrawReset259C4A(ram);                                 // $28F36E jsr $259C4A
   clearRankRam2603DA(ram);                                   // $28F374 jsr $2603DA
   queueKill(ram, ram.u32(a5 + SLOT12.idAt));                 // $28F37A jsr $241292
-  ctx?.unported?.note(SLOT12.cueStream, '$28F380' + CUE_STREAM_NOTE); // jsr $28C0FC
+  ctx?.soundPost?.(SLOT12.cueStream);                        // $28F380 jsr $28C0FC
   clearTxOrNote(ctx, 0x28f386);                              // $28F386 jsr $23C622
   // $28F38C lea $222638,A0 / $28F392 moveq #0,D0 / $28F394 jsr $2414BE.
   if (!ctx?.palette) {
@@ -403,15 +344,14 @@ function nameEntryFrame(ram, rom, a4, a5, ctx) {
   /*
    * `$28F4C4..$28F666` -- one frame of the screen, once a side's record is set up.
    *
-   * Every piece below `$28F4C4` was already ported, by W305 through W382, in `hiscorename.js`;
-   * this is the glue that runs them in the cartridge's order and counts the three draws that are
-   * not ported. The order is not a detail -- `$28F4FC tst.w ($1E,A4) / beq $28F542` makes the
-   * countdown and the input path EXCLUSIVE, and the two draws at `$28F4F4`/`$28F4F8` happen before
-   * either, on every frame.
+   * Every piece below `$28F4C4` is modeled in `hiscorename.js`; this glue runs the grid, score,
+   * header, countdown, cursor, furniture, panel, and input in cartridge order. The order is not a
+   * detail: `$28F4FC tst.w ($1E,A4) / beq $28F542` makes the countdown and input paths exclusive,
+   * and the score and header calls at `$28F4F4`/`$28F4F8` happen before either on every frame.
    */
   drawGridFrame28F4C4(ram, rom, a4, a5);                     // $28F4C4..$28F4F2
-  noteDraw(ctx, SLOT12.draws[1]);                            // $28F4F4 bsr $28FB8A
-  noteDraw(ctx, SLOT12.draws[2]);                            // $28F4F8 bsr $28FC36
+  drawNameScore28FB8A(ram, rom, a4);                         // $28F4F4 bsr $28FB8A
+  drawNameHeader28FC36(ram, rom, a4);                        // $28F4F8 bsr $28FC36
 
   const tick = nameCountdown28F4FC(ram, rom, a4, a5, ctx);   // $28F4FC tst.w ($1E,A4)
   if (tick !== 'idle') return tick;                          // ...and every non-idle arm rts
@@ -420,22 +360,9 @@ function nameEntryFrame(ram, rom, a4, a5, ctx) {
   if (band !== 'input') return band;                         // 'leadin' rts, 'over' commits
 
   cursorFrame28F55E(ram, rom, a4, ctx);                      // $28F55E..$28F57E
-  noteDraw(ctx, SLOT12.draws[0]);                            // $28F580 bsr $28FAF4
-  // $28F584 bsr $28F7F4 -- the FOURTH call site of the panel draw. hiscorename.js counts the
-  // other three ($28F502, $28F550, $28F6C2); this one is only reachable from here.
-  ctx?.unported?.note(SLOT12.panelDraw, `$28F584 bsr $28F7F4 -- the name-entry panel draw, `
-    + `$28F7F4..$28F8AB, $${SLOT12.panelDrawBytes.toString(16).toUpperCase()} bytes ending on `
-    + `the 4E75 AT $28F8AA. Reached on the INPUT path; hiscorename.js counts the other three `
-    + `call sites`);
+  drawNameFurniture28FAF4(ram, rom, a4);                     // $28F580 bsr $28FAF4
+  drawNamePanel28F7F4(ram, rom, a4);                         // $28F584 bsr $28F7F4
   return nameButtons28F588(ram, rom, a4, ctx);               // $28F588..$28F666
-}
-
-/** One counted draw, named by its extent so the note can be scoped without re-measuring. */
-function noteDraw(ctx, d) {
-  ctx?.unported?.note(d.at, `$${d.site.toString(16).toUpperCase()} bsr $${
-    d.at.toString(16).toUpperCase()} -- $${d.at.toString(16).toUpperCase()}..$${
-    (d.at + d.bytes - 1).toString(16).toUpperCase()}, $${
-    d.bytes.toString(16).toUpperCase()} bytes: ${d.why}`);
 }
 
 /**
@@ -469,7 +396,7 @@ export function nameArmHead(ram, rom, a5, ctx, side) {
     // cache, with the give-up branch that drops the side from the work list.
     if (!nameArm28F428(ram, rom, a4, a5, side)) return 'gaveup';   // $28F436 / $28F490 bra $28F6C8
     if (ram.u16(SLOT12.active) === 0) {                      // $28F442 / $28F49C tst.w $81E0D6
-      nameArmGrid28F4A6(ram, a4, ctx);                       // $28F44C bra.w $28F4A6, and it
+      nameArmGrid28F4A6(ram, rom, a4);                        // $28F44C bra.w $28F4A6, and it
     }                                                        // FALLS THROUGH ($28F4C0 bra +2)
   }
   return nameEntryFrame(ram, rom, a4, a5, ctx);

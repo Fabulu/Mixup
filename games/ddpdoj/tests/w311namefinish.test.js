@@ -1,8 +1,8 @@
 // W311: the finish button commits the character under the cursor.
 //
-// W309 left `$28F606` as "where a non-empty finish goes", which made it sound like glue. It
-// writes the cell the cursor is on, and that is the difference between `SE` + finish on `X`
-// giving `SEX` and giving `SE<28>`.
+// `$28F606` writes the pointed-at character, filters the completed row, and then returns to the
+// shared `$28F6A8` commit tail. This file checks the helper directly and the live button path that
+// reaches the helper and the tail in one frame.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -37,6 +37,7 @@ const FINISH = 0x8000;
 
 /** A machine mid-entry: `chars` already typed and the cursor on `cell`. */
 function midEntry(chars, cell) {
+  assert.ok(chars.length < NAME_ALPHA.chars, 'live setup cannot remain in input with three chars');
   const ram = new Ram();
   hiscoreDefaults28841E(ram, ROM);
   ram.setU32(A4 + NAME_REC.entry, BIG);
@@ -48,6 +49,14 @@ function midEntry(chars, cell) {
     nameButtons28F588(ram, ROM, A4, null);
   }
   ram.setU16(A4 + CURSOR.cellField, cell);
+  return ram;
+}
+/** A deliberately synthetic completed row for proving guards below the live three-char branch. */
+function completedEntry(chars, cell) {
+  assert.equal(chars.length, NAME_ALPHA.chars);
+  const ram = midEntry([], cell);
+  chars.forEach((char, index) => ram.setU32(BIG + index * 4, char * NAME_ALPHA.scale));
+  ram.setU16(A4 + COUNT, NAME_ALPHA.chars);
   return ram;
 }
 const row = (ram) => [0, 1, 2].map((k) => ram.u32(BIG + k * 4));
@@ -135,7 +144,7 @@ test('W311 a completed name that IS banned comes out as `DDP` either way', { ski
   // BEFORE it looks at the count, so finishing on END discards the name and writes DDP outright --
   // the filter never sees `KKK` at all. Same outcome, different reason, and my first draft of this
   // test expected `filtered`.
-  const viaEnd = midEntry([cellOf('K'), cellOf('K'), cellOf('K')], CURSOR.endCell);
+  const viaEnd = completedEntry([cellOf('K'), cellOf('K'), cellOf('K')], CURSOR.endCell);
   assert.equal(nameCommit(viaEnd, ROM, A4), 'default', 'END short-circuits the count test');
   assert.equal(name(viaEnd), 'DDP');
 });
@@ -144,7 +153,9 @@ test('W311 the END-cell test comes BEFORE the count test', { skip: SKIP }, () =>
   // Which means finishing on END always discards whatever was typed, however much of it there is.
   // A port that checked the count first would try to write a fourth character.
   for (const already of [0, 1, 2, 3]) {
-    const ram = midEntry(Array.from({ length: already }, () => cellOf('Q')), CURSOR.endCell);
+    const chars = Array.from({ length: already }, () => cellOf('Q'));
+    const ram = already === 3
+      ? completedEntry(chars, CURSOR.endCell) : midEntry(chars, CURSOR.endCell);
     const how = nameCommit(ram, ROM, A4);
     assert.equal(name(ram), 'DDP', `${already} entered, finished on END`);
     assert.equal(how, 'default');
@@ -183,26 +194,25 @@ test('W311 an empty name commits as `DDP` without the filter', { skip: SKIP }, (
   assert.equal(name(ram), 'DDP');
 });
 
-test('W311 `nameCommit` agrees with the button decode about which path runs', { skip: SKIP }, () => {
-  // `nameButtons28F588` returns `finish-empty` or `finish`, and `nameCommit` must take the
-  // matching branch -- otherwise the two halves of the same ROM test disagree.
+test('W311 the live button decode executes both complete commit paths', { skip: SKIP }, () => {
   const empty = midEntry([], cellOf('Q'));
   empty.setU16(A4 + NAME_REC.input, FINISH);
   assert.equal(nameButtons28F588(empty, ROM, A4, null), 'finish-empty');
+  assert.equal(name(empty), 'DDP');
+  assert.equal(empty.u16(A4 + 0x1e), 0x70, 'empty finish ran the common commit tail');
 
   const some = midEntry([cellOf('Z')], cellOf('Q'));
   some.setU16(A4 + NAME_REC.input, FINISH);
   assert.equal(nameButtons28F588(some, ROM, A4, null), 'finish');
-  // And the body it hands over to writes the pointed-at character.
-  assert.equal(nameFinish28F606(some, ROM, A4), 'filtered');
-  assert.equal(name(some), 'ZQ<28>');
+  assert.equal(name(some), 'ZQ<28>', 'the live arm ran `$28F606` before returning');
+  assert.equal(some.u16(A4 + 0x1e), 0x70, 'nonempty finish ran the common commit tail');
 });
 
 test('W311 a full name reaching `$28F606` throws', { skip: SKIP }, () => {
   // The finish button reaches here only with 1 or 2 entered: empty goes to `$28F59E` and three
   // cannot be added to. Nothing in `$28F606` bounds the slot, so a count of three means an arm
   // above was skipped.
-  const ram = midEntry([1, 2, 3], cellOf('Q'));
+  const ram = completedEntry([1, 2, 3], cellOf('Q'));
   assert.throws(() => nameFinish28F606(ram, ROM, A4), /an arm above was skipped/);
 });
 

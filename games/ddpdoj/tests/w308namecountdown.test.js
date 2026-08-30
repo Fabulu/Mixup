@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
+import { BUCKETS } from '../src/spritequeue.js';
 import { hiscoreDefaults28841E } from '../src/hiscore.js';
 import {
   chainLoader246710, chainLoader246704, CHAIN_OTHER_BODY,
@@ -309,15 +310,14 @@ test('W308 the OTHER head pair is named, not assumed to be a variant', { skip: S
   assert.notEqual(body, 0x246718, 'but it is NOT $246710\'s body');
 });
 
-test('W308 the panel draw and the limit arm are counted, not invented', { skip: SKIP }, () => {
+test('W308 the countdown executes the panel draw before ticking', { skip: SKIP }, () => {
   const ram = running(0x20);
   const w = world();
   nameCountdown28F4FC(ram, ROM, A4, A5, w.ctx);
-  const draw = w.log.report().find((r) => r.includes('$28F7F4'));
-  assert.ok(draw, 'the panel draw is counted');
-  assert.match(draw, /banned-name table/, 'and its far end is named');
-  // The draw's span ends exactly where W306's table begins, which is what makes that claim
-  // checkable rather than decorative.
+  const bytes = BUCKETS.reduce((n, bucket) => n + ram.u16(bucket.counter), 0);
+  assert.equal(bytes, 36, 'selected cell plus two animated blanks emit three records');
+  assert.equal(w.log.report().some((r) => r.includes('$28F7F4')), false,
+    'the live panel leaves no stale deferral');
   assert.equal(0x28f8aa + 2, 0x28f8ac, '$28F7F4..$28F8AA, then the banned names');
 });
 
@@ -326,7 +326,7 @@ test('W308 arming the grid then running the countdown holds together', { skip: S
   // `($2E,A4)`.
   const ram = factory();
   const w = world();
-  nameArmGrid28F4A6(ram, A4, w.ctx);
+  nameArmGrid28F4A6(ram, ROM, A4);
   ram.setU16(A4 + COUNTER, 5);
   ram.setU8(FLAGBYTE, 0);
   assert.equal(nameCountdown28F4FC(ram, ROM, A4, A5, w.ctx), 'ticked');

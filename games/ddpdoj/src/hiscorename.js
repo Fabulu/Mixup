@@ -39,7 +39,10 @@
 
 import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
-import { enqueueRegistersThroughStub } from './spritequeue.js';
+import {
+  enqueueRegistersThroughStub, enqueueZoomedRegistersThroughStub,
+} from './spritequeue.js';
+import { loadAnimObjects246410 } from './animobjects.js';
 import { tagLookupForSide, tagForSide, tagWrite28F7C8 } from './hiscore.js';
 import { chainLoader246704 } from './stageend.js';
 
@@ -254,7 +257,7 @@ const GRID_ROW = Object.freeze({
   bothOwed: 0x03,                // $28F4D4 cmpi.b #$3,D0 / beq -- neither arm runs
   active: 0x81e0d6,              // $28F4AC move.w #$1,$81E0D6
   animScript: 0x28fa98,          // $28F4B4 lea ($28FA98,PC),A0
-  animDriver: 0x246410,          // $28F4BA jsr -- the declared presentation tier
+  animDriver: 0x246410,          // $28F4BA jsr -- executed by nameArmGrid28F4A6
 });
 
 // ===========================================================================
@@ -324,9 +327,7 @@ export function nameReleaseSetup28F6B0(ram, a4) {
 export function nameCountdown28F4FC(ram, rom, a4, a5, ctx) {
   if (ram.u16(a4 + TIMEOUT.counter) === 0) return 'idle';  // $28F4FC tst.w / $28F500 beq
 
-  ctx?.unportedLog?.note(TIMEOUT.drawSite, '$28F502 bsr $28F7F4 -- the name-entry panel draw, '
-    + '$28F7F4..$28F8AA, an emitter chain of immediates that ends exactly where W306\'s '
-    + 'banned-name table begins');
+  drawNamePanel28F7F4(ram, rom, a4);                      // $28F502 bsr $28F7F4
 
   // $28F506 -- the word spans $81E0D9 and $81E0D8 itself has no writer, so this is exactly
   // "is any side still being set up".
@@ -369,13 +370,12 @@ export function nameFrameBands28F542(ram, rom, a4, ctx) {
   const n = u16(ram.u16(a4 + TIMEOUT.frame) + 1);          // $28F542 addq.w #1,($2,A4)
   ram.setU16(a4 + TIMEOUT.frame, n);
   if (n < TIMEOUT.leadIn) {                                // $28F54A cmpi.w #$30 / bcc
-    ctx?.unportedLog?.note(TIMEOUT.drawSite,
-      '$28F550 bsr $28F7F4 -- the panel draw, on the lead-in path');
+    drawNamePanel28F7F4(ram, rom, a4);                     // $28F550 bsr $28F7F4
     return 'leadin';                                       // $28F554 rts
   }
   if (n >= TIMEOUT.limit) {                                // $28F556 cmpi.w #$738 / bcc
     nameFinish28F606(ram, rom, a4);                        // $28F55A bcc.w $28F606
-    nameCommitTail28F6A8(ram, a4, ctx);                    // $28F606 falls into $28F674/$28F6A8
+    nameCommitTail28F6A8(ram, rom, a4);                    // $28F606 falls into $28F674/$28F6A8
     return 'over';
   }
   return 'input';
@@ -385,37 +385,148 @@ export function nameFrameBands28F542(ram, rom, a4, ctx) {
  * `$28F4A6` -- arm the grid: cursor to 1, the global active flag to 1, and hand `$28FA98` to
  * the animation driver.
  *
- * `$246410` is the anim-object LOADER whose script window is not declared, so this is COUNTED,
- * not invented.  **W435 CORRECTION:** this line used to cite
- * `stageend.js PRESENTATION_DEVIATION[0x28d6fc]` as the reason.  That key is now EMPTY -- W435
- * closed DEV-2 -- and the reason it gave (an unported execution engine) was never true: the
- * engine is `animobjects.js runAnimObjects24683E`, main-loop call #3.
- *
- * **W389 CORRECTION TO THIS COMMENT'S SECOND HALF.** It used to add "and W303 counted `$246710`'s
- * content seeding for the same reason". That is no longer true: W388 ported `$24676A..$2467C3`
- * and W389 folded it into `chainLoaderBody`, so `$246710` seeds content on every call and raises
- * no note at all. `nameCountdown28F4FC` above drives it for real. The `$246410` note here is a
- * SEPARATE and now questionable deferral -- `animobjects.js loadAnimObjects246410` has been a
- * real port for many waves and slot [8] arm 12 calls it live -- but `w307namegrid.test.js` pins
- * this note by text, so retiring it is a wave of its own. See W389's report.
+ * `$246410` is the existing animation-object loader. Its exact `$28FA98..$28FAD1` script has
+ * one count word and four 14-byte entries; mode 1 matches the cartridge call site. The return
+ * value is deliberately ignored because `$28F4BA` only uses the loader's RAM side effects.
  */
-export function nameArmGrid28F4A6(ram, a4, ctx) {
+export function nameArmGrid28F4A6(ram, rom, a4) {
   ram.setU16(a4 + GRID_ROW.cursorField, 1);            // $28F4A6 move.w #$1,($2E,A4)
   ram.setU16(GRID_ROW.active, 1);                      // $28F4AC move.w #$1,$81E0D6
-  // W389 -- the note's TEXT used to end "...and W303 counted $246710's seeding for", which is
-  // now false: `$246710` seeds on every call and raises no note. Trap 14, caught by grepping the
-  // notes when the call site changed. The DEFERRAL itself is left standing, but it is thin --
-  // `animobjects.js loadAnimObjects246410` is a real port, W387 already declared all four of
-  // `$28FA98`'s fade targets, and arm 12 calls the same loader live. See W389's report.
-  ctx?.unportedLog?.note(GRID_ROW.animDriver, `$28F4BA jsr $246410 with A0 = $28FA98 -- the `
-    + `name-entry grid's animation objects. The DRAIN is ported (runAnimObjects24683E; W435 `
-    + `closed stageend.js's DEV-2 on it), so what is out of scope here is this call site and `
-    + `its $28FA98 script window, nothing deeper. The cursor and the furniture around it ARE `
-    + `drawn, by $28FCAA`);
+  loadAnimObjects246410(ram, rom, GRID_ROW.animScript, 1); // $28F4B4 / $28F4BA
 }
 
 /** `move.l #base,D1 / addi.l #delta,D1` -- a LONGWORD add, so the halves are not independent. */
 const packD1 = (base, delta) => ((base + delta) >>> 0);
+
+/** Word-only arithmetic on D1 preserves its packed Y half and discards X carry. */
+const addD1Word = (d1, delta) => ((d1 & 0xffff0000) | ((d1 + delta) & 0xffff)) >>> 0;
+
+const NAME_DRAW = Object.freeze({
+  panelTable: 0x28fa24,
+  panelStub: 0x23e056,
+  panelZoomStub: 0x23e45a,
+  panelZoom: 0x40004000,
+  furnitureArt: Object.freeze([[0x28f9ac, 0x28f9cc], [0x28f9bc, 0x28f9ec]]),
+  furnitureDelta: Object.freeze([0x28fa0c, 0x28fa18]),
+  scoreOffsets: 0x28fc16,
+  scoreArt: 0x323be8,
+  headerRows: 0x28fc96,
+});
+
+/** `$28F7F4` -- entered letters, selected cell, and the two animated empty slots. */
+export function drawNamePanel28F7F4(ram, rom, a4) {
+  let d1 = ram.u16(a4 + NAME_REC.side) === 0 ? 0x48400380 : 0x48402240;
+  const row = ram.u32(a4 + NAME_REC.entry);
+  const entered = ram.u16(a4 + 0x16);
+
+  for (let i = 0; i < entered; i++) {                       // $28F81A..$28F838 dbra
+    const offset = i16(ram.u32(row + i * 4) & 0xffff);      // adda.w D0,A1
+    const d2 = rom.u32(NAME_DRAW.panelTable + offset);
+    enqueueZoomedRegistersThroughStub(ram, rom, NAME_DRAW.panelZoomStub,
+      d1, d2, 0x0418, 0x0004, NAME_DRAW.panelZoom);
+    d1 = addD1Word(d1, 0x0600);                             // $28F834 addi.w
+  }
+  if (entered === 3) return;                                // $28F83C / $28F842
+
+  const cell = ram.u16(a4 + 0x18);
+  enqueueRegistersThroughStub(ram, rom, NAME_DRAW.panelStub,
+    d1, rom.u32(NAME_DRAW.panelTable + u16(cell * 4)), 0x0418, 0x0004);
+  if (entered >= 2) return;                                 // $28F85C / $28F862
+
+  let phase = ram.u16(a4 + 0x3e);                           // use old phase for this frame
+  ram.setU16(a4 + 0x3e, u16(phase + 4));
+  if (phase === 0x0068) ram.setU16(a4 + 0x3e, 0);           // $28F86C..$28F874
+
+  for (let i = 0; i < 2 - entered; i++) {                   // D7 = 1 - entered / dbra
+    const d2 = rom.u32(NAME_DRAW.panelTable + phase);
+    d1 = addD1Word(d1, 0x0600);
+    enqueueZoomedRegistersThroughStub(ram, rom, NAME_DRAW.panelZoomStub,
+      d1, d2, 0x0418, 0x0004, NAME_DRAW.panelZoom);
+    phase = u16(phase + 0x34);
+    if (phase >= 0x006c) phase = u16(phase - 0x006c);
+  }
+}
+
+/** `$28FAF4` -- three furniture records with independent byte and word phases. */
+export function drawNameFurniture28FAF4(ram, rom, a4) {
+  const tickA = ram.u8(a4 + 0x22);
+  ram.setU8(a4 + 0x22, (tickA - 1) & 0xff);                  // $28FAF4 subq.b
+  if (tickA === 0) {
+    ram.setU8(a4 + 0x22, ram.u8(a4 + 0x23));
+    const phase = ram.u16(a4 + 0x24);
+    ram.setU16(a4 + 0x24, phase < 4 ? 0x000c : u16(phase - 4));
+  }
+
+  let tickB = ram.u8(a4 + 0x26);
+  do {                                                      // $28FB0C loops until byte borrow
+    const borrow = tickB === 0;
+    tickB = (tickB - 1) & 0xff;
+    ram.setU8(a4 + 0x26, tickB);
+    if (borrow) break;
+  } while (true);
+  ram.setU8(a4 + 0x26, ram.u8(a4 + 0x27));
+  const phaseB = ram.u16(a4 + 0x28);
+  ram.setU16(a4 + 0x28, phaseB < 8 ? 0x0018 : u16(phaseB - 8));
+
+  const side = ram.u16(a4 + NAME_REC.side) === 0 ? 0 : 1;
+  const base = ram.u32(a4 + 0x06);
+  const delta = NAME_DRAW.furnitureDelta[side];
+  const pair = NAME_DRAW.furnitureArt[side][1] + ram.u16(a4 + 0x28);
+  const d4 = 0x0005;
+
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea,
+    packD1(base, rom.u32(delta)), rom.u32(pair), 0x3808, d4);
+  enqueueRegistersThroughStub(ram, rom, 0x23dfea,
+    packD1(base, rom.u32(delta + 4)), rom.u32(pair + 4), 0x03c0, d4);
+  enqueueRegistersThroughStub(ram, rom, 0x23e020,
+    packD1(base, rom.u32(delta + 8)),
+    rom.u32(NAME_DRAW.furnitureArt[side][0] + ram.u16(a4 + 0x24)), 0x0620, d4);
+}
+
+/** `$28FB8A` -- low-nibble-first score digits and the optional overflow digit. */
+export function drawNameScore28FB8A(ram, rom, a4) {
+  let d1 = ram.u16(a4 + NAME_REC.side) === 0 ? 0x40401540 : 0x40403300;
+  const emit = (nibble) => {
+    const offset = rom.u16(NAME_DRAW.scoreOffsets + (nibble & 0x0f) * 2);
+    enqueueRegistersThroughStub(ram, rom, 0x23e056,
+      d1, (NAME_DRAW.scoreArt + offset) >>> 0, 0x0208, 0x0004);
+  };
+
+  emit(ram.u16(a4 + NAME_REC.digits) & 0x0f);                // $28FBAC..$28FBBE
+  d1 = addD1Word(d1, -0x0200);
+
+  let score = ram.u32(a4 + NAME_REC.score);
+  let d7 = 7;
+  for (;;) {                                                // $28FBCE..$28FBEA dbeq
+    emit(score & 0x0f);
+    d1 = addD1Word(d1, -0x0200);
+    score >>>= 4;
+    if (score === 0) break;
+    d7--;
+    if (d7 < 0) break;
+  }
+  d7--;                                                     // $28FBEE subq.w #1,D7
+
+  const overflow = ram.u16(a4 + NAME_REC.overflow);
+  if (overflow === 0) return;
+  while (d7 >= 0) {                                         // zero-fill the remaining score slots
+    emit(0);
+    d1 = addD1Word(d1, -0x0200);
+    d7--;
+  }
+  emit(overflow & 0x0f);                                    // $28FBFA..$28FC0C tail jmp
+}
+
+/** `$28FC36` -- side heading followed by the selected high-score row heading. */
+export function drawNameHeader28FC36(ram, rom, a4) {
+  const side = ram.u16(a4 + NAME_REC.side) === 0 ? 0 : 1;
+  enqueueRegistersThroughStub(ram, rom, 0x23e020,
+    side === 0 ? 0x52000c00 : 0x52002240,
+    side === 0 ? 0x31f348 : 0x31f374, 0x0228, 0x0005);
+  enqueueRegistersThroughStub(ram, rom, 0x23e056,
+    side === 0 ? 0x52000440 : 0x52002d40,
+    rom.u32(NAME_DRAW.headerRows + ram.u16(a4 + NAME_REC.index) * 4), 0x0218, 0x0004);
+}
 
 /** `$28FCAA` -- the cursor and grid furniture. Four calls across THREE buckets. */
 export function drawGrid28FCAA(ram, rom) {
@@ -579,13 +690,12 @@ export function nameFinish28F606(ram, rom, a4) {
  * the commit with the row still tagged would make it act, and the port reproduces the ROM either
  * way rather than shortcutting to "this does nothing".
  */
-export function nameCommitTail28F6A8(ram, a4, ctx) {
+export function nameCommitTail28F6A8(ram, rom, a4) {
   const wrote = tagWrite28F7C8(ram, a4, ram.u32(a4 + NAME_REC.entry));  // $28F6A8 bsr $28F7C8
   nameReleaseSetup28F6B0(ram, a4);                       // $28F6AC / $28F6B0
   ram.setU16(a4 + TIMEOUT.counter, TIMEOUT.armed);       // $28F6B6 move.w #$70,($1E,A4)
   ram.setU32(a4 + 0x1a, 0);                              // $28F6BC / $28F6BE
-  ctx?.unportedLog?.note(TIMEOUT.drawSite,
-    '$28F6C2 bra $28F7F4 -- the panel draw, on the commit path');
+  drawNamePanel28F7F4(ram, rom, a4);                     // $28F6C2 bra $28F7F4
   return wrote;
 }
 
@@ -602,7 +712,7 @@ export function nameCommit(ram, rom, a4, ctx) {
   // Both paths converge on `$28F674`'s filter and then fall into `$28F6A8`. `nameFinish28F606`
   // has already run the filter; the empty-name path skips it, exactly as `$28F59E`'s
   // `bra $28F6A8` does.
-  nameCommitTail28F6A8(ram, a4, ctx);
+  nameCommitTail28F6A8(ram, rom, a4);
   return how;
 }
 
@@ -707,7 +817,7 @@ export function cursorMove28FE7A(ram, rom, a4, ctx) {
   ram.setU16(a4 + CURSOR.cellField, dest);               // $28FEAE move.w D0,($18,A4)
   // $28FEB6/$28FEBC -- the new cell's screen position, as ONE long into ($6,A4).
   ram.setU32(a4 + CURSOR.posField, rom.u32(CURSOR.positions + dest * 4));
-  ctx?.unportedLog?.note(CURSOR.cue, '$28FEC2 jsr $28C6FA -- SFX id $1B, already in sound.js');
+  ctx?.soundPost?.(CURSOR.cue);                           // $28FEC2 jsr $28C6FA
   return true;
 }
 
@@ -865,7 +975,8 @@ function writeChar(ram, a4, slot, value) {
  * `$28F588..$28F666` -- one frame of button handling.
  *
  * @returns {'finish-empty'|'finish'|'backspace'|'char'|'end'|'idle'}
- *   `finish-empty` has already written `DDP`; `finish` means `$28F606` takes over.
+ *   The completion labels preserve the button arm taken; every completing arm also executes its
+ *   filter and commit continuation before returning.
  *
  * The order matters and is the ROM's: finish is tested first and returns, then backspace, then
  * select. A port that tested select first would commit a character on the frame the player
@@ -875,11 +986,15 @@ export function nameButtons28F588(ram, rom, a4, ctx) {
   const d0 = ram.u16(a4 + INPUT.word);
 
   if ((d0 & INPUT.finishBit) !== 0) {                    // $28F58C btst #$F / $28F590 beq
-    ctx?.unportedLog?.note(INPUT.cue,
-      '$28F592 jsr $28C6E0 -- SFX id $1A, already in sound.js');
-    if (ram.u16(a4 + INPUT.count) !== 0) return 'finish'; // $28F598 tst.w / $28F59C bne
+    ctx?.soundPost?.(INPUT.cue);                         // $28F592 jsr $28C6E0
+    if (ram.u16(a4 + INPUT.count) !== 0) {               // $28F598 tst.w / $28F59C bne
+      nameFinish28F606(ram, rom, a4);                    // branch to $28F606
+      nameCommitTail28F6A8(ram, rom, a4);                // then fall through $28F6A8
+      return 'finish';
+    }
     // $28F59E -- falls THROUGH into the DDP write, W311's `writeDefault`. Three callers share it.
     writeDefault(ram, a4);
+    nameCommitTail28F6A8(ram, rom, a4);                  // $28F5BC bra $28F6A8
     return 'finish-empty';
   }
 
@@ -892,7 +1007,7 @@ export function nameButtons28F588(ram, rom, a4, ctx) {
   }
 
   if ((d0 & INPUT.selectMask) === 0) return 'idle';      // $28F5CA andi.w #$50 / beq $28F6C6
-  ctx?.unportedLog?.note(INPUT.cue, '$28F5D2 jsr $28C6E0 -- SFX id $1A on the select');
+  ctx?.soundPost?.(INPUT.cue);                            // $28F5D2 jsr $28C6E0
 
   const pos = ram.u16(a4 + INPUT.gridPos);               // $28F5D8 move.w ($18,A4),D0
   if (pos >= INPUT.endCell) {                            // $28F5DC cmpi.w #$1B / bcs
@@ -904,7 +1019,7 @@ export function nameButtons28F588(ram, rom, a4, ctx) {
     // why the count-of-three cases in `$28F606` and `$28F652` are unreachable rather than merely
     // unobserved. Stopping short left a state the board cannot be in.
     nameFilter28F674(ram, rom, a4);                      // $28F602 bra $28F674
-    nameCommitTail28F6A8(ram, a4, ctx);                  // and it falls into $28F6A8
+    nameCommitTail28F6A8(ram, rom, a4);                  // and it falls into $28F6A8
     return 'end';
   }
   if (ram.u16(a4 + INPUT.count) >= INPUT.chars) {
@@ -917,6 +1032,10 @@ export function nameButtons28F588(ram, rom, a4, ctx) {
   ram.setU16(a4 + INPUT.count, u16(slot + 1));           // $28F656 addq.w #1
   // $28F65A/$28F65C -- the grid position TIMES FOUR is the stored character value.
   writeChar(ram, a4, slot, u16(pos * 4));
+  if (ram.u16(a4 + INPUT.count) === INPUT.chars) {        // $28F664 cmpi.w #$3 / $28F670 bcs
+    nameFilter28F674(ram, rom, a4);                       // complete names continue at $28F674
+    nameCommitTail28F6A8(ram, rom, a4);                   // and fall through $28F6A8
+  }
   return 'char';
 }
 

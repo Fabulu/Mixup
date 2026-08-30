@@ -74,6 +74,7 @@ import {
 } from '../src/objslot12.js';
 import { NAME_REC, NAME_SCREEN } from '../src/hiscorename.js';
 import { SLOT14 } from '../src/objslot14.js';
+import { SOUND, SoundState, postWrapper } from '../src/sound.js';
 import { Ram } from '../src/ram.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
@@ -439,38 +440,23 @@ test('W387 SECTION 4: $240FC2 -- "slot [12] has no handler" -- is no longer coun
     'before this wave $240FC2 was counted once per frame from +4,414 to the end of time');
 });
 
-test('W387 SECTION 4: this object counts exactly TWO things on a real cold boot', () => {
-  // KEY ON THE CALL SITE IN THE MESSAGE, not only on the target address. Target-wide `$28C0FC`
-  // notes can belong to independent callers such as `$25A9DA` and this object's `$28F380`.
-  // `$288A42` now posts through the supported wrapper and must not enter this census.
-  // `frontend.js`'s RESET_PROLOGUE message also lists `$259C4A` and `$24A810` inside its text,
-  // under `$23BEEA`, which a substring filter would pick up.
+test('W387 SECTION 4: this object leaves no cold-boot deferrals', () => {
   const parsed = RUN.notes.map((s) => {
     const m = s.trim().match(/^(\d+) x \$([0-9A-F]{6}) (.*)$/);
     return m ? { n: Number(m[1]), at: parseInt(m[2], 16), msg: m[3] } : null;
   }).filter(Boolean);
 
-  // **W388: FOUR BECAME TWO, and that is the deliverable of Unit C.** `$28F368 jsr $24A810` and
-  // `$28F374 jsr $2603DA` are CALLS now -- `clearPlayerRam24A810` and `clearRankRam2603DA`, both
-  // already transcribed and both proven end-to-end by SECTION 7 below -- so they have left the
-  // census entirely. `$28F36E jsr $259C4A` stays counted because it is $6E bytes with its own
-  // control flow ($259CA0 is a `jsr`), not a straight-line clear, and `$28F380 jsr $28C0FC` stays
-  // counted because this slot-12 caller is still unwired even though `sound.js` supports the
-  // `$28C0FC` wrapper and other callers, including `$288A42`, post through it.
   const mine = parsed.filter((k) => /^\$28F[0-9A-F]{3} /.test(k.msg));
-  assert.deepEqual(mine.map((k) => [k.msg.slice(0, 20), k.n]), [
-    ['$28F36E jsr $259C4A ', 1],
-    ['$28F380 jsr $28C0FC ', 1],
-  ], 'exactly TWO counted calls left, each fired once -- the teardown is ONE frame');
-  assert.equal(parsed.filter((k) => /^\$28F368 |^\$28F374 /.test(k.msg)).length, 0,
-    'the two transcribed clears are CALLED now, so neither is counted from anywhere');
+  assert.deepEqual(mine, [],
+    '$28F36E resets front-draw state and $28F380 posts sound instead of counting either call');
+  assert.equal(parsed.filter((k) => /^\$28F368 |^\$28F36E |^\$28F374 |^\$28F380 /.test(k.msg)).length,
+    0, 'all three teardown resets and the streaming post execute without a note');
 
-  // And NOTHING is counted at the three draw routines, the panel draw or either script loader,
-  // from any call site at all: the cold-boot path does not reach the name-entry body.
+  // The cold-boot work list is empty, so the presentation routines and both script loaders
+  // remain uncalled rather than entering the note census.
   for (const a of [0x28faf4, 0x28fb8a, 0x28fc36, 0x28f7f4, 0x246410, 0x246704]) {
     assert.equal(parsed.filter((k) => k.at === a).length, 0,
-      `$${a.toString(16).toUpperCase()} is never counted -- $8130CC is empty, so nothing below `
-      + `$28F4C4 runs`);
+      `$${a.toString(16).toUpperCase()} is absent because $8130CC is empty`);
   }
 });
 
@@ -724,9 +710,21 @@ test('W387 SECTION 7: $28F368 kills THIS object and stages type 8 at state 2', (
   const ram = new Ram(new Uint8Array(0x20000));
   for (let a = 0x8103e6; a <= 0x812978; a += 2) ram.setU16(a, 0x5a5a);
   for (let a = 0x81308c; a <= 0x813158; a += 2) ram.setU16(a, 0x5a5a);
+  ram.setU16(0x81e0da, 0x5a5a);
+  for (let a = 0x812e08; a <= 0x812e24; a += 4) ram.setU32(a, 0x5a5a5a5a);
+  ram.setU16(0x812e28, 0x5a5a);
+  for (let a = 0x812e48; a <= 0x812e52; a += 2) ram.setU16(a, 0x5a5a);
   const a5 = ALLOC.table;
   ram.setU32(a5 + SLOT12.idAt, 0x00000007);              // the id $241292 pushes
-  const made = teardown28F368(ram, rom, a5, { unported: { note() {} } });
+  const sound = new SoundState();
+  const soundCalls = [];
+  const made = teardown28F368(ram, rom, a5, {
+    unported: { note() {} },
+    soundPost(addr) {
+      soundCalls.push(addr);
+      return postWrapper(ram, sound, addr);
+    },
+  });
 
   // **W388 RE-BASE: THE TWO TRANSCRIBED CLEARS ARE CALLED NOW.** This assertion used to read
   // `'the counted $24A810 wrote nothing'` and prove the deliberate omission. Unit C turns them
@@ -745,6 +743,20 @@ test('W387 SECTION 7: $28F368 kills THIS object and stages type 8 at state 2', (
   assert.equal(ram.u16(0x813158), 0x5a5a, '...and NOT the word past it');
   assert.equal(ram.u16(0x8130be), 0xffff, '...and $8130BE is $FFFF: the store runs AFTER the loop');
   assert.equal(ram.u16(0x8130c0), 0xffff, '...as does $8130C0, its P2 twin');
+
+  // $259C4A: the existing front-end reset body clears every cartridge-owned field.
+  assert.equal(ram.u16(0x81e0da), 0, '$259C4A clears $81E0DA');
+  for (let a = 0x812e08; a <= 0x812e24; a += 4) {
+    assert.equal(ram.u32(a), 0, `$259C4A clears longword $${a.toString(16).toUpperCase()}`);
+  }
+  assert.equal(ram.u16(0x812e28), 0, '$259C4A clears $812E28');
+  for (let a = 0x812e48; a <= 0x812e52; a += 2) {
+    assert.equal(ram.u16(a), 0, `$259C4A clears word $${a.toString(16).toUpperCase()}`);
+  }
+
+  assert.deepEqual(soundCalls, [0x28c0fc], '$28F380 dispatches the exact streaming entry');
+  assert.equal(ram.u32(SOUND.ring), 0x10000000, '$28C0FC posts the bare type-$10 longword');
+  assert.equal(ram.u16(SOUND.tail), 4, 'the sound ring advances by one longword');
 
   // THE KILL, and it takes the ID and not the type word.
   assert.equal(ram.u32(ALLOC.killQueue), 0x00000007, '$241292 queued ($4C,A5), the id');

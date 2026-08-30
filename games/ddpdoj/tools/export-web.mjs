@@ -1469,6 +1469,103 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   // totals. The two W203 rows remain added 32 / already 0.
 }
 
+// W630. Type $800C can request this whole presentation family on its first live
+// name-entry frame, so all four cartridge structures belong to boot shard 0.
+// The three direct pointer tables have exact cartridge boundaries. Validate them
+// before deriving or changing either packed map.
+checkTableExtent(0x28f9ac, 24, 4, 24, 0x28fa0c,
+  'type $800C furniture table, ending on its side-position data');
+checkTableExtent(0x28fa24, 29, 4, 30, 0x28fa9c,
+  'type $800C panel table has 29 reachable entries; the following animation count/fill long '
+    + 'coincidentally decodes as one extra valid mask stream');
+if (romBe16(0x28fa98) !== 4 || romBe16(0x28fa9a) !== 0) {
+  throw new Error('W630 panel table no longer ends at $28FA98 on the four-row animation script');
+}
+checkTableExtent(0x28fc96, 5, 4, 5, 0x28fcaa,
+  'type $800C header row table, ending on the next cartridge code');
+const W630_NAME_ENTRY_FURNITURE = Object.freeze(Array.from({ length: 24 }, (_, i) =>
+  romBe32(0x28f9ac + i * 4) & 0x7fffff));
+const W630_NAME_ENTRY_PANEL = Object.freeze(Array.from({ length: 29 }, (_, i) =>
+  romBe32(0x28fa24 + i * 4) & 0x7fffff));
+const W630_NAME_ENTRY_SCORE_OFFSETS = Object.freeze(Array.from({ length: 16 }, (_, i) =>
+  romBe16(0x28fc16 + i * 2)));
+const W630_SCORE_EXPECTED = Object.freeze([
+  ...Array.from({ length: 10 }, (_, i) => i * 0x0c),
+  ...Array(6).fill(0),
+]);
+if (W630_NAME_ENTRY_SCORE_OFFSETS.some((offset, i) => offset !== W630_SCORE_EXPECTED[i])) {
+  throw new Error(`W630 name-entry score offsets are ${W630_NAME_ENTRY_SCORE_OFFSETS.map((n) =>
+    `$${n.toString(16).toUpperCase()}`).join(', ')}, expected ten $0C-spaced digits and six zero aliases`);
+}
+const W630_NAME_ENTRY_SCORE = Object.freeze(W630_NAME_ENTRY_SCORE_OFFSETS.slice(0, 10)
+  .map((offset) => (0x323be8 + offset) & 0x7fffff));
+const W630_NAME_ENTRY_HEADER_TABLE = Object.freeze(Array.from({ length: 5 }, (_, i) =>
+  romBe32(0x28fc96 + i * 4) & 0x7fffff));
+const W630_NAME_ENTRY_HEADER = Object.freeze([
+  0x31f348, 0x31f374, ...W630_NAME_ENTRY_HEADER_TABLE,
+]);
+const W630_NAME_ENTRY_STREAMS = Object.freeze([...new Set([
+  ...W630_NAME_ENTRY_FURNITURE,
+  ...W630_NAME_ENTRY_PANEL,
+  ...W630_NAME_ENTRY_SCORE,
+  ...W630_NAME_ENTRY_HEADER,
+])]);
+if (W630_NAME_ENTRY_STREAMS.length !== 70
+    || !W630_NAME_ENTRY_PANEL.includes(0x323b28)
+    || !W630_NAME_ENTRY_PANEL.includes(0x322f44)) {
+  throw new Error(`W630 name-entry presentation resolves to ${W630_NAME_ENTRY_STREAMS.length} `
+    + `distinct streams; expected 70 including panel cell $323B28 and blank $322F44`);
+}
+// Resolve all extents first. A bad pointer must fail before one stream is added or
+// reassigned, so this family remains an all-or-nothing harvest.
+const W630_NAME_ENTRY_EXTENTS = new Map(W630_NAME_ENTRY_STREAMS.map((offs) =>
+  [offs, romExtent(offs)]));
+const validSpriteShards = new Set(SPR_SHARDS.map(([shard]) => shard));
+function harvestW630BootFamily({ base, entries, stride, runsTo, endsAt, family, why }) {
+  let added = 0, already = 0, promoted = 0;
+  const promotedFrom = new Set();
+  for (const offs of family) {
+    if (streams.has(offs)) {
+      const owner = shardOfStream.get(offs);
+      if (!validSpriteShards.has(owner)) {
+        throw new Error(`W630 stream $${offs.toString(16).toUpperCase()} exists without a valid `
+          + `sprite-shard owner (${String(owner)})`);
+      }
+      already++;
+      if (owner !== 0) {
+        shardOfStream.set(offs, 0);
+        promoted++;
+        promotedFrom.add(owner);
+      }
+      continue;
+    }
+    streams.set(offs, W630_NAME_ENTRY_EXTENTS.get(offs));
+    shardOfStream.set(offs, 0);
+    added++;
+  }
+  harvested += added;
+  harvestAlready += already;
+  harvestReport.push({ shard: 0, base, entries, stride, runsTo, endsAt,
+    distinct: family.length, added, already, promoted,
+    promotedFrom: [...promotedFrom].sort((a, b) => a - b), why });
+}
+for (const family of [
+  { base: 0x28f9ac, entries: 24, stride: 4, runsTo: 24, endsAt: 0x28fa0c,
+    family: W630_NAME_ENTRY_FURNITURE, why: 'type $800C name-entry furniture table (W630)' },
+  { base: 0x28fa24, entries: 29, stride: 4, runsTo: 30, endsAt: 0x28fa9c,
+    family: W630_NAME_ENTRY_PANEL,
+    why: 'type $800C 29-entry panel table ending at $28FA98 before a coincidental valid long (W630)' },
+  { base: 0x28fc16, entries: 10, stride: 2, runsTo: 10, endsAt: 0x28fc2a,
+    family: W630_NAME_ENTRY_SCORE, why: 'type $800C ten validated score offsets (W630)' },
+  { base: 0x28fc96, entries: 7, stride: 0, runsTo: 5, endsAt: 0x28fcaa,
+    family: W630_NAME_ENTRY_HEADER,
+    why: 'type $800C two fixed headers and five-row pointer table (W630)' },
+]) harvestW630BootFamily(family);
+if (W630_NAME_ENTRY_STREAMS.some((offs) =>
+  !streams.has(offs) || shardOfStream.get(offs) !== 0)) {
+  throw new Error('W630 name-entry presentation was not installed completely in boot shard 0');
+}
+
 // W497: Type-B's attached draw dependencies. W597 found the symmetric Type-A
 // defect live: bucket 5 requested eight unpacked shadow streams and bucket 19
 // requested sixteen unpacked glow streams during the six-pair hyper path. The
@@ -5735,7 +5832,8 @@ const manifest = {
       shard: h.shard, at: `$${h.base.toString(16).toUpperCase()}`,
       entries: h.entries, stride: h.stride, distinct: h.distinct,
       runsTo: h.runsTo, endsAt: `$${h.endsAt.toString(16).toUpperCase()}`,
-      added: h.added, already: h.already,
+      added: h.added, already: h.already, promoted: h.promoted ?? 0,
+      promotedFrom: h.promotedFrom ?? [],
     })),
     laser: LASER_STREAMS.map((o) => `$${o.toString(16).toUpperCase().padStart(6, '0')}`),
     notHarvested: 'NONE. W81 closed $268594 (enemy type $10): it is TWO '
@@ -5884,5 +5982,7 @@ for (const m of sprMeta) {
 for (const h of harvestReport) {
   console.log(`    <- $${h.base.toString(16).toUpperCase()} ${String(h.entries).padStart(3)} `
     + `entries stride ${h.stride}: ${String(h.added).padStart(3)} new, `
-    + `${String(h.already).padStart(3)} already in the sheet -> shard ${h.shard}`);
+    + `${String(h.already).padStart(3)} already in the sheet`
+    + `${h.promoted ? `, ${h.promoted} promoted from shard${h.promotedFrom.length === 1 ? '' : 's'} `
+      + h.promotedFrom.join('+') : ''} -> shard ${h.shard}`);
 }

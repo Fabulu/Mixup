@@ -65,8 +65,8 @@
 //      fade still lands exactly and the next screen then legitimately replaces it.
 //   2. "the window OVERLAPS NOTHING" -- the neighbour above `$2252F8` is now W387's `$225478`
 //      with $140 clear, not W125's `$2254B8` with $180. Nothing was widened at either end.
-//   3. the deferral census -- `$240FC2` is gone entirely and slot [12]'s four one-shot teardown
-//      notes take its place. The test is renamed for what it now measures.
+//   3. the deferral census -- `$240FC2` is gone entirely. Later ports executed every one-shot
+//      teardown dependency as well, so slot [12] now contributes zero notes.
 //   4. "$2254F8 has no window" and its two siblings are now DECLARED, by W387, at exactly the
 //      $40 this file's own `$001F` measurement predicted.
 
@@ -86,7 +86,8 @@ import { ANIM_OBJECT, loadAnimObjects246410, runAnimObjects24683E } from '../src
 import { RomWindows } from '../src/rom.js';
 import { Unreached } from '../src/unported.js';
 import { SCREEN13, objSlot13 } from '../src/objslot13.js';
-import { SoundState, dequeue, postWrapper } from '../src/sound.js';
+import { SLOT12, teardown28F368 } from '../src/objslot12.js';
+import { SOUND, SoundState, dequeue, postWrapper } from '../src/sound.js';
 
 const here = (p) => fileURLToPath(new URL(p, import.meta.url));
 const tablesJson = JSON.parse(readFileSync(here('../rip/port/player.tables.json'), 'utf8'));
@@ -521,12 +522,12 @@ test('W386 the fade RUNS: 32 staging words converge on the 32 ROM words, exactly
 // selector-specific stop calls.
 test('Game Over posts BGM stop then global SFX release before clearing objects', () => {
   assert.equal(noteCount(0x28c170), 0, '$288A3C is posted, not counted');
-  assert.equal(noteCount(0x28c0fc), 1,
-    'only slot [12]\'s separate $28F380 -> $28C0FC deferral remains counted');
-  assert.match(noteFor(0x28c0fc), /^\s*1 x \$28C0FC \$28F380\b/,
-    '$288A42 posts while the sole counted $28C0FC call belongs to $28F380');
+  assert.equal(noteCount(0x28c0fc), 0,
+    'both $288A42 and slot [12] $28F380 post the supported stream command');
+  assert.equal(noteFor(0x28c0fc), null, '$28C0FC leaves no deferral anywhere on the route');
   assert.ok(RUN.bgmCommands >= 1, '$15000000 drained from the live run');
-  assert.ok(RUN.globalReleases >= 1, '$10000000 drained from the live run');
+  assert.ok(RUN.globalReleases >= 2,
+    '$10000000 drained from both Game Over and the later slot [12] teardown');
   assert.equal(l(0x288a3c), 0x4eb90028, '$288A3C is a 4EB9...');
   assert.equal(l(0x288a3e), 0x0028c170, '  ...jsr $28C170');
   assert.equal(l(0x288a42), 0x4eb90028, '$288A42 is the next 4EB9...');
@@ -564,34 +565,57 @@ test('Game Over posts BGM stop then global SFX release before clearing objects',
   assert.equal(dequeue(ram), 0x15000000);
   assert.equal(dequeue(ram), 0x10000000);
   assert.equal(dequeue(ram), null);
+
+  const slot12Ram = new Ram();
+  const slot12Sound = new SoundState();
+  const slot12Rom = new RomWindows(tablesJson.rom);
+  const slot12Posts = [], slot12Notes = [];
+  slot12Ram.setU16(0x81e0da, 0x5a5a);
+  for (let at = 0x812e08; at <= 0x812e24; at += 4) slot12Ram.setU32(at, 0x5a5a5a5a);
+  slot12Ram.setU16(0x812e28, 0x5a5a);
+  for (let at = 0x812e48; at <= 0x812e52; at += 2) slot12Ram.setU16(at, 0x5a5a);
+  slot12Ram.setU32(a5 + SLOT12.idAt, 7);
+  teardown28F368(slot12Ram, slot12Rom, a5, {
+    soundPost(address) {
+      slot12Posts.push(address);
+      return postWrapper(slot12Ram, slot12Sound, address);
+    },
+    unported: { note: (...args) => slot12Notes.push(args) },
+  });
+
+  assert.deepEqual(slot12Posts, [0x28c0fc], '$28F380 posts the exact stream entry once');
+  assert.equal(slot12Ram.u32(SOUND.ring), 0x10000000,
+    '$28C0FC posts the bare global-release command');
+  assert.equal(slot12Ram.u16(SOUND.tail), 4, 'the slot [12] post advances one longword');
+  assert.equal(slot12Ram.u16(0x81e0da), 0, '$259C4A clears $81E0DA');
+  for (let at = 0x812e08; at <= 0x812e24; at += 4) {
+    assert.equal(slot12Ram.u32(at), 0, `$259C4A clears longword $${at.toString(16).toUpperCase()}`);
+  }
+  assert.equal(slot12Ram.u16(0x812e28), 0, '$259C4A clears $812E28');
+  for (let at = 0x812e48; at <= 0x812e52; at += 2) {
+    assert.equal(slot12Ram.u16(at), 0, `$259C4A clears word $${at.toString(16).toUpperCase()}`);
+  }
+  assert.deepEqual(slot12Notes.filter(([address]) =>
+    address === 0x259c4a || address === 0x28c0fc), [],
+  '$28F36E and $28F380 execute without deferrals');
 });
 
-test('W386 the deferrals behind the screen are slot [12]\'s, and they stop nothing', () => {
-  // The census at +4,079 -- the last frame W385 ever saw -- against the census at +5,000.
-  //
-  // **W387 REPLACES THE ONE NOTE THIS TEST WAS NAMED FOR.** W386 measured exactly one new note,
-  // `$240FC2 object dispatch entry [12] -- handler not ported`, counted once per frame from
-  // +4,414 to the end of time, because the machine reached a screen with no handler and STAYED
-  // THERE. W387 ported and registered that handler (`src/objslot12.js`), so `$240FC2` is gone
-  // entirely and what is new behind the game-over screen is the FOUR counted calls inside slot
-  // [12]'s own teardown, each fired ONCE. "One note forever" became "four notes once", which is
-  // the shape of a screen that ran and handed on rather than a screen that never started.
+test('W386 the completed slot [12] teardown leaves no deferrals behind the screen', () => {
+  // Compare the census at +4,079, immediately before Game Over teardown, with +5,000. Slot [12]
+  // now executes all three resets and its stream post. Any later census growth belongs to other
+  // attract-screen work, never a `$28F...` call site from this object.
   const after = new Set(RUN.notes.map((s) => s.split(' x ')[1]));
   const grown = [...after].filter((k) => !RUN.notesAt4079.has(k));
   assert.equal(noteCount(0x240fc2), 0,
     '$240FC2 is NOT counted at all any more -- W387 registered the handler');
-  // **W388: the list drops to TWO.** Unit C calls `$24A810` and `$2603DA` for real
-  // (`clearPlayerRam24A810` / `clearRankRam2603DA` in `objslot12.js`), so `$28F368` and `$28F374`
-  // are no longer counted. `$28F36E` ($259C4A) and slot [12]'s still-deferred
-  // `$28F380` call are the two that remain. The Game Over call at `$288A42` is
-  // no longer in this census.
   const sites = grown
     .map((k) => (k.match(/^\$[0-9A-F]{6} (\$28F[0-9A-F]{3}) /) ?? [])[1]).filter(Boolean);
-  assert.deepEqual(sites.sort(), ['$28F36E', '$28F380'],
-    'the new notes are slot [12]\'s unported clear and its own deferred stream post');
-  for (const line of RUN.notes.filter((s) => sites.some((x) => s.includes(x)))) {
-    assert.match(line, /^\s+1 x /, 'each fires EXACTLY ONCE -- the teardown is a single frame');
-  }
+  assert.deepEqual(sites, [],
+    'no slot [12] reset, stream post, draw, or script loader enters the census');
+  assert.equal(grown.some((line) => /^\$259C4A \$28F36E\b/.test(line)), false,
+    '$28F36E executes the complete front-draw reset');
+  assert.equal(grown.some((line) => /^\$28C0FC \$28F380\b/.test(line)), false,
+    '$28F380 executes the supported global-release post');
   // **W388.** `$24676A` used to appear here too -- `$246710`'s per-node content seeding, reached
   // because the attract screen slot [12] stages runs `hiscoreInit25B3DC`. It is PORTED now
   // (`animobjects.js seedChainContent24676A`), so it has left the census, the high-score screen
@@ -691,25 +715,10 @@ test('W386 slot [12] ends the front-end loop by staging dispatch type 8, the att
 test('W386 nothing else on the game-over path needs a window: no note names a ROM address', () => {
   // A negative that is NOT an absence proof: every `Unreached` this port raises for a window
   // miss comes out of `rom.js`, and a run that raised one would have STOPPED. The shared RUN
-  // did not stop (SECTION 5), so this is a restatement of a positive measurement. What is
-  // asserted here is only that the census behind the screen is the ONE entry above.
-  //
-  // **W387 RE-BASES THE COUNT AND KEEPS THE CLAIM.** W386 asserted "exactly one census line is
-  // new, and it is dispatch [12]" -- true when the machine stopped at +4,414. With slot [12]
-  // registered the screen runs and hands on, so the new lines are its four one-shot teardown
-  // notes plus `$24676A` from the attract screen that follows. The CLAIM this test exists for is
-  // unchanged and is asserted directly: NOT ONE of them names a ROM address that needs a window,
-  // which is why the run never stopped.
-  //
-  // **W388 RE-BASES IT AGAIN: 5 -> 7, and `$24676A` IS NO LONGER ONE OF THEM.** That note said
-  // `$246710`'s per-node content seeding was unported; W388 ports it, the high-score screen's
-  // chain drains, `$25B4D2` reports finished, and the sequencer moves to arm 12. So one line
-  // LEAVES the census and three arrive: `$28C170` (`$25B4C8`, the screen-end cue, reachable for
-  // the first time), and `$25C2AE` / `$25C2EA`, arm 12's init and body -- the NEXT screen's
-  // deferral, which is progress rather than regression. **W425 (D58) DROPS `$28C170` FROM THAT
-  // LIST -- it is posted now, not deferred -- so the arrivals are two, not three.** The bound
-  // below is an upper bound and is deliberately not re-tightened: the claim this test exists for
-  // is that NONE of them is a window miss, and that is asserted by the loop, not by the count.
+  // did not stop (SECTION 5), so this is a restatement of a positive measurement.
+  // The census can still grow when later attract arms execute, but slot [12] contributes no
+  // teardown note now and `$24676A` content seeding is modeled. The upper bound remains a guard
+  // against unrelated census growth; the load-bearing claim is that none is a ROM-window miss.
   const behind = RUN.notes.filter((s) => !RUN.notesAt4079.has(s.split(' x ')[1]));
   assert.ok(behind.length <= 7, `at most seven census lines are new; got ${behind.length}`);
   assert.ok(!behind.some((s) => s.includes('$24676A')),
