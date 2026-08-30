@@ -88,7 +88,8 @@ test('W215 exact type-$9D/$9E closures and 56 visible streams', { skip: SKIP }, 
   // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
   // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
   // shard 9 at 313/166,218.
-  assert.equal(manifest.spr.streamCount, 5893);
+  assert.equal(manifest.spr.streamCount, 5963,
+    'W630 adds exactly 70 boot-shard name-entry streams to the prior 5,893');
 });
 
 test('W215 real clock-$1D8 carrier draws and launches a live type-$9E child',

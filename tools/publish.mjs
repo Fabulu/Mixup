@@ -72,8 +72,22 @@ if (only === null || only === 'gradius') {
 // exporter ever drops a tile or a sprite stream the picture stays plausible and
 // only this number moves, so it runs before every deploy.
 if (only === null || only === 'ddpdoj') {
+  let trackedTests;
+  try {
+    trackedTests = execFileSync('git', [
+      'ls-files', '--', 'games/ddpdoj/tests/*.test.js',
+    ], { encoding: 'utf8' }).split(/\r?\n/).filter(Boolean);
+  } catch (e) {
+    process.stderr.write((e.stderr || '').toString());
+    process.stderr.write('\nREFUSING TO PUBLISH: Git could not list tracked DaiOuJou unit tests.\n');
+    process.exit(1);
+  }
+  if (trackedTests.length === 0) {
+    process.stderr.write('\nREFUSING TO PUBLISH: Git found no tracked DaiOuJou unit tests.\n');
+    process.exit(1);
+  }
   run('ddpdoj unit tests', process.execPath,
-    ['--test', '--test-concurrency=1', 'games/ddpdoj/tests/']);
+    ['--test', '--test-concurrency=1', ...trackedTests]);
   const d = run('ddpdoj bundle gate', process.execPath, [
     'games/ddpdoj/tools/bundlegate.mjs',
     '--assets', 'games/ddpdoj/assets',

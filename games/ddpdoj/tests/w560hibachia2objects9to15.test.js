@@ -199,6 +199,7 @@ test('W560 ships all six table streams and object 13 fixed stream in the boss sh
     assert.deepEqual(manifest.spr.harvest.find((row) => row.at === '$2A4B40'), {
       shard: 17, at: '$2A4B40', entries: 6, stride: 4, distinct: 6,
       runsTo: 6, endsAt: '$2A4B58', added: 6, already: 0,
+      promoted: 0, promotedFrom: [],
     });
 
     const raw = gunzipSync(readFileSync(STREAMS));
@@ -210,21 +211,24 @@ test('W560 ships all six table streams and object 13 fixed stream in the boss sh
       base = (base + flat[manifest.spr.streamCount + i]) >>> 0;
       rows.set(offs, { base, maskWords: flat[manifest.spr.streamCount * 2 + i] });
     }
-    // W626 inserted earlier packed streams; every per-stream extent remains exact.
+    // W630 inserts 7,956 mask words in boot shard 0, shifting every later absolute base.
     assert.deepEqual(TABLE_STREAMS.map((at) => rows.get(at)), [
-      { base: 2422804, maskWords: 1442 }, { base: 2424246, maskWords: 1442 },
-      { base: 2425688, maskWords: 1442 }, { base: 2427130, maskWords: 1442 },
-      { base: 2428572, maskWords: 1442 }, { base: 2430014, maskWords: 1442 },
+      { base: 2430760, maskWords: 1442 }, { base: 2432202, maskWords: 1442 },
+      { base: 2433644, maskWords: 1442 }, { base: 2435086, maskWords: 1442 },
+      { base: 2436528, maskWords: 1442 }, { base: 2437970, maskWords: 1442 },
     ]);
-    assert.deepEqual(rows.get(OBJECT13_STREAM), { base: 2529366, maskWords: 674 });
+    assert.deepEqual(rows.get(OBJECT13_STREAM), { base: 2537322, maskWords: 674 });
 
     const shard = manifest.spr.shards[17];
-    assert.equal(manifest.spr.streamCount, 5893);
+    assert.equal(manifest.spr.streamCount, 5963,
+      'W630 adds exactly 70 boot-shard name-entry streams to the prior 5,893');
     assert.equal(shard.streams, 1579);
     assert.equal(shard.maskLen, 915358);
     assert.equal(shard.colLen, 2297683);
-    assert.equal(manifest.spr.maskUsed, 2950986);
-    assert.equal(manifest.spr.colUsed, 7368609);
+    assert.equal(manifest.spr.maskUsed, 2958942,
+      'W630 adds exactly 7,956 mask words to the prior bundle');
+    assert.equal(manifest.spr.colUsed, 7378905,
+      'W630 adds exactly 10,296 colour words to the prior bundle');
   });
 
 test('W560 all five implemented ids emit exact requests and remain running',

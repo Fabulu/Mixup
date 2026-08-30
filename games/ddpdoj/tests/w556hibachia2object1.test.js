@@ -126,13 +126,16 @@ test('W556 ships the one fixed lower-body stream in the boss shard',
     }
     const row = rows.get(HIBACHI_A2.object1Art);
     const shard = manifest.spr.shards[17];
-    // W626 and W627 inserted earlier packed streams; this stream's extent remains exact.
-    assert.deepEqual(row, { base: 2524756, maskWords: 4610 });
+    // W630 inserts 7,956 mask words in boot shard 0, shifting this base but not its extent.
+    assert.deepEqual(row, { base: 2532712, maskWords: 4610 });
     assert.ok(row.base >= shard.maskFrom && row.base + row.maskWords <= shard.maskFrom + shard.maskLen);
-    assert.equal(manifest.spr.streamCount, 5893);
+    assert.equal(manifest.spr.streamCount, 5963,
+      'W630 adds exactly 70 boot-shard name-entry streams to the prior 5,893');
     assert.equal(shard.streams, 1579);
     assert.equal(shard.maskLen, 915358);
     assert.equal(shard.colLen, 2297683);
-    assert.equal(manifest.spr.maskUsed, 2950986);
-    assert.equal(manifest.spr.colUsed, 7368609);
+    assert.equal(manifest.spr.maskUsed, 2958942,
+      'W630 adds exactly 7,956 mask words to the prior bundle');
+    assert.equal(manifest.spr.colUsed, 7378905,
+      'W630 adds exactly 10,296 colour words to the prior bundle');
   });

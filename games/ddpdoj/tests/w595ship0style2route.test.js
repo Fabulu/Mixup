@@ -45,12 +45,12 @@ const word = (...names) => portWordFromBits(names.map((name) => CONTROLS[name]))
 const DOWN_SHOT = word('DOWN', 'SHOT');
 const TOTAL_STEPS = 173697;
 const CADENCE = 500;
-const CURRENT_TABLE_HASH = 'dbffbc266495d330397680b012a61ed3c2141e8c3fc9d979f1d752b835fe6914';
+const CURRENT_TABLE_HASH = '1654f079b80372640f000e11aaa32f7e4ec24bb546a6d683623c7e82ef755944';
 const W595_TABLE_HASH = '706201adef09d00737f1fafc687e52d12ab81f437bc842690af229afab258445';
 const PRE_W595_TABLE_HASH = '83ffbc84cbaec6b527bf784e1e3b3ba8c9b893546252a135ca5db34a7c64a23d';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
-const TERMINAL_RAM_HASH = 'e98132ee41b1603089104c7734032b64fbf389cafc543ed8b473f01ad94df297';
-const TERMINAL_GAME_HASH = 'd6eb49ca858492f0b1824fa6139fc623b4f4f3212981a3772882d79e6cd5f34f';
+const TERMINAL_RAM_HASH = '25d2d190c871e63eb276bcebc02cbdc88437ffd83f8f61adb9f88f343192cc9c';
+const TERMINAL_GAME_HASH = 'ca0f82de27b5cbf08a04631e50b6292782d72d527daa5a6d024baf0e8e4a16e5';
 
 const canonicalHash = (value) => createHash('sha256')
   .update(JSON.stringify(value)).digest('hex');
@@ -106,7 +106,7 @@ test('W595 is one exact BIOS-window widening and reconstructs the $000BEC fault'
       overlappingPairs(windowShape(before)),
     ], [PRE_W595_TABLE_HASH, 907, 453749, 77]);
     assert.deepEqual(EXPECTED.tables, {
-      sha256: CURRENT_TABLE_HASH, windows: 944, bytes: 457163, overlapPairs: 77,
+      sha256: CURRENT_TABLE_HASH, windows: 949, bytes: 457509, overlapPairs: 77,
     });
     assert.deepEqual(EXPECTED.preW595Tables, {
       sha256: PRE_W595_TABLE_HASH, windows: 907, bytes: 453749,
@@ -161,7 +161,7 @@ test('W595 fresh ship-0/style-2 route pins both loops through terminal reset',
 
     const exact = await bundle();
     assert.deepEqual(exact.tables, TABLE_JSON,
-      'the regenerated web bundle carries the exact W597 production table');
+      'the regenerated web bundle carries the exact W630 production table');
     assert.deepEqual([
       exact.seed.byteLength, byteHash(exact.seed), canonicalHash(exact.tables),
     ], [131072, SEED_HASH, CURRENT_TABLE_HASH]);

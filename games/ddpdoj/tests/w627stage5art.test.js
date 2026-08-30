@@ -257,7 +257,8 @@ test('W627 object 18 has one exact data window and one registered script',
       prior.rom.windows.length,
       prior.rom.windows.reduce((sum, window) => sum + window.len, 0),
       overlappingPairs(windowShape(prior)),
-    ], [ROM_WINDOW_COUNT - 1, ROM_WINDOW_BYTES - 0x40, ROM_OVERLAP_PAIRS]);
+    ], [943, 457099, ROM_OVERLAP_PAIRS],
+    'the pre-W627 reconstruction also removes the five later W630 windows and their 346 bytes');
     assert.deepEqual(tableBeforeW627(prior, { preserveContinue: true }), prior,
       'the exact additive migration is idempotent');
   });

@@ -13,8 +13,8 @@ export const W619_ROUTES = Object.freeze([
       steps: 163190,
       logicFrame: 165190,
       videoFrame: 175735,
-      ramSha256: '32564a93badfa377f45201abb1beb5e691396e1e03a17908e75eb01047664051',
-      gameSha256: '7ea1ea086cf1c2edd18dd552bfa6207f0427579dd7d44cb53e0290dcbcc7018d',
+      ramSha256: '67b497e86314cec9b4db6f41385e322e804f5bed4248811cab37c763c492ee19',
+      gameSha256: '0e9b3663a5541ba407fdeb457d0f2c8360c551c4565847df4e434134f2dad07d',
     }),
   }),
   Object.freeze({
@@ -29,8 +29,8 @@ export const W619_ROUTES = Object.freeze([
       steps: 174015,
       logicFrame: 176015,
       videoFrame: 187162,
-      ramSha256: 'f5953f47cbfebbf060f71a48f01e8377f499bdab20c536481633c881c0a32a25',
-      gameSha256: '9f298273de3be1977aeaeee16b7b9a96e21ebae9508532eaef76d93eb511bc09',
+      ramSha256: 'ccd64d08614b5431666ff0285a5b00aceed15ac55735b545773e6055587a8f38',
+      gameSha256: '6a3570e73e3da9241ef25ed680dcbc26def784ce9f904653be912fd8a085cac9',
     }),
   }),
   Object.freeze({
@@ -45,8 +45,8 @@ export const W619_ROUTES = Object.freeze([
       steps: 166831,
       logicFrame: 168831,
       videoFrame: 179481,
-      ramSha256: '0a9271b320bbaba0b929318fb67695493a272f44a7fb8bfa0d88574f2c53257a',
-      gameSha256: '1dfa34c9c09b1f1285d9a982b28aac1603e7f400e879576c19b79e253287549b',
+      ramSha256: '0e3e0937cde8d53d5840508c966d9f3045d35f22c7a40b0438e57f4ee8a8184f',
+      gameSha256: '7f3bed6012a3039d3992b50750a31ef449e03e072da0505e8eacb52d381a3e78',
     }),
   }),
   Object.freeze({
@@ -61,8 +61,8 @@ export const W619_ROUTES = Object.freeze([
       steps: 167015,
       logicFrame: 169015,
       videoFrame: 179801,
-      ramSha256: '704784090e1d44f3035735d514f693d34cc58504e3102f9f0567ef128ff5f450',
-      gameSha256: '5bb5175c41c2ee4355c9770d8972b6c9077fd377a3896234c2f899f73ab0ad21',
+      ramSha256: '6f5c852d885e68fb2e2d644309dd5ef0a30c06f8c453ce5d5df4b9b4ad872b1d',
+      gameSha256: '356cf39eaac55d6eee160496ef3f834eaf8f2688388a6cff6a7c8aa186e6916c',
     }),
   }),
 ]);

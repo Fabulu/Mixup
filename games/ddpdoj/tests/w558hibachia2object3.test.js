@@ -218,6 +218,7 @@ test('W558 ships all 64 shared part frames in the boss shard', { skip: SKIP_ASSE
   assert.deepEqual(manifest.spr.harvest.find((row) => row.at === '$2A49F6'), {
     shard: 17, at: '$2A49F6', entries: 64, stride: 4, distinct: 64,
     runsTo: 64, endsAt: '$2A4AF6', added: 64, already: 0,
+    promoted: 0, promotedFrom: [],
   });
   const raw = gunzipSync(readFileSync(STREAMS));
   const flat = new Uint32Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
@@ -230,17 +231,20 @@ test('W558 ships all 64 shared part frames in the boss shard', { skip: SKIP_ASSE
   }
   const first = beU32(HIBACHI_A2.object3Art);
   const last = beU32(HIBACHI_A2.object3Art + (HIBACHI_A2.object3ArtFrames - 1) * 4);
-  // W626 and W627 inserted earlier packed streams; both extents remain exact.
-  assert.deepEqual(rows.get(first), { base: 2488788, maskWords: 562 });
-  assert.deepEqual(rows.get(last), { base: 2524194, maskWords: 562 });
+  // W630 inserts 7,956 mask words in boot shard 0, shifting both bases but not their extents.
+  assert.deepEqual(rows.get(first), { base: 2496744, maskWords: 562 });
+  assert.deepEqual(rows.get(last), { base: 2532150, maskWords: 562 });
   for (let i = 0; i < HIBACHI_A2.object3ArtFrames; i++) {
     assert.equal(rows.get(beU32(HIBACHI_A2.object3Art + i * 4))?.maskWords, 562);
   }
   const shard = manifest.spr.shards[17];
-  assert.equal(manifest.spr.streamCount, 5893);
+  assert.equal(manifest.spr.streamCount, 5963,
+    'W630 adds exactly 70 boot-shard name-entry streams to the prior 5,893');
   assert.equal(shard.streams, 1579);
   assert.equal(shard.maskLen, 915358);
   assert.equal(shard.colLen, 2297683);
-  assert.equal(manifest.spr.maskUsed, 2950986);
-  assert.equal(manifest.spr.colUsed, 7368609);
+  assert.equal(manifest.spr.maskUsed, 2958942,
+    'W630 adds exactly 7,956 mask words to the prior bundle');
+  assert.equal(manifest.spr.colUsed, 7378905,
+    'W630 adds exactly 10,296 colour words to the prior bundle');
 });

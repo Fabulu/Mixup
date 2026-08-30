@@ -52,7 +52,7 @@ const PRIOR_ROM = SKIP ? null : new RomWindows(PRIOR_TABLE.rom);
 const SCRIPT = 0x29109c;
 const SCRIPT_END = 0x2910f6;
 const VARIANT_2_LIST = 0x290f4e;
-const TABLE_HASH = 'dbffbc266495d330397680b012a61ed3c2141e8c3fc9d979f1d752b835fe6914';
+const TABLE_HASH = '1654f079b80372640f000e11aaa32f7e4ec24bb546a6d683623c7e82ef755944';
 const W597_TABLE_HASH = '46064f29e4cde17e95d86b1a823e82d852346ca80325ed5ea9fbcbb6ddbda4c9';
 const PRIOR_TABLE_HASH = '706201adef09d00737f1fafc687e52d12ab81f437bc842690af229afab258445';
 const STORED_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
@@ -217,6 +217,12 @@ test('W596 exports only the exact variant-2 script and sole missing dependency',
         .toUpperCase().padStart(4, '0')},`;
       assert.equal(exporter.split(row).length - 1, 1, `${row} is declared exactly once`);
     }
+    assert.deepEqual([
+      EXPECTED.nextFrontier.successful,
+      EXPECTED.nextFrontier.raw.stage, EXPECTED.nextFrontier.raw.loop,
+      EXPECTED.nextFrontier.address,
+    ], [151364, 4, 1, 0x291bae],
+    'the unchanged route stops in second-loop Stage 5 before type $800C name presentation');
     assert.deepEqual(tableBeforeW596(PRIOR_TABLE), PRIOR_TABLE,
       'the exact W595 reconstruction remains idempotent');
     const partial = clone(TABLE_JSON);

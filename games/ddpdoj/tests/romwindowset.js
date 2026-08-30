@@ -676,6 +676,33 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const W630_WINDOWS = Object.freeze([
+  Object.freeze(['$28F9AC', 0x0078]), Object.freeze(['$28FA24', 0x0074]),
+  Object.freeze(['$28FA98', 0x003a]), Object.freeze(['$28FC16', 0x0020]),
+  Object.freeze(['$28FC96', 0x0014]),
+]);
+
+/** Reconstruct the exact pre-W630 table by removing its five additive windows. */
+export function tableBeforeW630(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const found = copy.rom.windows.filter((window) =>
+    W630_WINDOWS.some(([base]) => window.base === base));
+  if (found.length === 0) return copy;
+  if (found.length !== W630_WINDOWS.length) {
+    throw new Error('the W630 name-entry presentation windows are only partially present');
+  }
+  for (const [base, len] of W630_WINDOWS) {
+    const matches = found.filter((window) => window.base === base);
+    if (matches.length !== 1 || matches[0].len !== len
+        || matches[0].hex.length !== len * 2 || !matches[0].why.startsWith('W630:')) {
+      throw new Error(`${base} is not the exact W630 additive shape`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((window) =>
+    !W630_WINDOWS.some(([base]) => window.base === base));
+  return copy;
+}
+
 const CONTINUE_PALETTE_WINDOW = Object.freeze({ base: '$222818', len: 0x0020 });
 const CONTINUE_TX_LOW_WHY = 'W93: TEXT palette banks 0..5, 32 bytes each = 16 '
   + "entries ($2414BE lsl.w #$5). $23BF86..$23BFCC (the RESET path) uploads 0..4 "
@@ -689,7 +716,7 @@ const PRE_CONTINUE_TX_LOW_WHY = CONTINUE_TX_LOW_WHY.replace(
 
 /** Reconstruct the exact pre-fix table, including its prior W93 ledger prose. */
 function tableBeforeContinuePalette(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeW630(tables);
   const matches = copy.rom.windows.filter((window) =>
     window.base === CONTINUE_PALETTE_WINDOW.base);
   if (matches.length === 0) return copy;
@@ -713,7 +740,7 @@ const W627_WINDOW = Object.freeze({ base: '$2A4E16', len: 0x0040 });
  *  The isolated W627 additive proof may retain the later Continue migration. */
 export function tableBeforeW627(tables, { preserveContinue = false } = {}) {
   const copy = preserveContinue
-    ? JSON.parse(JSON.stringify(tables))
+    ? tableBeforeW630(tables)
     : tableBeforeContinuePalette(tables);
   const matches = copy.rom.windows.filter((window) => window.base === W627_WINDOW.base);
   if (matches.length === 0) return copy;
