@@ -23,6 +23,10 @@ const EXECUTABLE_RUNTIMES = new Map([
   [BLACK_LABEL_PROFILE, BLACK_RUNTIME_BINDING],
 ]);
 
+const REGISTERED_RUNTIME_CAPABILITIES = new Map([
+  [BLACK_RUNTIME_BINDING, BLACK_CAPABILITIES],
+]);
+
 /** Resolve an executable binding only for the exact trusted profile object. */
 export function resolveGameRuntime(profile) {
   const runtime = EXECUTABLE_RUNTIMES.get(profile);
@@ -38,11 +42,10 @@ export function resolveRuntimeProfile(request) {
   return Object.freeze({ profile, runtime: resolveGameRuntime(profile) });
 }
 
-/** Require one exact capability before entering edition-specific code. */
+/** Require one exact registered capability before entering edition-specific code. */
 export function requireRuntimeCapability(runtime, capability, operation) {
-  const expected = BLACK_RUNTIME_BINDING.capabilities[capability];
-  if (runtime !== BLACK_RUNTIME_BINDING || expected == null
-      || runtime.capabilities[capability] !== expected) {
+  const expected = REGISTERED_RUNTIME_CAPABILITIES.get(runtime)?.[capability];
+  if (expected == null || runtime.capabilities[capability] !== expected) {
     throw new RangeError(`${operation} is unavailable for this DaiOuJou edition runtime`);
   }
   return runtime;

@@ -65,6 +65,19 @@ test('only the exact audited Black profile has executable capabilities', () => {
     () => requireRuntimeCapability({ ...BLACK_RUNTIME_BINDING }, 'game', 'Test operation'),
     /Test operation is unavailable/,
   );
+
+  let reads = 0;
+  const forgedRuntime = new Proxy({}, {
+    get() {
+      reads++;
+      throw new Error('forged runtime was inspected');
+    },
+  });
+  assert.throws(
+    () => requireRuntimeCapability(forgedRuntime, 'game', 'Forged operation'),
+    /Forged operation is unavailable/,
+  );
+  assert.equal(reads, 0);
 });
 
 test('bundle manifest identity accepts exact explicit and legacy Black forms only', () => {
