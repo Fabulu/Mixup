@@ -64,6 +64,7 @@ test('exact audited profiles receive only their independently registered capabil
   }
   assert.equal(WHITE_RUNTIME_BINDING.profile, WHITE_LABEL_PROFILE);
   assert.equal(Object.hasOwn(WHITE_RUNTIME_BINDING.capabilities, 'frontendBootstrap'), true);
+  assert.equal(Object.hasOwn(WHITE_RUNTIME_BINDING.capabilities, 'stage1Players'), true);
   for (const capability of [
     'game', 'authenticSelector', 'localRom', 'legacyReplay', 'legacyCheckpoint', 'legacyBundle',
   ]) {

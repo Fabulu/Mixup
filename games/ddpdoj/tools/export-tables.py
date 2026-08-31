@@ -10636,6 +10636,11 @@ def verify(t: dict) -> list[str]:
     expected_white = {(address, length) for address, length, _ in WHITE_LABEL_WINDOWS}
     if declared_white != expected_white or not expected_white.issubset(set(wins)):
         bad.append("embedded Version A frontend windows drifted from the exported ROM window list")
+    declared_players = {(int(w["base"].lstrip("$"), 16), w["len"])
+                        for w in white.get("playerWindows", [])}
+    expected_players = {(address, length) for address, length, _ in WHITE_PLAYER_WINDOWS}
+    if declared_players != expected_players or not expected_players.issubset(set(wins)):
+        bad.append("embedded Version A player windows drifted from the exported ROM window list")
 
     def covered(a: int, n: int) -> bool:
         return any(b <= a and a + n <= b + ln for b, ln in wins)
@@ -10961,7 +10966,28 @@ WHITE_LABEL_WINDOWS = [
     (0x13046C, 0x0040, "White A credit background palette"),
     (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
 ]
+
+# Version A's player initializer selects only these five movement speeds from
+# its six ship/style rows. Keep their pointer cells and 65-vector quadrants
+# sparse so this private campaign slice cannot read Build B data or unrelated A
+# speed levels. The template and contiguous initializer tables are bounded by
+# their measured structures, not by executable-code ranges.
+WHITE_PLAYER_SPEEDS = (9, 15, 16, 18, 22)
+WHITE_PLAYER_WINDOWS = [
+    (0x14883C, 0x0062, "White A player-record template copied as 49 words"),
+    (0x154796, 0x0122, "White A player opener, ship, power, speed, direction, and knockback tables"),
+    (0x141BEE, 0x0200, "White A 256-word player movement fold table"),
+]
+for _speed in WHITE_PLAYER_SPEEDS:
+    WHITE_PLAYER_WINDOWS.extend([
+        (0x100920 + _speed * 4, 0x0004,
+         f"White A player movement speed {_speed} pointer"),
+        (0x100D20 + _speed * 0x208, 0x0208,
+         f"White A player movement speed {_speed} 65-vector quadrant"),
+    ])
+
 SHOT_WINDOWS.extend(WHITE_LABEL_WINDOWS)
+SHOT_WINDOWS.extend(WHITE_PLAYER_WINDOWS)
 
 
 def _white_initial_script(d: bytes, address: int) -> list[tuple[int, ...]]:
@@ -11021,6 +11047,8 @@ def white_label_tables(d: bytes) -> dict:
         },
         "frontendWindows": [{"base": f"${address:06X}", "len": length}
                             for address, length, _ in WHITE_LABEL_WINDOWS],
+        "playerWindows": [{"base": f"${address:06X}", "len": length}
+                          for address, length, _ in WHITE_PLAYER_WINDOWS],
     }
 
 
@@ -11044,6 +11072,16 @@ def check_white_label_frontend_windows(d: bytes) -> None:
         raise SystemExit("White A style selector domain is no longer {2,4,6}")
     if [u16(d, 0x15C652 + i * 2) for i in range(6)] != [0, 1, 2, 2, 1, 0]:
         raise SystemExit("White A style-order tables are no longer mirrored")
+
+    if u16(d, 0x14883C) != 0x8000 or len(d[0x14883C:0x14889E]) != 0x62:
+        raise SystemExit("White A player-record template changed")
+    speed_bytes = {d[0x1547BC + offset]
+                   for row in (0, 4, 8) for offset in (row, row + 1, row + 2, row + 3)}
+    if speed_bytes != set(WHITE_PLAYER_SPEEDS):
+        raise SystemExit(f"White A player speed closure changed to {sorted(speed_bytes)}")
+    for speed in WHITE_PLAYER_SPEEDS:
+        if u32(d, 0x100920 + speed * 4) != 0x100D20 + speed * 0x208:
+            raise SystemExit(f"White A player speed {speed} pointer changed")
 
     chooser = [(0, 0, 0x0000, 0x1259F8, 0x1F, 8),
                (0, 0, 0x0040, 0x1259B8, 0x1F, 8),

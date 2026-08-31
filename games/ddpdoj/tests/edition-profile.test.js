@@ -81,7 +81,7 @@ test('Black edition profile is trusted, data-only, and recursively frozen', () =
   assert.throws(() => validateGameProfile(invalid), /unsupported function data/);
 });
 
-test('embedded Version A profile is trusted, measured, frozen, and bootstrap-only', () => {
+test('embedded Version A profile is trusted, measured, frozen, and privately capability-bound', () => {
   assert.equal(resolveGameProfile(PROFILE_IDS.WHITE_LABEL), WHITE_LABEL_PROFILE);
   assert.equal(resolveGameProfile(WHITE_LABEL_PROFILE), WHITE_LABEL_PROFILE);
   assert.equal(validateGameProfile(WHITE_LABEL_PROFILE), WHITE_LABEL_PROFILE);
@@ -95,6 +95,13 @@ test('embedded Version A profile is trusted, measured, frozen, and bootstrap-onl
   assert.equal(WHITE_LABEL_PROFILE.bootProfile.resetEntry, 0x13c24e);
   assert.equal(WHITE_LABEL_PROFILE.codeLandmarks.loopHead, 0x13c356);
   assert.equal(WHITE_LABEL_PROFILE.codeLandmarks.objDriver, 0x1413f6);
+  assert.deepEqual([
+    WHITE_LABEL_PROFILE.codeLandmarks.playerHandlerP1,
+    WHITE_LABEL_PROFILE.codeLandmarks.playerHandlerP2,
+    WHITE_LABEL_PROFILE.codeLandmarks.playerUpdate,
+    WHITE_LABEL_PROFILE.codeLandmarks.playerMove,
+    WHITE_LABEL_PROFILE.codeLandmarks.playerTail,
+  ], [0x14889e, 0x14891e, 0x148bae, 0x141b18, 0x1494f2]);
   assert.equal(WHITE_LABEL_PROFILE.objectDispatchProfile.tableAddress, 0x141294);
   assert.equal(WHITE_LABEL_PROFILE.objectDispatchProfile.entries, 21);
   assert.equal(WHITE_LABEL_PROFILE.objectDispatchProfile.slots, 20,

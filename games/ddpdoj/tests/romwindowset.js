@@ -640,10 +640,26 @@
 // overlaps an earlier declaration. Measured: 944 -> 949 windows,
 // 457,163 -> 457,509 bytes, 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 949;
+// ---------------------------------------------------------------------------
+// EMBEDDED VERSION A FRONTEND ADDED FORTY-FOUR DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The measured reset, title, version chooser, rank, fighter selector, and Stage 1
+// handoff resources belong to Build A inside the shared cartridge image. They add
+// 44 independently bounded windows and 17,324 bytes. Measured: 949 -> 993
+// windows, 457,509 -> 474,833 bytes, 77 -> 77 overlapping pairs.
+//
+// ---------------------------------------------------------------------------
+// EMBEDDED VERSION A PLAYER MOVEMENT ADDED THIRTEEN DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// One exact 49-word player template, the contiguous initializer table family,
+// the 256-word fold table, and five sparse speed pointer/quadrant pairs expose
+// only movement speeds 9, 15, 16, 18, and 22. Measured: 993 -> 1006 windows,
+// 474,833 -> 478,353 bytes, 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 1006;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 457509;
+export const ROM_WINDOW_BYTES = 478353;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */

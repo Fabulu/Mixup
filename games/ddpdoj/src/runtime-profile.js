@@ -17,6 +17,7 @@ const BLACK_CAPABILITIES = Object.freeze({
 
 const WHITE_CAPABILITIES = Object.freeze({
   frontendBootstrap: 'ddpdoj.runtime.white-label-a.frontend-bootstrap.v1',
+  stage1Players: 'ddpdoj.runtime.white-label-a.stage1-players.v1',
 });
 
 export const BLACK_RUNTIME_BINDING = Object.freeze({
