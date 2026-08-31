@@ -108,6 +108,32 @@ test('embedded Version A profile is trusted, measured, frozen, and bootstrap-onl
     BLACK_LABEL_PROFILE.checkpointNamespace);
 });
 
+runtimeTest('generated tables retain the independent embedded Version A manifest', () => {
+  const { tables } = fixtures();
+  const white = tables.editions?.whiteLabel;
+  assert.ok(white);
+  assert.equal(white.profileId, WHITE_LABEL_PROFILE.id);
+  assert.equal(white.set, WHITE_LABEL_PROFILE.revisionIdentity.set);
+  assert.equal(white.build, WHITE_LABEL_PROFILE.revisionIdentity.build);
+  assert.equal(white.image_sha256, WHITE_LABEL_PROFILE.programIdentity.imageSha256);
+  assert.equal(white.dispatch.rom, '$141294');
+  assert.equal(white.dispatch.stride, 8);
+  assert.equal(white.dispatch.entries.length,
+    WHITE_LABEL_PROFILE.objectDispatchProfile.entries);
+  assert.deepEqual(white.dispatch.entries.at(-1), {
+    handler: '$13BEEA',
+    priority: 0x1e,
+  });
+
+  const exported = new Set(tables.rom.windows.map((window) => `${window.base}:${window.len}`));
+  const declared = white.frontendWindows.map((window) => `${window.base}:${window.len}`);
+  assert.equal(new Set(declared).size, declared.length);
+  assert.ok(declared.includes('$141294:168'), 'the complete 21-entry dispatch is exported');
+  assert.ok(declared.includes('$125B78:8928'), 'the Stage 1 column stream is exported');
+  assert.ok(declared.includes('$127E58:2048'), 'the Stage 1 background palette is exported');
+  for (const window of declared) assert.ok(exported.has(window), `${window} is cartridge-backed`);
+});
+
 test('profile validation is order-independent but rejects incomplete or hidden data', () => {
   const clone = JSON.parse(JSON.stringify(BLACK_LABEL_PROFILE));
   const reordered = Object.fromEntries(Object.entries(clone).reverse());
