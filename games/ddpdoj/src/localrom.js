@@ -1,6 +1,7 @@
 import { FullRom } from './rom.js';
 import { parseScoreGroups, scoreToJson } from './bgmscore.js';
 import { driverParamsToJson } from './driverparams.js';
+import { requireRuntimeCapability, resolveRuntimeProfile } from './runtime-profile.js';
 
 export const MAINCPU_SIZE = 0x600000;
 export const BIOS_SIZE = 0x080000;
@@ -9,7 +10,14 @@ export const DECRYPT_LENGTH = 0x400000;
 export const MAINCPU_SHA256 = '4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c';
 export const COLD_BOOT_COINAGE = 0x803957;
 
-export function installColdBootDefaults(ram) {
+function resolveBlackLocalRom(request, operation) {
+  const resolved = resolveRuntimeProfile(request);
+  requireRuntimeCapability(resolved.runtime, 'localRom', operation);
+  return resolved;
+}
+
+export function installColdBootDefaults(ram, profile) {
+  resolveBlackLocalRom(profile, 'Cold-boot defaults');
   if (!ram || typeof ram.setU8 !== 'function') {
     throw new TypeError('installColdBootDefaults needs the game RAM interface');
   }
@@ -57,7 +65,7 @@ export function load16WordSwap(target, offset, source) {
   return target;
 }
 
-export function decryptPy2k2(maincpu) {
+function decryptPy2k2Bytes(maincpu) {
   requireLength(maincpu, MAINCPU_SIZE, 'DaiOuJou maincpu');
   const base = 0x100000;
   for (let i = 0; i < DECRYPT_LENGTH / 2; i++) {
@@ -78,6 +86,11 @@ export function decryptPy2k2(maincpu) {
   return maincpu;
 }
 
+export function decryptPy2k2(maincpu, profile) {
+  resolveBlackLocalRom(profile, 'DaiOuJou program decryption');
+  return decryptPy2k2Bytes(maincpu);
+}
+
 export async function sha256Bytes(bytes,
   digest = globalThis.crypto?.subtle?.digest?.bind(globalThis.crypto.subtle)) {
   if (!(bytes instanceof Uint8Array)) throw new TypeError('sha256Bytes needs a Uint8Array');
@@ -86,7 +99,7 @@ export async function sha256Bytes(bytes,
   return Array.from(hash, (value) => value.toString(16).padStart(2, '0')).join('');
 }
 
-export async function assertMainCpuIdentity(maincpu, options = {}) {
+async function assertMainCpuIdentityBytes(maincpu, options) {
   requireLength(maincpu, MAINCPU_SIZE, 'Decrypted DaiOuJou maincpu');
   const actual = await sha256Bytes(maincpu, options.digest);
   if (actual !== MAINCPU_SHA256) {
@@ -95,7 +108,14 @@ export async function assertMainCpuIdentity(maincpu, options = {}) {
   return maincpu;
 }
 
-export async function buildMainCpu({ bios, program, decrypted }, options = {}) {
+export async function assertMainCpuIdentity(maincpu, options = {}) {
+  resolveBlackLocalRom(options.profile, 'DaiOuJou maincpu validation');
+  return assertMainCpuIdentityBytes(maincpu, options);
+}
+
+export async function buildMainCpu(input, options = {}) {
+  const identity = resolveBlackLocalRom(options.profile, 'DaiOuJou maincpu construction');
+  const { bios, program, decrypted } = input;
   let maincpu;
   if (decrypted) {
     requireLength(decrypted, MAINCPU_SIZE, 'Decrypted DaiOuJou maincpu');
@@ -106,9 +126,10 @@ export async function buildMainCpu({ bios, program, decrypted }, options = {}) {
     maincpu = new Uint8Array(MAINCPU_SIZE);
     load16WordSwap(maincpu, 0x000000, bios);
     load16WordSwap(maincpu, 0x100000, program);
-    decryptPy2k2(maincpu);
+    decryptPy2k2Bytes(maincpu);
   }
-  return assertMainCpuIdentity(maincpu, options);
+  requireRuntimeCapability(identity.runtime, 'localRom', 'DaiOuJou maincpu validation');
+  return assertMainCpuIdentityBytes(maincpu, options);
 }
 
 const SOUND_SAMPLE_ROM_SIZE = 0x400000;
@@ -132,7 +153,8 @@ const SOUND_SAMPLE_FRAGMENTS = Object.freeze([
 ]);
 
 /** Build the proven browser sound assets from exact local cartridge members. */
-export function soundAssetsFromLocalRoms(maincpu, sampleRom) {
+export function soundAssetsFromLocalRoms(maincpu, sampleRom, profile) {
+  resolveBlackLocalRom(profile, 'Local sound extraction');
   requireLength(maincpu, MAINCPU_SIZE, 'Decrypted DaiOuJou maincpu');
   requireLength(sampleRom, SOUND_SAMPLE_ROM_SIZE, 'cave_m04401b032.u17');
 
@@ -208,7 +230,8 @@ function animationRow(rom, table, selector) {
   return row;
 }
 
-export function tablesFromMainCpu(maincpu) {
+export function tablesFromMainCpu(maincpu, profile) {
+  const edition = resolveBlackLocalRom(profile, 'Local table extraction');
   requireLength(maincpu, MAINCPU_SIZE, 'Decrypted DaiOuJou maincpu');
   const rom = new FullRom(maincpu);
   const quads = {};
@@ -221,10 +244,12 @@ export function tablesFromMainCpu(maincpu) {
     ]);
   }
   const hitX = animationRow(rom, ANIM_B, 0);
+  const manifest = edition.profile.tableManifest;
   return {
-    set: 'ddpdojblk',
-    build: 'B',
-    image_sha256: MAINCPU_SHA256,
+    profileId: edition.profile.id,
+    set: manifest.set,
+    build: manifest.build,
+    image_sha256: manifest.imageSha256,
     dirTable: { rom: '$2552DC', bytes: Array.from(maincpu.subarray(DIR_TABLE, DIR_TABLE + 16)) },
     foldTable: { rom: '$2418B4', words: words(rom, FOLD_TABLE, 256) },
     speed: {

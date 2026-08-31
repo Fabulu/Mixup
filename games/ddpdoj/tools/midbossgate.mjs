@@ -112,6 +112,7 @@ function type1cLive(ram) {
 /** One window. `fire` decides whether the beam ever kills anything. */
 function run(fire) {
   const game = new Game(bundle.seed, bundle.tables, {
+    profile: bundle.profile,
     logicFrame: bundle.cap.frames[0].lf,
     videoFrame: bundle.cap.frames[0].vf,
     bgSeed: bundle.cap.part(0, 'bg'),

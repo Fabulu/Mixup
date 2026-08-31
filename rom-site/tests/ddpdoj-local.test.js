@@ -7,6 +7,8 @@ import {
   resolveLoadout,
 } from '../../games/ddpdoj/src/mods.js';
 import { Game, MACHINE, RAM } from '../../games/ddpdoj/src/main.js';
+import { BLACK_LABEL_PROFILE } from '../../games/ddpdoj/src/profiles.js';
+import { BLACK_RUNTIME_BINDING } from '../../games/ddpdoj/src/runtime-profile.js';
 import { Ram } from '../../games/ddpdoj/src/ram.js';
 import { adoptCurrentWindows } from '../../games/ddpdoj/src/rom.js';
 import {
@@ -19,10 +21,57 @@ import {
   assertFormationReplayCompatible, createFormationState, FORMATION_MODE,
 } from '../../games/ddpdoj/src/formation.js';
 import {
-  authenticP2Joined, latchAuthenticP2Joined, localReplaySeedArm,
-  localReplayTables, localReplayTablesMatch,
+  assertPreparedEditionIdentity, authenticP2Joined, latchAuthenticP2Joined,
+  localReplaySeedArm, localReplayTables, localReplayTablesMatch,
+  resolvePreparedEditionIdentity, sealPreparedEditionIdentity,
 } from '../src/ddpdoj-local-state.js';
 import { LocalDdpdojRuntime } from '../src/ddpdoj-local.js';
+
+test('prepared local data carries one exact hidden executable edition identity', () => {
+  const identity = resolvePreparedEditionIdentity();
+  assert.equal(identity.profile, BLACK_LABEL_PROFILE);
+  assert.equal(identity.runtime, BLACK_RUNTIME_BINDING);
+
+  const prepared = sealPreparedEditionIdentity({ gameId: 'ddpdoj' });
+  assert.equal(Object.isFrozen(prepared), true);
+  for (const [name, value] of [
+    ['profileId', BLACK_LABEL_PROFILE.id],
+    ['profile', BLACK_LABEL_PROFILE],
+    ['runtime', BLACK_RUNTIME_BINDING],
+  ]) {
+    assert.deepEqual(Object.getOwnPropertyDescriptor(prepared, name), {
+      value,
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+  }
+  assert.deepEqual(assertPreparedEditionIdentity(prepared), identity);
+  assert.throws(
+    () => assertPreparedEditionIdentity(Object.freeze({ gameId: 'ddpdoj' })),
+    /edition identity is missing or inconsistent/,
+  );
+});
+
+test('Mixup local preparation and launch reject edition before ROM payload access', async () => {
+  for (const operation of ['prepare', 'createFromPrepared']) {
+    let reads = 0;
+    const payload = new Proxy({}, {
+      get() {
+        reads++;
+        throw new Error(`${operation} payload was touched`);
+      },
+    });
+    await assert.rejects(
+      operation === 'prepare'
+        ? LocalDdpdojRuntime.prepare(payload, { profile: 'ddpdoj/white-label/a' })
+        : LocalDdpdojRuntime.createFromPrepared(
+            payload, null, { profile: 'ddpdoj/white-label/a' }),
+      /unsupported DaiOuJou edition profile/,
+    );
+    assert.equal(reads, 0, `${operation} touched its payload`);
+  }
+});
 
 test('local touch ownership opens only for the cartridge two-player count', () => {
   assert.equal(authenticP2Joined(0xffff), false,
@@ -114,6 +163,8 @@ test('local replay seeds preserve the armed slowdown semaphore', () => {
 test('Mixup REC records matched player and coin words with Playable state', async () => {
   const mods = createModState(resolveLoadout(['playable-hibachi']));
   const game = {
+    profile: BLACK_LABEL_PROFILE,
+    runtime: BLACK_RUNTIME_BINDING,
     ram: new Ram(),
     rom: {
       bytes(address, length) {
@@ -130,6 +181,8 @@ test('Mixup REC records matched player and coin words with Playable state', asyn
   };
   bindModGame(mods, game);
   const runtime = Object.assign(Object.create(LocalDdpdojRuntime.prototype), {
+    profile: BLACK_LABEL_PROFILE,
+    runtime: BLACK_RUNTIME_BINDING,
     game,
     modState: mods,
     formationState: null,
@@ -225,7 +278,14 @@ async function localPlayableReplay(t) {
 }
 
 function localPlaybackHost(tables, mods, game = { marker: 'visible' }) {
+  Object.assign(game, {
+    profile: BLACK_LABEL_PROFILE,
+    runtime: BLACK_RUNTIME_BINDING,
+    ram: game.ram ?? new Ram(),
+  });
   return Object.assign(Object.create(LocalDdpdojRuntime.prototype), {
+    profile: BLACK_LABEL_PROFILE,
+    runtime: BLACK_RUNTIME_BINDING,
     game,
     modState: mods,
     formationState: null,

@@ -36,8 +36,9 @@ import {
   sha256Hex, stopRecorder, validateReplay,
 } from '../../games/ddpdoj/src/web/replay.js';
 import {
-  authenticP2Joined, latchAuthenticP2Joined, localReplaySeedArm,
-  localReplayTables, localReplayTablesMatch,
+  assertPreparedEditionIdentity, authenticP2Joined, latchAuthenticP2Joined,
+  localReplaySeedArm, localReplayTables, localReplayTablesMatch,
+  resolvePreparedEditionIdentity, sealPreparedEditionIdentity,
 } from './ddpdoj-local-state.js';
 
 const GRAPHICS = Object.freeze([
@@ -50,6 +51,22 @@ const GRAPHICS = Object.freeze([
 
 const BASE_FRAME_MS = 1000 / MACHINE.refreshHz;
 let inputAttached = false;
+
+function requestedEdition(options = {}) {
+  return options.profile ?? options.profileId
+    ?? options.config?.profile ?? options.config?.profileId;
+}
+
+function assertLocalRuntimeEdition(owner) {
+  const edition = resolvePreparedEditionIdentity(owner?.profile);
+  if (owner?.runtime !== edition.runtime
+      || owner.game?.profile !== edition.profile
+      || owner.game?.runtime !== edition.runtime
+      || owner.game?.ram?.ramLayout !== edition.profile.ramLayout) {
+    throw new TypeError('Mixup local DaiOuJou runtime edition identity is inconsistent.');
+  }
+  return edition;
+}
 
 function ensureInput(target) {
   if (inputAttached) return;
@@ -83,8 +100,9 @@ async function yieldForTransform(signal) {
   throwIfAborted(signal);
 }
 
-async function localData(summary, options = {}) {
+async function localData(summary, options, edition) {
   const { onStatus, signal } = options;
+  const { profile } = edition;
   const decrypted = summary.acceptedInputs?.find((input) =>
     input.satisfiesNames.includes('ddb10_10_8_434f.u45')
     && input.satisfiesNames.includes('ddp3_bios.u37'));
@@ -93,14 +111,14 @@ async function localData(summary, options = {}) {
   if (decrypted) {
     const bytes = await readInput(decrypted, 'decrypted maincpu', signal);
     await yieldForTransform(signal);
-    maincpu = await buildMainCpu({ decrypted: bytes });
+    maincpu = await buildMainCpu({ decrypted: bytes }, { profile });
   } else {
     const bios = await readInput(inputFor(summary, 'ddp3_bios.u37'),
       'ddp3_bios.u37', signal);
     const program = await readInput(inputFor(summary, 'ddb10_10_8_434f.u45'),
       'ddb10_10_8_434f.u45', signal);
     await yieldForTransform(signal);
-    maincpu = await buildMainCpu({ bios, program });
+    maincpu = await buildMainCpu({ bios, program }, { profile });
   }
   throwIfAborted(signal);
 
@@ -118,17 +136,17 @@ async function localData(summary, options = {}) {
   const sampleRom = await readInput(inputFor(summary, 'cave_m04401b032.u17'),
     'cave_m04401b032.u17', signal);
   await yieldForTransform(signal);
-  const soundAssets = soundAssetsFromLocalRoms(maincpu, sampleRom);
-  const tables = tablesFromMainCpu(maincpu);
+  const soundAssets = soundAssetsFromLocalRoms(maincpu, sampleRom, profile);
+  const tables = tablesFromMainCpu(maincpu, profile);
   throwIfAborted(signal);
-  return Object.freeze({
+  return sealPreparedEditionIdentity({
     gameId: 'ddpdoj',
     maincpu,
     regions,
     soundAssets,
     tables,
     rom: new FullRom(maincpu),
-  });
+  }, profile);
 }
 
 const PRIVATE_SPRITE_PALETTE_BASE = 0x1000;
@@ -154,13 +172,15 @@ function beWords(bytes) {
 
 export class LocalDdpdojRuntime {
   static async prepare(summary, options = {}) {
+    const edition = resolvePreparedEditionIdentity(requestedEdition(options));
     if (!summary?.complete || summary.gameId !== 'ddpdoj') {
       throw new Error('DaiOuJou launch requires one complete exact local identity set.');
     }
-    return localData(summary, options);
+    return localData(summary, options, edition);
   }
 
   static async createFromPrepared(prepared, canvas, options = {}) {
+    const edition = assertPreparedEditionIdentity(prepared, requestedEdition(options));
     if (prepared?.gameId !== 'ddpdoj' || !prepared.maincpu || !prepared.regions
         || !prepared.soundAssets || !prepared.tables || !prepared.rom) {
       throw new Error('DaiOuJou launch requires prepared local ROM data.');
@@ -222,6 +242,7 @@ export class LocalDdpdojRuntime {
       };
     }
     game = new Game(new Uint8Array(0x20000), tables, {
+      profile: edition.profile,
       rom,
       palCatchUp: false,
       seedArm: 0,
@@ -237,6 +258,7 @@ export class LocalDdpdojRuntime {
     return new LocalDdpdojRuntime(game, regions, canvas, {
       ...options,
       audio,
+      edition,
       soundAssets,
       modState,
       formationState,
@@ -253,6 +275,15 @@ export class LocalDdpdojRuntime {
   }
 
   constructor(game, regions, canvas, options = {}) {
+    const edition = options.edition;
+    if (!edition || game?.profile !== edition.profile || game?.runtime !== edition.runtime
+        || game?.ram?.ramLayout !== edition.profile.ramLayout) {
+      throw new TypeError('Mixup local DaiOuJou Game edition identity is inconsistent.');
+    }
+    Object.defineProperties(this, {
+      profile: { value: edition.profile },
+      runtime: { value: edition.runtime },
+    });
     this.game = game;
     this.renderer = new Renderer(regions);
     this.canvas = canvas;
@@ -338,6 +369,7 @@ export class LocalDdpdojRuntime {
   }
 
   async armRecording() {
+    assertLocalRuntimeEdition(this);
     assertFormationReplayCompatible(this.formationState, 'REC');
     assertReplayCompatible(this.modState, 'REC', { allowPlayableHibachi: true });
     if (this.recorder) return this.recorder;
@@ -394,6 +426,7 @@ export class LocalDdpdojRuntime {
   }
 
   playFrom(obj) {
+    const edition = assertLocalRuntimeEdition(this);
     assertFormationReplayCompatible(this.formationState, 'PLAY');
     if (this.recorder) {
       throw new Error('Stop and save REC before loading a replay.');
@@ -402,7 +435,7 @@ export class LocalDdpdojRuntime {
       throw new Error('A replay is already playing.');
     }
 
-    const parsed = validateReplay(obj);
+    const parsed = validateReplay(obj, { profile: edition.profile });
     let candidateModState = this.modState;
     let replayModCandidate = null;
     if (parsed.modSeed) {
@@ -423,6 +456,7 @@ export class LocalDdpdojRuntime {
       RAM.semaphore - MACHINE.ramBase,
     );
     const game = new Game(parsed.ram, this.preparedTables, {
+      profile: edition.profile,
       rom: this.rom,
       logicFrame: obj.seed.lf,
       videoFrame: obj.seed.vf,

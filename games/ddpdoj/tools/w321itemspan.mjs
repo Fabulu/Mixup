@@ -87,6 +87,7 @@ const SCRIPTS = {
 const run = (name) => {
   const s = SCRIPTS[name];
   const g = new Game(bundle.seed, tables, {
+    profile: bundle.profile,
     logicFrame: bundle.cap.frames[0].lf,
     videoFrame: bundle.cap.frames[0].vf,
     bgSeed: bundle.cap.part(0, 'bg'),

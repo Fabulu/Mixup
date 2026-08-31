@@ -136,6 +136,7 @@ function runRungStage(bundle, lf, ladderName, frames, noPoke) {
   console.log('');
 
   const g = new Game(seed, bundle.tables, {
+    profile: bundle.profile,
     logicFrame: rung.lf,
     videoFrame: rung.vf,
     bgSeed,
@@ -517,6 +518,7 @@ try {
       || portBrk === 'no-extent-check' ? portBrk : undefined;
 
     const game = new Game(bundle.seed, bundle.tables, {
+      profile: bundle.profile,
       logicFrame: bundle.cap.frames[0].lf,
       videoFrame: bundle.cap.frames[0].vf,
       bgSeed: bundle.cap.part(0, 'bg'),
@@ -716,6 +718,7 @@ try {
         .filter(([, v]) => v[2] === 1).map(([rom]) => rom));
       const run = (frames) => {
         const g = new Game(bundle.seed, bundle.tables, {
+          profile: bundle.profile,
           logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
           bgSeed: bundle.cap.part(0, 'bg'),
         });
@@ -822,6 +825,7 @@ try {
       // drawing a record whose shard has not landed reads ZEROED mask words and
       // produces a solid rectangle of pen 0 -- present, plausible and wrong.
       const g3 = new Game(bundle.seed, bundle.tables, {
+        profile: bundle.profile,
         logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
         bgSeed: bundle.cap.part(0, 'bg'),
       });
@@ -1123,6 +1127,7 @@ try {
           what: 'THE ITEM (pool family six, $27E812 -> $27E99E, bucket 17)' } };
       const runW52 = (frames) => {
         const g = new Game(bundle.seed, bundle.tables, {
+          profile: bundle.profile,
           logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
           bgSeed: bundle.cap.part(0, 'bg'),
         });
@@ -1181,6 +1186,7 @@ try {
       {
         const runW61 = (frames) => {
           const g = new Game(bundle.seed, bundle.tables, {
+            profile: bundle.profile,
             logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
             bgSeed: bundle.cap.part(0, 'bg'),
           });
@@ -1455,6 +1461,7 @@ try {
       };
       const runW58 = (frames) => {
         const g = new Game(bundle.seed, bundle.tables, {
+          profile: bundle.profile,
           logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
           bgSeed: bundle.cap.part(0, 'bg'),
         });
@@ -1548,6 +1555,7 @@ try {
           lateRecords: 5251, firstLate: 3627 };
         const runW86 = (frames, drop) => {
           const g = new Game(bundle.seed, bundle.tables, {
+            profile: bundle.profile,
             logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
             bgSeed: bundle.cap.part(0, 'bg'),
           });
@@ -1710,6 +1718,7 @@ try {
           distinct: 35, first: 31, beamLive: 1003 };
         const runW90 = (frames, drop) => {
           const g = new Game(bundle.seed, bundle.tables, {
+            profile: bundle.profile,
             logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
             bgSeed: bundle.cap.part(0, 'bg'),
           });
@@ -1820,6 +1829,7 @@ try {
       {
         const SPR_WORDS = 0x400, BANK = 32;
         const mkGame = (opts) => new Game(bundle.seed, bundle.tables, {
+          profile: bundle.profile,
           logicFrame: bundle.cap.frames[0].lf,
           videoFrame: bundle.cap.frames[0].vf,
           bgSeed: bundle.cap.part(0, 'bg'), ...opts,
@@ -1956,6 +1966,7 @@ try {
       {
         const BG0 = 0x400, BGN = 0x400;
         const mkG = (opts) => new Game(bundle.seed, bundle.tables, {
+          profile: bundle.profile,
           logicFrame: bundle.cap.frames[0].lf,
           videoFrame: bundle.cap.frames[0].vf,
           bgSeed: bundle.cap.part(0, 'bg'), ...opts,
@@ -2091,6 +2102,7 @@ try {
       {
         const TX0 = 0x800, TXN = 0xf0;
         const mkG = (opts) => new Game(bundle.seed, bundle.tables, {
+          profile: bundle.profile,
           logicFrame: bundle.cap.frames[0].lf,
           videoFrame: bundle.cap.frames[0].vf,
           bgSeed: bundle.cap.part(0, 'bg'), ...opts,
@@ -2244,6 +2256,7 @@ try {
       };
       const runW66 = (frames, hold) => {
         const g = new Game(bundle.seed, bundle.tables, {
+          profile: bundle.profile,
           logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
           bgSeed: bundle.cap.part(0, 'bg'),
         });
@@ -2328,6 +2341,7 @@ try {
       // way and require the offset to STOP being constant.
       let bad = 0, c0 = null, n = 0;
       const g2 = new Game(bundle.seed, bundle.tables, {
+        profile: bundle.profile,
         logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
         bgSeed: bundle.cap.part(0, 'bg'),
       });

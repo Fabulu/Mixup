@@ -246,7 +246,8 @@ export function validateGameProfile(candidate) {
 /** Reject tables whose cartridge and embedded-program identity differ from a profile. */
 export function assertProfileTables(profile, tables) {
   const manifest = profile.tableManifest;
-  if (!tables || tables.set !== manifest.set || tables.build !== manifest.build
+  if (!tables || (Object.hasOwn(tables, 'profileId') && tables.profileId !== profile.id)
+      || tables.set !== manifest.set || tables.build !== manifest.build
       || tables.image_sha256 !== manifest.imageSha256) {
     throw new TypeError(`DaiOuJou tables do not match edition profile ${profile.id}`);
   }
@@ -258,6 +259,9 @@ export function deriveProfileContext(source, overrides = {}) {
   const derived = { ...source, ...overrides };
   if (Object.hasOwn(source, 'profile')) {
     Object.defineProperty(derived, 'profile', { value: source.profile });
+  }
+  if (Object.hasOwn(source, 'runtime')) {
+    Object.defineProperty(derived, 'runtime', { value: source.runtime });
   }
   return derived;
 }

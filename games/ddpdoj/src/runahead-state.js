@@ -1,3 +1,5 @@
+import { resolveGameRuntime } from './runtime-profile.js';
+
 export const RUNAHEAD_EXTERNAL_STATE = Symbol('ddpdoj.runaheadExternalState');
 
 const ACTIVE = new WeakMap();
@@ -135,7 +137,23 @@ function handlersAreDefault(game, defaultHandlers) {
   return true;
 }
 
+function assertEditionIdentity(game, expected = null) {
+  if (!game.profile || !game.runtime) {
+    throw new TypeError('Runahead requires one coherent edition runtime and RAM layout.');
+  }
+  const runtime = resolveGameRuntime(game.profile);
+  if (game.runtime !== runtime || runtime.profile !== game.profile
+      || game.ram?.ramLayout !== game.profile.ramLayout) {
+    throw new TypeError('Runahead requires one coherent edition runtime and RAM layout.');
+  }
+  if (expected && (game.profile !== expected.profile || game.runtime !== expected.runtime
+      || game.ram.ramLayout !== expected.ramLayout)) {
+    throw new Error('Runahead edition identity changed after the checkpoint was saved.');
+  }
+}
+
 function assertSafeConfiguration(game, defaultHandlers, defaultVideo, externalState) {
+  assertEditionIdentity(game);
   if (!defaultVideo || game.video !== defaultVideo) {
     throw new Error('Runahead is incompatible with a custom video-register owner.');
   }
@@ -307,6 +325,9 @@ export function saveRunaheadState(
   const token = Object.freeze(Object.create(null));
   const entry = {
     game,
+    profile: game.profile,
+    runtime: game.runtime,
+    ramLayout: game.ram.ramLayout,
     defaultHandlers,
     defaultVideo,
     externalState,
@@ -324,6 +345,7 @@ export function saveRunaheadState(
 export function beginRunaheadStep(game) {
   const entry = ACTIVE.get(game);
   if (!entry) return false;
+  assertEditionIdentity(game, entry);
   assertSafeConfiguration(
     game, entry.defaultHandlers, entry.defaultVideo, entry.externalState,
   );
@@ -343,6 +365,7 @@ export function restoreRunaheadState(game, token) {
 
   let failure = null;
   try {
+    assertEditionIdentity(game, entry);
     restore(game, entry.state);
   } catch (error) {
     failure = error;

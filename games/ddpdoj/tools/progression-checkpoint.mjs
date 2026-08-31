@@ -6,6 +6,8 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { Game } from '../src/main.js';
+import { assertProfileTables } from '../src/profiles.js';
+import { requireRuntimeCapability, resolveRuntimeProfile } from '../src/runtime-profile.js';
 
 export const CHECKPOINT_SCHEMA = 'ddpdoj.progression-checkpoint.v2';
 
@@ -21,6 +23,20 @@ const RECONSTRUCTED = new Set([
   'bgMutate', 'coinTick', 'soundSink',
 ]);
 const HOST_SEAMS = new Set(['bgMutate', 'coinTick', 'soundSink']);
+
+function resolveCheckpointIdentity(bundle, profileRequest) {
+  const request = profileRequest ?? bundle?.profile ?? bundle?.profileId;
+  const identity = resolveRuntimeProfile(request);
+  requireRuntimeCapability(identity.runtime, 'legacyCheckpoint', 'Progression checkpoint v2');
+  if (bundle?.profile != null && bundle.profile !== identity.profile) {
+    throw new Error('checkpoint bundle profile does not match the requested edition');
+  }
+  if (bundle?.profileId != null && bundle.profileId !== identity.profile.id) {
+    throw new Error('checkpoint bundle profile id does not match the requested edition');
+  }
+  assertProfileTables(identity.profile, bundle?.tables);
+  return identity;
+}
 
 const b64 = (bytes) => Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   .toString('base64');
@@ -135,6 +151,11 @@ function restoreValue(target, encoded) {
 }
 
 function assertProbeGame(game) {
+  const identity = resolveRuntimeProfile(game?.profile);
+  requireRuntimeCapability(identity.runtime, 'legacyCheckpoint', 'Progression checkpoint v2');
+  if (game?.runtime !== identity.runtime || game?.ram?.ramLayout !== identity.profile.ramLayout) {
+    throw new Error('checkpoint Game edition runtime or RAM layout is inconsistent');
+  }
   for (const key of HOST_SEAMS) {
     if (game[key] != null) throw new Error(`checkpoint refuses active host seam Game.${key}`);
   }
@@ -169,6 +190,10 @@ export function seedIdentity(seed) {
 }
 
 export function checkpointDocument(game, bundle, probe) {
+  const identity = resolveCheckpointIdentity(bundle, game?.profile);
+  if (game?.runtime !== identity.runtime) {
+    throw new Error('checkpoint Game runtime does not match its bundle profile');
+  }
   const { ship, style, inputWord, invulnerable } = probe;
   if (![0, 2].includes(ship) || ![2, 4, 6].includes(style)) {
     throw new RangeError(`checkpoint ship/style ${ship}/${style} is not authentic`);
@@ -201,7 +226,7 @@ export function checkpointDocument(game, bundle, probe) {
   };
 }
 
-function validateIdentity(doc, bundle, expected) {
+function validateIdentity(doc, bundle, expected, edition) {
   if (doc?.schema !== CHECKPOINT_SCHEMA) throw new Error('unsupported progression checkpoint schema');
   const identity = seedIdentity(bundle.seed);
   if (doc.seed?.bytes !== identity.bytes || doc.seed?.sha256 !== identity.sha256) {
@@ -225,10 +250,12 @@ function validateIdentity(doc, bundle, expected) {
   if (expected?.style != null && doc.selection?.style !== expected.style) {
     throw new Error(`checkpoint style ${doc.selection?.style} does not match ${expected.style}`);
   }
+  return edition;
 }
 
 export function restoreCheckpoint(doc, bundle, expected = {}) {
-  validateIdentity(doc, bundle, expected);
+  const requestedEdition = resolveCheckpointIdentity(bundle, expected?.profile);
+  const edition = validateIdentity(doc, bundle, expected, requestedEdition);
   const ram = bytesFromB64(doc.ram);
   if (ram.byteLength !== bundle.seed.byteLength) {
     throw new Error(`checkpoint RAM is ${ram.byteLength} bytes, expected ${bundle.seed.byteLength}`);
@@ -240,6 +267,7 @@ export function restoreCheckpoint(doc, bundle, expected = {}) {
     throw new Error('checkpoint Game-state payload failed its integrity hash');
   }
   const game = new Game(bundle.seed, bundle.tables, {
+    profile: edition.profile,
     logicFrame: doc.frame?.logic,
     videoFrame: doc.frame?.video,
     palCatchUp: false,
@@ -281,6 +309,7 @@ export async function writeCheckpoint(file, game, bundle, probe) {
 }
 
 export async function readCheckpoint(file, bundle, expected = {}) {
+  resolveCheckpointIdentity(bundle, expected?.profile);
   const doc = JSON.parse(await readFile(file, 'utf8'));
   return restoreCheckpoint(doc, bundle, expected);
 }

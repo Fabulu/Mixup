@@ -55,6 +55,7 @@
 
 import { RAM, ROM, MACHINE } from './machine.js';
 import { assertProfileTables, resolveGameProfile } from './profiles.js';
+import { requireRuntimeCapability, resolveGameRuntime } from './runtime-profile.js';
 import { Ram, u16, i16 } from './ram.js';
 import { postVblankEdges } from './input.js';
 import { irq6, coinDebounce13CEC8, COIN } from './isr.js';
@@ -337,8 +338,11 @@ export class Game {
    */
   constructor(seed, tables, opts = {}) {
     const profile = resolveGameProfile(opts.profile);
+    const runtime = resolveGameRuntime(profile);
+    requireRuntimeCapability(runtime, 'game', 'Game construction');
     assertProfileTables(profile, tables);
     Object.defineProperty(this, 'profile', { value: profile });
+    Object.defineProperty(this, 'runtime', { value: runtime });
     this.ram = new Ram(seed, profile.ramLayout);
     // WAVE 8: the cartridge, as a set of declared windows.  The shot spawn
     // follows pointers out of a ROM template, so the port reads ROM the way the
@@ -981,6 +985,7 @@ export class Game {
       },
     };
     Object.defineProperty(ctx, 'profile', { value: this.profile });
+    Object.defineProperty(ctx, 'runtime', { value: this.runtime });
     return ctx;
   }
 

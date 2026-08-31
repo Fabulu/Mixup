@@ -180,6 +180,7 @@
 // frame out, on any machine, at any refresh rate.
 
 import { Game, RAM, MACHINE } from '../main.js';
+import { DEFAULT_PROFILE_ID, resolveGameProfile } from '../profiles.js';
 import {
   applyAuthenticSelection, normalizeAuthenticSelection,
 } from '../authentic.js';
@@ -1007,6 +1008,7 @@ export class Demo {
     }
     const gameFormation = this.formation ? formationGameOptions(this.formation) : null;
     this.game = new Game(launchSeed, bundle.tables, {
+      profile: bundle.profile,
       logicFrame: this.seedLf,
       videoFrame: this.seedVf,
       bgSeed: coldBoot ? undefined : (rung ? rung.bgSeed : this.cap.part(0, 'bg')),
@@ -1499,7 +1501,7 @@ export class Demo {
   playFrom(obj) {
     assertFormationReplayCompatible(this.formation, 'PLAY');
     assertPrivateFormationReplayCompatible(this.game, 'PLAY');
-    const parsed = validateReplay(obj);
+    const parsed = validateReplay(obj, { profile: this.game.profile });
     let candidateMods = this.mods ?? null;
     let replayModCandidate = null;
     if (parsed.modSeed) {
@@ -1515,6 +1517,7 @@ export class Demo {
     const seed = obj.seed;
     const seedArm = replaySeedArm(seed, ram, RAM.semaphore - MACHINE.ramBase);
     const game = new Game(ram, tables, {
+      profile: parsed.profile,
       logicFrame: seed.lf,
       videoFrame: seed.vf,
       seedArm,
@@ -2120,6 +2123,20 @@ export async function loadRung(ladderBase, rungLf, ladder = 'stage1-sweep', ladd
   };
 }
 
+export function bundleOptionsForGameJson(gameJson, bundleOpts = {}) {
+  const hasProfileId = gameJson != null && Object.hasOwn(gameJson, 'profileId');
+  const requested = hasProfileId ? gameJson.profileId : DEFAULT_PROFILE_ID;
+  if (hasProfileId && requested === undefined) {
+    throw new TypeError('game.json profileId must name a trusted DaiOuJou edition profile');
+  }
+  const profile = resolveGameProfile(requested);
+  if (bundleOpts?.profile !== undefined
+      && resolveGameProfile(bundleOpts.profile) !== profile) {
+    throw new RangeError('bundleOpts.profile does not match game.json profileId');
+  }
+  return { ...(bundleOpts ?? {}), profile };
+}
+
 /**
  * Boot the port onto `canvas`.
  *
@@ -2168,6 +2185,7 @@ export async function boot(canvas, opts = {}) {
     throw new AssetError(`game.json: HTTP ${r.status}`);
   }
   const gameJson = await r.json();
+  const bundleOpts = bundleOptionsForGameJson(gameJson, opts.bundleOpts);
   const frameHz = gameJson.display.frameHz;
   // Spelled once, in game.json, DERIVED (15625/264) and not rounded. If the two
   // ever disagree the page is running at a rate the port was not measured at.
@@ -2178,7 +2196,7 @@ export async function boot(canvas, opts = {}) {
   }
 
   const bundle = await loadBundle(
-    httpReader(base, opts.onProgress), opts.bundleOpts);
+    httpReader(base, opts.onProgress), bundleOpts);
   // WAVE 14.  `loadBundle` awaited the BOOT shards only (0 and 1, 210.3 KiB --
   // less than the 408 KiB the wave-13 page fetched before its first frame).
   // The other six are queued HERE, after boot has returned, so they compete

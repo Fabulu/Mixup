@@ -16,6 +16,7 @@ import {
 import { MACHINE, RAM, ROM, P, OPT, CLAMP, BIT } from '../src/machine.js';
 import { Game } from '../src/main.js';
 import { Ram } from '../src/ram.js';
+import { BLACK_RUNTIME_BINDING } from '../src/runtime-profile.js';
 import { OBJ } from '../src/objdriver.js';
 
 const SEED = fileURLToPath(new URL('../rip/web/seed.bin', import.meta.url));
@@ -121,14 +122,23 @@ test('forged profile accessors are rejected without executing their getter', () 
   assert.equal(calls, 0);
 });
 
-test('derived handler contexts preserve immutable hidden profile identity', () => {
+test('derived handler contexts preserve immutable hidden edition identity', () => {
   const source = { tables: {}, unportedLog: {} };
   Object.defineProperty(source, 'profile', { value: BLACK_LABEL_PROFILE });
+  Object.defineProperty(source, 'runtime', { value: BLACK_RUNTIME_BINDING });
   const derived = deriveProfileContext(source, { unported: source.unportedLog });
   assert.equal(derived.profile, BLACK_LABEL_PROFILE);
+  assert.equal(derived.runtime, BLACK_RUNTIME_BINDING);
   assert.equal(Object.keys(derived).includes('profile'), false);
+  assert.equal(Object.keys(derived).includes('runtime'), false);
   assert.deepEqual(Object.getOwnPropertyDescriptor(derived, 'profile'), {
     value: BLACK_LABEL_PROFILE,
+    writable: false,
+    enumerable: false,
+    configurable: false,
+  });
+  assert.deepEqual(Object.getOwnPropertyDescriptor(derived, 'runtime'), {
+    value: BLACK_RUNTIME_BINDING,
     writable: false,
     enumerable: false,
     configurable: false,
@@ -225,18 +235,27 @@ test('Game rejects unknown and forged profiles before reading seed or tables', (
   assert.equal(reads, 0);
 });
 
-runtimeTest('Game binds one immutable non-enumerable profile before RAM construction', () => {
+runtimeTest('Game binds one immutable non-enumerable edition identity before RAM construction', () => {
   const g = game();
   assert.equal(g.profile, BLACK_LABEL_PROFILE);
+  assert.equal(g.runtime, BLACK_RUNTIME_BINDING);
   assert.equal(g.ram.ramLayout, BLACK_LABEL_PROFILE.ramLayout);
   assert.equal(Object.keys(g).includes('profile'), false);
+  assert.equal(Object.keys(g).includes('runtime'), false);
   assert.deepEqual(Object.getOwnPropertyDescriptor(g, 'profile'), {
     value: BLACK_LABEL_PROFILE,
     writable: false,
     enumerable: false,
     configurable: false,
   });
+  assert.deepEqual(Object.getOwnPropertyDescriptor(g, 'runtime'), {
+    value: BLACK_RUNTIME_BINDING,
+    writable: false,
+    enumerable: false,
+    configurable: false,
+  });
   assert.throws(() => { g.profile = null; }, TypeError);
+  assert.throws(() => { g.runtime = null; }, TypeError);
 });
 
 test('Ram clone preserves bytes and the exact immutable layout identity', () => {
@@ -260,7 +279,7 @@ test('Ram clone preserves bytes and the exact immutable layout identity', () => 
   assert.throws(() => { clone.ramLayout = null; }, TypeError);
 });
 
-runtimeTest('ported handler context carries the same profile without changing enumerable keys', () => {
+runtimeTest('ported handler context carries the same edition identity without changing keys', () => {
   const g = game();
   const type = 0x33;
   assert.equal(g.handlers.has(type), false);
@@ -274,10 +293,19 @@ runtimeTest('ported handler context carries the same profile without changing en
 
   assert.ok(captured);
   assert.equal(captured.profile, g.profile);
+  assert.equal(captured.runtime, g.runtime);
   assert.equal(Object.hasOwn(captured, 'profile'), true);
+  assert.equal(Object.hasOwn(captured, 'runtime'), true);
   assert.equal(Object.keys(captured).includes('profile'), false);
+  assert.equal(Object.keys(captured).includes('runtime'), false);
   assert.deepEqual(Object.getOwnPropertyDescriptor(captured, 'profile'), {
     value: BLACK_LABEL_PROFILE,
+    writable: false,
+    enumerable: false,
+    configurable: false,
+  });
+  assert.deepEqual(Object.getOwnPropertyDescriptor(captured, 'runtime'), {
+    value: BLACK_RUNTIME_BINDING,
     writable: false,
     enumerable: false,
     configurable: false,

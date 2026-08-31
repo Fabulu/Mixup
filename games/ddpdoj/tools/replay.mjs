@@ -38,7 +38,10 @@ import { execSync } from 'node:child_process';
 import { Game, MACHINE, RAM } from '../src/main.js';
 import {
   FORMAT as REPLAY_FORMAT, FORMAT_V1, FORMAT_V2, replaySeedArm,
+  resolveLegacyReplayIdentity,
 } from '../src/web/replay.js';
+import { assertProfileTables } from '../src/profiles.js';
+import { requireRuntimeCapability, resolveRuntimeProfile } from '../src/runtime-profile.js';
 import {
   modGameOptions, restoreModReplaySeed, validateModReplaySeed,
 } from '../src/mods.js';
@@ -136,13 +139,14 @@ function liveTablesOnce() {
 export function verifyReplay(obj, opts = {}) {
   const {
     ramBytes, bgBytes, tables, portinWords, coininWords, pokes, seedArm,
-    modCandidate,
-  } = validateReplayObject(obj);
+    modCandidate, profile,
+  } = validateReplayObject(obj, opts.profile);
 
   // Same construction as portdiff.mjs:128 and seedcmp.mjs:134.  bgSeed is the
   // 2048-word big-endian tilemap ring, NOT main RAM; without it a seeded port
   // paints columns into an empty ring (portdiff.mjs:118 comment).
   const game = new Game(ramBytes, tables, {
+    profile,
     logicFrame: obj.seed.lf,
     videoFrame: obj.seed.vf,
     seedArm,
@@ -209,11 +213,8 @@ export function verifyReplay(obj, opts = {}) {
 /** Validate the file shape before constructing a Game, matching the browser's
  * `validateReplay` contract so malformed seed/input/frame data cannot become a
  * plausible playback with a different initialization path. */
-function validateReplayObject(obj) {
-  if (!obj || (obj.format !== FORMAT_V1 && obj.format !== FORMAT_V2)) {
-    throw new Error(`not a supported DaiOuJou replay artifact (got ${String(obj?.format)})`);
-  }
-  if (obj.build !== BUILD) throw new Error(`unsupported replay build ${String(obj.build)}`);
+function validateReplayObject(obj, profileRequest) {
+  const identity = resolveLegacyReplayIdentity(obj, profileRequest);
   if (!obj.seed || !Number.isSafeInteger(obj.seed.lf) || obj.seed.lf < 0
       || !Number.isSafeInteger(obj.seed.vf) || obj.seed.vf < 0) {
     throw new Error('replay seed lf/vf must be non-negative integers');
@@ -235,6 +236,7 @@ function validateReplayObject(obj) {
   let tables;
   try { tables = JSON.parse(Buffer.from(tablesBytes).toString('utf8')); }
   catch (e) { throw new Error(`replay tables seed is not JSON: ${e.message}`); }
+  assertProfileTables(identity.profile, tables);
   // W269: a fixture freezes the whole of `player.tables.json`, which is right for the
   // derived data and WRONG for the ROM WINDOW LIST -- that is a port artifact saying which
   // cartridge bytes the port lets itself read, never what those bytes are. So a subsystem
@@ -285,7 +287,7 @@ function validateReplayObject(obj) {
   }
   return {
     ramBytes, bgBytes, tables, portinWords, coininWords, pokes, seedArm,
-    modCandidate,
+    modCandidate, profile: identity.profile, runtime: identity.runtime,
   };
 }
 
@@ -317,6 +319,11 @@ export function buildReplay(opts) {
     tsvPath, seedPath, bgPath, tablesPath = DEFAULT_TABLES,
     seedLf, toLf, poke = '', scenario = '', intervention = '',
   } = opts;
+  const identity = resolveRuntimeProfile(opts.profile);
+  requireRuntimeCapability(identity.runtime, 'legacyReplay', 'Legacy replay recording');
+  if (identity.profile.revisionIdentity.build !== BUILD) {
+    throw new Error(`unsupported replay build ${identity.profile.revisionIdentity.build}`);
+  }
 
   const parsed = readTrace(tsvPath);
   const { byLf } = parsed;
@@ -346,7 +353,9 @@ export function buildReplay(opts) {
   // the SAME feed as run().  The cumulative built here MUST equal r.digest.
   const seedBytes = new Uint8Array(readFileSync(seedPath));
   const tables = JSON.parse(tablesBytes.toString('utf8'));
+  assertProfileTables(identity.profile, tables);
   const game = new Game(seedBytes, tables, {
+    profile: identity.profile,
     logicFrame: lf0,
     videoFrame: Number(start.vf),
     bgSeed,

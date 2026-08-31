@@ -11,6 +11,9 @@ import {
 } from './palette.js';
 import { BUCKETS } from './spritequeue.js';
 import { armRequest25FF38 } from './player.js';
+import {
+  BLACK_RUNTIME_BINDING, requireRuntimeCapability, resolveGameRuntime,
+} from './runtime-profile.js';
 
 export const AUTHENTIC_SHIPS = Object.freeze([0, 2]);
 export const AUTHENTIC_STYLES = Object.freeze([2, 4, 6]);
@@ -87,6 +90,23 @@ export function authenticSelectionQuery(value) {
   return selected.p2
     ? `${query}&p2=1&p2ship=${selected.p2.ship}&p2style=${selected.p2.style}`
     : query;
+}
+
+function requireAuthenticRuntime(game) {
+  const legacyFixture = game?.runtime == null && game?.profile == null;
+  if (legacyFixture) {
+    return requireRuntimeCapability(
+      BLACK_RUNTIME_BINDING, 'authenticSelector', 'Authentic fighter selection',
+    );
+  }
+  if (game?.runtime == null || game?.profile == null
+      || game.runtime !== resolveGameRuntime(game.profile)
+      || game.ram?.ramLayout !== game.profile.ramLayout) {
+    throw new Error('Authentic fighter selection requires one coherent edition runtime and RAM layout.');
+  }
+  return requireRuntimeCapability(
+    game.runtime, 'authenticSelector', 'Authentic fighter selection',
+  );
 }
 
 /**
@@ -171,6 +191,7 @@ function applyP1Selection(game, selected) {
 
 /** Apply one validated P1 pair even when it is the default selector pair. */
 export function forceAuthenticP1Selection(game, value) {
+  requireAuthenticRuntime(game);
   const selected = authenticPair(value);
   if (!selected) return null;
   applyP1Selection(game, selected);
@@ -203,6 +224,7 @@ function applyP2Selection(game, selected) {
  * leaving the cartridge type-3 initializer to build its live records.
  */
 export function applyAuthenticSelection(game, value) {
+  requireAuthenticRuntime(game);
   const selected = normalizeAuthenticSelection(value);
   if (!selected) return null;
   if (!isDefaultPair(selected)) applyP1Selection(game, selected);

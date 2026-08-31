@@ -10515,6 +10515,7 @@ def build(d: bytes) -> dict:
     return {
         "_note": ("ROM-DERIVED. Regenerate with games/ddpdoj/tools/export-tables.py. "
                   "Never commit this file."),
+        "profileId": "ddpdoj/black-label/b",
         "set": "ddpdojblk", "build": "B",
         "image_sha256": hashlib.sha256(d).hexdigest(),
         "dirTable": {"rom": f"${DIR_TABLE:06X}",

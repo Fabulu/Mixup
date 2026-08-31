@@ -106,6 +106,7 @@ const RANK = [
 
 function run() {
   const game = new Game(bundle.seed, bundle.tables, {
+    profile: bundle.profile,
     logicFrame: bundle.cap.frames[0].lf,
     videoFrame: bundle.cap.frames[0].vf,
     bgSeed: bundle.cap.part(0, 'bg'),
@@ -210,6 +211,7 @@ function run() {
  *  the stock is 0 on every frame of every ordinary run. */
 function forkRun() {
   const game = new Game(bundle.seed, bundle.tables, {
+    profile: bundle.profile,
     logicFrame: bundle.cap.frames[0].lf,
     videoFrame: bundle.cap.frames[0].vf,
     bgSeed: bundle.cap.part(0, 'bg'),

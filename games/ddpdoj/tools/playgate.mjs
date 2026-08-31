@@ -81,6 +81,7 @@ function args(argv) {
  *  frame, so a tap short enough to avoid them does not exist. */
 export function hold(bundle, controls, frames, breakName = null) {
   const game = new Game(bundle.seed, bundle.tables, {
+    profile: bundle.profile,
     logicFrame: bundle.cap.frames[0].lf,
     videoFrame: bundle.cap.frames[0].vf,
     bgSeed: bundle.cap.part(0, 'bg'),

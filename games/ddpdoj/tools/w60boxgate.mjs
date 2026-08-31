@@ -87,6 +87,7 @@ export async function run({ frames = 3000, mode = 'tap', items = 0 } = {}) {
   const read = async (name) => new Uint8Array(fs.readFileSync(path.join(ASSETS, name)));
   const bundle = await loadBundle(read, { shards: 'all' });
   const g = new Game(bundle.seed, bundle.tables, {
+    profile: bundle.profile,
     logicFrame: bundle.cap.frames[0].lf,
     videoFrame: bundle.cap.frames[0].vf,
     bgSeed: bundle.cap.part(0, 'bg'),

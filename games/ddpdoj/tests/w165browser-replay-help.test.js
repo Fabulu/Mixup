@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
+import { BLACK_LABEL_PROFILE } from '../src/profiles.js';
 import { b64, decodePortinWords, parsePoke, validateReplay } from '../src/web/replay.js';
 import { verifyReplay } from '../tools/replay.mjs';
 
@@ -9,10 +10,17 @@ const read = (name) => fs.readFileSync(new URL(name, ROOT), 'utf8');
 
 function validReplay(overrides = {}) {
   const oneWord = b64(new Uint8Array([0, 0]));
+  const tables = {
+    set: BLACK_LABEL_PROFILE.tableManifest.set,
+    build: BLACK_LABEL_PROFILE.tableManifest.build,
+    image_sha256: BLACK_LABEL_PROFILE.tableManifest.imageSha256,
+    rom: {},
+  };
   return {
     format: 'ddpdoj.replay/v1', build: 'B',
     seed: { lf: 10, vf: 20, ramB64: b64(new Uint8Array(0x20000)),
-      bgB64: b64(new Uint8Array(0x1000)), tablesB64: b64(new TextEncoder().encode('{}')) },
+      bgB64: b64(new Uint8Array(0x1000)),
+      tablesB64: b64(new TextEncoder().encode(JSON.stringify(tables))) },
     poke: '810500=7f',
     portin: { encoding: 'u16be', count: 1, b64: oneWord },
     digest: { columns: ['lf'], periodFrames: 250,

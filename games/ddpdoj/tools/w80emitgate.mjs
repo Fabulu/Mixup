@@ -47,6 +47,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Game } from '../src/main.js';
+import { assertProfileTables, resolveGameProfile } from '../src/profiles.js';
 import { readCheckpoint, Ram } from './boarddl.mjs';
 import { readTrace } from './portdiff.mjs';
 import { loadBundle, AssetError } from '../src/web/assets.js';
@@ -153,13 +154,13 @@ function beWords(bytes) {
 // browser runs, over the SAME bundle the browser fetches, and reports per type
 // how many of the port's own records had art behind them.  Without this flag
 // this tool can only say "a record exists", and it says exactly that.
-async function loadSheet(dir) {
+async function loadSheet(dir, profile) {
   const read = async (name) => {
     const p = path.join(dir, name);
     if (!fs.existsSync(p)) throw new AssetError(`assets/${name} is missing`);
     return new Uint8Array(fs.readFileSync(p));
   };
-  const bundle = await loadBundle(read);
+  const bundle = await loadBundle(read, { profile });
   // Every shard, not just the boot set: the question here is "is the picture in
   // the bundle at all", not "has it landed yet".  Delivery timing is
   // `webgate`'s subject and conflating the two is how a 43.99 % have-rate got
@@ -169,9 +170,13 @@ async function loadSheet(dir) {
   return { bundle, map };
 }
 
-export function gate(a, sheet = null) {
+export function gate(a, sheet = null, profile = resolveGameProfile()) {
   if (a.break && !BREAKS[a.break]) {
     throw new Error(`unknown --break ${a.break}; have ${Object.keys(BREAKS).join(', ')}`);
+  }
+  if (sheet && sheet.bundle.profile !== profile) {
+    throw new TypeError('W80 emission gate cartridge tables and packaged sheet use different '
+      + 'DaiOuJou edition profiles');
   }
   const manDir = path.dirname(path.resolve(a.manifest));
   const man = JSON.parse(fs.readFileSync(a.manifest, 'utf8'));
@@ -179,6 +184,7 @@ export function gate(a, sheet = null) {
   const tablesPath = fileURLToPath(
     new URL('../rip/port/player.tables.json', import.meta.url));
   const tables = JSON.parse(fs.readFileSync(tablesPath, 'utf8'));
+  assertProfileTables(profile, tables);
   const trace = readTrace(path.join(manDir, man.trace ?? 'trace.tsv'));
 
   let rungs = man.rungs.slice().sort((x, y) => x.lf - y.lf);
@@ -215,6 +221,7 @@ export function gate(a, sheet = null) {
       } else {
         const bgPath = path.join(ckDir, r.bg);
         const game = new Game(buf.slice(), tables, {
+          profile,
           logicFrame: r.lf,
           videoFrame: Number(r.vf),
           bgSeed: fs.existsSync(bgPath)
@@ -328,8 +335,9 @@ function report(g, a) {
 
 async function main(argv) {
   const a = args(argv);
-  const sheet = a.assets ? await loadSheet(a.assets) : null;
-  return report(gate(a, sheet), a);
+  const profile = resolveGameProfile();
+  const sheet = a.assets ? await loadSheet(a.assets, profile) : null;
+  return report(gate(a, sheet, profile), a);
 }
 
 if (process.argv[1] && process.argv[1].endsWith('w80emitgate.mjs')) {

@@ -1,3 +1,56 @@
+import { resolveGameProfile } from '../../games/ddpdoj/src/profiles.js';
+import {
+  requireRuntimeCapability, resolveGameRuntime,
+} from '../../games/ddpdoj/src/runtime-profile.js';
+
+const PREPARED_IDENTITY_FIELDS = Object.freeze(['profileId', 'profile', 'runtime']);
+
+function exactHiddenValue(owner, name, value) {
+  const descriptor = Object.getOwnPropertyDescriptor(owner, name);
+  return descriptor?.value === value
+    && descriptor.writable === false
+    && descriptor.enumerable === false
+    && descriptor.configurable === false;
+}
+
+export function resolvePreparedEditionIdentity(profileRequest) {
+  const profile = resolveGameProfile(profileRequest);
+  const runtime = resolveGameRuntime(profile);
+  requireRuntimeCapability(runtime, 'localRom', 'Mixup local DaiOuJou ROM preparation');
+  return Object.freeze({ profile, runtime });
+}
+
+export function sealPreparedEditionIdentity(prepared, profileRequest) {
+  if (!prepared || typeof prepared !== 'object' || Array.isArray(prepared)
+      || Object.isFrozen(prepared)) {
+    throw new TypeError('Prepared DaiOuJou data must be an unsealed object.');
+  }
+  if (PREPARED_IDENTITY_FIELDS.some((name) => Object.hasOwn(prepared, name))) {
+    throw new TypeError('Prepared DaiOuJou data already carries edition identity.');
+  }
+  const { profile, runtime } = resolvePreparedEditionIdentity(profileRequest);
+  Object.defineProperties(prepared, {
+    profileId: { value: profile.id },
+    profile: { value: profile },
+    runtime: { value: runtime },
+  });
+  return Object.freeze(prepared);
+}
+
+export function assertPreparedEditionIdentity(prepared, profileRequest) {
+  const { profile, runtime } = resolvePreparedEditionIdentity(profileRequest);
+  if (!prepared || typeof prepared !== 'object' || Array.isArray(prepared)
+      || !Object.isFrozen(prepared)
+      || !Object.isFrozen(profile) || !Object.isFrozen(runtime)
+      || !Object.isFrozen(runtime.capabilities) || runtime.profile !== profile
+      || !exactHiddenValue(prepared, 'profileId', profile.id)
+      || !exactHiddenValue(prepared, 'profile', profile)
+      || !exactHiddenValue(prepared, 'runtime', runtime)) {
+    throw new TypeError('Prepared DaiOuJou edition identity is missing or inconsistent.');
+  }
+  return Object.freeze({ profile, runtime });
+}
+
 export function localReplayTables(tables) {
   if (!tables || typeof tables !== 'object' || Array.isArray(tables)) {
     throw new TypeError('Local replay tables must be an object.');

@@ -213,6 +213,7 @@ function run(mutate, { move = true } = {}) {
   SHIP_MUTATE.value = mutate;
   try {
     const g = new Game(bundle.seed, bundle.tables, {
+      profile: bundle.profile,
       logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
       bgSeed: bundle.cap.part(0, 'bg'),
     });
@@ -324,6 +325,7 @@ row(a.sizes.size === 1 && a.sizes.has(TRAIL.size)
 const shipImages = new Set();
 {
   const g = new Game(bundle.seed, bundle.tables, {
+    profile: bundle.profile,
     logicFrame: bundle.cap.frames[0].lf, videoFrame: bundle.cap.frames[0].vf,
     bgSeed: bundle.cap.part(0, 'bg'),
   });

@@ -5,12 +5,38 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { MACHINE } from '../src/machine.js';
+import { BLACK_LABEL_PROFILE, PROFILE_IDS } from '../src/profiles.js';
 import {
-  armSoundOnFirstGesture, boot, launchSeedForBrowser, toggleSound,
+  armSoundOnFirstGesture, boot, bundleOptionsForGameJson, launchSeedForBrowser, toggleSound,
 } from '../src/web/app.js';
 import { MOD_RAM, createModState, resolveLoadout } from '../src/mods.js';
 
 const mods = (...ids) => createModState(resolveLoadout(ids));
+
+const WHITE_PROFILE_ID = 'ddpdoj/white-label/a';
+
+test('browser bundle metadata defaults only absent legacy metadata to trusted Black', () => {
+  const legacy = bundleOptionsForGameJson({}, { shards: 'all' });
+  assert.equal(legacy.profile, BLACK_LABEL_PROFILE);
+  assert.equal(legacy.shards, 'all', 'compatible loader options survive profile binding');
+
+  const explicit = bundleOptionsForGameJson(
+    { profileId: PROFILE_IDS.BLACK_LABEL },
+    { profile: PROFILE_IDS.BLACK_LABEL, dropTile: 7 },
+  );
+  assert.equal(explicit.profile, BLACK_LABEL_PROFILE);
+  assert.equal(explicit.dropTile, 7, 'an explicit matching Black request preserves break options');
+
+  assert.throws(
+    () => bundleOptionsForGameJson({ profileId: WHITE_PROFILE_ID }),
+    /unsupported DaiOuJou edition profile ddpdoj\/white-label\/a/,
+  );
+  assert.throws(
+    () => bundleOptionsForGameJson(
+      { profileId: PROFILE_IDS.BLACK_LABEL }, { profile: WHITE_PROFILE_ID }),
+    /unsupported DaiOuJou edition profile ddpdoj\/white-label\/a/,
+  );
+});
 
 class FakeTarget {
   constructor() { this.listeners = new Map(); }

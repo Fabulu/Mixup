@@ -28,6 +28,10 @@
 // paths walk the same bytes (the worklog 130 section 4 note).
 
 import { stateVector, CLAIMED } from '../state.js';
+import { assertProfileTables } from '../profiles.js';
+import {
+  requireRuntimeCapability, resolveRuntimeProfile,
+} from '../runtime-profile.js';
 
 // Replay v2 records both cabinet input ports and the selected external mod seed.
 // v1 stays readable so published and locally saved recordings remain playable.
@@ -36,6 +40,34 @@ export const FORMAT_V2 = 'ddpdoj.replay/v2';
 export const FORMAT = FORMAT_V2;
 export const BUILD = 'B';
 export const PERIOD_FRAMES = 250;   // the checkpoint cadence (manifest.json `every`)
+
+export function resolveLegacyReplayIdentity(obj, profileRequest) {
+  const resolved = resolveRuntimeProfile(profileRequest);
+  requireRuntimeCapability(resolved.runtime, 'legacyReplay', 'Legacy replay');
+  if (!obj || (obj.format !== FORMAT_V1 && obj.format !== FORMAT_V2)) {
+    throw new Error(`not a supported DaiOuJou replay artifact (got ${String(obj?.format)})`);
+  }
+  if (obj.build !== BUILD || obj.build !== resolved.profile.revisionIdentity.build) {
+    throw new Error(`unsupported replay build ${String(obj.build)}`);
+  }
+  return resolved;
+}
+
+function assertReplayGame(game) {
+  const hasProfile = game?.profile != null;
+  const hasRuntime = game?.runtime != null;
+  if (hasProfile !== hasRuntime) {
+    throw new Error('Replay Game must provide both edition profile and runtime identity.');
+  }
+  const legacyFixture = !hasProfile;
+  const resolved = resolveRuntimeProfile(legacyFixture ? undefined : game.profile);
+  requireRuntimeCapability(resolved.runtime, 'legacyReplay', 'Legacy replay');
+  if (!legacyFixture && (game.runtime !== resolved.runtime
+      || game.ram?.ramLayout !== resolved.profile.ramLayout)) {
+    throw new Error('Replay Game runtime or RAM layout does not match its edition profile.');
+  }
+  return resolved;
+}
 
 // ---------------------------------------------------------------------------
 // THE DIGEST FEED -- one line, copied VERBATIM from `tools/replay.mjs:141`.
@@ -170,8 +202,11 @@ export function beBytesFromWords(w) {
  * page's `step()`; `stopRecorder(rec)` (async) packages it.
  */
 export function armRecorder(game, opts) {
+  const identity = assertReplayGame(game);
   const rec = {
     game,
+    profile: identity.profile,
+    runtime: identity.runtime,
     columns: opts.columns ?? CLAIMED,
     periodFrames: opts.periodFrames ?? PERIOD_FRAMES,
     seed: opts.seed,
@@ -220,6 +255,10 @@ export function armRecorder(game, opts) {
  * resolution, exactly as the headless player reports.
  */
 export async function stopRecorder(rec) {
+  const identity = assertReplayGame(rec.game);
+  if (identity.profile !== rec.profile || identity.runtime !== rec.runtime) {
+    throw new Error('Replay recorder edition identity changed while recording.');
+  }
   // Close a partial trailing period (the headless player hashes the last
   // window even when it is short: `replay.mjs:148 i === count - 1`).
   if (rec.periodBounds[rec.periodBounds.length - 1] !== rec.cumulativeFeed.length) {
@@ -353,11 +392,8 @@ export function decodeCoininWords(obj, playerCount = obj?.portin?.count) {
 }
 
 /** Validate the complete browser/headless initialization contract. */
-export function validateReplay(obj) {
-  if (!obj || (obj.format !== FORMAT_V1 && obj.format !== FORMAT_V2)) {
-    throw new Error(`not a supported DaiOuJou replay artifact (got ${String(obj?.format)})`);
-  }
-  if (obj.build !== BUILD) throw new Error(`unsupported replay build ${String(obj.build)}`);
+export function validateReplay(obj, options = {}) {
+  const identity = resolveLegacyReplayIdentity(obj, options.profile);
   if (!obj.seed || !Number.isSafeInteger(obj.seed.lf) || obj.seed.lf < 0
       || !Number.isSafeInteger(obj.seed.vf) || obj.seed.vf < 0) {
     throw new Error('replay seed lf/vf must be non-negative integers');
@@ -378,8 +414,10 @@ export function validateReplay(obj) {
   const tablesBytes = unb64(obj.seed.tablesB64);
   if (ram.length !== 0x20000) throw new Error(`replay RAM seed is ${ram.length} bytes, expected 131072`);
   if (bg.length !== 0x1000) throw new Error(`replay BG seed is ${bg.length} bytes, expected 4096`);
-  try { JSON.parse(new TextDecoder().decode(tablesBytes)); }
+  let tables;
+  try { tables = JSON.parse(new TextDecoder().decode(tablesBytes)); }
   catch (e) { throw new Error(`replay tables seed is not JSON: ${e.message}`); }
+  assertProfileTables(identity.profile, tables);
   const words = decodePortinWords(obj);
   const coinWords = decodeCoininWords(obj, words.length);
   const pokes = parsePoke(obj.poke);
@@ -405,10 +443,13 @@ export function validateReplay(obj) {
   if (!/^[0-9a-f]{64}$/.test(obj.digest.cumulative ?? '')) {
     throw new Error('replay digest.cumulative is not a SHA-256 hex digest');
   }
-  return {
-    ram, bg, tables: JSON.parse(new TextDecoder().decode(tablesBytes)),
+  const parsed = {
+    ram, bg, tables,
     words, coinWords, pokes, modSeed: obj.format === FORMAT_V2 ? obj.seed.mods : null,
   };
+  Object.defineProperty(parsed, 'profile', { value: identity.profile });
+  Object.defineProperty(parsed, 'runtime', { value: identity.runtime });
+  return parsed;
 }
 
 /**
@@ -432,7 +473,11 @@ export function validateReplay(obj) {
  * window are LOGIC FRAMES (lf), matching `replay.mjs:154-155`.
  */
 export function armPlayback(game, obj) {
-  validateReplay(obj);
+  const gameIdentity = assertReplayGame(game);
+  const replay = validateReplay(obj, { profile: gameIdentity.profile });
+  if (replay.runtime !== gameIdentity.runtime) {
+    throw new Error('Replay artifact runtime does not match its Game.');
+  }
   const columns = obj.digest.columns;
   const periodFrames = obj.digest.periodFrames;
   const seedLf = obj.seed.lf;

@@ -289,6 +289,7 @@ async function main() {
   }
 
   const game = new Game(seed, tables, {
+    profile: bundle.profile,
     logicFrame: seedLf, videoFrame: cap.frames[0].vf,
   });
   const renderer = new Renderer(bundle.roms, bundle.tileFns);

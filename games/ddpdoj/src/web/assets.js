@@ -27,6 +27,8 @@ import { Capture } from '../render/capture.js';
 import { parseSpriteList, BUFFER_STRIDE } from '../render/spritelist.js';
 import { BG_W, BG_H, TX_W, TX_H } from '../render/tiles.js';
 import { assertLittleEndianHost } from '../render/regions.js';
+import { assertProfileTables, BLACK_LABEL_PROFILE } from '../profiles.js';
+import { requireRuntimeCapability, resolveRuntimeProfile } from '../runtime-profile.js';
 
 export const BG_TILE_BYTES = BG_W * BG_H;   // 1024, decoded
 export const TX_TILE_BYTES = TX_W * TX_H;   // 64, decoded
@@ -522,6 +524,34 @@ export async function loadSoundAssets(readRaw, manifest) {
   });
 }
 
+export function resolveBundleManifestIdentity(manifest, profileRequest) {
+  const identity = resolveRuntimeProfile(profileRequest);
+  requireRuntimeCapability(identity.runtime, 'legacyBundle', 'Published bundle');
+  if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    throw new AssetError('assets/manifest.json does not contain an object');
+  }
+
+  const revision = identity.profile.revisionIdentity;
+  if (!Object.hasOwn(manifest, 'profileId')) {
+    if (identity.profile !== BLACK_LABEL_PROFILE || manifest.game !== 'ddpdoj'
+        || manifest.set !== revision.set || manifest.build !== revision.build) {
+      throw new AssetError('assets/manifest.json legacy game/set/build identity does not match '
+        + `edition profile ${identity.profile.id}`);
+    }
+  } else {
+    if (manifest.profileId !== identity.profile.id) {
+      throw new AssetError(`assets/manifest.json profile ${String(manifest.profileId)} does not match `
+        + `edition profile ${identity.profile.id}`);
+    }
+    if ((manifest.game != null && manifest.game !== 'ddpdoj')
+        || (manifest.set != null && manifest.set !== revision.set)
+        || (manifest.build != null && manifest.build !== revision.build)) {
+      throw new AssetError('assets/manifest.json profile identity conflicts with its game/set/build');
+    }
+  }
+  return identity;
+}
+
 /**
  * Load and assemble the whole bundle.
  *
@@ -529,16 +559,27 @@ export async function loadSoundAssets(readRaw, manifest) {
  *        `assets/` VERBATIM (still gzipped where the name says `.gz`)
  * @param {object} [opts]  break switches, for `tools/bundlegate.mjs` ONLY --
  *        each one exists so a check in here can be SEEN to fail.
+ * @param {string|object} [opts.profile]  trusted edition profile id or object
  */
 export async function loadBundle(readRaw, opts = {}) {
+  const requestedEdition = resolveRuntimeProfile(opts.profile);
+  requireRuntimeCapability(requestedEdition.runtime, 'legacyBundle', 'Published bundle');
   assertLittleEndianHost();
   const text = async (n) => TD.decode(await readRaw(n));
   const bin = async (n) => gunzip(await readRaw(n));
 
   const manifest = JSON.parse(await text('manifest.json'));
+  const edition = resolveBundleManifestIdentity(manifest, requestedEdition.profile);
   if (manifest.encoding !== 'gzip') {
     throw new AssetError(`assets/manifest.json says encoding=${manifest.encoding}; `
       + 'this loader only knows gzip.');
+  }
+  const tables = JSON.parse(TD.decode(await bin('player.tables.json.gz')));
+  try {
+    assertProfileTables(edition.profile, tables);
+  } catch (error) {
+    throw new AssetError(`assets/player.tables.json identity does not match manifest profile `
+      + `${edition.profile.id} (${error.message})`);
   }
 
   // --- the TX sheet, which is still one file and still the capture's --------
@@ -858,7 +899,6 @@ export async function loadBundle(readRaw, opts = {}) {
   }
   const cap = new Capture(capJson, await bin('capture.bin.gz'));
   const seed = await bin('seed.bin.gz');
-  const tables = JSON.parse(TD.decode(await bin('player.tables.json.gz')));
 
   // THE PALETTE BLOCK, against the board.  $2415E8 uploads $227E58 into palette
   // RAM $400..$7FF once per stage, so the recording's own palette IS this
@@ -932,6 +972,11 @@ export async function loadBundle(readRaw, opts = {}) {
     requiredCabinetRanges: Object.freeze(requiredCabinetRanges.map((range) =>
       Object.freeze([...range]))),
   };
+  Object.defineProperties(bundle, {
+    profileId: { value: edition.profile.id },
+    profile: { value: edition.profile },
+    runtime: { value: edition.runtime },
+  });
   verifyCoverage(bundle, opts);
   return bundle;
 }
