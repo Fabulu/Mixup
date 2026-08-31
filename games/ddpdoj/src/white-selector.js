@@ -380,7 +380,9 @@ function phase7(ram, a5, record, side, ctx) {
     ram.bset8(a5 + S.objectBusyAt, 1);
     return;
   }
-  if (gate === 0 && otherLive && ram.u16(record + 0x5e) === 0) {
+  if (gate !== 0) {
+    ctx?.announceSide?.(1 - side);
+  } else if (otherLive && ram.u16(record + 0x5e) === 0) {
     ram.setU16(record + 0x5e, 1);
     ctx?.announceSide?.(1 - side);
   }

@@ -72,9 +72,9 @@ function tick(ram, rom, ctx) {
   return whiteSelectorTick15BE3E(ram, rom, ALLOC.table, ctx, undefined);
 }
 
-function chooseSingle(side, shipIndex, styleIndex) {
+function chooseSingle(side, shipIndex, styleIndex, suppliedRom) {
   const ram = new Ram();
-  const rom = syntheticRom();
+  const rom = suppliedRom ?? syntheticRom();
   const mask = side === 0 ? 1 : 2;
   seed(ram, rom, mask);
 
@@ -278,6 +278,8 @@ test('phase 6 announces an inactive partner and phase 7 retires both records tog
   assert.deepEqual(retired.phases, [WHITE_SELECTOR.retiredPhase, WHITE_SELECTOR.retiredPhase]);
   assert.equal(ram.u8(ALLOC.table + WHITE_SELECTOR.objectStateAt), WHITE_SELECTOR.killState);
   assert.equal(ram.u8(ALLOC.table + WHITE_SELECTOR.objectBusyAt), 3);
+  const killed = tick(ram, rom, ctx);
+  assert.equal(killed.retired, true);
 });
 
 test('phase 7 waits for a live partner before advancing retirement counters', () => {
@@ -293,6 +295,37 @@ test('phase 7 waits for a live partner before advancing retirement counters', ()
   tick(ram, rom);
   assert.equal(ram.u16(WHITE_SELECTOR.records + 0x32), 0x0042);
   assert.equal(ram.u8(ALLOC.table + WHITE_SELECTOR.objectBusyAt), 3);
+});
+
+test('phase 7 announces the opposite side every frame while the loop gate is set', () => {
+  const ram = new Ram();
+  const rom = syntheticRom();
+  const announcements = [];
+  seed(ram, rom, 1);
+  ram.setU8(WHITE_SELECTOR.records + WHITE_SELECTOR.phaseAt, 7);
+  ram.setU16(WHITE_SELECTOR.gate, 1);
+
+  tick(ram, rom, { announceSide: (side) => announcements.push(side) });
+  assert.deepEqual(announcements, [1]);
+});
+
+rawTest('embedded Version A image completes every native selector pair through retirement', () => {
+  const image = new Uint8Array(readFileSync(IMAGE));
+  for (const side of [0, 1]) {
+    for (const ship of [0, 1]) {
+      for (const style of [0, 1, 2]) {
+        const { ram } = chooseSingle(side, ship, style, new FullRom(image));
+        const record = WHITE_SELECTOR.records + side * WHITE_SELECTOR.recordStride;
+        ram.setU16(record + 0x32, 0x00ef);
+        ram.setU16(record + 0x4a, 0x1800);
+        ram.setU16(record + 0x5a, 1);
+        const retired = whiteSelectorTick15BE3E(ram, new FullRom(image), ALLOC.table);
+        assert.equal(retired.phases[side], WHITE_SELECTOR.retiredPhase);
+        assert.equal(ram.u8(ALLOC.table + WHITE_SELECTOR.objectStateAt),
+          WHITE_SELECTOR.killState);
+      }
+    }
+  }
 });
 
 rawTest('embedded Version A image proves selector dispatch and all choice tables', () => {

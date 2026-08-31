@@ -10493,6 +10493,7 @@ def build(d: bytes) -> dict:
     check_type44_windows(d)                    # W400 -- TYPE $44'S PROTOTYPES AND FIVE TABLES
     check_type4c_retire_windows(d)             # W402 -- $26FFE8'S TWO RETIRE LISTS
     check_continue_panel_windows(d)            # W418 -- THE CONTINUE PANEL'S 5 WINDOWS
+    check_white_label_frontend_windows(d)      # Embedded Version A frontend and Stage 1
     check_sample_windows()                     # W27D -- ICS sample tight union
     n = speed_levels(d)
     base = u32(d, SPEED_PTRS)
@@ -10518,6 +10519,7 @@ def build(d: bytes) -> dict:
         "profileId": "ddpdoj/black-label/b",
         "set": "ddpdojblk", "build": "B",
         "image_sha256": hashlib.sha256(d).hexdigest(),
+        "editions": {"whiteLabel": white_label_tables(d)},
         "dirTable": {"rom": f"${DIR_TABLE:06X}",
                      "bytes": list(d[DIR_TABLE:DIR_TABLE + 16])},
         "foldTable": {"rom": f"${FOLD_TABLE:06X}",
@@ -10624,6 +10626,16 @@ def verify(t: dict) -> list[str]:
     # WAVE 8: the ROM windows must cover every template the spawn walk found,
     # or the port would throw on its first shot on someone else's machine.
     wins = [(int(w["base"].lstrip("$"), 16), w["len"]) for w in t["rom"]["windows"]]
+    white = t.get("editions", {}).get("whiteLabel", {})
+    if white.get("profileId") != "ddpdoj/white-label/a" or white.get("build") != "A":
+        bad.append("embedded Version A table manifest identity is missing")
+    if len(white.get("dispatch", {}).get("entries", [])) != 21:
+        bad.append("embedded Version A table manifest does not expose 21 dispatch entries")
+    declared_white = {(int(w["base"].lstrip("$"), 16), w["len"])
+                      for w in white.get("frontendWindows", [])}
+    expected_white = {(address, length) for address, length, _ in WHITE_LABEL_WINDOWS}
+    if declared_white != expected_white or not expected_white.issubset(set(wins)):
+        bad.append("embedded Version A frontend windows drifted from the exported ROM window list")
 
     def covered(a: int, n: int) -> bool:
         return any(b <= a and a + n <= b + ln for b, ln in wins)
@@ -10888,6 +10900,233 @@ def check_continue_panel_windows(d: bytes) -> None:
     if 0x2888DA + 0x78 != 0x288952:
         raise SystemExit("the ten groups no longer end where jump-table entry 4 begins.")
 
+
+WHITE_LABEL_IMAGE_SHA256 = "4d3efd54ae0d1ae7ae9dbe3c242de7aa098b7edaf971e474c15f063a9ca88b8c"
+WHITE_LABEL_DISPATCH = (
+    (0x18C046, 0x09), (0x1602F8, 0x1A), (0x14889E, 0x1C),
+    (0x14891E, 0x1B), (0x15FE78, 0x09), (0x18A11C, 0x18),
+    (0x18C156, 0x0A), (0x18F698, 0x1E), (0x159BBC, 0x0A),
+    (0x15BE3E, 0x0A), (0x15FAE8, 0x1F), (0x15CF22, 0x0A),
+    (0x18DE8E, 0x09), (0x18759E, 0x0B), (0x1877A8, 0x14),
+    (0x190A16, 0x1E), (0x156410, 0x1E), (0x15C22C, 0x0A),
+    (0x148708, 0x0A), (0x18D9A2, 0x1E), (0x13BEEA, 0x1E),
+)
+
+# Embedded Version A has its own program tables and frontend palette scripts in
+# the shared decrypted cartridge image. Each range is bounded by a direct A
+# reader, a counted script, or an exact adjacent table end.
+WHITE_LABEL_WINDOWS = [
+    (0x13C204, 0x0022, "White A chooser exit no-fill script, four counted entries"),
+    (0x13CA3E, 0x0028, "White A coin and credit operator tables"),
+    (0x141294, 0x00A8, "White A 21-entry object dispatch table"),
+    (0x158AA8, 0x0008, "White A factory NVRAM defaults"),
+    (0x15AE72, 0x0064, "White A high-score initial palette script"),
+    (0x15AED6, 0x0042, "White A high-score no-fill palette script"),
+    (0x15B2FE, 0x003A, "White A demo and credit initial palette script"),
+    (0x15B338, 0x0022, "White A demo and credit no-fill palette script"),
+    (0x15B35A, 0x003A, "White A chooser initial palette script"),
+    (0x15B72C, 0x001E, "White A state-12 initial palette script"),
+    (0x15B74A, 0x0012, "White A state-12 no-fill palette script"),
+    (0x15B886, 0x001E, "White A state-9 initial palette script"),
+    (0x15B8A4, 0x0012, "White A state-9 no-fill palette script"),
+    (0x15C2D4, 0x0004, "White A two-entry ship choice table"),
+    (0x15C608, 0x0006, "White A three-entry style choice table"),
+    (0x15C652, 0x000C, "White A mirrored style-order tables"),
+    (0x15EB30, 0x0006, "White A selector factory words"),
+    (0x15EB36, 0x00A0, "White A selector animation longwords"),
+    (0x15EBD6, 0x0018, "White A selector selection records"),
+    (0x15EBEE, 0x0078, "White A selector sprite payload blocks"),
+    (0x15EC66, 0x0040, "White A selector zoom table"),
+    (0x15F190, 0x0020, "White A two-record player bootstrap table"),
+    (0x1602D0, 0x0028, "White A background palette and column pointer tables"),
+    (0x1605B8, 0x003C, "White A five-entry stage script-pair table"),
+    (0x1605F4, 0x0088, "White A 22-record object palette stream and sentinel"),
+    (0x186936, 0x0096, "White A nine contiguous high-score factory arrays"),
+    (0x122618, 0x00E0, "White A warning and six reset text palettes"),
+    (0x122778, 0x00A0, "White A frontend and demo text palettes"),
+    (0x122838, 0x0040, "White A chooser sprite palette"),
+    (0x1237F8, 0x0200, "White A Stage 1 low object palette family"),
+    (0x123C38, 0x00C0, "White A selector palette family one"),
+    (0x123D38, 0x04C0, "White A selector palette family two"),
+    (0x1241F8, 0x0100, "White A selector pilot palette family"),
+    (0x1242F8, 0x0340, "White A Stage 1 object palette family"),
+    (0x125278, 0x0080, "White A Stage 1 object palette tail"),
+    (0x1254B8, 0x0040, "White A high-score palette block one"),
+    (0x1257F8, 0x0180, "White A high-score palette blocks two through seven"),
+    (0x1259B8, 0x0080, "White A credit sprite palettes"),
+    (0x125A38, 0x0080, "White A state-12 and state-9 sprite palettes"),
+    (0x125B78, 0x22E0, "White A Stage 1 248-column background stream"),
+    (0x127E58, 0x0800, "White A Stage 1 32-bank background palette"),
+    (0x1302E0, 0x0188, "White A 14 by 7 frontend background plane"),
+    (0x13046C, 0x0040, "White A credit background palette"),
+    (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
+]
+SHOT_WINDOWS.extend(WHITE_LABEL_WINDOWS)
+
+
+def _white_initial_script(d: bytes, address: int) -> list[tuple[int, ...]]:
+    count = u16(d, address)
+    return [
+        (u16(d, address + 2 + i * 14), u16(d, address + 4 + i * 14),
+         u16(d, address + 6 + i * 14), u32(d, address + 8 + i * 14),
+         u16(d, address + 12 + i * 14), u16(d, address + 14 + i * 14))
+        for i in range(count)
+    ]
+
+
+def _white_nofill_script(d: bytes, address: int) -> list[tuple[int, ...]]:
+    count = u16(d, address)
+    return [
+        (u16(d, address + 2 + i * 8), u16(d, address + 4 + i * 8),
+         u16(d, address + 6 + i * 8), u16(d, address + 8 + i * 8))
+        for i in range(count)
+    ]
+
+
+def white_label_tables(d: bytes) -> dict:
+    def anim(table: int, selector: int) -> list[list[int]]:
+        pointer = u32(d, table + selector * 2)
+        return [[u16(d, pointer + tilt), u16(d, pointer + tilt + 2)]
+                for tilt in range(-0x20, 0x21, 4)]
+
+    dispatch = [{"handler": f"${handler:06X}", "priority": priority}
+                for handler, priority in WHITE_LABEL_DISPATCH]
+    governance = {
+        name: {"rom": f"${address:06X}",
+               "words": [u16(d, address + i * 2) for i in range(count)]}
+        for name, address, count in (
+            ("t13C6E6", 0x13C6E6, 10), ("t13C6FA", 0x13C6FA, 10),
+            ("t13C70E", 0x13C70E, 5), ("t13C718", 0x13C718, 5))
+    }
+    return {
+        "profileId": "ddpdoj/white-label/a",
+        "set": "ddpdojblk", "build": "A",
+        "image_sha256": WHITE_LABEL_IMAGE_SHA256,
+        "dispatch": {"rom": "$141294", "stride": 8, "entries": dispatch},
+        "dirTable": {"rom": "$154898", "bytes": list(d[0x154898:0x1548A8])},
+        "knockback": {"rom": "$1548A8",
+                      "words": [u16(d, 0x1548A8 + i * 2) for i in range(8)]},
+        "foldTable": {"rom": "$141BEE",
+                      "words": [u16(d, 0x141BEE + i * 2) for i in range(256)]},
+        "speed": {"rom": "$100920", "quadBase": "$100D20",
+                  "quadStride": 0x208, "quadEntries": 65, "levels": 256,
+                  "sharedField": "$100920..$12151F"},
+        "gov": governance,
+        "anim": {
+            "tiltMin": -0x20, "tiltStep": 4,
+            "a": {"rom": "$1548F6", "shipSel0": anim(0x1548F6, 0),
+                  "shipSel2": anim(0x1548F6, 2)},
+            "hitX": {"rom": "$154986", "reads": "$148DCC/$148DD6/$14510E/$145112",
+                     "shipSel0": anim(0x154986, 0), "shipSel2": anim(0x154986, 2)},
+        },
+        "frontendWindows": [{"base": f"${address:06X}", "len": length}
+                            for address, length, _ in WHITE_LABEL_WINDOWS],
+    }
+
+
+def check_white_label_frontend_windows(d: bytes) -> None:
+    if hashlib.sha256(d).hexdigest() != WHITE_LABEL_IMAGE_SHA256:
+        raise SystemExit("embedded Version A tables require the validated ddpdojblk cartridge image")
+
+    for i, (handler, priority) in enumerate(WHITE_LABEL_DISPATCH):
+        address = 0x141294 + i * 8
+        if (u32(d, address), u16(d, address + 4), u16(d, address + 6)) \
+                != (handler, priority, 0):
+            raise SystemExit(f"White A dispatch entry {i} changed at ${address:06X}")
+    if u16(d, 0x14133C) != 0x3639:
+        raise SystemExit("White A dispatch no longer ends after exactly 21 records")
+
+    if d[0x158AA8:0x158AB0] != bytes((0, 1, 1, 2, 1, 0, 0, 1)):
+        raise SystemExit("White A factory operator defaults changed")
+    if [u16(d, 0x15C2D4 + i * 2) for i in range(2)] != [0, 2]:
+        raise SystemExit("White A ship selector domain is no longer {0,2}")
+    if [u16(d, 0x15C608 + i * 2) for i in range(3)] != [2, 4, 6]:
+        raise SystemExit("White A style selector domain is no longer {2,4,6}")
+    if [u16(d, 0x15C652 + i * 2) for i in range(6)] != [0, 1, 2, 2, 1, 0]:
+        raise SystemExit("White A style-order tables are no longer mirrored")
+
+    chooser = [(0, 0, 0x0000, 0x1259F8, 0x1F, 8),
+               (0, 0, 0x0040, 0x1259B8, 0x1F, 8),
+               (0, 0, 0x0080, 0x122838, 0x1F, 8),
+               (0, 8, 0x0000, 0x13046C, 0x1F, 6)]
+    demo = [row[:-1] + (6,) for row in chooser]
+    if _white_initial_script(d, 0x15B35A) != chooser:
+        raise SystemExit("White A chooser initial palette script changed")
+    if _white_initial_script(d, 0x15B2FE) != demo:
+        raise SystemExit("White A reduced demo and credit palette script changed")
+    chooser_exit = [(0, 0x0000, 0x1F, 6), (0, 0x00C0, 0x1F, 6),
+                    (0x10, 0x0000, 0x0F, 6), (0x10, 0x0040, 0x0F, 6)]
+    if _white_nofill_script(d, 0x13C204) != chooser_exit:
+        raise SystemExit("White A chooser exit palette script changed")
+    if _white_nofill_script(d, 0x15B338) \
+            != [(0, 0, 0x1F, 6), (0, 0x40, 0x1F, 6),
+                (0, 0x80, 0x1F, 6), (8, 0, 0x1F, 6)]:
+        raise SystemExit("White A demo and credit no-fill palette script changed")
+
+    high_targets = (0x1257F8, 0x125838, 0x1258B8, 0x1258F8,
+                    0x125938, 0x1254B8, 0x125878)
+    high_initial = [(0, 0, offset, target, 0x1F, 2)
+                    for offset, target in zip((0, 0x40, 0x100, 0x140,
+                                               0x180, 0x1C0, 0x200), high_targets)]
+    if _white_initial_script(d, 0x15AE72) != high_initial:
+        raise SystemExit("White A high-score initial palette script changed")
+    high_nofill = [(0, offset, 0x1F, 2)
+                   for offset in (0, 0x40, 0x100, 0x140, 0x180, 0x1C0, 0x200)]
+    high_nofill.append((8, 0, 0x1F, 2))
+    if _white_nofill_script(d, 0x15AED6) != high_nofill:
+        raise SystemExit("White A high-score no-fill palette script changed")
+
+    for initial, nofill, target in ((0x15B72C, 0x15B74A, 0x125A38),
+                                    (0x15B886, 0x15B8A4, 0x125A78)):
+        expected = [(0, 0, 0, target, 0x1F, 3),
+                    (0, 8, 0, 0x1462D6, 0x1F, 3)]
+        if _white_initial_script(d, initial) != expected:
+            raise SystemExit(f"White A state palette script changed at ${initial:06X}")
+        if _white_nofill_script(d, nofill) != [(0, 0, 0x1F, 3), (8, 0, 0x1F, 3)]:
+            raise SystemExit(f"White A state no-fill script changed at ${nofill:06X}")
+
+    for address, digest in ((0x1259B8, "6fc0b314ed7943063caed3031f911577ebc8be45d23c0c36281e51cc60f88112"),
+                            (0x1259F8, "eb4771ee5ce7966c16dcb58fbce8b4252f831d466a4333f5fa0cbf6b2ddbc14b"),
+                            (0x13046C, "89862985f2963e16ac29694ff22c48509df3335426722bafb0cc5864756377c2")):
+        if hashlib.sha256(d[address:address + 0x40]).hexdigest() != digest:
+            raise SystemExit(f"White A credit palette changed at ${address:06X}")
+        if d[address:address + 0x40] == d[address + 0x100000:address + 0x100040]:
+            raise SystemExit(f"White A-specific palette at ${address:06X} was cloned from Build B")
+
+    if [u16(d, 0x15EB30 + i * 2) for i in range(3)] != [0, 0x0101, 0x0200]:
+        raise SystemExit("White A selector factory words changed")
+    if [u32(d, 0x15EB36 + i * 4) for i in range(40)] \
+            != [0x1A974C + 0x544 * i for i in range(40)]:
+        raise SystemExit("White A selector animation table changed")
+    selection = [(u32(d, 0x15EBD6 + i * 8), u32(d, 0x15EBDA + i * 8))
+                 for i in range(3)]
+    if selection != [(0x15EBEE, 0x124278), (0x15EC16, 0x124238), (0x15EC3E, 0x1241F8)]:
+        raise SystemExit("White A selector selection records changed")
+    if [u32(d, 0x15EC66 + i * 4) for i in range(16)] \
+            != [((i + 1) * 0x08000000 | 0x00008000) for i in range(16)]:
+        raise SystemExit("White A selector zoom table changed")
+
+    if [u32(d, 0x1602D0 + i * 4) for i in range(5)] \
+            != [0x127E58, 0x129DF8, 0x12A9E8, 0x12CF70, 0x12FAE0]:
+        raise SystemExit("White A background palette pointer table changed")
+    if [u32(d, 0x1602E4 + i * 4) for i in range(5)] \
+            != [0x125B78, 0x128658, 0x12A5F8, 0x12B1E8, 0x12D770]:
+        raise SystemExit("White A background column pointer table changed")
+    if hashlib.sha256(d[0x125B78:0x127E58]).hexdigest() \
+            != "2fa66e6f9431bd689b5b54e64c2c88fa699d9248965973c472067ef88c816302":
+        raise SystemExit("White A Stage 1 column stream changed")
+    if hashlib.sha256(d[0x127E58:0x128658]).hexdigest() \
+            != "963baaafa3c1e7259835dd6939ec9270f3143071543b14dbb058a720339d561c":
+        raise SystemExit("White A Stage 1 background palette changed")
+
+    banks = [u16(d, 0x1605F8 + i * 6) for i in range(22)]
+    if banks != [0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x18, 0x19, 0x1A, 0x1B,
+                 0x1C, 0x1E, 0x1D, 0x1F, 0x13, 0x14, 0x15, 0x16, 0x12, 0x0F,
+                 0x13, 0x14] or u32(d, 0x160678) != 0xFFFFFFFF:
+        raise SystemExit("White A Stage 1 object palette stream changed")
+    if d[0x146296:0x1462D6] != bytes(0x40) \
+            or d[0x1462D6:0x146316] != bytes.fromhex("7fff" * 32):
+        raise SystemExit("White A Stage 1 constant palettes changed")
 
 
 def main() -> int:
