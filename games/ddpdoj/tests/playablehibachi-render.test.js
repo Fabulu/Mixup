@@ -5,18 +5,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { buildDisplayList } from '../src/displaylist.js';
+import { playerBox } from '../src/damage.js';
 import { Game } from '../src/main.js';
 import { P, RAM } from '../src/machine.js';
 import {
   beginPlayableHibachiCreditedRun, bindPlayableHibachiGame,
   collectPlayableHibachiSpriteRequests, createPlayableHibachiState,
+  PLAYABLE_HIBACHI_SMALL_FORM,
 } from '../src/playablehibachi.js';
 import { Ram } from '../src/ram.js';
 import { Renderer, FILL_PEN } from '../src/render/igs023.js';
-import { BUFFER_STRIDE } from '../src/render/spritelist.js';
+import { BUFFER_STRIDE, RAM_STRIDE } from '../src/render/spritelist.js';
 import { drawShip, drawShipAlt, drawShipShadow } from '../src/shipsprite.js';
+import { loadBundle } from '../src/web/assets.js';
 import {
-  PRIVATE_SPRITE_PALETTE_BASE, portSpriteList,
+  PRIVATE_SPRITE_PALETTE_BASE, portSpriteList, romToPackedMap,
 } from '../src/web/app.js';
 import { BUCKETS, encodeRegisterRequest, enqueueRegisters } from '../src/spritequeue.js';
 
@@ -35,10 +38,6 @@ function long(bytes, offset) {
 
 const u16 = (value) => value & 0xffff;
 const packD1 = (y, x) => (((y & 0xffff) << 16) | (x & 0xffff)) >>> 0;
-const reflectD1 = (ownerY, ownerX, source) => packD1(
-  u16(ownerY * 2 - (source >>> 16)),
-  u16(ownerX * 2 - (source & 0xffff)),
-);
 
 function request(offs, privatePaletteBank) {
   return {
@@ -48,52 +47,148 @@ function request(offs, privatePaletteBank) {
   };
 }
 
-test('Playable Hibachi emits the complete rotated first form for native P1 and P2', () => {
+test('Playable Hibachi uses only the authentic small sphere from the first live frame', () => {
   const game = new Game(null, TABLES, { palCatchUp: false });
   const state = createPlayableHibachiState();
   bindPlayableHibachiGame(state, game);
   beginPlayableHibachiCreditedRun(state, game, {});
-  const owners = [
-    [RAM.player1, 0x7000, 0x2000],
-    [RAM.player2, 0x6800, 0x2800],
-  ];
-  for (const [rec, y, x] of owners) {
-    game.ram.setU16(rec, 0x8000);
-    game.ram.setU16(rec + P.posY, y);
-    game.ram.setU16(rec + P.posX, x);
-  }
+  const form = PLAYABLE_HIBACHI_SMALL_FORM;
+  const rec = RAM.player1;
+  const y = 0x7000;
+  const x = 0x2000;
+  game.ram.setU16(rec, 0x8000);
+  game.ram.setU16(rec + P.posY, y);
+  game.ram.setU16(rec + P.posX, x);
 
-  const requests = collectPlayableHibachiSpriteRequests(state, game);
+  let requests = collectPlayableHibachiSpriteRequests(state, game);
 
   assert.strictEqual(requests, state.virtualRequests);
-  assert.equal(requests.length, 20);
-  const palettes = [2, 1, 2, 6, 6, 6, 6, 6, 6, 0];
-  assert.deepEqual(requests.map((entry) => entry.privatePaletteBank),
-    [...palettes, ...palettes]);
-  assert.ok(requests.every((entry) => entry.bucket === 19 && entry.bytes.length === 12));
-  assert.deepEqual(requests.slice(0, 10).map((entry) => long(entry.bytes, 4)), [
-    game.rom.u32(0x2a4774),
-    0x00116768,
-    0x00101728,
-    0x001120e8, 0x001120e8, 0x001120e8,
-    0x001120e8, 0x001120e8, 0x001120e8,
-    0x000fd858,
-  ]);
-  assert.deepEqual(requests.slice(0, 10).map((entry) => word(entry.bytes, 10)), [
-    0x6012, 0x6011, 0x6012,
-    0x6016, 0x6016, 0x6016, 0x6016, 0x6016, 0x6016,
-    0x6010,
+  assert.equal(requests.length, 1,
+    'the first live frame has one sphere and no multipart boss or ordinary ship');
+  assert.equal(requests[0].bucket, 19);
+  assert.equal(requests[0].bytes.length, 12);
+  assert.equal(requests[0].privatePaletteBank, 7);
+  assert.deepEqual(requests[0].bytes, encodeRegisterRequest(
+    packD1(u16(y - 0x0c00), u16(x - 0x0700)),
+    0x00117c10, 0x0c38, 0x6017,
+  ));
+  assert.equal(long(requests[0].bytes, 4), 0x00117c10);
+  assert.equal(word(requests[0].bytes, 8), 0x0c38);
+  assert.equal(word(requests[0].bytes, 10), 0x6017);
+
+  state.players[0].runtime.presentationFrames = 0;
+  state.players[0].runtime.presentationStarted = false;
+  const presentations = [];
+  for (let index = 0; index < form.frames * form.framePeriod; index++) {
+    requests = collectPlayableHibachiSpriteRequests(state, game);
+    assert.equal(requests.length, 1);
+    presentations.push(long(requests[0].bytes, 4));
+  }
+  const art = presentations.filter((_, index) => index % form.framePeriod === 0);
+  assert.deepEqual(presentations, art.flatMap((address) =>
+    Array(form.framePeriod).fill(address)),
+  'each sphere frame holds for exactly two presented frames');
+  assert.deepEqual(art, [
+    0x00117c10, 0x00117d64, 0x00117eb8, 0x0011800c,
+    0x00118160, 0x001182b4, 0x00118408, 0x0011855c,
   ]);
 
-  const [rec, ownerY, ownerX] = owners[0];
-  void rec;
-  const dy = game.tables.shotVector(0x1a, 0x40).dy;
-  const source = (packD1(u16(ownerY + dy), ownerX)
-    + 0xe6000000 + 0xea00f200) >>> 0;
+  game.ram.setU16(rec, 0x0100);
+  assert.deepEqual(collectPlayableHibachiSpriteRequests(state, game), [],
+    'native death cannot expose a boss-form Hibachi');
+  game.ram.setU16(rec, 0x8000);
+  game.ram.setU16(rec + P.posY, 0x6800);
+  game.ram.setU16(rec + P.posX, 0x2800);
+  requests = collectPlayableHibachiSpriteRequests(state, game);
+  assert.equal(requests.length, 1);
+  assert.equal(word(requests[0].bytes, 8), 0x0c38,
+    'respawn returns as the same small form');
+
+  game.ram.setU16(rec, 0);
+  game.ram.setU16(RAM.player2, 0x8000);
+  game.ram.setU16(RAM.player2 + P.posY, 0x6400);
+  game.ram.setU16(RAM.player2 + P.posX, 0x2400);
+  requests = collectPlayableHibachiSpriteRequests(state, game);
+  assert.equal(requests.length, 1);
   assert.deepEqual(requests[0].bytes, encodeRegisterRequest(
-    reflectD1(ownerY, ownerX, source), game.rom.u32(0x2a4774),
-    0x1670, 0x6012,
+    packD1(0x5800, 0x1d00), long(requests[0].bytes, 4), 0x0c38, 0x6017,
   ));
+  assert.equal(word(requests[0].bytes, 10), 0x6017,
+    'P2 owns the identical centered upside-down sphere');
+});
+
+test('every native hitbox pixel stays inside opaque small-form art', async () => {
+  const bundle = await loadBundle(async (name) => new Uint8Array(readFileSync(
+    new URL(`../assets/${name}`, import.meta.url),
+  )));
+  const game = new Game(null, bundle.tables, { palCatchUp: false });
+  const state = createPlayableHibachiState();
+  bindPlayableHibachiGame(state, game);
+  beginPlayableHibachiCreditedRun(state, game, {});
+  const form = PLAYABLE_HIBACHI_SMALL_FORM;
+  const packed = romToPackedMap(
+    bundle.manifest, (base) => bundle.spr.shardOfBase(base),
+  );
+  const art = Array.from({ length: form.frames }, (_, frame) =>
+    game.rom.u32(form.artTable + frame * 4));
+  for (const address of art) {
+    const stream = packed.get(address);
+    assert.ok(stream, `small-form stream $${address.toString(16)} is exported`);
+    await bundle.spr.fetch(stream[2]);
+    assert.equal(bundle.spr.state[stream[2]], 'ready');
+  }
+  const renderer = new Renderer(bundle.roms, bundle.tileFns);
+  const nativeY = 0x5000;
+  const nativeX = 0x1c00;
+
+  for (let playerIdx = 0; playerIdx < 2; playerIdx++) {
+    const rec = playerIdx === 0 ? RAM.player1 : RAM.player2;
+    const other = playerIdx === 0 ? RAM.player2 : RAM.player1;
+    game.ram.setU16(other, 0);
+    game.ram.setU16(rec, 0x8000);
+    game.ram.setU16(rec + P.posY, nativeY);
+    game.ram.setU16(rec + P.posX, nativeX);
+    game.ram.setU16(rec + P.hitYPlus, 0x0080);
+    game.ram.setU16(rec + P.hitYMinus, 0x0100);
+    game.ram.setU16(rec + P.hitXPlus, 0x0080);
+    game.ram.setU16(rec + P.hitXMinus, 0x0080);
+    const box = playerBox(game.ram, rec);
+    const left = box.d1 >>> 6;
+    const right = box.d0 >>> 6;
+    const top = box.d3 >>> 6;
+    const bottom = box.d2 >>> 6;
+
+    for (let frame = 0; frame < form.frames; frame++) {
+      state.players[playerIdx].runtime.presentationFrames = frame * form.framePeriod;
+      state.players[playerIdx].runtime.presentationStarted = false;
+      const listRam = new Ram();
+      const built = buildDisplayList(listRam, {
+        virtualRequests: collectPlayableHibachiSpriteRequests(state, game),
+      });
+      const port = portSpriteList(listRam, packed, {
+        privatePaletteBanks: built.privatePaletteBanks,
+        shardReady: (shard) => bundle.spr.state[shard] === 'ready',
+      });
+      assert.equal(port.drawn, 1);
+      assert.equal(port.skipped, 0);
+      const indexed = renderer.renderIndexed({
+        spritebuffer: port.words,
+        spritePrivatePaletteBanks: port.privatePaletteBanks,
+        spritePrivatePaletteBase: PRIVATE_SPRITE_PALETTE_BASE,
+        bg: new Uint16Array(0),
+        tx: new Uint16Array(0),
+        rowscroll: new Uint16Array(224),
+        zoomram: new Uint16Array(32),
+        regs: { ctrl: 0 },
+      }, { wantBg: false, wantTx: false, spriteStride: RAM_STRIDE });
+      for (let y = top; y <= bottom; y++) {
+        for (let x = left; x <= right; x++) {
+          assert.notEqual(indexed[y * 448 + x], FILL_PEN,
+            `P${playerIdx + 1} frame ${frame} leaves hitbox pixel (${x},${y}) transparent`);
+        }
+      }
+    }
+  }
 });
 
 test('player sprite filter suppresses the native live, death, and shadow records', () => {

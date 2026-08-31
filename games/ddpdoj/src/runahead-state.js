@@ -68,6 +68,7 @@ const CUSTOM_SIMULATION_PROPERTIES = [
   'bulletRetireHook',
   'playerWeaponHook',
   'playerWeaponActiveHook',
+  'playerOptionFilter',
   'playerSpriteFilter',
   'playerGrazeHook',
   'playerDamageTransform',

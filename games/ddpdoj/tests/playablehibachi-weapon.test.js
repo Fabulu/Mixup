@@ -9,6 +9,7 @@ import { BULLET_DRIVER, runScreenClear } from '../src/bulletdriver.js';
 import { BUL, REC as BULLET_REC, poolClear } from '../src/bullets.js';
 import { DMG } from '../src/damage.js';
 import { Game } from '../src/main.js';
+import { BEAM, SEG } from '../src/laser.js';
 import { P, RAM } from '../src/machine.js';
 import {
   bindModGame, createModState, modGameOptions, prepareModCabinetBoot,
@@ -29,9 +30,11 @@ import {
 import { Ram } from '../src/ram.js';
 import { RUNAHEAD_EXTERNAL_STATE } from '../src/runahead-state.js';
 import { SCHED, a1Stop259B08 } from '../src/scheduler.js';
+import { BUCKETS, NAMED_BUCKETS } from '../src/spritequeue.js';
 import { rebuildWorld25FD38 } from '../src/stageend.js';
-import { notStarted28B5A8 } from '../src/type5.js';
+import { makeType5, notStarted28B5A8 } from '../src/type5.js';
 import { UnportedLog } from '../src/unported.js';
+import { SHOT } from '../src/weapons.js';
 import { loadBundle } from '../src/web/assets.js';
 import { romToPackedMap } from '../src/web/app.js';
 
@@ -53,6 +56,35 @@ function bench(playerIdx = 0) {
     soundPost: () => true,
   };
   return { ram, rec, ctx };
+}
+
+function type5OptionPass(playerOptionFilter) {
+  const game = new Game(null, TABLES, { palCatchUp: false });
+  const ram = game.ram;
+  const log = new UnportedLog();
+  const seen = [];
+  ram.setU8(0x80e240 + 2, 1);
+  ram.setU32(0x8132cc, 0x231704);
+  const ctx = {
+    ram,
+    rom: game.rom,
+    tables: game.tables,
+    prot: game.prot,
+    unportedLog: log,
+    notes: log,
+    unported: log,
+    budget: { spend() {} },
+    order: { note() {} },
+    soundPost: () => true,
+    shotSpawn() {},
+    shotRequests() {},
+    playerOptionFilter,
+    privateOptionObjectHook: () => seen.push('option'),
+    privateSegmentDriverHook: () => seen.push('segment'),
+    privateBeamDrawHook: () => seen.push('beam'),
+  };
+  makeType5(game.rom)(ram, 0x80e240, 5, ctx);
+  return { game, seen };
 }
 
 function playableRetireBench() {
@@ -172,8 +204,8 @@ test('a fired native bomb bypasses playerWeaponHook', () => {
 
 test('Game validates and runahead admits every Playable Hibachi callback', () => {
   const callbacks = Object.fromEntries([
-    'playerWeaponHook', 'playerWeaponActiveHook',
-    'playerSpriteFilter', 'bulletRetireHook',
+    'playerWeaponHook', 'playerWeaponActiveHook', 'playerOptionFilter',
+    'playerSpriteFilter', 'bulletRetireHook', 'deathPositionCapture',
     'virtualSpriteRequestHook',
     'privateDamageTailHook',
   ].map((name) => [name, () => {}]));
@@ -198,6 +230,153 @@ test('Game validates and runahead admits every Playable Hibachi callback', () =>
   const checkpoint = game.saveRunaheadState(1);
   game.restoreRunaheadState(checkpoint);
   assert.equal(restored, true);
+});
+
+test('credited activation purges every queued native player and option remnant', () => {
+  const game = new Game(null, TABLES, { palCatchUp: false });
+  const state = createPlayableHibachiState();
+  bindPlayableHibachiGame(state, game);
+  for (const pool of [SHOT.p1Table, SHOT.p2Table]) {
+    for (let slot = 0; slot < SHOT.slots; slot++) {
+      game.ram.setU16(pool + slot * SHOT.stride, 0x8000 | slot);
+    }
+  }
+  game.ram.setU16(SHOT.liveCount, 72);
+  for (const beam of BEAM) {
+    game.ram.setU16(beam.rec, 0x8000);
+    game.ram.setU16(beam.blk, 0x8000);
+    game.ram.setU16(beam.blk + 0x16, 0x8000);
+    for (let slot = 0; slot < SEG.slots; slot++) {
+      game.ram.setU16(beam.pool + slot * SEG.stride, 0x8000 | slot);
+    }
+  }
+  game.ram.setU16(RAM.p1Options, 0x8000);
+  game.ram.setU16(RAM.p2Options, 0x8000);
+  const playerBuckets = [
+    NAMED_BUCKETS.shadows, NAMED_BUCKETS.trail, NAMED_BUCKETS.shots,
+    NAMED_BUCKETS.options, NAMED_BUCKETS.beam, NAMED_BUCKETS.player,
+  ];
+  for (const bucket of playerBuckets) game.ram.setU16(BUCKETS[bucket].counter, 12);
+
+  beginPlayableHibachiCreditedRun(state, game, {});
+
+  for (const pool of [SHOT.p1Table, SHOT.p2Table]) {
+    assert.ok(Array.from({ length: SHOT.slots }, (_, slot) =>
+      game.ram.u16(pool + slot * SHOT.stride)).every((type) => type === 0));
+  }
+  assert.equal(game.ram.u16(SHOT.liveCount), 0);
+  for (const beam of BEAM) {
+    assert.equal(game.ram.u16(beam.rec), 0);
+    assert.equal(game.ram.u16(beam.blk), 0);
+    assert.equal(game.ram.u16(beam.blk + 0x16), 0);
+    assert.ok(Array.from({ length: SEG.slots }, (_, slot) =>
+      game.ram.u16(beam.pool + slot * SEG.stride)).every((type) => type === 0));
+  }
+  assert.equal(game.ram.u16(RAM.p1Options), 0);
+  assert.equal(game.ram.u16(RAM.p2Options), 0);
+  assert.ok(playerBuckets.every((bucket) => game.ram.u16(BUCKETS[bucket].counter) === 0),
+    'the handoff removes a ship or pod queued earlier in the same logic frame');
+});
+
+test('Playable Hibachi suppresses the complete native option and beam call family', () => {
+  const mods = createModState(resolveLoadout(['playable-hibachi']));
+  prepareModCabinetBoot(mods);
+  const game = new Game(null, TABLES, {
+    palCatchUp: false,
+    ...modGameOptions(mods),
+  });
+  bindModGame(mods, game);
+  assert.equal(game.playerOptionFilter(game.ram, game), true,
+    'the cabinet front end retains its native presentation');
+  game.cabinetRunStartHook(game.ram, { demo: false });
+  assert.equal(game.playerOptionFilter(game.ram, game), false);
+
+  let checks = 0;
+  const suppressed = type5OptionPass((ram, ctx) => {
+    checks++;
+    return game.playerOptionFilter(ram, ctx);
+  });
+  assert.equal(checks, 1, 'one predicate controls all three consecutive native calls');
+  assert.deepEqual(suppressed.seen, []);
+  assert.equal(suppressed.game.ram.u16(BUCKETS[NAMED_BUCKETS.options].counter), 0);
+  assert.equal(suppressed.game.ram.u16(BUCKETS[NAMED_BUCKETS.beam].counter), 0);
+
+  game.cabinetRunEndHook(game.ram);
+  assert.equal(game.playerOptionFilter(game.ram, game), true);
+  assert.deepEqual(type5OptionPass(game.playerOptionFilter).seen,
+    ['option', 'segment', 'beam'],
+    'inactive Playable keeps the exact native type-5 family');
+});
+
+test('native death capture resets each Playable Hibachi life without crossing owners', () => {
+  const mods = createModState(resolveLoadout([
+    'resurrection-in-place', 'playable-hibachi',
+  ]));
+  prepareModCabinetBoot(mods);
+  const game = new Game(null, TABLES, {
+    palCatchUp: false,
+    ...modGameOptions(mods),
+  });
+  bindModGame(mods, game);
+  game.cabinetRunStartHook(game.ram, { demo: false });
+  const playable = mods.playableHibachi;
+  const records = [RAM.player1, RAM.player2];
+  for (let side = 0; side < 2; side++) {
+    const rec = records[side];
+    game.ram.setU16(rec, 0x8000);
+    game.ram.setU16(rec + P.posY, 0x3000 + side * 0x100);
+    game.ram.setU16(rec + P.posX, 0x1800 + side * 0x100);
+    assert.equal(game.playerWeaponHook(game.ram, rec, side, game), true);
+    playable.players[side].runtime.frames = 7 + side;
+    playable.players[side].runtime.presentationFrames = 11 + side;
+    playable.players[side].runtime.presentationStarted = true;
+  }
+  const slots = [3, 4];
+  for (let side = 0; side < 2; side++) {
+    const bullet = BUL.pool + slots[side] * BUL.stride;
+    playable.ownedBullets[slots[side]] = side + 1;
+    game.ram.setU16(bullet, 0x8000);
+    game.ram.setU16(bullet + BULLET_REC.posA, 0x2400 + side * 0x100);
+  }
+
+  game.deathPositionCapture(game.ram, 0, 0x3100, 0x1900, true);
+
+  assert.deepEqual(playable.players[0].runtime, {
+    bodyInitialized: false,
+    initialized: false,
+    retired: false,
+    live: false,
+    lifeIdentity: 1,
+    gun: -1,
+    frames: 0,
+    presentationFrames: 0,
+    presentationStarted: false,
+  });
+  assert.ok(playable.players[0].bytes.every((byte) => byte === 0));
+  assert.equal(playable.selectedGuns[0], -1);
+  assert.equal(playable.players[1].runtime.live, true);
+  assert.equal(playable.players[1].runtime.presentationFrames, 12);
+  assert.equal(playable.players[1].runtime.presentationStarted, true);
+  assert.equal(playable.ownedBullets[slots[0]], 0);
+  assert.equal(game.ram.u16(BUL.pool + slots[0] * BUL.stride), 0);
+  assert.equal(game.ram.u16(BUL.pool + slots[0] * BUL.stride + BULLET_REC.posA), 0xffff);
+  assert.equal(playable.ownedBullets[slots[1]], 2);
+  assert.equal(game.ram.u16(BUL.pool + slots[1] * BUL.stride), 0x8000);
+  assert.deepEqual(game.respawnPositionTransform(
+    game.ram, 0, 0x6000, 0x2000), { y: 0x3100, x: 0x1900 });
+
+  assert.equal(game.playerWeaponHook(game.ram, RAM.player1, 0, game), true);
+  assert.equal(playable.players[0].runtime.lifeIdentity, 2);
+  assert.equal(playable.players[0].runtime.presentationFrames, 0);
+  game.deathPositionCapture(game.ram, 1, 0x3200, 0x1a00, true);
+  assert.equal(playable.players[1].runtime.live, false);
+  assert.equal(playable.players[1].runtime.lifeIdentity, 1);
+  assert.equal(playable.players[1].runtime.presentationFrames, 0);
+  assert.equal(playable.ownedBullets[slots[1]], 0);
+  assert.equal(playable.players[0].runtime.live, true);
+  assert.equal(game.playerWeaponHook(game.ram, RAM.player2, 1, game), true);
+  assert.equal(playable.players[1].runtime.lifeIdentity, 2);
+  assert.equal(playable.players[1].runtime.presentationFrames, 0);
 });
 
 test('native Button 2 path validates ownership and reports only fired bombs', () => {
@@ -246,11 +425,23 @@ test('Playable Hibachi selects normal and hyper guns for P1 and P2', () => {
     game.ram.setU16(rec + P.posX, 0x1800 + playerIdx * 0x100);
     game.ram.setU8(rec + P.dirByte, held);
     game.ram.setU16(playerIdx === 0 ? 0x81b63e : 0x81b640, hyper);
+    const presentationFrames = state.players[playerIdx].runtime.presentationFrames;
     assert.equal(stepPlayableHibachiWeapon(
       state, game.ram, rec, playerIdx, { rom: game.rom }), true);
     assert.equal(state.selectedGuns[playerIdx], expected);
     assert.equal(state.players[playerIdx].runtime.gun, expected);
+    assert.equal(state.players[playerIdx].runtime.presentationFrames, presentationFrames,
+      'SHOT/AUTO and hyper changes cannot restart the small-form animation');
   }
+
+  game.ram.setU16(RAM.player1, 0);
+  assert.equal(stepPlayableHibachiWeapon(
+    state, game.ram, RAM.player1, 0, { rom: game.rom }), false);
+  game.ram.setU16(RAM.player1, 0x8000);
+  assert.equal(stepPlayableHibachiWeapon(
+    state, game.ram, RAM.player1, 0, { rom: game.rom }), true);
+  assert.equal(state.players[0].runtime.presentationFrames, 0,
+    'a new life restarts the small-form animation');
 
   const p1 = state.players[0];
   assert.equal(p1.memory.u32(p1.layout.body + 0x06), p1.layout.parts);
@@ -513,13 +704,16 @@ test('published bundle drives credited Playable Hibachi combat and art', async (
   const artAddress = (request) => new DataView(
     request.bytes.buffer, request.bytes.byteOffset, request.bytes.byteLength,
   ).getUint32(4, false);
-  assert.equal(requests.length, 10);
-  assert.ok(requests.every((request) => packed.has(artAddress(request))),
-    'every rotated first-form component resolves in the published sprite manifest');
-  assert.ok(requests.every((request) =>
-    (new DataView(request.bytes.buffer, request.bytes.byteOffset, request.bytes.byteLength)
-      .getUint16(10, false) & 0x6000) === 0x6000),
-  'every first-form component carries the 180-degree rotation');
+  assert.equal(requests.length, 1);
+  assert.equal(artAddress(requests[0]), 0x00117c10);
+  assert.ok(packed.has(artAddress(requests[0])),
+    'the authentic small form resolves in the published sprite manifest');
+  const formView = new DataView(
+    requests[0].bytes.buffer, requests[0].bytes.byteOffset, requests[0].bytes.byteLength,
+  );
+  assert.equal(formView.getUint16(8, false), 0x0c38);
+  assert.equal(formView.getUint16(10, false), 0x6017);
+  assert.equal(requests[0].privatePaletteBank, 7);
 
   game.ram.setU16(enemy + 0x02, game.ram.u16(bullet + BULLET_REC.posA));
   game.ram.setU16(enemy + 0x04, game.ram.u16(bullet + BULLET_REC.posB));

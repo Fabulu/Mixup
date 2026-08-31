@@ -21,7 +21,8 @@ import {
   endPlayableHibachiRun, exportPlayableHibachiReplayState,
   filterPlayableHibachiGrazeEvent, importPlayableHibachiReplayState,
   playableHibachiAllowsBulletCollision, playableHibachiAllowsFriendlyConversion,
-  resetPlayableHibachiStateInPlace, restorePlayableHibachiRunaheadState,
+  resetPlayableHibachiPlayerLife, resetPlayableHibachiStateInPlace,
+  restorePlayableHibachiRunaheadState,
   retirePlayableHibachiBullet, runPlayableHibachiDamage,
   savePlayableHibachiRunaheadState, stepPlayableHibachiWeapon,
 } from './playablehibachi.js';
@@ -102,7 +103,7 @@ export const MODS = Object.freeze({
   'playable-hibachi': mod({
     name: 'Playable Hibachi', category: 'arsenal',
     blurb: 'Fly a rotated Hibachi that fires continuously and selects authentic patterns with SHOT and AUTO.',
-    effects: ['native player lifecycle with first-form Hibachi presentation',
+    effects: ['native player lifecycle with the authentic small sphere presentation',
       'SHOT/AUTO select authentic normal or hyper bullet repertoires for each player'],
   }),
 
@@ -877,6 +878,11 @@ export function modGameOptions(state) {
   if (sim.playableHibachi) {
     const playable = state.playableHibachi;
     const active = () => modRunActive(state) && playable.lifecycle.active;
+    const capture = options.deathPositionCapture;
+    options.deathPositionCapture = (ram, side, y, x, canRespawn) => {
+      capture?.(ram, side, y, x, canRespawn);
+      if (active()) resetPlayableHibachiPlayerLife(playable, ram, side);
+    };
     const spawn = options.bulletSpawnHook;
     options.bulletSpawnHook = (ram, event) => {
       spawn?.(ram, event);
@@ -905,6 +911,9 @@ export function modGameOptions(state) {
     options.playerWeaponActiveHook = () => active();
     options.playerWeaponHook = (ram, rec, playerIdx, ctx) =>
       stepPlayableHibachiWeapon(playable, ram, rec, playerIdx, ctx);
+    const option = options.playerOptionFilter;
+    options.playerOptionFilter = (ram, ctx) =>
+      (!option || option(ram, ctx) !== false) && !active();
     const sprite = options.playerSpriteFilter;
     options.playerSpriteFilter = (ram, event, ctx) =>
       (!sprite || sprite(ram, event, ctx) !== false) && !active();

@@ -344,6 +344,10 @@ export function makeType5(rom) {
       ram.setU8(slot + 2, 1);                           // $28B5D8 move.b #$1,($2,A5)
       return;                                           // $28B5DE rts
     }
+    // A replacement player may reject the complete option family. Evaluate once
+    // so the option object, segment driver, and beam draw cannot split apart.
+    const playerOptionsEnabled = !ctx.playerOptionFilter
+      || ctx.playerOptionFilter(ram, ctx) !== false;
     for (const c of TYPE5.calls) {
       switch (c) {
         case TYPE5.poolCDriver:                         // $28B5E6 -> $289B80
@@ -379,7 +383,7 @@ export function makeType5(rom) {
           // columns and both bucket-15 records.
           if (SHIP_MUTATE.value === 'no-option-object') {
             ctx.unportedLog.note(c, 'MUTATION no-option-object');
-          } else {
+          } else if (playerOptionsEnabled) {
             runOptionObject(ram, ctx);
             ctx.privateOptionObjectHook?.();
           }
@@ -391,12 +395,16 @@ export function makeType5(rom) {
           // handler sets the bit both of #9's builders wait on, and #11 draws
           // what #9 laid down.  Any two of the three is a machine that arms and
           // never fires.
-          ctx.laserSegments = runSegmentDriver(ram, ctx);
-          ctx.privateSegmentDriverHook?.();
+          if (playerOptionsEnabled) {
+            ctx.laserSegments = runSegmentDriver(ram, ctx);
+            ctx.privateSegmentDriverHook?.();
+          }
           break;
         case TYPE5.beamDraw:                            // $28B622 -> $255042
-          ctx.laserDrawn = runBeamDraw(ram, ctx);
-          ctx.privateBeamDrawHook?.();
+          if (playerOptionsEnabled) {
+            ctx.laserDrawn = runBeamDraw(ram, ctx);
+            ctx.privateBeamDrawHook?.();
+          }
           break;
         case TYPE5.sparkDriver:                         // $28B628 -> $28A098
           // WAVE 53.  It runs HERE, twelfth of twenty-three, and the position

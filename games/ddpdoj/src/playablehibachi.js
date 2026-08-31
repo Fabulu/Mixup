@@ -3,6 +3,7 @@
 import { BUL, REC as BULLET_REC } from './bullets.js';
 import { DMG } from './damage.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
+import { BEAM, SEG } from './laser.js';
 import {
   gun0Init2A738A, gun0Step2A7400,
   gun1Init2A7850, gun1Step2A78D0,
@@ -17,7 +18,8 @@ import { MACHINE, P, RAM } from './machine.js';
 import { deriveProfileContext } from './profiles.js';
 import { i16, u16 } from './ram.js';
 import { StrictSidecarMemory } from './sidecarmemory.js';
-import { encodeRegisterRequest, NAMED_BUCKETS } from './spritequeue.js';
+import { encodeRegisterRequest, BUCKETS, NAMED_BUCKETS } from './spritequeue.js';
+import { SHOT } from './weapons.js';
 
 export const PLAYABLE_HIBACHI_CONFLICT = 'Formation cannot be combined with Playable Hibachi';
 export const PLAYABLE_HIBACHI_EXTERNAL_KIND = 'ddpdoj.playable-hibachi/v1';
@@ -97,6 +99,8 @@ function createPlayer(state, index) {
     lifeIdentity: 0,
     gun: -1,
     frames: 0,
+    presentationFrames: 0,
+    presentationStarted: false,
   };
   return {
     index,
@@ -211,16 +215,18 @@ function clearRequestArray(requests) {
   requests.length = 0;
 }
 
-function resetPlayer(player) {
+function resetPlayer(player, lifeIdentity = 0) {
   player.bytes.fill(0);
   Object.assign(player.runtime, {
     bodyInitialized: false,
     initialized: false,
     retired: false,
     live: false,
-    lifeIdentity: 0,
+    lifeIdentity,
     gun: -1,
     frames: 0,
+    presentationFrames: 0,
+    presentationStarted: false,
   });
 }
 
@@ -237,6 +243,28 @@ export function resetPlayableHibachiStateInPlace(state) {
   return state;
 }
 
+function clearNativePlayerOrdnance(ram) {
+  for (const pool of [SHOT.p1Table, SHOT.p2Table]) {
+    for (let slot = 0; slot < SHOT.slots; slot++) {
+      ram.setU16(pool + slot * SHOT.stride, 0);
+    }
+  }
+  ram.setU16(SHOT.liveCount, 0);
+  for (const beam of BEAM) {
+    ram.setU16(beam.rec, 0);
+    ram.setU16(beam.blk, 0);
+    ram.setU16(beam.blk + 0x16, 0);
+    for (let slot = 0; slot < SEG.slots; slot++) {
+      ram.setU16(beam.pool + slot * SEG.stride, 0);
+    }
+  }
+  ram.setU16(RAM.p1Options, 0);
+  ram.setU16(RAM.p2Options, 0);
+  for (const bucket of NATIVE_PLAYER_PRESENTATION_BUCKETS) {
+    ram.setU16(BUCKETS[bucket].counter, 0);
+  }
+}
+
 /** Ignore demo handoffs and activate only a credited ordinary run. */
 export function beginPlayableHibachiCreditedRun(state, game, event = {}) {
   assertBoundGame(state, game);
@@ -245,7 +273,10 @@ export function beginPlayableHibachiCreditedRun(state, game, event = {}) {
   state.lifecycle.pending = !credited;
   state.lifecycle.credited = credited;
   state.lifecycle.active = credited;
-  if (credited) state.lifecycle.generation++;
+  if (credited) {
+    clearNativePlayerOrdnance(game.ram);
+    state.lifecycle.generation++;
+  }
   return credited;
 }
 
@@ -272,7 +303,6 @@ const HYPER_ACTIVE = Object.freeze([0x81b63e, 0x81b640]);
 const HIBACHI_BODY_RECORD_PROTO = 0x2a443c;
 const HIBACHI_BODY_SUB_PROTO = 0x2a4446;
 const HIBACHI_BODY_SUB_RECORDS = 16;
-const FIRST_FORM_PART_ORDER = Object.freeze([0x20, 0x40, 0x60, 0x80, 0xa0, 0xc0]);
 const FIRST_FORM_PART_POSITIONS = Object.freeze([
   Object.freeze([0x020, 0x14c0, 0xf180]),
   Object.freeze([0x040, 0xfb00, 0xee40]),
@@ -281,13 +311,29 @@ const FIRST_FORM_PART_POSITIONS = Object.freeze([
   Object.freeze([0x0a0, 0xf780, 0x14c0]),
   Object.freeze([0x0c0, 0xe540, 0x1040]),
 ]);
-const FIRST_FORM_SHARED_ART = 0x2a49f6;
-const FIRST_FORM_OBJECT0_ART = 0x2a4774;
-const FIRST_FORM_OBJECT1_ART = 0x00116768;
-const FIRST_FORM_OBJECT2_ART = 0x00101728;
-const FIRST_FORM_OBJECT9_ART = 0x2a4b40;
-const FIRST_FORM_BUCKET = NAMED_BUCKETS.player;
-const FIRST_FORM_FLIP = 0x6000;
+const SMALL_FORM_BUCKET = NAMED_BUCKETS.player;
+const SMALL_FORM_FLIP = 0x6000;
+
+export const PLAYABLE_HIBACHI_SMALL_FORM = Object.freeze({
+  artTable: 0x2a4d3e,
+  frames: 8,
+  framePeriod: 2,
+  dimensions: 0x0c38,
+  paletteBank: 0x17,
+  bucket: SMALL_FORM_BUCKET,
+  flip: SMALL_FORM_FLIP,
+  yBias: -0x0c00,
+  xBias: -0x0700,
+});
+
+const NATIVE_PLAYER_PRESENTATION_BUCKETS = Object.freeze([
+  NAMED_BUCKETS.shadows,
+  NAMED_BUCKETS.trail,
+  NAMED_BUCKETS.shots,
+  NAMED_BUCKETS.options,
+  NAMED_BUCKETS.beam,
+  NAMED_BUCKETS.player,
+]);
 
 function bulletSlot(address) {
   const delta = address - BUL.pool;
@@ -316,6 +362,32 @@ export function playableHibachiBulletOwner(state, address) {
   assertState(state);
   const slot = bulletSlot(address);
   return slot >= 0 && slot < state.ownedBullets.length ? state.ownedBullets[slot] : 0;
+}
+
+/** Reset one native life and retire only the authentic bullets owned by it. */
+export function resetPlayableHibachiPlayerLife(state, ram, playerIdx) {
+  assertState(state);
+  if (state.ramBinding.current !== ram) {
+    throw new Error('Playable Hibachi life reset received a different RAM owner');
+  }
+  if (!Number.isInteger(playerIdx) || playerIdx < 0 || playerIdx > 1) {
+    throw new RangeError('Playable Hibachi player index is outside 0 through 1');
+  }
+  if (!state.lifecycle.active) return 0;
+
+  const player = state.players[playerIdx];
+  resetPlayer(player, player.runtime.lifeIdentity);
+  state.selectedGuns[playerIdx] = -1;
+  let retired = 0;
+  for (let slot = 0; slot < state.ownedBullets.length; slot++) {
+    if (state.ownedBullets[slot] !== player.owner) continue;
+    const bullet = BUL.pool + slot * BUL.stride;
+    state.ownedBullets[slot] = 0;
+    ram.setU16(bullet, 0);
+    ram.setU16(bullet + BULLET_REC.posA, 0xffff);
+    retired++;
+  }
+  return retired;
 }
 
 export function filterPlayableHibachiGrazeEvent(state, event) {
@@ -482,7 +554,7 @@ export function stepPlayableHibachiWeapon(state, ram, rec, playerIdx, ctx) {
   const runtime = player.runtime;
   const live = (ram.u16(rec) & 0x8000) !== 0;
   if (!live) {
-    if (runtime.live) resetPlayer(player);
+    if (runtime.live) resetPlayableHibachiPlayerLife(state, ram, playerIdx);
     return false;
   }
   if (!runtime.live) {
@@ -532,13 +604,6 @@ function packD1(y, x) {
   return (((y & 0xffff) << 16) | (x & 0xffff)) >>> 0;
 }
 
-function reflectD1(ownerY, ownerX, source) {
-  return packD1(
-    u16(ownerY * 2 - (source >>> 16)),
-    u16(ownerX * 2 - (source & 0xffff)),
-  );
-}
-
 function privatePaletteIndex(nativeBank) {
   const index = PLAYABLE_HIBACHI_PALETTE_BANKS.indexOf(nativeBank);
   if (index < 0) {
@@ -547,69 +612,27 @@ function privatePaletteIndex(nativeBank) {
   return index;
 }
 
-function pushFirstFormRequest(requests, ownerY, ownerX,
-    source, art, dimensions, nativePalette) {
-  requests.push({
-    bucket: FIRST_FORM_BUCKET,
+function collectPlayerSmallForm(state, player, game, rec) {
+  const form = PLAYABLE_HIBACHI_SMALL_FORM;
+  const runtime = player.runtime;
+  // Presentation owns this clock because a successful native bomb bypasses the
+  // custom weapon hook while the sphere still reaches the display list.
+  if (runtime.presentationStarted) runtime.presentationFrames++;
+  else runtime.presentationStarted = true;
+  const frame = Math.floor(runtime.presentationFrames / form.framePeriod)
+    % form.frames;
+  const ownerY = game.ram.u16(rec + P.posY);
+  const ownerX = game.ram.u16(rec + P.posX);
+  state.virtualRequests.push({
+    bucket: form.bucket,
     bytes: encodeRegisterRequest(
-      reflectD1(ownerY, ownerX, source), art, dimensions,
-      u16(nativePalette | FIRST_FORM_FLIP),
+      packD1(u16(ownerY + form.yBias), u16(ownerX + form.xBias)),
+      game.rom.u32(form.artTable + frame * 4),
+      form.dimensions,
+      form.flip | form.paletteBank,
     ),
-    privatePaletteBank: privatePaletteIndex(nativePalette & 0xff),
+    privatePaletteBank: privatePaletteIndex(form.paletteBank),
   });
-}
-
-function collectPlayerFirstForm(state, player, game, rec) {
-  const ram = game.ram;
-  const memory = player.memory;
-  const parts = player.layout.parts;
-  const ownerY = ram.u16(rec + P.posY);
-  const ownerX = ram.u16(rec + P.posX);
-  updatePrivateBody(player, ram, rec, game.rom);
-
-  const rootAngle = memory.u8(parts + 0x13d);
-  const rootDy = game.tables.shotVector(0x1a, rootAngle).dy;
-  let source = packD1(u16(ownerY + rootDy), ownerX);
-  source = (source + 0xe6000000 + 0xea00f200) >>> 0;
-  const rootFrame = ((player.runtime.frames >>> 3) % 6) * 4;
-  pushFirstFormRequest(state.virtualRequests, ownerY, ownerX, source,
-    game.rom.u32(FIRST_FORM_OBJECT0_ART + rootFrame), 0x1670,
-    memory.u8(parts + 0xe8));
-
-  const lowerDy = game.tables.shotVector(
-    memory.u8(parts + 0x1a), memory.u8(parts + 0x1b),
-  ).dy;
-  memory.setU16(parts + 0x1fa, u16(lowerDy));
-  source = packD1(u16(ownerY + lowerDy), ownerX);
-  source = (source + 0xfc000000 + 0xe000dc00) >>> 0;
-  pushFirstFormRequest(state.virtualRequests, ownerY, ownerX, source,
-    FIRST_FORM_OBJECT1_ART, 0x2120, memory.u8(parts + 0xe7));
-
-  source = packD1(u16(ownerY + rootDy), ownerX);
-  source = (source + 0xd0000000 + 0xf400f900) >>> 0;
-  pushFirstFormRequest(state.virtualRequests, ownerY, ownerX, source,
-    FIRST_FORM_OBJECT2_ART, 0x0c38, memory.u8(parts + 0xe8));
-
-  for (const offset of FIRST_FORM_PART_ORDER) {
-    const record = parts + offset;
-    const selector = i16(u16(memory.u16(record + 0x1a) * 4));
-    source = packD1(
-      u16(memory.u16(record + 0x02) + lowerDy),
-      memory.u16(record + 0x04),
-    );
-    source = (source + memory.u32(record + 0x06)) >>> 0;
-    const palette = (memory.u16(record + 0x1c) & 0xff00)
-      | memory.u8(parts + 0xe9);
-    pushFirstFormRequest(state.virtualRequests, ownerY, ownerX, source,
-      game.rom.u32(FIRST_FORM_SHARED_ART + selector),
-      memory.u16(record + 0x0e), palette);
-  }
-
-  const orbitDy = game.tables.shotVector(0x10, memory.u8(parts + 0x131)).dy;
-  source = (packD1(u16(ownerY + orbitDy), ownerX) + 0xee00ec00) >>> 0;
-  pushFirstFormRequest(state.virtualRequests, ownerY, ownerX, source,
-    game.rom.u32(FIRST_FORM_OBJECT9_ART + i16(memory.u16(parts + 0x126))),
-    0x12a0, memory.u8(parts + 0xe6));
 }
 
 function snapshotRequestOwners(requests) {
@@ -831,10 +854,18 @@ function validatePlayerRuntime(value, index) {
       throw new Error(`Playable Hibachi P${index + 1} runtime ${key} is invalid`);
     }
   }
+  const presentationStarted = value.presentationStarted ?? value.live;
+  if (typeof presentationStarted !== 'boolean') {
+    throw new Error(`Playable Hibachi P${index + 1} runtime presentationStarted is invalid`);
+  }
   for (const key of ['lifeIdentity', 'frames']) {
     if (!Number.isSafeInteger(value[key]) || value[key] < 0) {
       throw new Error(`Playable Hibachi P${index + 1} runtime ${key} is invalid`);
     }
+  }
+  const presentationFrames = value.presentationFrames ?? value.frames;
+  if (!Number.isSafeInteger(presentationFrames) || presentationFrames < 0) {
+    throw new Error(`Playable Hibachi P${index + 1} runtime presentationFrames is invalid`);
   }
   return {
     bodyInitialized: value.bodyInitialized,
@@ -844,6 +875,8 @@ function validatePlayerRuntime(value, index) {
     lifeIdentity: value.lifeIdentity,
     gun,
     frames: value.frames,
+    presentationFrames,
+    presentationStarted,
   };
 }
 
@@ -907,7 +940,7 @@ export function collectPlayableHibachiSpriteRequests(state, game) {
   for (let playerIdx = 0; playerIdx < 2; playerIdx++) {
     const rec = playerIdx === 0 ? RAM.player1 : RAM.player2;
     if ((game.ram.u16(rec) & TYPEBIT_ALIVE) === 0) continue;
-    collectPlayerFirstForm(state, state.players[playerIdx], game, rec);
+    collectPlayerSmallForm(state, state.players[playerIdx], game, rec);
   }
   return state.virtualRequests;
 }

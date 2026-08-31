@@ -436,6 +436,7 @@ export class Game {
       'bulletRetireHook',
       'playerWeaponHook',
       'playerWeaponActiveHook',
+      'playerOptionFilter',
       'playerSpriteFilter',
       'playerGrazeHook',
       'playerDamageTransform',
@@ -617,6 +618,7 @@ export class Game {
       ...(this.playerWeaponHook ? { playerWeaponHook: this.playerWeaponHook } : {}),
       ...(this.playerWeaponActiveHook
         ? { playerWeaponActiveHook: this.playerWeaponActiveHook } : {}),
+      ...(this.playerOptionFilter ? { playerOptionFilter: this.playerOptionFilter } : {}),
       ...(this.playerSpriteFilter ? { playerSpriteFilter: this.playerSpriteFilter } : {}),
       ...(this.playerGrazeHook ? { playerGrazeHook: this.playerGrazeHook } : {}),
       ...(this.playerDamageTransform
