@@ -312,27 +312,40 @@ function virtualBucketsFrom(requests) {
         || request.bytes.byteLength !== RECORD_BYTES) {
       throw new RangeError(`virtual sprite request ${i} must contain ${RECORD_BYTES} bytes`);
     }
-    (buckets[bucket] ??= []).push(request.bytes.slice());
+    const privatePaletteBank = request.privatePaletteBank ?? -1;
+    if (!Number.isInteger(privatePaletteBank)
+        || privatePaletteBank < -1 || privatePaletteBank > 0x7f) {
+      throw new RangeError(`virtual sprite request ${i} has no private palette bank -1..127`);
+    }
+    (buckets[bucket] ??= []).push({
+      bytes: request.bytes.slice(),
+      privatePaletteBank,
+    });
   }
   return buckets;
 }
 
 /** Append one already-encoded virtual request to the shared gather queue. */
-function appendVirtualRequest(ram, bytes) {
+function appendVirtualRequest(ram, request, privatePaletteQueue) {
   const off = u16(ram.u16(COUNTER_BASE));
   const at = DL.queue + off;
-  for (let k = 0; k < RECORD_BYTES; k++) ram.setU8(at + k, bytes[k]);
+  for (let k = 0; k < RECORD_BYTES; k++) ram.setU8(at + k, request.bytes[k]);
+  if (privatePaletteQueue) {
+    privatePaletteQueue[Math.floor(off / RECORD_BYTES)] = request.privatePaletteBank;
+  }
   const next = u16(off + RECORD_BYTES);
   ram.setU16(COUNTER_BASE, next);
   return next;
 }
 
 /** Append one bucket after its physical records and report whether the cap fired. */
-function appendVirtualBucket(ram, buckets, bucket, capGe, telemetry) {
+function appendVirtualBucket(
+  ram, buckets, bucket, capGe, telemetry, privatePaletteQueue,
+) {
   const requests = buckets?.[bucket];
   if (!requests) return false;
-  for (const bytes of requests) {
-    const counter = appendVirtualRequest(ram, bytes);
+  for (const request of requests) {
+    const counter = appendVirtualRequest(ram, request, privatePaletteQueue);
     telemetry.perBucketRecords[bucket]++;
     telemetry.perBucketVirtualRecords[bucket]++;
     if (capGe ? counter >= DL.capBytes : counter === DL.capBytes) return true;
@@ -414,7 +427,8 @@ export function assertShortAxis(before, after, entry, telemetry, warn) {
  *
  * @param {import('./ram.js').Ram} ram
  * @param {{mutate?: string, warn?: (msg: string) => void, videoRegs?: {ctrl:number},
- *   virtualRequests?: Array<{bucket:number, bytes:Uint8Array}>}} opts
+ *   virtualRequests?: Array<{bucket:number, bytes:Uint8Array,
+ *     privatePaletteBank?:number}>}} opts
  * @returns telemetry -- what the frame did, for the gate and the runner to print
  */
 export function buildDisplayList(ram, opts = {}) {
@@ -422,6 +436,11 @@ export function buildDisplayList(ram, opts = {}) {
   const virtualBuckets = virtualBucketsFrom(opts.virtualRequests);
   const virtualRequestCount = virtualBuckets
     ? virtualBuckets.reduce((sum, requests) => sum + requests.length, 0) : 0;
+  const hasVirtualSurface = opts.virtualRequests != null;
+  const privatePaletteQueue = hasVirtualSurface
+    ? new Int8Array(DL.capBytes / RECORD_BYTES).fill(-1) : null;
+  const privatePaletteBanks = hasVirtualSurface
+    ? new Int8Array((DL.listEnd - DL.list) / 10).fill(-1) : null;
   const t = {
     pendingBytes: 0, pendingRecords: 0, overBudgetBytes: 0,
     droppedBucket20: 0, dropped6and9: 0,
@@ -433,10 +452,11 @@ export function buildDisplayList(ram, opts = {}) {
     // W375 -- what `$23C008` mirrored into $B0E000 at each end of the build.
     ctrlAtStart: 0, ctrlAtEnd: 0,
   };
-  if (opts.virtualRequests != null) {
+  if (hasVirtualSurface) {
     t.virtualRecords = 0;
     t.virtualDropped = 0;
     t.perBucketVirtualRecords = new Array(BUCKETS.length).fill(0);
+    t.privatePaletteBanks = privatePaletteBanks;
   }
 
   // (a) $23D2AE jsr $23C1A2 -- `move.w #1,D0 / not.w D0 / and.w D0,$80393C`,
@@ -510,7 +530,9 @@ export function buildDisplayList(ram, opts = {}) {
 
   const capGe = mutating(opts, 'cap-as-ge');
   let abandoned = false;
-  if (virtualBuckets && appendVirtualBucket(ram, virtualBuckets, 0, capGe, t)) {
+  if (virtualBuckets && appendVirtualBucket(
+    ram, virtualBuckets, 0, capGe, t, privatePaletteQueue,
+  )) {
     t.capFired = true;
     t.capBucket = 0;
     abandoned = true;
@@ -559,7 +581,9 @@ export function buildDisplayList(ram, opts = {}) {
     }
 
     if (!full && virtualBuckets) {
-      full = appendVirtualBucket(ram, virtualBuckets, bi, capGe, t);
+      full = appendVirtualBucket(
+        ram, virtualBuckets, bi, capGe, t, privatePaletteQueue,
+      );
     }
 
     if (full) {
@@ -611,6 +635,11 @@ export function buildDisplayList(ram, opts = {}) {
         d4 = u16(d4 - 1);                                // $23D694 subq.w #1
       }
       // $23D696..$23D6BE -- one 12-byte request -> one 10-byte entry.
+      if (privatePaletteBanks) {
+        privatePaletteBanks[t.entries] = privatePaletteQueue[
+          Math.floor((a1 - DL.queue) / RECORD_BYTES)
+        ];
+      }
       const w01 = (ram.u16(a1) << 16 | ram.u16(a1 + 2)) >>> 0;
       const d3 = (w01 & 0xf800f800) >>> 0;               // $23D69A grow+zoom
       let d1 = (w01 & 0x07ff3fff) >>> 0;                 // $23D6A0 positions

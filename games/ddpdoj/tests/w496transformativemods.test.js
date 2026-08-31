@@ -98,8 +98,8 @@ function assertNoW496Callbacks(game, label) {
   }
 }
 
-test('W496 catalogue reaches 36 and selection alone installs replay-blocking callbacks', () => {
-  assert.equal(MOD_IDS.length, 36);
+test('W496 catalogue reaches 37 and selection alone installs replay-blocking callbacks', () => {
+  assert.equal(MOD_IDS.length, 37);
   for (const id of ['boss-rush', 'stage-remix']) {
     assert.equal(MODS[id].category, 'challenge');
     assert.equal(MODS[id].replaySafe, false);

@@ -31,9 +31,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  armPlayback, decodePortinWords, b64, unb64, replaySeedArm, FORMAT,
+  armPlayback, decodeCoininWords, decodePortinWords, b64, unb64, replaySeedArm,
+  FORMAT, FORMAT_V1, FORMAT_V2,
 } from '../src/web/replay.js';
 import { Demo } from '../src/web/app.js';
+import {
+  createModState, exportModReplaySeed, resolveLoadout,
+} from '../src/mods.js';
 import { Game, MACHINE, RAM } from '../src/main.js';
 import { verifyReplay } from '../tools/replay.mjs';
 import { AUTOSHOT_MUTATE, CLAMP_ORDER } from '../src/player.js';
@@ -115,9 +119,36 @@ test('decodePortinWords: rejects an unsupported encoding', () => {
     /unsupported portin encoding/);
 });
 
-test('armPlayback: guards the v1 format', () => {
-  assert.throws(() => armPlayback({}, { format: 'something.else/v2' }),
-    /not a ddpdoj\.replay\/v1 artifact/);
+test('decodeCoininWords synthesizes idle v1 input and round-trips v2 u16be', () => {
+  const legacy = decodeCoininWords({ format: FORMAT_V1 }, 3);
+  assert.ok(legacy instanceof Uint16Array);
+  assert.deepEqual(Array.from(legacy), [0xffff, 0xffff, 0xffff]);
+
+  const obj = {
+    format: FORMAT_V2,
+    coinin: { encoding: 'u16be', count: 3, b64: b64(new Uint8Array([
+      0xff, 0xfe, 0xff, 0xfd, 0xff, 0xff,
+    ])) },
+  };
+  assert.deepEqual(Array.from(decodeCoininWords(obj, 3)), [0xfffe, 0xfffd, 0xffff]);
+});
+
+test('decodeCoininWords rejects missing, malformed, and unequal v2 streams', () => {
+  assert.throws(() => decodeCoininWords({ format: FORMAT_V2 }, 1),
+    /coinin block is missing/);
+  assert.throws(() => decodeCoininWords({
+    format: FORMAT_V2,
+    coinin: { encoding: 'u8', count: 1, b64: b64(Uint8Array.of(0xff)) },
+  }, 1), /unsupported coinin encoding/);
+  assert.throws(() => decodeCoininWords({
+    format: FORMAT_V2,
+    coinin: { encoding: 'u16be', count: 1, b64: b64(Uint8Array.of(0xff, 0xff)) },
+  }, 2), /input streams differ: 2 player and 1 coin words/);
+});
+
+test('armPlayback guards the supported replay family', () => {
+  assert.throws(() => armPlayback({}, { format: 'something.else/v3' }),
+    /not a supported DaiOuJou replay artifact/);
 });
 
 test('replay seed arm preserves modern and legacy slowdown state', () => {
@@ -233,6 +264,63 @@ test('packaged PLAY passes the replay arm into the replacement Game',
     assert.equal(host.game.ram.u8(RAM.semaphore), 2);
     assert.deepEqual(resetSound, [obj.seed.lf, obj.seed.vf, obj.seed.sound],
       'PLAY restores sound from the replacement Game checkpoint');
+  });
+
+test('packaged PLAY validates Playable state before replacing visible state',
+  { skip: !HAVE && 'fly-around fixture absent (CI)' }, () => {
+    const makeMods = () => createModState(resolveLoadout(['playable-hibachi']));
+    const asV2 = (mods) => {
+      const obj = replayWithArm(1);
+      obj.format = FORMAT_V2;
+      obj.coinin = {
+        encoding: 'u16be',
+        count: obj.portin.count,
+        b64: b64(new Uint8Array(obj.portin.count * 2).fill(0xff)),
+      };
+      obj.seed.mods = exportModReplaySeed(mods);
+      return obj;
+    };
+    const makeHost = (mods, game) => ({
+      formation: null,
+      mods,
+      game,
+      soundController: null,
+      recorder: null,
+      playback: null,
+      resyncTiming() {},
+      coinTick() {},
+      romToPacked: new Map(),
+      listOpts: {},
+      progressionPokes: [],
+      progressionPoke: '',
+      rung: null,
+      _emitPlayback() {},
+    });
+
+    const selected = makeMods();
+    const bad = asV2(selected);
+    bad.seed.mods.playableHibachi.fingerprints.sidecarBytes = 1;
+    const visibleGame = { marker: 'visible' };
+    const badHost = makeHost(selected, visibleGame);
+    assert.throws(() => Demo.prototype.playFrom.call(badHost, bad),
+      /fingerprint sidecarBytes does not match/);
+    assert.strictEqual(badHost.game, visibleGame,
+      'failed external-state validation leaves the visible Game untouched');
+    assert.strictEqual(badHost.mods, selected,
+      'failed external-state validation leaves active mod state untouched');
+    assert.equal(badHost.playback, null);
+
+    const source = makeMods();
+    source.playableHibachi.ownedBullets[9] = 2;
+    source.playableHibachi.selectedGuns.set([3, 8]);
+    const good = asV2(source);
+    const goodHost = makeHost(source, { marker: 'old' });
+    Demo.prototype.playFrom.call(goodHost, good);
+    assert.notStrictEqual(goodHost.game.marker, 'old');
+    assert.notStrictEqual(goodHost.mods, source,
+      'successful playback swaps in its detached candidate state');
+    assert.equal(goodHost.mods.playableHibachi.ownedBullets[9], 2);
+    assert.deepEqual([...goodHost.mods.playableHibachi.selectedGuns], [3, 8]);
   });
 
 test('headless PLAY respects the explicit arm instead of inheriting its default',

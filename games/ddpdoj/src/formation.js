@@ -151,12 +151,12 @@ export function resolveFormationAuthenticSelection(modeValue, explicitSelection 
   return Object.freeze({ ship, style });
 }
 
-/** Replay v1 has no field for the active formation or its private actors. */
+/** Replay v2 has no field for the active formation or its private actors. */
 export function assertFormationReplayCompatible(state, action = 'replay') {
   const mode = resolveMode(state?.mode);
   if (mode) {
     throw new Error(`${action} is unavailable while formation mode is active: `
-      + `${mode.name}. Replay v1 cannot encode formation state.`);
+      + `${mode.name}. Replay v2 does not encode formation state.`);
   }
   return true;
 }

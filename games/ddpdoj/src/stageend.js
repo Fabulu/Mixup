@@ -270,7 +270,7 @@ export function rebuildWorld25FD38(ram, ctx) {
   clearCuePool28AC3A(ram);                              // $25FD52 jsr $28AC3A
   clearSparkPool289F3A(ram);                            // $25FD58 jsr $289F3A
   clearItemPool(ram);                                   // $25FD5E jsr $27E98A
-  clearBulletPool28131E(ram);                           // $25FD64 jsr $28131E ..
+  clearBulletPool28131E(ram, ctx);                      // $25FD64 jsr $28131E ..
   parkBulletSlots281330(ram);                           //   ..and its second loop
   const r = stageCreate(ram, 1, (t) => ctx.rom.u16(SE.dispatch + t * 8 + 4));
   ram.setU32(SE.bgHandle, r.ok ? ram.u32(r.addr + ALLOC.idOff) : 0);   // $25FD74

@@ -391,7 +391,7 @@ test('W613 sidecars are per-Game and the public formation remains outside mods',
     assert.notDeepEqual(sidecarBytes(a.state.memory, P3_VIRTUAL.options, OPT.stride),
       sidecarBytes(b.state.memory, P3_VIRTUAL.options, OPT.stride));
     assert.equal(b.state.weapons.calls, 0);
-    assert.equal(MOD_IDS.length, 36);
+    assert.equal(MOD_IDS.length, 37);
     assert.equal(MOD_IDS.includes(THREE_PILOT_FORMATION_MODE.id), false);
     assert.equal(Object.hasOwn(MODS, THREE_PILOT_FORMATION_MODE.id), false);
     assert.strictEqual(formationMode(THREE_PILOT_FORMATION_MODE.id),
@@ -402,16 +402,16 @@ test('W613 sidecars are per-Game and the public formation remains outside mods',
       `formation=${THREE_PILOT_FORMATION_MODE.id}`);
 
     await assert.rejects(() => a.demo.armRecording(),
-      /REC is unavailable while private three-pilot formation state is active.*Replay v1/);
+      /REC is unavailable while private three-pilot formation state is active.*Replay v2/);
     assert.throws(() => a.demo.playFrom({}),
-      /PLAY is unavailable while private three-pilot formation state is active.*Replay v1/);
+      /PLAY is unavailable while private three-pilot formation state is active.*Replay v2/);
     a.demo.recorder = {};
     assert.throws(() => a.demo.step(),
-      /REC is unavailable while private three-pilot formation state is active.*Replay v1/);
+      /REC is unavailable while private three-pilot formation state is active.*Replay v2/);
     a.demo.recorder = null;
     a.demo.playback = { ended: false };
     assert.throws(() => a.demo.step(),
-      /PLAY is unavailable while private three-pilot formation state is active.*Replay v1/);
+      /PLAY is unavailable while private three-pilot formation state is active.*Replay v2/);
     a.demo.playback = null;
 
     const type5 = readFileSync(new URL('../src/type5.js', import.meta.url), 'utf8');

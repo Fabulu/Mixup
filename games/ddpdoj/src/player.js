@@ -1125,25 +1125,45 @@ function nativeOrdinaryShotOwner(playerIdx) {
  *     third weapon; it is Button 1 on a 2-frame cadence.
  */
 export function bombAndShotGuards(ram, rec, ctx, playerIdx) {
-  const { unportedLog } = ctx;
   const resources = nativeOrdinaryShotOwner(playerIdx);
+  const playerWeaponHook = ctx?.playerWeaponHook;
+  const playerWeaponActive = playerWeaponHook
+    && (!ctx?.playerWeaponActiveHook
+      || ctx.playerWeaponActiveHook(ram, rec, playerIdx, ctx));
+  const btnStale = ram.u8(rec + P.btnByte);
+  if (!playerWeaponActive) {
+    const dir = ram.u8(rec + P.dirByte);
+    // **($19,A6) IS NOT A CONSTANT ACROSS THIS FUNCTION AND CACHING IT WAS THE
+    // WAVE-79 BUG.**  Waves 4-78 read the edge byte ONCE here into `btn`, which
+    // was harmless only because `$2497AA` was a throw: the auto-shot block WRITES
+    // ($19,A6) -- `$2497D2 bclr #4` and `$2497F8 bset #4` -- and the ROM re-reads
+    // the byte from memory at `$24980A` and `$249B48`.  A cached copy makes the
+    // synthesised edge invisible to the very cadence machine it exists to drive,
+    // which reproduces EXACTLY as a port that fires the synthesiser every frame
+    // and never spawns: `pf1` sticks at $08 where the board alternates $10/$00,
+    // and `p3c` never leaves 0.  MEASURED as that, on stage1-sweep lf2001..2010,
+    // before this comment existed.  Read it where the ROM reads it.
+    autoShot2497AAWithResources(ram, rec, dir, resources);  // $2497AA..$2497F8
+    if (runNativeButton2Path2497FE(ram, rec, ctx, playerIdx)) return;
+    return shotCadence249B2C(ram, rec, ctx, resources, btnStale);
+  }
+  if (runNativeButton2Path2497FE(ram, rec, ctx, playerIdx)) return;
+  if (playerWeaponHook(ram, rec, playerIdx, ctx)) return;
+
+  // A hook that declines a live record delegates the frame back to the native
+  // ordinary-weapon path after the already-authoritative Button 2 branch.
   const dir = ram.u8(rec + P.dirByte);
-  // **($19,A6) IS NOT A CONSTANT ACROSS THIS FUNCTION AND CACHING IT WAS THE
-  // WAVE-79 BUG.**  Waves 4-78 read the edge byte ONCE here into `btn`, which
-  // was harmless only because `$2497AA` was a throw: the auto-shot block WRITES
-  // ($19,A6) -- `$2497D2 bclr #4` and `$2497F8 bset #4` -- and the ROM re-reads
-  // the byte from memory at `$24980A` and `$249B48`.  A cached copy makes the
-  // synthesised edge invisible to the very cadence machine it exists to drive,
-  // which reproduces EXACTLY as a port that fires the synthesiser every frame
-  // and never spawns: `pf1` sticks at $08 where the board alternates $10/$00,
-  // and `p3c` never leaves 0.  MEASURED as that, on stage1-sweep lf2001..2010,
-  // before this comment existed.  Read it where the ROM reads it.
-  const btnStale = ram.u8(rec + P.btnByte);              // ...the wave-4 read
-  autoShot2497AAWithResources(ram, rec, dir, resources);    // $2497AA..$2497F8
-  /** `($19,A6)` as the ROM reads it -- FROM MEMORY, at the instruction that
-   *  reads it. `autoshot-edge-cached` is the wave-4..78 shape. */
-  const btn = () => (AUTOSHOT_MUTATE.value === 'autoshot-edge-cached'
-    ? btnStale : ram.u8(rec + P.btnByte));
+  autoShot2497AAWithResources(ram, rec, dir, resources);
+  return shotCadence249B2C(ram, rec, ctx, resources, btnStale);
+}
+
+/**
+ * `$2497FE..$249B28`, the native Button 2 path only.
+ * Returns true only for the bomb branch that jumps over ordinary weapons.
+ */
+export function runNativeButton2Path2497FE(ram, rec, ctx, playerIdx) {
+  nativeOrdinaryShotOwner(playerIdx);
+  const btn = ram.u8(rec + P.btnByte);
   // $2497FE cmpi.w #$4,$8130CE / bcs $249B2C ; $24980A btst #5,($19,A6)
   //
   // WAVE 13, AND THE NAME WAS WRONG SINCE WAVE 4.  $8130CE is not bomb stock:
@@ -1168,7 +1188,7 @@ export function bombAndShotGuards(ram, rec, ctx, playerIdx) {
   // The `lea` block above the fork is transcribed because the fork READS from
   // it: the two arms load different stock words, different request words and
   // different `$255326`/`$255330` tables.
-  if (ram.u16(0x8130ce) >= 4 && (btn() & (1 << 5))) {
+  if (ram.u16(0x8130ce) >= 4 && (btn & (1 << 5))) {
     const stock = ram.u16(playerIdx === 0                 // $249820 / $249846
       ? BOMBRAM.hyperStockP1 : BOMBRAM.hyperStockP2);
     if (stock !== 0) {                                    // $249866 beq $2498E2
@@ -1182,10 +1202,10 @@ export function bombAndShotGuards(ram, rec, ctx, playerIdx) {
     // shot cadence machine does not run on that frame.  All THREE refusals
     // (`$2498E6`, `$2498FE`, `$24990A`) branch to `$249B2C`, which IS the
     // cadence machine -- so a press that is refused still shoots.
-      if (what.startsWith('fired')) return;               // $249B28 bra $249E4E
+      if (what.startsWith('fired')) return true;          // $249B28 bra $249E4E
     }
   }                                                       // ...else fall to $249B2C
-  return shotCadence249B2C(ram, rec, ctx, resources, btnStale);
+  return false;
 }
 
 function validateOrdinaryShotResources(resources) {

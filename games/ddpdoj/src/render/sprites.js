@@ -84,7 +84,7 @@ export class SpriteDrawer {
   }
 
   /** One line of an UNZOOMED sprite.  `draw` false = consume the stream only. */
-  _lineBasic(wide, y, flip, xpos, pri, realxsize, palt, draw) {
+  _lineBasic(wide, y, flip, xpos, pri, realxsize, paletteBase, draw) {
     let xcntDraw = 0;
     const opaque = this.maskBitOpaque;
     for (let w = 0; w < wide; w++) {
@@ -93,7 +93,7 @@ export class SpriteDrawer {
       for (let k = 0; k < 16; k++) {
         const clear = opaque ? (m & 1) : !(m & 1);
         if (clear) {
-          const val = this._pix() + palt * 32;
+          const val = this._pix() + paletteBase;
           if (draw) {
             const x = !(flip & 1) ? xpos + xcntDraw : xpos + realxsize - xcntDraw;
             this._drawPix(x, pri, y, val);
@@ -108,7 +108,7 @@ export class SpriteDrawer {
   }
 
   /** One line of a ZOOMED sprite. */
-  _lineZoom(wide, y, xzoom, xgrow, flip, xpos, pri, realxsize, palt, draw) {
+  _lineZoom(wide, y, xzoom, xgrow, flip, xpos, pri, realxsize, paletteBase, draw) {
     let xoffset = 0, xcntDraw = 0;
     for (let w = 0; w < wide; w++) {
       let m = this.mask[this.b & (this.mlen - 1)];
@@ -117,7 +117,7 @@ export class SpriteDrawer {
         const zb = (xzoom >>> (xoffset & 0x1f)) & 1;
         xoffset++;
         if (!(m & 1)) {
-          const val = this._pix() + palt * 32;
+          const val = this._pix() + paletteBase;
           if (draw && (xgrow || !zb)) {
             const n = zb ? 2 : 1;
             for (let r = 0; r < n; r++) {
@@ -145,7 +145,9 @@ export class SpriteDrawer {
     this.abit = 0;
     this.b += 2;
 
-    const flip = s.flip, palt = s.color, pri = s.pri;
+    const flip = s.flip;
+    const paletteBase = Number.isInteger(s.paletteBase) ? s.paletteBase : s.color * 32;
+    const pri = s.pri;
     const xpos = s.x, ypos = s.y;
     let xzom = s.xzom, yzom = s.yzom;
     const xgrow = s.xgrow, ygrow = s.ygrow;
@@ -161,9 +163,9 @@ export class SpriteDrawer {
       for (let ycnt = 0; ycnt < high; ycnt++) {
         const y = !(flip & 2) ? ypos + ycntdraw : ypos + realysize - ycntdraw;
         if (y >= 0 && y < this.H) {
-          this._lineBasic(wide, y, flip, xpos, pri, realxsize, palt, true);
+          this._lineBasic(wide, y, flip, xpos, pri, realxsize, paletteBase, true);
         } else {
-          this._lineBasic(wide, 0, flip, xpos, pri, realxsize, palt, false);
+          this._lineBasic(wide, 0, flip, xpos, pri, realxsize, paletteBase, false);
           // MAME's early-out: once the sprite has walked off the far edge the
           // remaining lines cannot land.  Transcribed, not optimised.
           if (!(flip & 2)) { if (y >= this.H - 1) return; }
@@ -198,21 +200,21 @@ export class SpriteDrawer {
           if (rep === 1) { this.a = ta; this.abit = tb; this.b = tbo; }
           const y = !(flip & 2) ? ypos + ycntdraw : ypos + realysize - ycntdraw;
           if (y >= 0 && y < this.H) {
-            this._lineZoom(wide, y, xzoom, xgrow, flip, xpos, pri, realxsize, palt, true);
+            this._lineZoom(wide, y, xzoom, xgrow, flip, xpos, pri, realxsize, paletteBase, true);
           } else {
-            this._lineZoom(wide, 0, xzoom, xgrow, flip, xpos, pri, realxsize, palt, false);
+            this._lineZoom(wide, 0, xzoom, xgrow, flip, xpos, pri, realxsize, paletteBase, false);
           }
           ycntdraw++;
         }
       } else if (zb && !ygrow) {
         // A dropped source line: consumed, never drawn, ycntdraw NOT advanced.
-        this._lineZoom(wide, 0, xzoom, xgrow, flip, xpos, pri, realxsize, palt, false);
+        this._lineZoom(wide, 0, xzoom, xgrow, flip, xpos, pri, realxsize, paletteBase, false);
       } else {
         const y = !(flip & 2) ? ypos + ycntdraw : ypos + realysize - ycntdraw;
         if (y >= 0 && y < this.H) {
-          this._lineZoom(wide, y, xzoom, xgrow, flip, xpos, pri, realxsize, palt, true);
+          this._lineZoom(wide, y, xzoom, xgrow, flip, xpos, pri, realxsize, paletteBase, true);
         } else {
-          this._lineZoom(wide, 0, xzoom, xgrow, flip, xpos, pri, realxsize, palt, false);
+          this._lineZoom(wide, 0, xzoom, xgrow, flip, xpos, pri, realxsize, paletteBase, false);
         }
         ycntdraw++;
       }

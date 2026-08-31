@@ -36,7 +36,12 @@ import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
 
 import { Game, MACHINE, RAM } from '../src/main.js';
-import { replaySeedArm } from '../src/web/replay.js';
+import {
+  FORMAT as REPLAY_FORMAT, FORMAT_V1, FORMAT_V2, replaySeedArm,
+} from '../src/web/replay.js';
+import {
+  modGameOptions, restoreModReplaySeed, validateModReplaySeed,
+} from '../src/mods.js';
 import { adoptCurrentWindows } from '../src/rom.js';
 import { stateVector, CLAIMED } from '../src/state.js';
 import { readTrace, run } from './portdiff.mjs';
@@ -49,7 +54,7 @@ import { W95G_MUTATE } from '../src/bossguns.js';
 import { W96_MUTATE } from '../src/bossarrival.js';
 
 export const PERIOD_FRAMES = 250;   // the checkpoint cadence (manifest.json `every`)
-export const FORMAT = 'ddpdoj.replay/v1';
+export const FORMAT = REPLAY_FORMAT;
 export const BUILD = 'B';
 
 const DEFAULT_TABLES = fileURLToPath(
@@ -129,7 +134,10 @@ function liveTablesOnce() {
 }
 
 export function verifyReplay(obj, opts = {}) {
-  const { ramBytes, bgBytes, tables, portinWords, pokes, seedArm } = validateReplayObject(obj);
+  const {
+    ramBytes, bgBytes, tables, portinWords, coininWords, pokes, seedArm,
+    modCandidate,
+  } = validateReplayObject(obj);
 
   // Same construction as portdiff.mjs:128 and seedcmp.mjs:134.  bgSeed is the
   // 2048-word big-endian tilemap ring, NOT main RAM; without it a seeded port
@@ -139,7 +147,9 @@ export function verifyReplay(obj, opts = {}) {
     videoFrame: obj.seed.vf,
     seedArm,
     bgSeed: beWords(bgBytes),
+    ...(modGameOptions(modCandidate?.state) ?? {}),
   });
+  if (modCandidate) restoreModReplaySeed(modCandidate, game);
   resetMutationSwitches();
 
   const columns = obj.digest.columns;
@@ -155,6 +165,7 @@ export function verifyReplay(obj, opts = {}) {
   for (let i = 0; i < count; i++) {
     const lf = seedLf + i + 1;
     for (const [a, val] of pokes) game.ram.setU8(a, val);
+    game.coinPort = coininWords[i];
     game.step(portinWords[i]);
     const v = stateVector(game);
     const line = columns.map((c) => String(v[c])).join('\t') + '\n';
@@ -199,8 +210,8 @@ export function verifyReplay(obj, opts = {}) {
  * `validateReplay` contract so malformed seed/input/frame data cannot become a
  * plausible playback with a different initialization path. */
 function validateReplayObject(obj) {
-  if (!obj || obj.format !== FORMAT) {
-    throw new Error(`not a ${FORMAT} artifact (got ${String(obj?.format)})`);
+  if (!obj || (obj.format !== FORMAT_V1 && obj.format !== FORMAT_V2)) {
+    throw new Error(`not a supported DaiOuJou replay artifact (got ${String(obj?.format)})`);
   }
   if (obj.build !== BUILD) throw new Error(`unsupported replay build ${String(obj.build)}`);
   if (!obj.seed || !Number.isSafeInteger(obj.seed.lf) || obj.seed.lf < 0
@@ -235,7 +246,20 @@ function validateReplayObject(obj) {
   if (liveTables?.rom) tables.rom = adoptCurrentWindows(tables.rom, liveTables.rom);
   if (!obj.portin) throw new Error('replay portin is missing');
   const portinBytes = UNB64(obj.portin.b64);
-  const portinWords = decodePortin(portinBytes, obj.portin);
+  const portinWords = decodeInput(portinBytes, obj.portin, 'portin');
+  let coininWords;
+  let modCandidate = null;
+  if (obj.format === FORMAT_V1) {
+    coininWords = new Uint16Array(portinWords.length).fill(0xffff);
+  } else {
+    if (!obj.coinin) throw new Error('replay coinin is missing');
+    const coininBytes = UNB64(obj.coinin.b64);
+    coininWords = decodeInput(coininBytes, obj.coinin, 'coinin');
+    if (coininWords.length !== portinWords.length) {
+      throw new Error(`replay input streams differ: ${portinWords.length} player and ${coininWords.length} coin words`);
+    }
+    modCandidate = validateModReplaySeed(obj.seed.mods);
+  }
   const pokes = parsePoke(obj.poke);
   if (!obj.digest || !Array.isArray(obj.digest.columns)
       || obj.digest.columns.length === 0
@@ -259,16 +283,19 @@ function validateReplayObject(obj) {
   if (!/^[0-9a-f]{64}$/.test(obj.digest.cumulative ?? '')) {
     throw new Error('replay digest.cumulative is not a SHA-256 hex digest');
   }
-  return { ramBytes, bgBytes, tables, portinWords, pokes, seedArm };
+  return {
+    ramBytes, bgBytes, tables, portinWords, coininWords, pokes, seedArm,
+    modCandidate,
+  };
 }
 
-function decodePortin(bytes, meta) {
+function decodeInput(bytes, meta, label) {
   if (meta.encoding !== 'u16be') {
-    throw new Error(`unsupported portin encoding ${meta.encoding} (want u16be)`);
+    throw new Error(`unsupported ${label} encoding ${meta.encoding} (want u16be)`);
   }
   if (!Number.isSafeInteger(meta.count) || meta.count < 1
       || bytes.length % 2 !== 0 || bytes.length / 2 !== meta.count) {
-    throw new Error(`replay portin count ${meta.count} does not match its u16be bytes`);
+    throw new Error(`replay ${label} count ${meta.count} does not match its u16be bytes`);
   }
   const w = new Uint16Array(bytes.length >> 1);
   for (let i = 0; i < w.length; i++) w[i] = (bytes[i * 2] << 8) | bytes[i * 2 + 1];
@@ -336,6 +363,7 @@ export function buildReplay(opts) {
     const row = byLf.get(lf);
     if (!row) break;
     for (const [a, val] of pokes) game.ram.setU8(a, val);
+    game.coinPort = 0xffff;
     game.step(Number(row.portin));
     portinWords.push(Number(row.portin));
     const v = stateVector(game);
@@ -363,6 +391,7 @@ export function buildReplay(opts) {
     portinBytes[i * 2 + 1] = portinWords[i] & 0xff;
   }
 
+  const coininBytes = new Uint8Array(portinWords.length * 2).fill(0xff);
   const tablesSha256 = createHash('sha256').update(tablesBytes).digest('hex');
   const obj = {
     format: FORMAT,
@@ -378,6 +407,7 @@ export function buildReplay(opts) {
       ramB64: B64(seedBytes),
       bgB64: B64(bgBytes),
       tablesB64: B64(new Uint8Array(tablesBytes)),
+      mods: { ids: [], playableHibachi: null },
     },
     scenario,
     intervention: intervention || undefined,
@@ -386,6 +416,11 @@ export function buildReplay(opts) {
       encoding: 'u16be',
       count: portinWords.length,
       b64: B64(portinBytes),
+    },
+    coinin: {
+      encoding: 'u16be',
+      count: portinWords.length,
+      b64: B64(coininBytes),
     },
     digest: {
       algo: 'sha256',

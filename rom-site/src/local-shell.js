@@ -672,9 +672,16 @@ class LocalShell {
       && (loadout?.presentation?.runaheadFrames ?? 0) > 0;
   }
 
+  hasDdpFormationPlayableConflict(loadout = this.resolvedLoadout()) {
+    const state = this.state();
+    return this.gameId === 'ddpdoj' && !!state.formation
+      && loadout?.sim?.playableHibachi === true;
+  }
+
   syncStartButton() {
     const conflict = this.gameId && this.state()
-      ? this.hasDdpFormationRunaheadConflict()
+      ? (this.hasDdpFormationRunaheadConflict()
+        || this.hasDdpFormationPlayableConflict())
       : false;
     this.startButton.disabled = Boolean(this.runtime || this.booting || conflict);
   }
@@ -685,6 +692,7 @@ class LocalShell {
     const ids = resolvedIds(loadout, state.mods).filter(Boolean);
     const conflicts = conflictMessages(loadout);
     const formationRunaheadConflict = this.hasDdpFormationRunaheadConflict(loadout);
+    const formationPlayableConflict = this.hasDdpFormationPlayableConflict(loadout);
     const parts = [];
     if (this.gameId === 'ddpdoj' && state.formation) {
       const label = state.formation === Formation.FORMATION_THREE_MODE?.id
@@ -698,11 +706,14 @@ class LocalShell {
     this.summary.replaceChildren();
     const strong = element('b', '', this.options.title);
     this.summary.append(strong, document.createTextNode(`: ${parts.join(', ')}`));
-    if (conflicts.length || formationRunaheadConflict) {
+    if (conflicts.length || formationRunaheadConflict || formationPlayableConflict) {
       this.summary.append(document.createTextNode(' '));
       const warnings = [...conflicts];
       if (formationRunaheadConflict) {
         warnings.push('Formation cannot be combined with runahead.');
+      }
+      if (formationPlayableConflict) {
+        warnings.push('Formation cannot be combined with Playable Hibachi.');
       }
       this.summary.append(element('span', 'warning', warnings.join(' ')));
     }
@@ -1141,7 +1152,7 @@ class LocalShell {
         if (!this.replayContextCurrent(generation, runtime)) return;
         this.replayRecording = true;
         this.showReplayStatus('recording',
-          'REC armed. Coin input is paused because replay v1 records gameplay controls only. Press STOP & SAVE when finished.');
+          'REC armed. Replay v2 records gameplay, coin, and start input. Press STOP & SAVE when finished.');
       } else {
         const replay = await runtime.stopRecording();
         if (!this.replayContextCurrent(generation, runtime)) return;

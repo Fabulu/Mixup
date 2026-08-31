@@ -223,7 +223,8 @@ import {
 } from './replay.js';
 import { CLAIMED } from '../state.js';
 import {
-  MODS, MOD_RAM, createModState, prepareModCabinetBoot,
+  MODS, MOD_RAM, bindModGame, createModState, prepareModCabinetBoot,
+  exportModReplaySeed, restoreModReplaySeed, validateModReplaySeed,
   applyPreFrameMods, applyPostFrameMods,
   transformCartridgeSlowdown, transformModInput, transformModTiming,
   applyPresentationMods, applyHitboxOverlay,
@@ -236,6 +237,7 @@ import {
   resolveFormationAuthenticSelection,
 } from '../formation.js';
 import { threePilotFoundationForGame } from '../formationactors.js';
+import { PLAYABLE_HIBACHI_CONFLICT } from '../playablehibachi.js';
 
 // --------------------------------------------------------------- PRESENTATION
 //
@@ -666,6 +668,7 @@ function portMutating(opts, name) { return opts.mutate === name; }
 /** $800000..$8009FF is 0x500 words: 256 entries x RAM_STRIDE, and the parser
  *  stops at 256 because the hardware does (`spritelist.js`). */
 export const PORT_LIST_WORDS = SPRITE_LIMIT * RAM_STRIDE;
+export const PRIVATE_SPRITE_PALETTE_BASE = 0x1000;
 
 /**
  * `manifest.spr.streams` -> `romOffs -> [packedBase, maskWords, shard]`.
@@ -767,9 +770,11 @@ export function romToPackedMap(manifest, shardOf = null) {
  *
  * @param {import('../ram.js').Ram} ram  the port's main RAM
  * @param {Map<number,[number,number,number]>} map  `romToPackedMap(...)`
- * @param {{mutate?: string, out?: Uint16Array,
+ * @param {{mutate?: string, out?: Uint16Array, privatePaletteOut?: Int8Array,
+ *          privatePaletteBanks?: Int8Array,
  *          shardReady?: (i:number)=>boolean, demand?: (i:number)=>void}} opts
- * @returns {{words: Uint16Array, records: number, drawn: number,
+ * @returns {{words: Uint16Array, privatePaletteBanks: Int8Array,
+ *            records: number, drawn: number,
  *            skipped: number, blank: number, missing: Map<number,number>,
  *            pending: Map<number,number>}}
  */
@@ -777,6 +782,20 @@ export function portSpriteList(ram, map, opts = {}) {
   checkMutation(opts);
   const words = opts.out ?? new Uint16Array(PORT_LIST_WORDS);
   for (let i = 0; i < PORT_LIST_WORDS; i++) words[i] = ram.u16(RAM.spriteList + i * 2);
+  const privatePaletteBanks = opts.privatePaletteOut ?? new Int8Array(SPRITE_LIMIT);
+  if (!(privatePaletteBanks instanceof Int8Array)
+      || privatePaletteBanks.length !== SPRITE_LIMIT) {
+    throw new TypeError(`privatePaletteOut must contain ${SPRITE_LIMIT} signed bytes`);
+  }
+  const privateSource = opts.privatePaletteBanks;
+  if (privateSource != null
+      && (!(privateSource instanceof Int8Array) || privateSource.length !== SPRITE_LIMIT)) {
+    throw new TypeError(`privatePaletteBanks must contain ${SPRITE_LIMIT} signed bytes`);
+  }
+  if (privateSource !== privatePaletteBanks) {
+    privatePaletteBanks.fill(-1);
+    if (privateSource) privatePaletteBanks.set(privateSource);
+  }
 
   let records = 0, drawn = 0, skipped = 0, blank = 0;
   const missing = new Map();
@@ -827,11 +846,16 @@ export function portSpriteList(ram, map, opts = {}) {
     if (portMutating(opts, 'terminate-instead-of-zero-width')) words[b + 4] = 0;
     else words[b + 4] = w4 & ~0x7e00;                // width := 0, height kept
   }
-  return { words, records, drawn, skipped, blank, missing, pending };
+  return {
+    words, privatePaletteBanks, records, drawn, skipped, blank, missing, pending,
+  };
 }
 
 function detachPortList(list) {
-  return { words: list.words };
+  return {
+    words: list.words,
+    privatePaletteBanks: list.privatePaletteBanks,
+  };
 }
 
 /** The status line's version of a miss set: the worst `n` by count, as text. */
@@ -851,7 +875,7 @@ export const DEFAULT_SPRITE_SOURCE = 'port';
 function assertPrivateFormationReplayCompatible(game, operation) {
   if (!threePilotFoundationForGame(game)) return;
   throw new Error(`${operation} is unavailable while private three-pilot formation state is active. `
-    + 'Replay v1 cannot encode formation state.');
+    + 'Replay v2 does not encode formation state.');
 }
 
 // EXPORTED for `tests/w375coinwiring.test.js`. Constructing one needs a bundle,
@@ -877,6 +901,9 @@ export class Demo {
     // A recognized mode owns exactly one mutable state object for this Demo.
     // Missing and unknown formation ids produce null and add no Game callback.
     this.formation = createFormationState(formationModeValue, formationRoster);
+    if (this.formation && modState?.playableHibachi) {
+      throw new Error(PLAYABLE_HIBACHI_CONFLICT);
+    }
     this.runaheadFrames = modState?.loadout.presentation.runaheadFrames ?? 0;
     if (this.formation && this.runaheadFrames) {
       throw new Error('formation mode cannot be combined with runahead');
@@ -996,6 +1023,7 @@ export class Demo {
       // See `Demo#coinTick`.
       coinTick: () => this.coinTick(),
     });
+    bindModGame(modState, this.game, { active: !coldBoot });
     if (coldBoot) this.game.boot({ cabinetFrontend: true });
     if (authentic && !coldBoot) applyAuthenticSelection(this.game, authentic);
     if (this.formation && !coldBoot) initializeFormation(this.formation, this.game);
@@ -1040,10 +1068,16 @@ export class Demo {
     };
     this.spriteSource = DEFAULT_SPRITE_SOURCE;
     this.listBuf = new Uint16Array(PORT_LIST_WORDS);
+    this.listPrivatePaletteBanks = new Int8Array(SPRITE_LIMIT);
     this.listOpts.out = this.listBuf;
+    this.listOpts.privatePaletteOut = this.listPrivatePaletteBanks;
+    this.listOpts.privatePaletteBanks = this.game.displayList?.privatePaletteBanks ?? null;
     this.runaheadListBuf = new Uint16Array(PORT_LIST_WORDS);
+    this.runaheadPrivatePaletteBanks = new Int8Array(SPRITE_LIMIT);
     this.runaheadListOpts = {
       out: this.runaheadListBuf,
+      privatePaletteOut: this.runaheadPrivatePaletteBanks,
+      privatePaletteBanks: null,
       shardReady: this.listOpts.shardReady,
     };
     this.runaheadBg = this.runaheadFrames ? new Uint16Array(this.game.vram.w.length) : null;
@@ -1060,6 +1094,7 @@ export class Demo {
       // Capture source is still the explicitly labelled recording diagnostic; it
       // is not changed or claimed to reflect the browser selection.
       this.portList.words.fill(0);
+      this.portList.privatePaletteBanks.fill(-1);
       this.portList.records = 0;
       this.portList.drawn = 0;
       this.portList.skipped = 0;
@@ -1072,7 +1107,13 @@ export class Demo {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.rgb = new Uint8Array(SCREEN_W * SCREEN_H * 3);
     this.rot = new Uint8Array(SCREEN_W * SCREEN_H * 3);
-    this.pal = new Uint8Array(0x1000 * 3);
+    this.privateSpritePaletteWords = modState?.playableHibachi?.privatePaletteWords ?? null;
+    this.renderPaletteWords = this.privateSpritePaletteWords
+      ? new Uint16Array(PRIVATE_SPRITE_PALETTE_BASE + this.privateSpritePaletteWords.length)
+      : null;
+    this.pal = new Uint8Array(
+      (this.renderPaletteWords?.length ?? PRIVATE_SPRITE_PALETTE_BASE) * 3,
+    );
     // WAVE 91: the palette the page actually draws through -- the recording's,
     // with every CARTRIDGE-SOURCED word replaced by the port's own.  Allocated
     // once; `mergePalette` writes into it and hangs the count off it.
@@ -1151,6 +1192,7 @@ export class Demo {
       else this.runaheadHitboxRam.b.set(g.ram.b);
       hitboxRam = this.runaheadHitboxRam;
     }
+    this.runaheadListOpts.privatePaletteBanks = g.displayList?.privatePaletteBanks ?? null;
     return {
       prevPos: [g.ram.u16(RAM.player1 + P.posY), g.ram.u16(RAM.player1 + P.posX)],
       prevTilt: g.ram.u16(RAM.player1 + P.tilt) << 16 >> 16,
@@ -1243,12 +1285,13 @@ export class Demo {
     // the screen (`render/capture.js`'s measured lag of 1).  Doing it here also
     // makes it independent of how often `draw()` runs: a mode change repaints
     // without stepping, and that must not shift the list by a frame.
+    this.listOpts.privatePaletteBanks = g.displayList?.privatePaletteBanks ?? null;
     this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
     if (this.mods?.loadout.presentation.hitboxes) {
       if (!this.hitboxRam) this.hitboxRam = g.ram.clone();
       else this.hitboxRam.b.set(g.ram.b);
     }
-    // Replay v1 carries its own poke list. Live play applies only an explicit
+    // The replay carries its own poke list. Live play applies only an explicit
     // ladder/replay intervention, then the selected mod policy. Ordinary play
     // has neither and performs no host RAM write here.
     const pokes = inPlayback ? this.playback.pokes : (this.progressionPokes ?? []);
@@ -1260,40 +1303,29 @@ export class Demo {
     // exactly the input sequence the recording captured, so the picture the
     // owner watches is the picture the verifier is hashing. Live input is then
     // transformed only by a selected input mod.
+    const playbackIndex = inPlayback ? this.playback.i++ : -1;
     const rawPw = inPlayback
-      ? this.playback.words[this.playback.i++]
+      ? this.playback.words[playbackIndex]
       : currentPortWord();
+    const coinWord = inPlayback
+      ? this.playback.coinWords[playbackIndex]
+      : currentCoinWord();
     const modPw = transformModInput(this.mods, rawPw, g.logicFrame);
     // Formation consumes the catalogue's final input, then supplies both its
     // geometry decision and the packed cabinet word handed to Game.step().
     const pw = this.formation
       ? prepareFormationFrame(this.formation, g, modPw)
       : modPw;
-    if (this.recorder) this.recorder.input(pw);
-    // W375 -- THE COIN WORD, `$C08004`. A FIELD, not a second `step()` argument:
-    // `.replay` v1 fixes `portin.encoding === 'u16be'` at ONE word per logic
-    // frame and `decodePortinWords` throws on anything else, so a second
-    // per-frame word is a format version bump plus every existing fixture. See
-    // `main.js`'s header for the deviation this widens and the v2 `portin` +
-    // `coinin` encoding that would close it.
-    //
-    // AND IT IS NOT TEE'd INTO `this.recorder`, because there is nowhere in a v1
-    // file to put it -- which is exactly the hole `main.js` declares.
-    //
-    // WHICH IS PRECISELY WHY IT IS SUPPRESSED DURING PLAY. A `.replay` must
-    // reproduce from (initial state, recorded input words) and NOTHING ELSE
-    // (`NOTES-replay.md` constraint 1) -- that property is the whole of what the
-    // W132 verifier hashes. A coin word is a second per-frame input the file
-    // cannot carry, so leaving it live would let a key pressed by whoever is
-    // watching the playback credit a coin, move `$80395A`, and turn a green
-    // verify red with no record anywhere of what perturbed it. Pinned to
-    // `COIN.idle` the recorded run is bit-identical whatever the keyboard does.
-    g.coinPort = inPlayback ? COIN.idle : currentCoinWord();
+    if (this.recorder) this.recorder.input(pw, coinWord);
+    // Replay v2 records the cabinet coin/start port beside the player port. Legacy
+    // v1 playback receives synthesized idle words from `validateReplay`.
+    g.coinPort = coinWord;
     g.step(pw);
     if (this.authenticLaunchPending
         || this.mods?.loadout.presentation.dropSpriteHold) {
       // A selected response mod deliberately displays the list this step just
       // built. Ordinary play keeps the measured one-frame hardware DMA hold.
+      this.listOpts.privatePaletteBanks = g.displayList?.privatePaletteBanks ?? null;
       this.portList = portSpriteList(g.ram, this.romToPacked, this.listOpts);
       if (this.hitboxRam) this.hitboxRam.b.set(g.ram.b);
       this.authenticLaunchPending = false;
@@ -1352,7 +1384,7 @@ export class Demo {
     assertFormationReplayCompatible(this.formation, 'REC');
     assertPrivateFormationReplayCompatible(this.game, 'REC');
     if (this.recorder) return this.recorder;
-    assertReplayCompatible(this.mods, 'REC');
+    assertReplayCompatible(this.mods, 'REC', { allowPlayableHibachi: true });
     // WAVE 132 -- REC and PLAY are mutually exclusive.  The recorder would tee
     // the recorded portin the playback is already feeding, double-counting the
     // input; and the seed the recorder captures at arm time would be the
@@ -1413,6 +1445,7 @@ export class Demo {
       periodFrames: REPLAY_PERIOD,
       seed: {
         lf, vf, arm, ramB64, bgB64, tablesB64,
+        mods: exportModReplaySeed(this.mods),
         ...(soundState ? { sound: soundState } : {}),
       },
       version: {
@@ -1423,15 +1456,15 @@ export class Demo {
       scenario: seeded?.scenario ?? 'live',
       intervention: seeded?.intervention,
       // Empty on an ordinary launch. A ladder seed keeps its labelled policy in
-      // replay v1 instead of acquiring a hidden browser intervention.
+      // replay artifact instead of acquiring a hidden browser intervention.
       poke: this.progressionPoke ?? '',
     });
     return this.recorder;
   }
 
   /**
-   * WAVE 131 -- STOP the live-page REC and return the packaged v1 `.replay`
-   * object (the format frozen by W129, assembled by `replay.js stopRecorder`).
+   * WAVE 131 -- STOP the live-page REC and return the packaged v2 `.replay`
+   * object assembled by `replay.js stopRecorder`.
    * Clears `this.recorder` (so `step()` stops teeing).  Returns null if not
    * armed.  The caller (the #rec button) turns the object into a download.
    */
@@ -1466,10 +1499,19 @@ export class Demo {
   playFrom(obj) {
     assertFormationReplayCompatible(this.formation, 'PLAY');
     assertPrivateFormationReplayCompatible(this.game, 'PLAY');
-    assertReplayCompatible(this.mods, 'PLAY');
     const parsed = validateReplay(obj);
+    let candidateMods = this.mods ?? null;
+    let replayModCandidate = null;
+    if (parsed.modSeed) {
+      replayModCandidate = validateModReplaySeed(
+        parsed.modSeed, this.mods?.loadout ?? { ids: [] },
+      );
+      candidateMods = replayModCandidate.state;
+    } else {
+      assertReplayCompatible(this.mods, 'PLAY');
+    }
     // Decode the seed the same way `replay.mjs:108-121` does.
-    const { ram, bg, tables, words, pokes } = parsed;
+    const { ram, bg, tables, words, coinWords, pokes } = parsed;
     const seed = obj.seed;
     const seedArm = replaySeedArm(seed, ram, RAM.semaphore - MACHINE.ramBase);
     const game = new Game(ram, tables, {
@@ -1478,11 +1520,13 @@ export class Demo {
       seedArm,
       bgSeed: beWords(bg),
       soundSink: this.soundController,
-      ...(modGameOptions(this.mods) ?? {}),
+      ...(modGameOptions(candidateMods) ?? {}),
       // W375, as in the constructor above -- and gated the same way, so the
       // pulse cannot advance while this Game is being fed a recording.
       coinTick: () => this.coinTick(),
     });
+    if (replayModCandidate) restoreModReplaySeed(replayModCandidate, game);
+    const verifier = armPlayback(game, obj);
     // ...and the coin keys start CLEAR. The gate below freezes the pulse for the
     // duration of the playback, so a key that was down when PLAY was pressed
     // would otherwise still be down when the verdict lands and credit a coin the
@@ -1493,9 +1537,17 @@ export class Demo {
     // dropped (mutually exclusive); `onPlaybackUpdate` is left to the page.
     if (this.resetSound) this.resetSound(seed.lf, seed.vf, seed.sound ?? null);
     else this.soundController?.resync();
+    if (replayModCandidate) this.mods = candidateMods;
     this.game = game;
     this.resyncTiming();
     this.hitboxRam = this.mods?.loadout.presentation.hitboxes ? game.ram.clone() : null;
+    this.privateSpritePaletteWords = this.mods?.playableHibachi?.privatePaletteWords ?? null;
+    this.renderPaletteWords = this.privateSpritePaletteWords
+      ? new Uint16Array(PRIVATE_SPRITE_PALETTE_BASE + this.privateSpritePaletteWords.length)
+      : null;
+    this.pal = new Uint8Array(
+      (this.renderPaletteWords?.length ?? PRIVATE_SPRITE_PALETTE_BASE) * 3,
+    );
     this.seedLf = seed.lf;
     this.seedVf = seed.vf;
     // The replay seed replaces any local ladder seed. Keep the file's explicit
@@ -1512,6 +1564,7 @@ export class Demo {
     // ordinary-launch selector seam from the Game it replaces.
     this.authenticLaunchPending = false;
     this.runaheadView = null;
+    this.listOpts.privatePaletteBanks = game.displayList?.privatePaletteBanks ?? null;
     this.portList = portSpriteList(game.ram, this.romToPacked, this.listOpts);
     this.dirty = true;                  // repaint with the new Game's picture
     this.recorder = null;
@@ -1519,10 +1572,11 @@ export class Demo {
     this.playback = {
       obj,
       words,
+      coinWords,
       pokes,
-      count: obj.portin.count,
+      count: words.length,
       i: 0,                             // next word to feed (lf = seedLf + i + 1)
-      verifier: armPlayback(game, obj),
+      verifier,
       ended: false,                     // set by endPlayback at end-of-portin
       result: null,                     // the verdict, once finalize() resolves
       pending: null,                    // in-flight boundary check promise
@@ -1686,7 +1740,14 @@ export class Demo {
     // mutations and passes neither `spriteStride` nor `scrollSign`.
     const port = view?.portList ?? this.portList;
     const usedPort = this.spriteSource === 'port';
-    if (usedPort) st.spritebuffer = port.words;
+    if (usedPort) {
+      st.spritebuffer = port.words;
+      st.spritePrivatePaletteBanks = port.privatePaletteBanks;
+      st.spritePrivatePaletteBase = PRIVATE_SPRITE_PALETTE_BASE;
+    } else {
+      delete st.spritePrivatePaletteBanks;
+      delete st.spritePrivatePaletteBase;
+    }
     // ----------------------------------------------------------- WAVE 98 (H1)
     // AND NOW THE REPLAYED HUD COMES OFF, for W37's reason and by W37's method.
     //
@@ -1763,7 +1824,16 @@ export class Demo {
     mergePalette(view?.palette ?? g.palette, capPal, this.palMerged);
     this.paletteSourced = this.palMerged.fromCartridge;
     this.paletteTotal = capPal.length;
-    paletteRgb(this.palMerged, this.pal);
+    let renderPalette = this.palMerged;
+    if (this.renderPaletteWords) {
+      this.renderPaletteWords.fill(0);
+      this.renderPaletteWords.set(this.palMerged);
+      this.renderPaletteWords.set(
+        this.privateSpritePaletteWords, PRIVATE_SPRITE_PALETTE_BASE,
+      );
+      renderPalette = this.renderPaletteWords;
+    }
+    paletteRgb(renderPalette, this.pal);
     resolveRgb(idx, this.pal, this.rgb);
     applyPresentationMods(this.mods, this.rgb);
     if (usedPort) applyHitboxOverlay(

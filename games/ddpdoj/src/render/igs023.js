@@ -24,7 +24,7 @@
 // instead of scoring it.
 
 import { TileCache, buildBgMap, buildTxMap, BGMAP_W, TXMAP_W, TRANSPARENT } from './tiles.js';
-import { parseSpriteList, BUFFER_STRIDE } from './spritelist.js';
+import { parseSpriteList, BUFFER_STRIDE, SPRITE_LIMIT } from './spritelist.js';
 import { SpriteDrawer, zoomWord } from './sprites.js';
 
 export const SCREEN_W = 448, SCREEN_H = 224;   // MAME's visible area; the
@@ -108,6 +108,20 @@ export class Renderer {
     //     ctrl bit 13 set = draw only records whose pri bit is set.
     if (wantSpr) {
       const sprites = parseSpriteList(st.spritebuffer, spriteStride);
+      const privateBanks = st.spritePrivatePaletteBanks;
+      if (privateBanks != null) {
+        if (!(privateBanks instanceof Int8Array) || privateBanks.length < SPRITE_LIMIT) {
+          throw new TypeError(`spritePrivatePaletteBanks must contain ${SPRITE_LIMIT} signed bytes`);
+        }
+        const base = st.spritePrivatePaletteBase ?? 0x1000;
+        if (!Number.isSafeInteger(base) || base < 0) {
+          throw new RangeError('spritePrivatePaletteBase must be a nonnegative integer');
+        }
+        for (const sprite of sprites) {
+          const bank = privateBanks[sprite.i];
+          if (bank >= 0) sprite.paletteBase = base + bank * 32;
+        }
+      }
       const drawer = new SpriteDrawer(this.roms, bm, pri, SCREEN_W, SCREEN_H,
         { maskBitOpaque, ignoreBgPriority });
       const hideLow = ((ctrl >> 13) & 1) !== 0;

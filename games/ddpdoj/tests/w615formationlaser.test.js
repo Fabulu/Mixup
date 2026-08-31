@@ -617,7 +617,7 @@ test('W615 ordering, privacy, replay refusal, and public formation closure stay 
   assert.strictEqual(formationMode(id), THREE_PILOT_FORMATION_MODE);
   assert.strictEqual(hashToFormation(`#formation=${id}`), THREE_PILOT_FORMATION_MODE);
   assert.equal(formationToHash(THREE_PILOT_FORMATION_MODE), `formation=${id}`);
-  assert.equal(MOD_IDS.length, 36);
+  assert.equal(MOD_IDS.length, 37);
   assert.equal(MOD_IDS.includes(id), false);
   assert.equal(Object.hasOwn(MODS, id), false);
   const start = readFileSync(new URL('../start.html', import.meta.url), 'utf8');
@@ -630,7 +630,7 @@ test('W615 ordering, privacy, replay refusal, and public formation closure stay 
     recorder: { keep: true },
     playback: { keep: true },
     get game() { throw new Error('REC touched Game before replay refusal'); },
-  }), /Replay v1 cannot encode formation state/);
+  }), /Replay v2 does not encode formation state/);
 
   assert.equal(encodeRecordRequest({
     u16(address) { return address & 0xffff; },

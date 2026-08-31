@@ -127,11 +127,11 @@
   <h2>Challenge and timing</h2><div class="grid" data-category="challenge"></div>
   <h2>Presentation</h2><div class="grid" data-category="presentation"></div>
 
-  <div class="policy">Replay v1 does not carry formation state or simulation mods. REC and PLAY
-    are refused while a ship formation or any survival, arsenal, challenge, input,
-    or timing mod is active. Runahead and the other presentation choices remain replay-compatible;
-    projection is suspended during PLAY, and REC records canonical frames only. Runahead cannot be
-    combined with a formation because private companion state cannot yet be rolled back safely.</div>
+  <div class="policy">Replay v2 records gameplay, coin, and start input, plus the exact Playable
+    Hibachi seed when selected. Older replay v1 files remain playable. Formation and other
+    simulation-changing mods still refuse REC and PLAY. Runahead and the other presentation choices
+    remain replay-compatible; projection is suspended during PLAY and REC records canonical frames.
+    Formation cannot be combined with runahead or Playable Hibachi.</div>
 
   <div class="bar">
     <div id="summary"></div>
@@ -408,7 +408,10 @@ function sync({ writeHistory = true, renderRoster = true } = {}) {
   const formationP2Conflict = !!formationActive && explicitP2Joined;
   const formationRunaheadConflict = !!formationActive
     && resolved.presentation.runaheadFrames > 0;
-  if (lastConflicts.length || formationP2Conflict || formationRunaheadConflict) {
+  const formationPlayableConflict = !!formationActive
+    && resolved.sim.playableHibachi;
+  if (lastConflicts.length || formationP2Conflict || formationRunaheadConflict
+      || formationPlayableConflict) {
     const warning = document.createElement('span');
     warning.id = 'conflict';
     const messages = lastConflicts.map((c) =>
@@ -419,11 +422,14 @@ function sync({ writeHistory = true, renderRoster = true } = {}) {
     if (formationRunaheadConflict) {
       messages.push('Formation cannot be combined with runahead');
     }
+    if (formationPlayableConflict) {
+      messages.push('Formation cannot be combined with Playable Hibachi');
+    }
     warning.textContent = ` | ${messages.join(' | ')}`;
     summary.appendChild(warning);
   }
   document.getElementById('launch').disabled = formationP2Conflict
-    || formationRunaheadConflict;
+    || formationRunaheadConflict || formationPlayableConflict;
   const launchHash = [
     loadoutToHash(resolved.ids),
     formationToHash(formationActive),
@@ -481,7 +487,8 @@ document.getElementById('games').addEventListener('click', () => {
 document.getElementById('launch').addEventListener('click', () => {
   const resolved = resolveLoadout([...selected]);
   if (formationActive && (explicitP2Joined
-      || resolved.presentation.runaheadFrames > 0)) return;
+      || resolved.presentation.runaheadFrames > 0
+      || resolved.sim.playableHibachi)) return;
   const hash = [
     loadoutToHash([...selected]),
     formationToHash(formationActive),

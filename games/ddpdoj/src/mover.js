@@ -390,6 +390,13 @@ function freeSlot(ctx, base) {
 /** `clr.w (A6); move.w #$ffff,$2(A6)` -- the slot free itself, no effect call. */
 function freeSlotNoEffect(ctx, base) {
   const { ram } = ctx;
+  ctx.bulletRetireHook?.(ram, {
+    addr: base,
+    slot: (base - BUL.pool) / BUL.stride,
+    reason: 'mover',
+    y: ram.u16(base + REC.posA),
+    x: ram.u16(base + REC.posB),
+  }, ctx);
   ram.setU16(base, 0);                               // $281E42 / $281EC4 clr.w (A6)
   ram.setU16(base + REC.posA, 0xffff);               // $281E44 / $281EC6 move.w #$ffff,$2
 }

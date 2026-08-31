@@ -318,7 +318,7 @@ export const TYPE5_PORTED = new Set([
  */
 export function notStarted28B5A8(ram, rom, ctx) {
   clearItemPool(ram);                                  // $28B5A8 jsr $27E98A
-  clearBulletPool28131E(ram);                          // $28B5AE jsr $28131E ..
+  clearBulletPool28131E(ram, ctx);                     // $28B5AE jsr $28131E ..
   parkBulletSlots281330(ram);                          //   ..and its second loop
   clearEffectPool(ram);                                // $28B5B4 jsr $288E0C
   clearSubEffectPool(ram);                             // $28B5BA jsr $289084

@@ -63,6 +63,11 @@ test('replay: format, build, period cadence are self-describing', { skip: !HAVE 
   assert.equal(o.digest.periodFrames, 250);
   assert.equal(o.portin.encoding, 'u16be');
   assert.equal(o.portin.count, TO_LF - SEED_LF);
+  assert.equal(o.coinin.encoding, 'u16be');
+  assert.equal(o.coinin.count, o.portin.count);
+  assert.equal(Buffer.from(o.coinin.b64, 'base64').every((byte) => byte === 0xff), true,
+    'trace builder emits one explicit idle coin word per frame');
+  assert.deepEqual(o.seed.mods, { ids: [], playableHibachi: null });
   assert.equal(o.digest.periods.length, 1, 'one 250-frame segment = one period');
   assert.equal(o.digest.periods[0].lf, TO_LF);
   // the digest column set is non-empty and is a SUBSET of what the trace carries

@@ -1,38 +1,40 @@
-import { Game, MACHINE, RAM } from '/games/ddpdoj/src/main.js';
-import { FullRom } from '/games/ddpdoj/src/rom.js';
+import { Game, MACHINE, RAM } from '../../games/ddpdoj/src/main.js';
+import { FullRom } from '../../games/ddpdoj/src/rom.js';
 import {
   buildMainCpu, soundAssetsFromLocalRoms, tablesFromMainCpu,
-} from '/games/ddpdoj/src/localrom.js';
+} from '../../games/ddpdoj/src/localrom.js';
 import {
   soundRuntimeFromAssets, soundRuntimeFromSnapshot, soundRuntimeFromStage1Seed,
-} from '/games/ddpdoj/src/soundruntime.js';
-import { DdpdojCadence } from '/games/ddpdoj/src/cadence.js';
-import { APPROVED_SOUND_POLICIES } from '/games/ddpdoj/src/soundpolicy.js';
+} from '../../games/ddpdoj/src/soundruntime.js';
+import { DdpdojCadence } from '../../games/ddpdoj/src/cadence.js';
+import { APPROVED_SOUND_POLICIES } from '../../games/ddpdoj/src/soundpolicy.js';
 import {
   applyHitboxOverlay, applyPostFrameMods, applyPreFrameMods, applyPresentationMods,
-  assertReplayCompatible, createModState, modGameOptions, prepareModCabinetBoot,
+  assertReplayCompatible, bindModGame, createModState, exportModReplaySeed,
+  modGameOptions, prepareModCabinetBoot, restoreModReplaySeed, validateModReplaySeed,
   transformCartridgeSlowdown, transformModInput, transformModTiming,
-} from '/games/ddpdoj/src/mods.js';
-import { projectRunahead, RunaheadProjectionError } from '/games/ddpdoj/src/runahead.js';
+} from '../../games/ddpdoj/src/mods.js';
+import { projectRunahead, RunaheadProjectionError } from '../../games/ddpdoj/src/runahead.js';
 import {
   assertFormationReplayCompatible, beginFormationCreditedRun, createFormationState,
   prepareFormationFrame, resolveFormationAuthenticSelection,
-} from '/games/ddpdoj/src/formation.js';
-import { loadRegions } from '/games/ddpdoj/src/render/regions.js';
+} from '../../games/ddpdoj/src/formation.js';
+import { PLAYABLE_HIBACHI_CONFLICT } from '../../games/ddpdoj/src/playablehibachi.js';
+import { loadRegions } from '../../games/ddpdoj/src/render/regions.js';
 import {
   Renderer, paletteRgb, resolveRgb, rotateCCW, rgbToRgba, SCREEN_W, SCREEN_H,
-} from '/games/ddpdoj/src/render/igs023.js';
-import { RAM_STRIDE, SPRITE_LIMIT } from '/games/ddpdoj/src/render/spritelist.js';
-import { zoomRamWords } from '/games/ddpdoj/src/zoomtable.js';
+} from '../../games/ddpdoj/src/render/igs023.js';
+import { RAM_STRIDE, SPRITE_LIMIT } from '../../games/ddpdoj/src/render/spritelist.js';
+import { zoomRamWords } from '../../games/ddpdoj/src/zoomtable.js';
 import {
   attachInput, pollInput, currentPortWord, currentCoinWord, createCoinProjection,
   tickCoinPulse, attachCoinKeys, clearCoin, clearKeyboard, clearTouch,
-} from '/games/ddpdoj/src/web/input.js';
-import { COIN } from '/games/ddpdoj/src/isr.js';
+} from '../../games/ddpdoj/src/web/input.js';
+import { COIN } from '../../games/ddpdoj/src/isr.js';
 import {
   armPlayback, armRecorder, b64, beBytesFromWords, PERIOD_FRAMES,
   sha256Hex, stopRecorder, validateReplay,
-} from '/games/ddpdoj/src/web/replay.js';
+} from '../../games/ddpdoj/src/web/replay.js';
 import {
   authenticP2Joined, latchAuthenticP2Joined, localReplaySeedArm,
   localReplayTables, localReplayTablesMatch,
@@ -129,9 +131,16 @@ async function localData(summary, options = {}) {
   });
 }
 
-function copySpriteList(game, out) {
+const PRIVATE_SPRITE_PALETTE_BASE = 0x1000;
+
+function copySpriteList(game, out, privatePaletteOut = null) {
   for (let index = 0; index < out.length; index++) {
     out[index] = game.ram.u16(RAM.spriteList + index * 2);
+  }
+  if (privatePaletteOut) {
+    privatePaletteOut.fill(-1);
+    const source = game.displayList?.privatePaletteBanks;
+    if (source) privatePaletteOut.set(source);
   }
 }
 
@@ -171,6 +180,9 @@ export class LocalDdpdojRuntime {
     if (modState) prepareModCabinetBoot(modState);
     const formationState = createFormationState(
       config.formation, config.formationRoster ?? null);
+    if (formationState && modState?.playableHibachi) {
+      throw new Error(PLAYABLE_HIBACHI_CONFLICT);
+    }
     const runaheadFrames = modState?.loadout.presentation.runaheadFrames ?? 0;
     if (formationState && runaheadFrames) {
       throw new Error('Formation mode cannot be combined with runahead.');
@@ -217,6 +229,7 @@ export class LocalDdpdojRuntime {
       ...(audio ? { soundSink: audio } : {}),
       ...gameOptions,
     });
+    bindModGame(modState, game);
     game.boot({ cabinetFrontend: true });
     if (soundRuntime) audio.setChip(soundRuntime);
 
@@ -264,14 +277,22 @@ export class LocalDdpdojRuntime {
     this.rowscroll = new Uint16Array(SCREEN_H);
     this.zoomram = zoomRamWords();
     this.spritebuffer = new Uint16Array(SPRITE_LIMIT * RAM_STRIDE);
+    this.spritePrivatePaletteBanks = new Int8Array(SPRITE_LIMIT);
     this.runaheadSpritebuffer = new Uint16Array(SPRITE_LIMIT * RAM_STRIDE);
+    this.runaheadPrivatePaletteBanks = new Int8Array(SPRITE_LIMIT);
     this.runaheadBg = this.runaheadFrames ? new Uint16Array(game.vram.w.length) : null;
     this.runaheadTx = this.runaheadFrames ? new Uint16Array(game.txvram.w.length) : null;
     this.runaheadRegs = this.runaheadFrames ? {} : null;
     this.runaheadPalette = this.runaheadFrames
       ? new Uint16Array(game.palette.words.length) : null;
     this.runaheadHitboxRam = null;
-    this.paletteRgb = new Uint8Array(game.palette.words.length * 3);
+    this.privateSpritePaletteWords = this.modState?.playableHibachi?.privatePaletteWords ?? null;
+    this.renderPaletteWords = this.privateSpritePaletteWords
+      ? new Uint16Array(PRIVATE_SPRITE_PALETTE_BASE + this.privateSpritePaletteWords.length)
+      : null;
+    this.paletteRgb = new Uint8Array(
+      (this.renderPaletteWords?.length ?? game.palette.words.length) * 3,
+    );
     this.rgb = new Uint8Array(SCREEN_W * SCREEN_H * 3);
     this.rotated = new Uint8Array(SCREEN_W * SCREEN_H * 3);
     this.rgba = new Uint8ClampedArray(SCREEN_W * SCREEN_H * 4);
@@ -284,7 +305,7 @@ export class LocalDdpdojRuntime {
     this.request = 0;
     this.lastTime = 0;
     this.cadence = new DdpdojCadence(BASE_FRAME_MS);
-    copySpriteList(game, this.spritebuffer);
+    copySpriteList(game, this.spritebuffer, this.spritePrivatePaletteBanks);
     this.onP2Joined?.(this.p2Joined);
   }
 
@@ -318,7 +339,7 @@ export class LocalDdpdojRuntime {
 
   async armRecording() {
     assertFormationReplayCompatible(this.formationState, 'REC');
-    assertReplayCompatible(this.modState, 'REC');
+    assertReplayCompatible(this.modState, 'REC', { allowPlayableHibachi: true });
     if (this.recorder) return this.recorder;
     if (this.inPlayback()) {
       throw new Error('REC is unavailable while a replay is playing.');
@@ -348,6 +369,7 @@ export class LocalDdpdojRuntime {
         ramB64: b64(game.ram.b.slice()),
         bgB64: b64(beBytesFromWords(game.vram.w)),
         tablesB64: b64(tablesBytes),
+        mods: exportModReplaySeed(this.modState),
         ...(soundState ? { sound: soundState } : {}),
       },
       version: {
@@ -373,7 +395,6 @@ export class LocalDdpdojRuntime {
 
   playFrom(obj) {
     assertFormationReplayCompatible(this.formationState, 'PLAY');
-    assertReplayCompatible(this.modState, 'PLAY');
     if (this.recorder) {
       throw new Error('Stop and save REC before loading a replay.');
     }
@@ -382,6 +403,16 @@ export class LocalDdpdojRuntime {
     }
 
     const parsed = validateReplay(obj);
+    let candidateModState = this.modState;
+    let replayModCandidate = null;
+    if (parsed.modSeed) {
+      replayModCandidate = validateModReplaySeed(
+        parsed.modSeed, this.modState?.loadout ?? { ids: [] },
+      );
+      candidateModState = replayModCandidate.state;
+    } else {
+      assertReplayCompatible(this.modState, 'PLAY');
+    }
     const replayTables = localReplayTables(parsed.tables);
     if (!localReplayTablesMatch(replayTables, this.preparedTables)) {
       throw new Error('Replay tables do not match the exact local Black Label ROM identity selected in Mixup.');
@@ -399,8 +430,10 @@ export class LocalDdpdojRuntime {
       bgSeed: beWords(parsed.bg),
       coinTick: tickCoinPulse,
       ...(this.audio ? { soundSink: this.audio } : {}),
-      ...(modGameOptions(this.modState) ?? {}),
+      ...(modGameOptions(candidateModState) ?? {}),
     });
+    if (replayModCandidate) restoreModReplaySeed(replayModCandidate, game);
+    const verifier = armPlayback(game, obj);
 
     clearKeyboard();
     clearTouch();
@@ -412,23 +445,32 @@ export class LocalDdpdojRuntime {
         : soundRuntimeFromAssets(this.soundAssets, APPROVED_SOUND_POLICIES);
       this.audio.resetGameAudio(soundRuntime);
     }
+    if (replayModCandidate) this.modState = candidateModState;
     this.game = game;
     this.tables = this.preparedTables;
+    this.privateSpritePaletteWords = this.modState?.playableHibachi?.privatePaletteWords ?? null;
+    this.renderPaletteWords = this.privateSpritePaletteWords
+      ? new Uint16Array(PRIVATE_SPRITE_PALETTE_BASE + this.privateSpritePaletteWords.length)
+      : null;
+    this.paletteRgb = new Uint8Array(
+      (this.renderPaletteWords?.length ?? game.palette.words.length) * 3,
+    );
     if (this.modState) this.modState.runtime.ghost = null;
     this.hitboxRam = this.modState?.loadout.presentation.hitboxes
       ? game.ram.clone() : null;
     this.runaheadView = null;
-    copySpriteList(game, this.spritebuffer);
+    copySpriteList(game, this.spritebuffer, this.spritePrivatePaletteBanks);
     this.p2Joined = authenticP2Joined(game.ram.u16(RAM.playerCountM1));
     this.onP2Joined?.(this.p2Joined);
     this.resyncTiming();
     this.playback = {
       obj,
       words: parsed.words,
+      coinWords: parsed.coinWords,
       pokes: parsed.pokes,
       count: parsed.words.length,
       index: 0,
-      verifier: armPlayback(game, obj),
+      verifier,
       ended: false,
       pending: null,
       needCheck: false,
@@ -547,7 +589,9 @@ export class LocalDdpdojRuntime {
   }
 
   _captureRunaheadHold() {
-    copySpriteList(this.game, this.runaheadSpritebuffer);
+    copySpriteList(
+      this.game, this.runaheadSpritebuffer, this.runaheadPrivatePaletteBanks,
+    );
     let hitboxRam = null;
     if (this.modState?.loadout.presentation.hitboxes) {
       if (!this.runaheadHitboxRam) this.runaheadHitboxRam = this.game.ram.clone();
@@ -556,6 +600,7 @@ export class LocalDdpdojRuntime {
     }
     return {
       spritebuffer: this.runaheadSpritebuffer,
+      spritePrivatePaletteBanks: this.runaheadPrivatePaletteBanks,
       hitboxRam,
     };
   }
@@ -598,7 +643,7 @@ export class LocalDdpdojRuntime {
     if (!depth || this.inPlayback()) return null;
     const game = this.game;
     const baseLogicFrame = game.logicFrame;
-    const coin = this.recorder ? null : createCoinProjection();
+    const coin = createCoinProjection();
     const dropSpriteHold = this.modState?.loadout.presentation.dropSpriteHold;
     let hold = null;
     try {
@@ -625,7 +670,7 @@ export class LocalDdpdojRuntime {
     const game = this.game;
     const inPlayback = this.inPlayback();
     this.runaheadView = null;
-    copySpriteList(game, this.spritebuffer);
+    copySpriteList(game, this.spritebuffer, this.spritePrivatePaletteBanks);
     if (this.hitboxRam) this.hitboxRam.b.set(game.ram.b);
     if (inPlayback) {
       for (const [address, value] of this.playback.pokes) {
@@ -633,18 +678,22 @@ export class LocalDdpdojRuntime {
       }
     }
     applyPreFrameMods(this.modState, game.ram);
+    const playbackIndex = inPlayback ? this.playback.index++ : -1;
     const rawWord = inPlayback
-      ? this.playback.words[this.playback.index++]
+      ? this.playback.words[playbackIndex]
       : currentPortWord();
+    const coinWord = inPlayback
+      ? this.playback.coinWords[playbackIndex]
+      : currentCoinWord();
     const modWord = transformModInput(this.modState, rawWord, game.logicFrame);
     const portWord = this.formationState
       ? prepareFormationFrame(this.formationState, game, modWord)
       : modWord;
-    if (this.recorder) this.recorder.input(portWord);
-    game.coinPort = inPlayback || this.recorder ? 0xffff : currentCoinWord();
+    if (this.recorder) this.recorder.input(portWord, coinWord);
+    game.coinPort = coinWord;
     game.step(portWord);
     if (this.modState?.loadout.presentation.dropSpriteHold) {
-      copySpriteList(game, this.spritebuffer);
+      copySpriteList(game, this.spritebuffer, this.spritePrivatePaletteBanks);
       if (this.hitboxRam) this.hitboxRam.b.set(game.ram.b);
     }
     applyPostFrameMods(this.modState, game.ram);
@@ -708,9 +757,21 @@ export class LocalDdpdojRuntime {
       rowscroll: this.rowscroll,
       zoomram: this.zoomram,
       spritebuffer: view?.spritebuffer ?? this.spritebuffer,
+      spritePrivatePaletteBanks: view?.spritePrivatePaletteBanks
+        ?? this.spritePrivatePaletteBanks,
+      spritePrivatePaletteBase: PRIVATE_SPRITE_PALETTE_BASE,
       regs: view?.regs ?? this.game.video,
     }, { spriteStride: RAM_STRIDE });
-    paletteRgb(view?.palette ?? this.game.palette.words, this.paletteRgb);
+    let palette = view?.palette ?? this.game.palette.words;
+    if (this.renderPaletteWords) {
+      this.renderPaletteWords.fill(0);
+      this.renderPaletteWords.set(palette);
+      this.renderPaletteWords.set(
+        this.privateSpritePaletteWords, PRIVATE_SPRITE_PALETTE_BASE,
+      );
+      palette = this.renderPaletteWords;
+    }
+    paletteRgb(palette, this.paletteRgb);
     resolveRgb(indexed, this.paletteRgb, this.rgb);
     applyPresentationMods(this.modState, this.rgb);
     applyHitboxOverlay(

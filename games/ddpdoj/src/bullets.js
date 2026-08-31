@@ -720,7 +720,8 @@ export function fire(ctx, entry, regs) {
  * `$81B414..$81B41A`.  That overshoot is not a mistake in the ROM and it is not
  * one here either: it is where the window ladder is reset to 70 slots.
  */
-export function poolClear(ram) {
+export function poolClear(ram, ctx = null) {
+  ctx?.bulletRetireHook?.(ram, { all: true, reason: 'pool-clear' }, ctx);
   for (let a = BUL.pool; a < BUL.pool + 6730 * 2; a += 2) ram.setU16(a, 0);
 }
 

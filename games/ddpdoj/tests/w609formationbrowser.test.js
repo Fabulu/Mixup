@@ -15,8 +15,8 @@ import {
   applyAuthenticSelection, authenticSelectionQuery, forceAuthenticP1Selection,
 } from '../src/authentic.js';
 import {
-  MODS, MOD_IDS, createModState, hashToLoadout, loadoutToHash, resolveLoadout,
-  transformModInput,
+  assertReplayCompatible, MODS, MOD_IDS, createModState, hashToLoadout, loadoutToHash,
+  resolveLoadout, transformModInput,
 } from '../src/mods.js';
 import {
   FORMATION_MODE, FORMATION_THREE_MODE, beginFormationCreditedRun, createFormationState,
@@ -470,7 +470,7 @@ test('W609 replay v1 refuses active formation without changing ordinary policy',
     get game() { throw new Error('REC touched the game before refusing formation'); },
   };
   await assert.rejects(() => Demo.prototype.armRecording.call(recordingHost),
-    /REC is unavailable while formation mode is active.*Replay v1 cannot encode formation state/);
+    /REC is unavailable while formation mode is active.*Replay v2 does not encode formation state/);
   assert.strictEqual(recordingHost.recorder, oldRecording);
   assert.deepEqual(recordingHost.playback, { keep: 'playing' },
     'REC refusal leaves playback and recorder state untouched');
@@ -482,16 +482,15 @@ test('W609 replay v1 refuses active formation without changing ordinary policy',
     formation, game: oldGame, playback: oldPlayback, recorder: oldRecorder,
   };
   assert.throws(() => Demo.prototype.playFrom.call(playbackHost, {}),
-    /PLAY is unavailable while formation mode is active.*Replay v1 cannot encode formation state/);
+    /PLAY is unavailable while formation mode is active.*Replay v2 does not encode formation state/);
   assert.strictEqual(playbackHost.game, oldGame);
   assert.strictEqual(playbackHost.playback, oldPlayback);
   assert.strictEqual(playbackHost.recorder, oldRecorder,
     'PLAY refusal occurs before any replay state is replaced');
 
-  assert.throws(() => Demo.prototype.playFrom.call({
-    formation: null,
-    mods: createModState(resolveLoadout(['precision-ship'])),
-  }, {}), /PLAY is unavailable.*Precision Ship/,
+  assert.throws(() => assertReplayCompatible(
+    createModState(resolveLoadout(['precision-ship'])), 'PLAY'),
+  /PLAY is unavailable.*Precision Ship/,
   'ordinary mod replay compatibility remains unchanged');
 });
 
@@ -517,7 +516,7 @@ test('W609 start keeps explicit native P2 separate and blocks every formation co
     /Formation cannot be combined with an explicit native P2 selection/);
   assert.match(start, /Formation cannot be combined with runahead/);
   assert.match(launchHandler,
-    /if \(formationActive && \(explicitP2Joined[\s\S]*runaheadFrames > 0\)\) return/);
+    /if \(formationActive && \(explicitP2Joined[\s\S]*runaheadFrames > 0[\s\S]*resolved\.sim\.playableHibachi\)\) return/);
   assert.match(start,
     /formationRoster\.map\([\s\S]*Type \$\{selection\.ship[\s\S]*Native P2 not joined/);
   assert.doesNotMatch(start, /FORMATION_MODE\.authenticSelection\.p2/,
@@ -552,7 +551,7 @@ test('W609 menu and runtime expose both P1-owned formations and disabled White L
   const browser = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../src/web/app.js', import.meta.url), 'utf8');
 
-  assert.equal(MOD_IDS.length, 36);
+  assert.equal(MOD_IDS.length, 37);
   assert.equal(Object.hasOwn(MODS, ID), false);
   assert.equal([...start.matchAll(/id="formation-side-by-side"/g)].length, 1);
   assert.equal([...start.matchAll(/id="formation-three"/g)].length, 1);

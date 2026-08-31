@@ -342,7 +342,10 @@ function gunTick(ram, a4, init) {
  * `$2A8228..$2A8246` / `$2A83AE..$2A83D0` -- `$24270A` inlined.
  * @returns {number|null} the chosen player record, or null for "both dead".
  */
-function pickTarget(ram, a5) {
+function pickTarget(ram, a5, ctx = null) {
+  if (ctx && Object.hasOwn(ctx, 'privateTargetRecord')) {
+    return ctx.privateTargetRecord;
+  }
   const sel = targetSelect(ram, a5);                   // $2A8234 tst.b ($3,A5) / exg
   return sel.carry ? null : sel.addr;                  // $2A8242 bpl.w -> skip
 }
@@ -471,7 +474,7 @@ export function gun0Step2A7400(ram, rom, ctx, a4, a5, a6) {
   if (i16(ram.u16(a6 + 0x1d8)) < 4) {
     ram.setU16(a6 + 0x1d8, u16(ram.u16(a6 + 0x1d8) + 1));
   }
-  a1Stop259B08(ram, 0);
+  a1Stop259B08(ram, 0, ctx);
 }
 
 // ===========================================================================
@@ -512,7 +515,7 @@ export function gun1Init2A7850(ram, rom, a4, a6) {
 /** Fire the one aimed center shot. Returns its jittered heading, or null when
  *  both player records are dead. */
 function gun1Aim(ram, rom, ctx, a4, a5, a6) {
-  const target = pickTarget(ram, a5);
+  const target = pickTarget(ram, a5, ctx);
   if (target === null) return null;
   const aim = aim256(aimTables(rom),
     u16(ram.u16(a6 + 0x02) + 0xf0c0), ram.u16(a6 + 0x04),
@@ -600,7 +603,7 @@ export function gun1Step2A78D0(ram, rom, ctx, a4, a5, a6) {
     ram.setU16(a6 + 0x1d0, u16(ram.u16(a6 + 0x1d0) + 1));
   }
   for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
-  a1Stop259B08(ram, 1);
+  a1Stop259B08(ram, 1, ctx);
 }
 
 // ===========================================================================
@@ -633,7 +636,7 @@ export function gun2Init2A7AB2(ram, rom, a4, a6) {
 /** The one-or-three-shot aimed arm at `$2A7B5C..$2A7BF0`.
  * Returns false only when both player records are dead. */
 function gun2Aim(ram, rom, ctx, a4, a5, a6) {
-  const target = pickTarget(ram, a5);
+  const target = pickTarget(ram, a5, ctx);
   if (target === null) return false;
 
   let d1 = aim256(aimTables(rom),
@@ -730,7 +733,7 @@ export function gun2Step2A7B20(ram, rom, ctx, a4, a5, a6) {
     ram.setU16(a6 + 0x1d4, u16(ram.u16(a6 + 0x1d4) + 1));
   }
   for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
-  a1Stop259B08(ram, 2);
+  a1Stop259B08(ram, 2, ctx);
 }
 
 // ===========================================================================
@@ -808,7 +811,7 @@ export function gun3Step2A7E96(ram, rom, ctx, a4, a5, a6) {
   if (ram.u8(a4 + 0x04) === ram.u8(a4 + 0x05)) {
     ram.setU8(a4 + 0x14, drawByte2431F4(ram, rom));
   }
-  const target = pickTarget(ram, a5);
+  const target = pickTarget(ram, a5, ctx);
   if (target !== null) gun3MainVolley(ram, rom, ctx, a4, a5, a6, target);
 
   ram.setU16(a4 + 0x0a, u16(ram.u16(a4 + 0x0a) + 1));
@@ -840,7 +843,7 @@ export function gun3Step2A7E96(ram, rom, ctx, a4, a5, a6) {
   if (ram.u8(a6 + 0x1d7) < 0x18) {
     ram.setU8(a6 + 0x1d7, u8(ram.u8(a6 + 0x1d7) + 2));
   }
-  a1Stop259B08(ram, 3);
+  a1Stop259B08(ram, 3, ctx);
 }
 
 // ===========================================================================
@@ -963,7 +966,7 @@ export function altGun1Init2A97F4(ram, rom, a4, a6) {
 /** The seven-shot aimed accent at `$2A989A..$2A9938`.
  *  Returns D1 as the cartridge leaves it, or null when both players are dead. */
 function altGun1AimFan(ram, rom, ctx, a4, a5, a6) {
-  const tgt = pickTarget(ram, a5);
+  const tgt = pickTarget(ram, a5, ctx);
   if (tgt === null) return null;
   const aim = aim256(aimTables(rom),
     u16(ram.u16(a6 + 0x02) + 0xf0c0), ram.u16(a6 + 0x04),
@@ -1105,7 +1108,7 @@ export function altGun2Init2A9AA0(ram, rom, a4, a6) {
 /** The one-or-three-shot aimed arm at `$2A9B4A..$2A9BD4`.
  *  Returns false only when both players are dead. */
 function altGun2Aim(ram, rom, ctx, a4, a5, a6) {
-  const tgt = pickTarget(ram, a5);
+  const tgt = pickTarget(ram, a5, ctx);
   if (tgt === null) return false;
 
   let d1 = aim256(aimTables(rom),
@@ -1253,7 +1256,7 @@ export function altGun3Step2A9EB6(ram, rom, ctx, a4, a5, a6) {
   if (ram.u8(a4 + 0x04) === ram.u8(a4 + 0x05)) {
     ram.setU8(a4 + 0x14, drawByte2431F4(ram, rom));
   }
-  const target = pickTarget(ram, a5);
+  const target = pickTarget(ram, a5, ctx);
   if (target !== null) altGun3Volley(ram, rom, ctx, a4, a5, a6, target);
 
   ram.setU16(a4 + 0x0a, u16(ram.u16(a4 + 0x0a) + 1));
@@ -1431,7 +1434,7 @@ export function gun5Step2A8206(ram, rom, ctx, a4, a5, a6) {
   let skip = false;
 
   if ((ram.u8(a4 + 0x04) & 1) !== 0) {                 // $2A821E btst #$0,($4,A4)
-    const tgt = pickTarget(ram, a5);
+    const tgt = pickTarget(ram, a5, ctx);
     if (tgt === null) {
       skip = true;                                     // $2A8242 bpl.w $2A8304
     } else {
@@ -1498,7 +1501,7 @@ export function gun5Step2A8206(ram, rom, ctx, a4, a5, a6) {
   if (i16(ram.u16(a6 + 0x1de)) < 0x1a) {               // $2A832C cmpi.w #$1A / bge.s
     ram.setU16(a6 + 0x1de, u16(ram.u16(a6 + 0x1de) + 1));      // $2A8334 addq.w #$1
   }
-  a1Stop259B08(ram, 5);                                // $2A8338 moveq #$5 / $2A833A jsr
+  a1Stop259B08(ram, 5, ctx);                           // $2A8338 moveq #$5 / $2A833A jsr
 }
 
 /** `$2A827A..$2A8286` and `$2A82BC..$2A82C8`, the SAME five instructions twice,
@@ -1555,7 +1558,7 @@ export function gun6Step2A8396(ram, rom, ctx, a4, a5, a6) {
   if (!gunTick(ram, a4, () => gun6Init2A8370(ram, rom, a4, a6))) return;
 
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x06));             // $2A83A8 move.b ($6,A4),($2,A4)
-  const tgt = pickTarget(ram, a5);                     // $2A83AE..$2A83D0
+  const tgt = pickTarget(ram, a5, ctx);                     // $2A83AE..$2A83D0
   if (tgt !== null) {                                  // $2A83CC bpl.w $2A848E
     const ty = ram.u16(tgt + 0x02), tx = ram.u16(tgt + 0x04);   // $2A83D2 movem.w
     const aim = aim256(aimTables(rom),                 // $2A83E2 jsr $2422A2
@@ -1602,7 +1605,7 @@ export function gun6Step2A8396(ram, rom, ctx, a4, a5, a6) {
   if (ram.u16(a6 + 0x1e8) < 6) {                       // $2A84B6 cmpi.w #$6 / bcc.s -- UNSIGNED
     ram.setU16(a6 + 0x1e8, u16(ram.u16(a6 + 0x1e8) + 1));      // $2A84BE addq.w #$1
   }
-  a1Stop259B08(ram, 6);                                // $2A84C2 moveq #$6 / $2A84C4 jsr
+  a1Stop259B08(ram, 6, ctx);                           // $2A84C2 moveq #$6 / $2A84C4 jsr
 }
 
 // ===========================================================================
@@ -1669,7 +1672,7 @@ export function gun7Step2A8538(ram, rom, ctx, a4, a5, a6) {
   if (!gunTick(ram, a4, () => gun7Init2A8516(ram, rom, a4, a6))) return;
 
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x08));             // $2A854A move.b ($8,A4),($2,A4)
-  const tgt = pickTarget(ram, a5);                     // $2A8550..$2A8572
+  const tgt = pickTarget(ram, a5, ctx);                     // $2A8550..$2A8572
   if (tgt !== null) {                                  // $2A856E bpl.w $2A8626
     const ty = ram.u16(tgt + 0x02), tx = ram.u16(tgt + 0x04);   // $2A8574 movem.w
     // NO position bias here: gun 5 adds $F0C0 to its own Y before aiming and
@@ -1734,7 +1737,7 @@ export function gun7Step2A8538(ram, rom, ctx, a4, a5, a6) {
   if (ram.u16(a6 + 0x1ec) < 0x0b) {                    // $2A866A cmpi.w #$B / bcc.s
     ram.setU16(a6 + 0x1ec, u16(ram.u16(a6 + 0x1ec) + 2));     // $2A8672 addq.w #$2
   }
-  a1Stop259B08(ram, 7);                                // $2A8676 moveq #$7 / $2A8678 jsr
+  a1Stop259B08(ram, 7, ctx);                           // $2A8676 moveq #$7 / $2A8678 jsr
 }
 
 // ===========================================================================
@@ -1791,7 +1794,7 @@ export function gun8Step2A883A(ram, rom, ctx, a4, a5, a6) {
   if (!gunTick(ram, a4, () => gun8Init2A8800(ram, rom, a4, a6))) return;
 
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x06));             // $2A884C move.b ($6,A4),($2,A4)
-  const tgt = pickTarget(ram, a5);                     // $2A8852..$2A8870
+  const tgt = pickTarget(ram, a5, ctx);                     // $2A8852..$2A8870
   if (tgt !== null) {                                  // $2A886C bpl.w $2A895C
     const ty = ram.u16(tgt + 0x02), tx = ram.u16(tgt + 0x04);   // $2A8872 movem.w
     const sy = u16(ram.u16(a6 + 0x02) + 0xd800);       // $2A887E addi.w #$D800,D0
@@ -1861,7 +1864,7 @@ export function gun8Step2A883A(ram, rom, ctx, a4, a5, a6) {
   if (ram.u8(a6 + 0x1ee) < 0x28) {                     // $2A8974 cmpi.b #$28 / bcc.s
     ram.setU8(a6 + 0x1ee, u8(ram.u8(a6 + 0x1ee) + 0x14));     // $2A897C addi.b #$14
   }
-  a1Stop259B08(ram, 8);                                // $2A8982 moveq #$8 / $2A8984 jsr
+  a1Stop259B08(ram, 8, ctx);                           // $2A8982 moveq #$8 / $2A8984 jsr
 }
 
 // ===========================================================================
@@ -1948,7 +1951,7 @@ export function gun9Step2A89F4(ram, rom, ctx, a4, a5, a6) {
   if (t !== 0) return;                                 // the BORROW is the body
 
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x06));             // $2A89FC move.b ($6,A4),($2,A4)
-  const tgt = pickTarget(ram, a5);                     // $2A8A02..$2A8A24
+  const tgt = pickTarget(ram, a5, ctx);                     // $2A8A02..$2A8A24
   if (tgt !== null) {                                  // $2A8A20 bpl.w $2A8ADE
     // $2A8A26 movem.w ($2,A0),D2-D3 / $2A8A30 movem.w ($2,A6),D0-D1
     const ty = ram.u16(tgt + 0x02), tx = ram.u16(tgt + 0x04);
@@ -2294,7 +2297,7 @@ export function gunBStep2A8CB2(ram, rom, ctx, a4, a5, a6) {
   // $2A8CCA/$2A8CCE/$2A8CD2 -- an EQUALITY test between two BYTE fields, not a
   // flag: the block below runs only while ($4,A4) still equals ($5,A4).
   if (ram.u8(a4 + 0x04) === ram.u8(a4 + 0x05)) {
-    const tgt = pickTarget(ram, a5);                   // $2A8CD6..$2A8CF8
+    const tgt = pickTarget(ram, a5, ctx);                   // $2A8CD6..$2A8CF8
     if (tgt === null) {
       skip = true;                                     // $2A8CF6 bpl.w $2A8E6A
     } else {

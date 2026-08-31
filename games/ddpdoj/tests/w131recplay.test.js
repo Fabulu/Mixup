@@ -169,29 +169,45 @@ test('cross-check: feedLine is the verbatim shape replay.mjs hashes', () => {
 // 2. THE RECORDER CAPTURES PORTIN (must-fail, always runs).
 // ===========================================================================
 
-test('recorder: input() tees portin words verbatim; never input()-ed is empty', () => {
-  // The "not armed -> buffer empty" invariant at module level: a recorder that
-  // is never fed input has an empty portin.  (The page's `if (this.recorder)`
-  // guard in `Demo.step()` is the same invariant at the Demo level -- when
-  // recorder is null, nothing is pushed.)
+test('recorder tees equal player and coin streams into replay v2', async () => {
   const fakeGame = {};
   const rec = armRecorder(fakeGame, {
     seed: { lf: 0, vf: 0, ramB64: '', bgB64: '', tablesB64: '' },
   });
   assert.deepEqual(rec.portin, []);
+  assert.deepEqual(rec.coinin, []);
   assert.equal(rec.n, 0);
 
-  // Armed + input -> the words appear in order, masked to 32 bits.
-  rec.input(0x1234);
-  rec.input(0xffff);
-  rec.input(0x0001);
+  rec.input(0x1234, 0xfffe);
+  rec.input(0xffff, 0xfffd);
+  rec.input(0x0001, 0xffff);
   assert.deepEqual(rec.portin, [0x1234, 0xffff, 0x0001]);
+  assert.deepEqual(rec.coinin, [0xfffe, 0xfffd, 0xffff]);
 
-  // A fresh recorder is empty again (the restore half of the differential).
+  const artifact = await stopRecorder(rec);
+  assert.equal(artifact.format, FORMAT);
+  assert.equal(artifact.portin.count, 3);
+  assert.equal(artifact.coinin.count, artifact.portin.count);
+  assert.deepEqual(Array.from(unb64(artifact.portin.b64)), [
+    0x12, 0x34, 0xff, 0xff, 0x00, 0x01,
+  ]);
+  assert.deepEqual(Array.from(unb64(artifact.coinin.b64)), [
+    0xff, 0xfe, 0xff, 0xfd, 0xff, 0xff,
+  ]);
+  assert.deepEqual(artifact.seed.mods, { ids: [], playableHibachi: null });
+
+  const unequal = armRecorder(fakeGame, {
+    seed: { lf: 0, vf: 0, ramB64: '', bgB64: '', tablesB64: '' },
+  });
+  unequal.input(0xffff, 0xffff);
+  unequal.coinin.pop();
+  await assert.rejects(() => stopRecorder(unequal), /input streams differ/);
+
   const rec2 = armRecorder(fakeGame, {
     seed: { lf: 0, vf: 0, ramB64: '', bgB64: '', tablesB64: '' },
   });
   assert.deepEqual(rec2.portin, []);
+  assert.deepEqual(rec2.coinin, []);
 });
 
 test('packaged REC freezes the next-frame slowdown arm with its RAM seed', async () => {
@@ -327,7 +343,7 @@ test('packaged REC snapshots one final instant after deferred table loading', as
  * Boot the Game from the fly-around seed, arm the BROWSER recorder, drive it
  * over the trace's portin for lf in (SEED_LF, TO_LF], and package a `.replay`.
  * Mirrors what `Demo.step()` does each frame (input, poke, step, feed) and what
- * `Demo.armRecording()` captures at arm time.  Returns the v1 object.
+ * `Demo.armRecording()` captures at arm time. Returns the current replay object.
  */
 async function recordFlyAround() {
   const parsed = readTrace(TRACE);
@@ -397,6 +413,11 @@ test('rec: a browser-built .replay VERIFIES GREEN through the Node player',
     assert.equal(o.digest.periodFrames, PERIOD_FRAMES);
     assert.equal(o.portin.encoding, 'u16be');
     assert.equal(o.portin.count, TO_LF - SEED_LF);
+    assert.equal(o.coinin.encoding, 'u16be');
+    assert.equal(o.coinin.count, o.portin.count);
+    assert.equal(unb64(o.coinin.b64).every((byte) => byte === 0xff), true,
+      'the legacy fly-around walk records one explicit idle coin word per frame');
+    assert.deepEqual(o.seed.mods, { ids: [], playableHibachi: null });
     assert.equal(o.seed.arm, unb64(o.seed.ramB64)[RAM.semaphore - MACHINE.ramBase],
       'the packaged next-frame arm matches its RAM semaphore');
     // A live recording freezes ALL of CLAIMED (stateVector always populates

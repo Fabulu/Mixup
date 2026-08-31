@@ -6,7 +6,7 @@
 // columns, and the headless player GREEN-prints it.  This module is the
 // BROWSER half of that: it arms a recorder on the LIVE `Demo.game`, tees one
 // portin word per logic frame, feeds `stateVector(game)` into an ACCUMULATING
-// digest each frame, and at stop packages the whole thing as a v1 `.replay`
+// digest each frame, and at stop packages the whole thing as a v2 `.replay`
 // object the headless player (`tools/replay.mjs verifyReplay`) can verify.
 //
 // THE ONE REAL SUBTLETY -- and the reason this is its own wave -- is that
@@ -29,9 +29,11 @@
 
 import { stateVector, CLAIMED } from '../state.js';
 
-// The v1 format, frozen by W129 (`NOTES-replay.md`, `tools/replay.mjs:50`).
-// Mirrored here (not imported) because the headless tool is Node-only.
-export const FORMAT = 'ddpdoj.replay/v1';
+// Replay v2 records both cabinet input ports and the selected external mod seed.
+// v1 stays readable so published and locally saved recordings remain playable.
+export const FORMAT_V1 = 'ddpdoj.replay/v1';
+export const FORMAT_V2 = 'ddpdoj.replay/v2';
+export const FORMAT = FORMAT_V2;
 export const BUILD = 'B';
 export const PERIOD_FRAMES = 250;   // the checkpoint cadence (manifest.json `every`)
 
@@ -178,6 +180,7 @@ export function armRecorder(game, opts) {
     intervention: opts.intervention,
     poke: opts.poke ?? '810424=FF',
     portin: [],
+    coinin: [],
     // The feed is accumulated as one growing string; period boundaries are
     // recorded as [start, end) char offsets so each period slice is hashed
     // fresh at stop (the player's per-period windows are FRESH hashes, not a
@@ -187,7 +190,10 @@ export function armRecorder(game, opts) {
     periodBounds: [0],
     periodLfs: [],
     n: 0,
-    input(pw) { this.portin.push(pw >>> 0); },
+    input(pw, coinWord = 0xffff) {
+      this.portin.push(pw >>> 0);
+      this.coinin.push(coinWord >>> 0);
+    },
     feed() {
       const v = stateVector(this.game);
       this.cumulativeFeed += feedLine(this.columns, v);
@@ -202,8 +208,8 @@ export function armRecorder(game, opts) {
 }
 
 /**
- * Package an armed recorder into a v1 `.replay` object (the format frozen by
- * W129, assembled exactly like `replay.mjs buildReplay` at :198).  Async: the
+ * Package an armed recorder into a v2 `.replay` object, assembled exactly like
+ * `replay.mjs buildReplay`. Async: the
  * sha256 of the accumulated feed + each period slice.  Clears nothing -- the
  * caller decides whether to reuse the recorder.
  *
@@ -228,19 +234,29 @@ export async function stopRecorder(rec) {
     periods.push({ lf: rec.periodLfs[k], sha256: await sha256Hex(slice) });
   }
 
-  // u16be portin bytes: one big-endian word per logic frame, exactly the form
-  // `replay.mjs:179 decodePortin` reads back and `step` consumes.
-  const portinBytes = new Uint8Array(rec.portin.length * 2);
-  for (let i = 0; i < rec.portin.length; i++) {
-    portinBytes[i * 2] = (rec.portin[i] >> 8) & 0xff;
-    portinBytes[i * 2 + 1] = rec.portin[i] & 0xff;
+  if (rec.portin.length !== rec.coinin.length) {
+    throw new Error(`replay input streams differ: ${rec.portin.length} player and ${rec.coinin.length} coin words`);
   }
+  const encodeWords = (words) => {
+    const bytes = new Uint8Array(words.length * 2);
+    for (let i = 0; i < words.length; i++) {
+      bytes[i * 2] = (words[i] >> 8) & 0xff;
+      bytes[i * 2 + 1] = words[i] & 0xff;
+    }
+    return bytes;
+  };
+  const portinBytes = encodeWords(rec.portin);
+  const coininBytes = encodeWords(rec.coinin);
+  const seed = {
+    ...rec.seed,
+    mods: rec.seed?.mods ?? { ids: [], playableHibachi: null },
+  };
 
   return {
     format: FORMAT,
     build: BUILD,
     version: rec.version,
-    seed: rec.seed,
+    seed,
     scenario: rec.scenario,
     intervention: rec.intervention,
     poke: rec.poke,
@@ -248,6 +264,11 @@ export async function stopRecorder(rec) {
       encoding: 'u16be',
       count: rec.portin.length,
       b64: b64(portinBytes),
+    },
+    coinin: {
+      encoding: 'u16be',
+      count: rec.coinin.length,
+      b64: b64(coininBytes),
     },
     digest: {
       algo: 'sha256',
@@ -291,31 +312,50 @@ export async function stopRecorder(rec) {
 // identical design call W131 made for the recorder (worklog 131 section 1).
 // ---------------------------------------------------------------------------
 
-/** Decode the v1 `portin` block (u16be bytes) into a `Uint16Array` of input
- *  words, mirroring `replay.mjs:179 decodePortin` verbatim.  The recorder
- *  encodes each portin word as two big-endian bytes (`stopRecorder` above); this
- *  is the inverse, used by `playFrom` to feed the visible Game one word per
- *  logic frame. */
+/** Decode a replay `u16be` stream into a `Uint16Array`, mirroring the
+ *  headless verifier. The recorder encodes each word as two big-endian bytes;
+ *  this is the inverse used by playback to feed one word per logic frame. */
+function decodeWordsBlock(block, label) {
+  if (!block) throw new Error(`replay ${label} block is missing`);
+  if (block.encoding !== 'u16be') {
+    throw new Error(`unsupported ${label} encoding ${block?.encoding} (want u16be)`);
+  }
+  if (!Number.isSafeInteger(block.count) || block.count < 1) {
+    throw new Error(`replay ${label}.count must be a positive integer`);
+  }
+  const bytes = unb64(block.b64);
+  if (bytes.length % 2 !== 0 || bytes.length / 2 !== block.count) {
+    throw new Error(`replay ${label} count ${block.count} does not match its u16be bytes`);
+  }
+  const words = new Uint16Array(bytes.length >> 1);
+  for (let i = 0; i < words.length; i++) {
+    words[i] = (bytes[i * 2] << 8) | bytes[i * 2 + 1];
+  }
+  return words;
+}
+
 export function decodePortinWords(obj) {
-  if (!obj?.portin || obj.portin.encoding !== 'u16be') {
-    throw new Error(`unsupported portin encoding ${obj?.portin?.encoding} (want u16be)`);
+  return decodeWordsBlock(obj?.portin, 'portin');
+}
+
+export function decodeCoininWords(obj, playerCount = obj?.portin?.count) {
+  if (obj?.format === FORMAT_V1) {
+    if (!Number.isSafeInteger(playerCount) || playerCount < 1) {
+      throw new Error('legacy replay player count must be a positive integer');
+    }
+    return new Uint16Array(playerCount).fill(0xffff);
   }
-  if (!Number.isSafeInteger(obj.portin.count) || obj.portin.count < 1) {
-    throw new Error('replay portin.count must be a positive integer');
+  const words = decodeWordsBlock(obj?.coinin, 'coinin');
+  if (words.length !== playerCount) {
+    throw new Error(`replay input streams differ: ${playerCount} player and ${words.length} coin words`);
   }
-  const bytes = unb64(obj.portin.b64);
-  if (bytes.length % 2 !== 0 || bytes.length / 2 !== obj.portin.count) {
-    throw new Error(`replay portin count ${obj.portin.count} does not match its u16be bytes`);
-  }
-  const w = new Uint16Array(bytes.length >> 1);
-  for (let i = 0; i < w.length; i++) w[i] = (bytes[i * 2] << 8) | bytes[i * 2 + 1];
-  return w;
+  return words;
 }
 
 /** Validate the complete browser/headless initialization contract. */
 export function validateReplay(obj) {
-  if (!obj || obj.format !== FORMAT) {
-    throw new Error(`not a ${FORMAT} artifact (got ${String(obj?.format)})`);
+  if (!obj || (obj.format !== FORMAT_V1 && obj.format !== FORMAT_V2)) {
+    throw new Error(`not a supported DaiOuJou replay artifact (got ${String(obj?.format)})`);
   }
   if (obj.build !== BUILD) throw new Error(`unsupported replay build ${String(obj.build)}`);
   if (!obj.seed || !Number.isSafeInteger(obj.seed.lf) || obj.seed.lf < 0
@@ -328,6 +368,11 @@ export function validateReplay(obj) {
         || obj.seed.sound.format !== 'ddpdoj.sound/v1')) {
     throw new Error('replay sound seed must be a ddpdoj.sound/v1 object when present');
   }
+  if (obj.format === FORMAT_V2
+      && (!obj.seed.mods || typeof obj.seed.mods !== 'object'
+        || Array.isArray(obj.seed.mods) || !Array.isArray(obj.seed.mods.ids))) {
+    throw new Error('replay v2 seed.mods must contain a mod id array');
+  }
   const ram = unb64(obj.seed.ramB64);
   const bg = unb64(obj.seed.bgB64);
   const tablesBytes = unb64(obj.seed.tablesB64);
@@ -336,6 +381,7 @@ export function validateReplay(obj) {
   try { JSON.parse(new TextDecoder().decode(tablesBytes)); }
   catch (e) { throw new Error(`replay tables seed is not JSON: ${e.message}`); }
   const words = decodePortinWords(obj);
+  const coinWords = decodeCoininWords(obj, words.length);
   const pokes = parsePoke(obj.poke);
   if (!obj.digest || !Array.isArray(obj.digest.columns)
       || obj.digest.columns.length === 0
@@ -359,7 +405,10 @@ export function validateReplay(obj) {
   if (!/^[0-9a-f]{64}$/.test(obj.digest.cumulative ?? '')) {
     throw new Error('replay digest.cumulative is not a SHA-256 hex digest');
   }
-  return { ram, bg, tables: JSON.parse(new TextDecoder().decode(tablesBytes)), words, pokes };
+  return {
+    ram, bg, tables: JSON.parse(new TextDecoder().decode(tablesBytes)),
+    words, coinWords, pokes, modSeed: obj.format === FORMAT_V2 ? obj.seed.mods : null,
+  };
 }
 
 /**

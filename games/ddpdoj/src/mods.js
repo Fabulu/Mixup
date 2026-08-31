@@ -14,6 +14,17 @@ import { SPAWN } from './spawn.js';
 import { DMG, bulletWindowSlots } from './damage.js';
 import { i16 } from './ram.js';
 import { RUNAHEAD_EXTERNAL_STATE } from './runahead-state.js';
+import {
+  beginPlayableHibachiCreditedRun, bindPlayableHibachiGame,
+  clearPlayableHibachiBulletOnSpawn, collectPlayableHibachiSpriteRequests,
+  createPlayableHibachiState,
+  endPlayableHibachiRun, exportPlayableHibachiReplayState,
+  filterPlayableHibachiGrazeEvent, importPlayableHibachiReplayState,
+  playableHibachiAllowsBulletCollision, playableHibachiAllowsFriendlyConversion,
+  resetPlayableHibachiStateInPlace, restorePlayableHibachiRunaheadState,
+  retirePlayableHibachiBullet, runPlayableHibachiDamage,
+  savePlayableHibachiRunaheadState, stepPlayableHibachiWeapon,
+} from './playablehibachi.js';
 
 export const CATEGORIES = Object.freeze(['survival', 'arsenal', 'challenge', 'presentation']);
 
@@ -87,6 +98,12 @@ export const MODS = Object.freeze({
     name: 'Friendly Converted Bullets', category: 'arsenal',
     blurb: 'Turn canceled enemy fire into upward-moving player shots that can damage ordinary enemies.',
     effects: ['$281D22 cancel/free -> one P1 shot-pool projectile from the bullet final position'],
+  }),
+  'playable-hibachi': mod({
+    name: 'Playable Hibachi', category: 'arsenal',
+    blurb: 'Fly a rotated Hibachi that fires continuously and selects authentic patterns with SHOT and AUTO.',
+    effects: ['native player lifecycle with first-form Hibachi presentation',
+      'SHOT/AUTO select authentic normal or hyper bullet repertoires for each player'],
   }),
 
   'low-rank': mod({
@@ -272,6 +289,7 @@ export function resolveLoadout(ids = []) {
     beeMagnet: has('bee-magnet'),
     grazeReactor: has('graze-reactor'),
     friendlyConvertedBullets: has('friendly-converted-bullets'),
+    playableHibachi: has('playable-hibachi'),
     autoDeathbomb: has('auto-deathbomb'),
     resurrectionInPlace: has('resurrection-in-place'),
     glassCannon: has('glass-cannon'),
@@ -304,15 +322,17 @@ export function resolveLoadout(ids = []) {
 /** Return runtime state only for a recognized, nonempty loadout. */
 export function createModState(loadout) {
   if (!loadout || !loadout.ids?.length) return null;
-  return { loadout, runtime: {
-    ghost: null,
-    hyperGauge: null,
-    bulletDensity: 0,
-    grazedBullets: [new Set(), new Set()],
-    grazeCount: [0, 0],
-    resurrectionPositions: [null, null],
-    cabinetRamRestore: [],
-  } };
+  return { loadout,
+    playableHibachi: loadout.sim.playableHibachi ? createPlayableHibachiState() : null,
+    runtime: {
+      ghost: null,
+      hyperGauge: null,
+      bulletDensity: 0,
+      grazedBullets: [new Set(), new Set()],
+      grazeCount: [0, 0],
+      resurrectionPositions: [null, null],
+      cabinetRamRestore: [],
+    } };
 }
 
 const MOD_RUNAHEAD_TOKENS = new WeakMap();
@@ -347,6 +367,9 @@ export function saveModRunaheadState(state) {
     cabinetRamRestore: [...runtime.cabinetRamRestore],
     cabinetBoot: ownProperty(runtime, 'cabinetBoot'),
     cabinetRunActive: ownProperty(runtime, 'cabinetRunActive'),
+    playableHibachiOwner: state.playableHibachi,
+    playableHibachi: state.playableHibachi
+      ? savePlayableHibachiRunaheadState(state.playableHibachi) : null,
   });
   return token;
 }
@@ -357,6 +380,9 @@ export function restoreModRunaheadState(state, token) {
   if (!saved) throw new TypeError('Unknown mod runahead checkpoint.');
   if (saved.state !== state || saved.runtime !== state?.runtime) {
     throw new Error('Mod runahead checkpoint belongs to another state.');
+  }
+  if (state.playableHibachi !== saved.playableHibachiOwner) {
+    throw new Error('Playable Hibachi owner changed during mod runahead.');
   }
   if (saved.used) throw new Error('Mod runahead checkpoint was already restored.');
   const runtime = saved.runtime;
@@ -380,6 +406,9 @@ export function restoreModRunaheadState(state, token) {
   );
   restoreOwnProperty(runtime, 'cabinetBoot', saved.cabinetBoot);
   restoreOwnProperty(runtime, 'cabinetRunActive', saved.cabinetRunActive);
+  if (state.playableHibachi) {
+    restorePlayableHibachiRunaheadState(state.playableHibachi, saved.playableHibachi);
+  }
   saved.used = true;
 }
 
@@ -398,6 +427,15 @@ export function prepareModCabinetBoot(state) {
   state.runtime.cabinetBoot = true;
   state.runtime.cabinetRunActive = false;
   resetRunRuntime(state);
+  if (state.playableHibachi) resetPlayableHibachiStateInPlace(state.playableHibachi);
+  return state;
+}
+
+/** Bind private mod owners after Game construction and before boot can call them. */
+export function bindModGame(state, game, { active = false } = {}) {
+  if (!state?.playableHibachi) return state;
+  bindPlayableHibachiGame(state.playableHibachi, game);
+  if (active) beginPlayableHibachiCreditedRun(state.playableHibachi, game, { demo: false });
   return state;
 }
 
@@ -439,6 +477,11 @@ function cabinetRunStart(state, ram, event) {
   resetRunRuntime(state);
   const active = event?.demo !== true;
   state.runtime.cabinetRunActive = active;
+  if (state.playableHibachi) {
+    beginPlayableHibachiCreditedRun(
+      state.playableHibachi, state.playableHibachi.game, event,
+    );
+  }
   if (!active) return;
   captureCabinetRamPolicy(state, ram);
   if (state.loadout.sim.loop2FromStage1) {
@@ -449,6 +492,9 @@ function cabinetRunStart(state, ram, event) {
 function cabinetRunEnd(state, ram) {
   if (!state.runtime.cabinetRunActive) return;
   restoreCabinetRamPolicy(state, ram);
+  if (state.playableHibachi) {
+    endPlayableHibachiRun(state.playableHibachi, state.playableHibachi.game);
+  }
   state.runtime.cabinetRunActive = false;
   resetRunRuntime(state);
 }
@@ -471,20 +517,84 @@ export function hashToLoadout(hash = '') {
   return resolveLoadout(ids);
 }
 
-export function replayPolicy(stateOrLoadout) {
+export function replayPolicy(stateOrLoadout, { allowPlayableHibachi = false } = {}) {
   const lo = stateOrLoadout?.loadout ?? stateOrLoadout;
-  const blocking = lo?.replayBlocking ?? [];
+  const blocking = (lo?.replayBlocking ?? [])
+    .filter((id) => !(allowPlayableHibachi && id === 'playable-hibachi'));
   return Object.freeze({ compatible: blocking.length === 0,
     blocking: Object.freeze([...blocking]) });
 }
 
-export function assertReplayCompatible(state, action = 'replay') {
-  const policy = replayPolicy(state);
+export function assertReplayCompatible(state, action = 'replay', options = {}) {
+  const policy = replayPolicy(state, options);
   if (!policy.compatible) {
     const names = policy.blocking.map((id) => MODS[id].name).join(', ');
     throw new Error(`${action} is unavailable while simulation-changing mods are active: ${names}.`);
   }
   return policy;
+}
+
+export function exportModReplaySeed(state) {
+  assertReplayCompatible(state, 'Replay v2', { allowPlayableHibachi: true });
+  return {
+    ids: [...(state?.loadout?.ids ?? [])],
+    playableHibachi: state?.playableHibachi
+      ? exportPlayableHibachiReplayState(state.playableHibachi) : null,
+  };
+}
+
+function sameIds(left, right) {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+/** Validate the loadout before constructing or replacing a visible Game. */
+export function validateModReplaySeed(seed, expectedLoadout = undefined) {
+  if (!seed || typeof seed !== 'object' || Array.isArray(seed)
+      || !Array.isArray(seed.ids)
+      || seed.ids.some((id) => typeof id !== 'string')) {
+    throw new Error('Replay v2 mod seed must contain a string id array.');
+  }
+  if (new Set(seed.ids).size !== seed.ids.length) {
+    throw new Error('Replay v2 mod seed contains duplicate ids.');
+  }
+  const loadout = resolveLoadout(seed.ids);
+  if (!sameIds(seed.ids, loadout.ids)) {
+    throw new Error('Replay v2 mod seed contains unknown, conflicting, or unordered ids.');
+  }
+  assertReplayCompatible(loadout, 'Replay v2', { allowPlayableHibachi: true });
+  if (expectedLoadout !== undefined) {
+    const expectedIds = expectedLoadout?.ids ?? [];
+    if (!sameIds(loadout.ids, expectedIds)) {
+      throw new Error('Replay v2 mod loadout does not match the active selection.');
+    }
+  }
+  const hasPlayable = loadout.sim.playableHibachi;
+  if (hasPlayable !== Boolean(seed.playableHibachi)) {
+    throw new Error(hasPlayable
+      ? 'Replay v2 Playable Hibachi state is missing.'
+      : 'Replay v2 contains Playable Hibachi state without its mod.');
+  }
+  return {
+    loadout,
+    state: createModState(loadout),
+    playableHibachi: seed.playableHibachi ?? null,
+  };
+}
+
+/** Bind and restore a fully prevalidated candidate before its visible swap. */
+export function restoreModReplaySeed(candidate, game) {
+  if (!candidate?.loadout
+      || Boolean(candidate.state) !== (candidate.loadout.ids.length > 0)
+      || (candidate.state && candidate.state.loadout !== candidate.loadout)) {
+    throw new TypeError('Invalid replay mod candidate.');
+  }
+  bindModGame(candidate.state, game);
+  if (candidate.state?.playableHibachi) {
+    importPlayableHibachiReplayState(
+      candidate.state.playableHibachi, candidate.playableHibachi,
+    );
+  }
+  return candidate.state;
 }
 
 export const MOD_RAM = Object.freeze({
@@ -763,6 +873,53 @@ export function modGameOptions(state) {
   if (sim.stageRemix) {
     options.stageAdvanceTransform = (value) => modRunActive(state)
       ? remixNextStageValue(value) : value;
+  }
+  if (sim.playableHibachi) {
+    const playable = state.playableHibachi;
+    const active = () => modRunActive(state) && playable.lifecycle.active;
+    const spawn = options.bulletSpawnHook;
+    options.bulletSpawnHook = (ram, event) => {
+      spawn?.(ram, event);
+      if (active()) clearPlayableHibachiBulletOnSpawn(playable, event);
+    };
+    const retire = options.bulletRetireHook;
+    options.bulletRetireHook = (ram, event, ctx) => {
+      retire?.(ram, event, ctx);
+      if (active()) retirePlayableHibachiBullet(playable, event);
+    };
+    const collide = options.enemyBulletCollisionFilter;
+    options.enemyBulletCollisionFilter = (ram, event) =>
+      (!collide || collide(ram, event))
+      && (!active() || playableHibachiAllowsBulletCollision(playable, event));
+    const graze = options.playerGrazeHook;
+    if (graze) {
+      options.playerGrazeHook = (ram, event) => graze(ram,
+        active() ? filterPlayableHibachiGrazeEvent(playable, event) : event);
+    }
+    const convert = options.friendlyBulletConvertHook;
+    if (convert) {
+      options.friendlyBulletConvertHook = (ram, event, ctx) =>
+        (!active() || playableHibachiAllowsFriendlyConversion(playable, event))
+          ? convert(ram, event, ctx) : null;
+    }
+    options.playerWeaponActiveHook = () => active();
+    options.playerWeaponHook = (ram, rec, playerIdx, ctx) =>
+      stepPlayableHibachiWeapon(playable, ram, rec, playerIdx, ctx);
+    const sprite = options.playerSpriteFilter;
+    options.playerSpriteFilter = (ram, event, ctx) =>
+      (!sprite || sprite(ram, event, ctx) !== false) && !active();
+    const virtual = options.virtualSpriteRequestHook;
+    options.virtualSpriteRequestHook = (game) => {
+      if (!active()) playable.virtualRequests.length = 0;
+      const own = active()
+        ? collectPlayableHibachiSpriteRequests(playable, game)
+        : playable.virtualRequests;
+      if (!virtual) return own;
+      const prior = virtual(game) ?? [];
+      return prior.length === 0 ? own : [...prior, ...own];
+    };
+    options.privateDamageTailHook = (game) => active()
+      ? runPlayableHibachiDamage(playable, game) : 0;
   }
   const callbacks = Object.freeze({ ...options });
   if (!state.loadout.presentation.runaheadFrames) {

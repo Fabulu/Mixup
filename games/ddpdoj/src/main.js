@@ -425,6 +425,10 @@ export class Game {
     }
     for (const name of [
       'bulletSpawnHook',
+      'bulletRetireHook',
+      'playerWeaponHook',
+      'playerWeaponActiveHook',
+      'playerSpriteFilter',
       'playerGrazeHook',
       'playerDamageTransform',
       'lethalHitHook',
@@ -441,6 +445,8 @@ export class Game {
       'stageAdvanceTransform',
       'cabinetRunStartHook',
       'cabinetRunEndHook',
+      'virtualSpriteRequestHook',
+      'privateDamageTailHook',
     ]) {
       if (opts[name] == null) continue;
       if (typeof opts[name] !== 'function') {
@@ -599,6 +605,11 @@ export class Game {
       ...(this.bulletSpeedTransform
         ? { bulletSpeedTransform: this.bulletSpeedTransform } : {}),
       ...(this.bulletSpawnHook ? { bulletSpawnHook: this.bulletSpawnHook } : {}),
+      ...(this.bulletRetireHook ? { bulletRetireHook: this.bulletRetireHook } : {}),
+      ...(this.playerWeaponHook ? { playerWeaponHook: this.playerWeaponHook } : {}),
+      ...(this.playerWeaponActiveHook
+        ? { playerWeaponActiveHook: this.playerWeaponActiveHook } : {}),
+      ...(this.playerSpriteFilter ? { playerSpriteFilter: this.playerSpriteFilter } : {}),
       ...(this.playerGrazeHook ? { playerGrazeHook: this.playerGrazeHook } : {}),
       ...(this.playerDamageTransform
         ? { playerDamageTransform: this.playerDamageTransform } : {}),
@@ -1197,11 +1208,10 @@ export class Game {
     // counters are cleared.  `pgm.py shipgate` compares these against the
     // board's dump of the same instant.  Diagnostic only; call #4 reads RAM.
     this.staged = PRODUCED_BUCKETS.map((b) => snapshotBucket(this.ram, b));
-    // W612. An attached private actor may supply already-encoded host requests
-    // after every object updater and before call #4. The seam is deliberately
-    // absent from constructor options: attachThreePilotFoundation is its only
-    // installer. Validation happens before the hook can run or call #4 can
-    // mutate RAM, and the returned records never enter physical staging buckets.
+    // W612. An attached private actor or constructor-provided mod may supply
+    // already-encoded host requests after every object updater and before call
+    // #4. Validation happens before the hook can run or call #4 can mutate RAM,
+    // and the returned records never enter physical staging buckets.
     let virtualRequests;
     const virtualSpriteRequestHook = /** @type {any} */ (this).virtualSpriteRequestHook;
     if (virtualSpriteRequestHook != null) {

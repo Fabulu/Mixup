@@ -241,11 +241,13 @@ export function a3Running2599B4(ram, d0) {
  *  as `$2599EC` (A3 stop) but for the ten A1 slots at `$812BD8`.  Needed by
  *  D 14's state-2 finish arm (`$294734`/`$29473C`/`$294746`) to retire the
  *  part guns (E 5, E 6, E 14) when the rotation completes. */
-export function a1Stop259B08(ram, d0) {
+export function a1Stop259B08(ram, d0, ctx = null) {
+  const script = u16(d0);
+  if (ctx?.privateA1StopHook?.(script) === true) return;
   for (let i = 0; i < SCHED.a1Slots; i++) {
     const a = SCHED.a1Base + i * SCHED.a1Stride;       // $259B0C lea / $259B26 lea $20(a0)
     const s = ram.u16(a);                              // $259B14
-    if (s !== 0 && (s & 0xff) === u16(d0)) ram.setU16(a, 0);  // $259B24 clr.w
+    if (s !== 0 && (s & 0xff) === script) ram.setU16(a, 0);  // $259B24 clr.w
   }
 }
 

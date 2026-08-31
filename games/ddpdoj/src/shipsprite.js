@@ -266,6 +266,14 @@ export function drawTrail(ram, rec) {
   }
 }
 
+function playerSpriteAllowed(ram, rec, ctx, phase) {
+  return ctx.playerSpriteFilter?.(ram, {
+    player: rec,
+    playerIdx: ram.u8(rec + P.playerIdx) & 1,
+    phase,
+  }, ctx) !== false;
+}
+
 /**
  * `$24A440` (P1) / `$24A44C` (P2) -- the entry the type-5 driver calls, and the
  * whole of `$24A482` behind it.
@@ -276,6 +284,7 @@ export function drawTrail(ram, rec) {
  */
 export function drawShip(ram, rec, ctx) {
   if ((ram.u16(rec + P.state) & 0x8000) === 0) return;   // $24A446 bmi $24A482
+  if (!playerSpriteAllowed(ram, rec, ctx, 'live')) return;
 
   // $24A482 tst.w $812970 / bne $24A480 (rts) -- the global draw freeze.
   if (ram.u16(0x812970) !== 0) return;
@@ -408,6 +417,7 @@ export function drawShipAlt(ram, rec, ctx) {
   // walker turns the three real-death tests into throws. W275 ported the walker, so
   // the compare is now the cartridge's.
   if (ram.u16(rec + P.state) & 0x8000) return;            // $24A460 bmi -> $24A46A rts
+  if (!playerSpriteAllowed(ram, rec, ctx, 'death')) return;
   if (ram.u16(rec + P.state) & 0x0100) {                  // $24A462 btst #8,D0
     scriptWalker24A6B4(ram, rec, ctx);                    // $24A466 bne $24A6B4
   }
@@ -589,6 +599,7 @@ function drawGlow(ram, rec, ctx, stateHi) {
  * ported here so that the two halves of the phase alternation are in one file.
  */
 export function drawShipShadow(ram, rec, ctx) {
+  if (!playerSpriteAllowed(ram, rec, ctx, 'shadow')) return false;
   // $249E7E tst.w $812970 / bne ; $249E86 tst.w $80390C / bne ;
   // $249E8E tst.w $813098 / bne ; $249E96 cmpi.w #$2,$813092 / beq -- four
   // gates, all measured 0 (and $813092 = 0) over fly-around.

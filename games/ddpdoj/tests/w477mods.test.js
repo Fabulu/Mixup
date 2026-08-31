@@ -15,12 +15,15 @@ import { ALLOC } from '../src/objalloc.js';
 import { DEATH, playerDead24A130, updatePlayer } from '../src/player.js';
 import { bonusLine125FFA8 } from '../src/tally.js';
 import { Demo, progressionPokesForRung } from '../src/web/app.js';
+import { FORMATION_MODE } from '../src/formation.js';
 import { RUNAHEAD_EXTERNAL_STATE } from '../src/runahead-state.js';
+import { playableHibachiStateForGame } from '../src/playablehibachi.js';
 import {
-  MODS, MOD_IDS, MOD_RAM, resolveLoadout, createModState, prepareModCabinetBoot,
-  loadoutToHash, hashToLoadout, applyPreFrameMods, applyPostFrameMods,
+  MODS, MOD_IDS, MOD_RAM, bindModGame, resolveLoadout, createModState,
+  prepareModCabinetBoot, loadoutToHash, hashToLoadout, applyPreFrameMods,
+  applyPostFrameMods,
   transformCartridgeSlowdown, transformModInput, transformModTiming,
-  applyPresentationMods, replayPolicy, modGameOptions,
+  applyPresentationMods, replayPolicy, assertReplayCompatible, modGameOptions,
 } from '../src/mods.js';
 
 const TABLES = JSON.parse(readFileSync(
@@ -36,8 +39,8 @@ function policyRam(id) {
   return { ram, state };
 }
 
-test('W477 catalogue ships thirty-six functional mods after No Slowdown', () => {
-  assert.equal(MOD_IDS.length, 36);
+test('W477 catalogue ships thirty-seven functional mods after Playable Hibachi', () => {
+  assert.equal(MOD_IDS.length, 37);
   assert.deepEqual(new Set(Object.values(MODS).map((m) => m.category)),
     new Set(['survival', 'arsenal', 'challenge', 'presentation']));
   for (const [id, entry] of Object.entries(MODS)) {
@@ -46,6 +49,7 @@ test('W477 catalogue ships thirty-six functional mods after No Slowdown', () => 
   }
   assert.ok(MODS.invincibility, 'Invincibility is shipped');
   assert.ok(MODS['no-slowdown'], 'No Slowdown is shipped default-off');
+  assert.ok(MODS['playable-hibachi'], 'Playable Hibachi is shipped default-off');
 });
 
 test('W477 resolver drops unknown ids, deduplicates, and orders by catalogue', () => {
@@ -85,6 +89,60 @@ test('W477 hash is deterministic, round-trips, and unknown-only is empty', () =>
   assert.deepEqual(hashToLoadout(`#${hash}`).ids, ['invincibility', 'ghost-trail']);
   assert.deepEqual(hashToLoadout('#mods=not-a-mod+also-not').ids, []);
   assert.equal(loadoutToHash([]), '');
+});
+
+test('W477 Playable Hibachi resolves in catalogue order and remains replay-v1 blocking', () => {
+  const lo = resolveLoadout(['ghost-trail', 'playable-hibachi', 'playable-hibachi']);
+  assert.deepEqual(lo.ids, ['playable-hibachi', 'ghost-trail']);
+  assert.equal(lo.sim.playableHibachi, true);
+  assert.deepEqual(lo.replayBlocking, ['playable-hibachi']);
+  assert.equal(loadoutToHash(lo.ids), 'mods=playable-hibachi+ghost-trail');
+  assert.deepEqual(hashToLoadout('#mods=ghost-trail+playable-hibachi').ids, lo.ids);
+});
+
+test('W477 Playable Hibachi central state binds before cabinet lifecycle callbacks', () => {
+  const state = stateOf('playable-hibachi');
+  const game = {
+    ram: new Ram(),
+    rom: { bytes: (_address, length) => new Uint8Array(length) },
+    tables: {},
+  };
+  prepareModCabinetBoot(state);
+  assert.strictEqual(bindModGame(state, game, { active: false }), state);
+  assert.strictEqual(playableHibachiStateForGame(game), state.playableHibachi);
+  assert.deepEqual(state.playableHibachi.lifecycle, {
+    bound: true, pending: true, active: false, credited: false, generation: 0,
+  });
+
+  const options = modGameOptions(state);
+  options.cabinetRunStartHook(game.ram, { demo: true });
+  assert.equal(state.playableHibachi.lifecycle.active, false);
+  options.cabinetRunStartHook(game.ram, { demo: false });
+  assert.equal(state.playableHibachi.lifecycle.active, true);
+  assert.equal(state.playableHibachi.lifecycle.generation, 1);
+  assert.equal(options.playerSpriteFilter(game.ram, { player: RAM.player1 }), false);
+  assert.equal(typeof options.virtualSpriteRequestHook, 'function');
+  options.cabinetRunEndHook(game.ram);
+  assert.equal(options.playerSpriteFilter(game.ram, { player: RAM.player1 }), true);
+  assert.equal(state.playableHibachi.lifecycle.active, false);
+  assert.equal(state.playableHibachi.lifecycle.pending, true);
+
+  const seeded = stateOf('playable-hibachi');
+  const seededGame = {
+    ram: new Ram(),
+    rom: { bytes: (_address, length) => new Uint8Array(length) },
+    tables: {},
+  };
+  bindModGame(seeded, seededGame, { active: true });
+  assert.equal(seeded.playableHibachi.lifecycle.active, true);
+  assert.equal(seeded.playableHibachi.lifecycle.generation, 1);
+});
+
+test('W477 Playable Hibachi rejects formation before Game construction', () => {
+  const loadout = resolveLoadout(['playable-hibachi']);
+  assert.throws(() => new Demo(null, { cap: null }, 60,
+    undefined, null, null, loadout, null, FORMATION_MODE),
+  /Formation cannot be combined with Playable Hibachi/);
 });
 
 test('W477 empty and unknown-only loadouts create no mod state', () => {
@@ -344,9 +402,9 @@ test('W477 replay v1 permits only presentation-only loadouts', () => {
   assert.deepEqual(replayPolicy(stateOf('no-slowdown')),
     { compatible: false, blocking: ['no-slowdown'] },
     'No Slowdown changes host simulation timing and blocks REC and PLAY');
-  assert.throws(() => Demo.prototype.playFrom.call({ mods: stateOf('no-slowdown') }, {}),
+  assert.throws(() => assertReplayCompatible(stateOf('no-slowdown'), 'PLAY'),
     /PLAY is unavailable.*No Slowdown/);
-  assert.throws(() => Demo.prototype.playFrom.call({ mods: stateOf('precision-ship') }, {}),
+  assert.throws(() => assertReplayCompatible(stateOf('precision-ship'), 'PLAY'),
     /PLAY is unavailable.*Precision Ship/);
   assert.rejects(() => Demo.prototype.armRecording.call({
     mods: stateOf('no-slowdown'), recorder: null,
@@ -401,6 +459,7 @@ test('W477 playback applies only the replay file intervention', () => {
   const demo = stubDemo({ progressionPokes: [[MOD_RAM.invulnP1, 0x33]] });
   demo.playback = {
     ended: false, pokes: [[MOD_RAM.invulnP1, 0xff]], words: [0xffff, 0xffff],
+    coinWords: [0xffff, 0xffff],
     i: 0, count: 2, needCheck: false,
     verifier: { periodBounds: [], feed() {} },
   };

@@ -246,8 +246,8 @@ test('the shot harvest includes ship and option hyper handlers', () => {
 test('every bullet range must close EXACTLY on its stated end address', () => {
   const s = TOOL('export-web.mjs');
   assert.ok(/BULLET_RANGES = Object\.freeze\(\[/.test(s));
-  for (const [b, e] of [['0x1bf58c', '0x1c0e9c'], ['0x1c1418', '0x1c143c'],
-    ['0x1c1658', '0x1c167c'], ['0x1c1b68', '0x1c23d8']]) {
+  for (const [b, e] of [['0x1bf58c', '0x1c0e9c'], ['0x1c1418', '0x1c1658'],
+    ['0x1c1658', '0x1c1898'], ['0x1c1b68', '0x1c23d8']]) {
     assert.ok(s.includes(`[${b}, ${e},`), `the range ${b}..${e} is claimed`);
   }
   assert.ok(/if \(a !== endsAt\) \{[\s\S]{0,400}throw new Error/.test(s),

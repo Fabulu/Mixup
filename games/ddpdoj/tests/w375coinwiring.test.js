@@ -433,14 +433,12 @@ test('W375: every OTHER unmapped sound address still throws, from the REAL ctx',
 });
 
 // ---------------------------------------------------------------------------------------------
-// 7 -- COIN INPUT IS DEAD DURING `.replay` PLAYBACK.
+// 7 -- RECORDED COIN INPUT IS AUTHORITATIVE DURING `.replay` PLAYBACK.
 //
-// `NOTES-replay.md` constraint 1: a run derives from (initial state, input words) and NOTHING
-// ELSE. The coin word is a SECOND per-frame input and the v1 `.replay` format cannot carry it
-// (`portin.encoding === 'u16be'`, one word per logic frame, and `decodePortinWords` throws on
-// anything else) -- which is exactly why it must not be live while a recording plays back. A
-// coin key pressed by whoever is watching would move `$80395A` inside the state the W132 verifier
-// hashes and turn a green verify red, with nothing in the file to explain it.
+// Replay v2 carries a second per-frame coin stream. Legacy v1 artifacts synthesize
+// one idle `$FFFF` coin word per player word. Live keyboard and controller pulses
+// must stay frozen while either format plays, while each recorded coin word reaches
+// `game.coinPort` before the matching player word reaches `game.step(...)`.
 //
 // THE MECHANISM, verified rather than assumed. `Demo.playback` is null until `playFrom()` builds
 // the descriptor, and `endPlayback()` does NOT null it -- it sets `playback.ended` and leaves the
@@ -483,12 +481,13 @@ function stubDemo(playback = null) {
 
 /** A playback descriptor with everything `step()` touches and nothing else. `count` is far past
  *  any frame these tests drive, so `endPlayback()` is never reached. */
-const fakePlayback = (frames) => ({
+const fakePlayback = (frames, coinWords = null) => ({
   obj: { seed: { lf: 0 } },
   ended: false,
   i: 0,
   count: 1e9,
   words: new Array(frames + 8).fill(NO_PLAYER),
+  coinWords: coinWords ?? new Array(frames + 8).fill(COIN.idle),
   pokes: [],
   verifier: {
     periodBounds: [],
@@ -505,7 +504,7 @@ test('W375: Demo#inPlayback() is playback AND NOT ended, not merely playback', (
     'endPlayback() leaves the descriptor in place; live input resumes and so must the coin port');
 });
 
-test('W375: a held coin key credits NOTHING while a .replay plays back', () => {
+test('W375: live coin input cannot alter an idle recorded coin stream', () => {
   clearCoin();                                  // module state is global -- start from idle
   const FRAMES = 40;                            // > the 12-call pulse, i.e. long enough to credit
   const stub = stubDemo(fakePlayback(FRAMES));
@@ -515,8 +514,8 @@ test('W375: a held coin key credits NOTHING while a .replay plays back', () => {
   for (let i = 0; i < FRAMES; i++) stub.step();
 
   assert.equal(stub.game.coinPort, COIN.idle,
-    'the coin port must be pinned to $FFFF for every frame of the playback');
-  assert.equal(credits(stub.game), before, 'a coin key must not credit during playback');
+    'the recorded idle word must reach the Game on every playback frame');
+  assert.equal(credits(stub.game), before, 'live coin input cannot alter playback');
   assert.equal(stub.game.ram.u16(COIN.pendA), 0, 'and no record may even reach the pending word');
   assert.equal(stub.game.ram.u8(COIN.recA), 0, 'record 0 must never leave state 0');
   // ...and the PULSE did not advance either, which is `Demo#coinTick`'s half of the gate. The key
@@ -524,6 +523,27 @@ test('W375: a held coin key credits NOTHING while a .replay plays back', () => {
   // debounce calls would have spent the whole 12-call pulse.
   assert.notEqual(currentCoinWord(), COIN.idle,
     'the coin pulse must be FROZEN during playback, not quietly spent');
+  clearCoin();
+});
+
+test('W375: recorded coin reaches the Game before its matching player word', () => {
+  clearCoin();
+  const recorded = coinWord('COIN1');
+  const stub = stubDemo(fakePlayback(1, [recorded]));
+  const originalStep = stub.game.step.bind(stub.game);
+  let coinSeenByStep = null;
+  stub.game.step = (playerWord) => {
+    coinSeenByStep = stub.game.coinPort;
+    return originalStep(playerWord);
+  };
+  setCoinKey('COIN2', true);
+
+  stub.step();
+
+  assert.equal(coinSeenByStep, recorded,
+    'playback assigns the recorded coin word before Game.step');
+  assert.notEqual(currentCoinWord(), recorded,
+    'the frozen live COIN2 pulse cannot replace recorded COIN1');
   clearCoin();
 });
 

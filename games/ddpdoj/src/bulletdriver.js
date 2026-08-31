@@ -212,6 +212,9 @@ export function runScreenClear(ctx) {
     ctx.friendlyBulletConvertHook?.(ram, {
       bullet: base, y: finalY, x: finalX, mode,
     }, ctx);
+    ctx.bulletRetireHook?.(ram, {
+      addr: base, slot: s, reason: 'screen-clear', y: finalY, x: finalX,
+    }, ctx);
     hit++;
   }
   return hit;

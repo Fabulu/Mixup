@@ -1370,8 +1370,14 @@ export function bombDamageAlt2456A6(ram, ctx, a4) {
       const a0 = BOMBRAM.rec + k * BOMBRAM.stride;
       if (!beamRecordArmed(ram, a0)) continue;         // $245978/$24597C
       if (!recordHitsBox(ram, a0, d6, d0, d0, d2, d2)) continue;   // a POINT
-      ram.setU16(a5 - 2, 0);                           // $2459B2 clr.w (-$2,A5)
+      const bullet = a5 - 2;
+      const finalY = ram.u16(bullet + 0x02);
+      const finalX = ram.u16(bullet + 0x04);
+      ram.setU16(bullet, 0);                            // $2459B2 clr.w (-$2,A5)
       ram.setU16(a5, 0xffff);                          // $2459B6 move.w #$FFFF
+      ctx.bulletRetireHook?.(ram, {
+        addr: bullet, slot: n, reason: 'laser-bomb', y: finalY, x: finalX,
+      }, ctx);
       erased++;
       break;                                           // $2459BA bra $2459C4
     }

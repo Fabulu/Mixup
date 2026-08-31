@@ -213,6 +213,17 @@ test('a SET mask bit is TRANSPARENT; a clear bit consumes a 5-bit pixel', () => 
   assert.equal(b.pri[3 * 8 + 5] & 1, 1, 'the sprite claimed the pixel');
 });
 
+test('a sprite may select a private absolute palette base', () => {
+  const roms = tinyRoms({ pixel: 7 });
+  const b = blank();
+  const d = new SpriteDrawer(roms, b.bm, b.pri, b.W, b.H);
+  d.draw({ width: 1, height: 1, offs: 0, flip: 0, color: 2, paletteBase: 0x1120,
+    pri: 0, x: 5, y: 3, xzom: 0, yzom: 0, xgrow: true, ygrow: true },
+  new Uint16Array(32));
+  assert.equal(b.bm[3 * 8 + 5], 0x1127,
+    'the private base replaces the native color bank only for this record');
+});
+
 test('the mask polarity is the RED-VALIDATION knob, and it changes the picture',
   () => {
     const roms = tinyRoms();
