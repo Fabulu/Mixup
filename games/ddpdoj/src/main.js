@@ -437,6 +437,7 @@ export class Game {
       'enemyBulletCollisionFilter',
       'scoreAddendTransform',
       'stageScriptInstallHook',
+      'backgroundRepeatRestoreHook',
       'stageAdvanceTransform',
       'cabinetRunStartHook',
       'cabinetRunEndHook',
@@ -624,6 +625,8 @@ export class Game {
         ? { enemyBulletCollisionFilter: this.enemyBulletCollisionFilter } : {}),
       ...(this.stageScriptInstallHook
         ? { stageScriptInstallHook: this.stageScriptInstallHook } : {}),
+      ...(this.backgroundRepeatRestoreHook
+        ? { backgroundRepeatRestoreHook: this.backgroundRepeatRestoreHook } : {}),
       ...(this.stageAdvanceTransform
         ? { stageAdvanceTransform: this.stageAdvanceTransform } : {}),
       ...(this.cabinetRunStartHook

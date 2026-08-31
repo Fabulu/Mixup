@@ -186,7 +186,10 @@ export function wipeStageBlock25FD24(ram) {
 /**
  * `$25FD38` -- **REBUILD THE WORLD.**  The wipe, eight subsystem resets, and a
  * NEW type-1 background object whose `($6,A0)` -- the entry clock -- is
- * explicitly ZERO (`$25FD7A`).  Stage 2 enters at clock 0, not at `$0038`.
+ * explicitly ZERO on the cartridge (`$25FD7A`). The default port path remains
+ * zero because the preceding wipe includes `$8130CE`. A selected stage-install
+ * hook may fast-forward that clock after the wipe; its value must also seed the
+ * new background or background init would undo the same acceleration.
  *
  * ==========================================================================
  * W381 -- THE FOUR COUNTED NOTES ARE GONE, AND THEY WERE A LIVE DEFECT
@@ -259,6 +262,7 @@ export function rebuildWorld25FD38(ram, ctx) {
   // `$81332C..$816B79`, then install the current stage through `$263386`.
   resetAndInstallStage26331E(ram, ctx.rom, ctx.unportedLog, ctx.prot,
     ctx.stageScriptInstallHook);
+  const entryClock = ram.u16(SE.clockBase);
   ctx.stageEndEvent?.('spawn-install', ram.u32(0x8132cc));
   clearEffectPool(ram);                                 // $25FD40 jsr $288E0C
   clearSubEffectPool(ram);                              // $25FD46 jsr $289084
@@ -270,7 +274,9 @@ export function rebuildWorld25FD38(ram, ctx) {
   parkBulletSlots281330(ram);                           //   ..and its second loop
   const r = stageCreate(ram, 1, (t) => ctx.rom.u16(SE.dispatch + t * 8 + 4));
   ram.setU32(SE.bgHandle, r.ok ? ram.u32(r.addr + ALLOC.idOff) : 0);   // $25FD74
-  ram.setU16(r.addr + 0x06, 0);                        // $25FD7A -- ENTRY CLOCK 0
+  // $25FD7A writes zero. The hook-free path still does because $25FD24 cleared
+  // this clock; Boss Rush instead seeds the matching accelerated entry point.
+  ram.setU16(r.addr + 0x06, entryClock);
   return r;
 }
 

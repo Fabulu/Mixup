@@ -167,6 +167,9 @@ const OPS = {
   0x00: 'SPAWN', 0x04: 'REPEAT', 0x08: 'SPEED', 0x0c: 'FREEZE',
   0x10: 'BGELEM', 0x14: 'CUE', 0x18: 'FLAG',
 };
+const OP_RECORD_BYTES = Object.freeze({
+  0x00: 8, 0x04: 12, 0x08: 8, 0x0c: 6, 0x10: 12, 0x14: 8, 0x18: 8,
+});
 /** `$2620C2 + op` -- the handler each opcode's byte offset selects. */
 const OP_HANDLER = {
   0x00: 0x2620de, 0x04: 0x262102, 0x08: 0x26213a, 0x0c: 0x26214c,
@@ -1314,10 +1317,48 @@ function interpret(ram, rom, ctx, a5, clock, mut) {
   }
 }
 
+/** Resolve the permanent column band already reached by an accelerated entry.
+ * The normal route has consumed fifteen prefill columns plus one column per four
+ * clock ticks when op $04 runs. Its signed rewind therefore names the band from
+ * cartridge data without treating the following palette block as map columns. */
+function permanentRepeatAtEntry(rom, stageX4, entryClock) {
+  const pair = rom.u32(BGTAB.scriptPair + stageX4);
+  const script = rom.u32(pair);
+  const mapStart = rom.u32(BGTAB.colStream + stageX4);
+  let at = script + 8;
+  let repeat = null;
+  for (;;) {
+    const time = rom.u16(at);
+    if (time === 0xffff || time > entryClock) break;
+    const op = rom.u16(at + 4);
+    const bytes = OP_RECORD_BYTES[op];
+    if (bytes === undefined) {
+      return unreached(BGTAB.opTable, `background script record at $${
+        at.toString(16).toUpperCase()} carries unknown op $${
+        op.toString(16).toUpperCase()}`);
+    }
+    if (op === 0x04 && rom.u16(at + 10) === 0xffff) {
+      const rewind = i16(rom.u16(at + 6));
+      const length = rom.u16(at + 8);
+      const targetColumn = 15 + (time >>> 2) + rewind;
+      if (rewind >= 0 || length !== -rewind || targetColumn < 0) {
+        throw new Error(`permanent background repeat at $${at.toString(16).toUpperCase()} `
+          + `has rewind ${rewind}, length ${length}, target column ${targetColumn}`);
+      }
+      const target = u32(mapStart + targetColumn * 36);
+      const phase = ((entryClock >>> 2) - (time >>> 2)) % length;
+      repeat = Object.freeze({ at, time, rewind, length, target, phase,
+        end: u32(target + length * 36) });
+    }
+    at += bytes;
+  }
+  return repeat;
+}
+
 /** `$261FDA` -- install both scripts' state blocks, then FALL THROUGH into
  *  `$26200E`.  There is no branch at `$26200C`: `dbra D1,$261FFA` is followed
  *  immediately by `tst.w $8130CE`.  READ PAST THE APPARENT END. */
-function installScripts(ram, rom, ctx, a5, mut) {
+function installScripts(ram, rom, ctx, a5, mut, acceleratedRepeat = null) {
   const pair = rom.u32(BGTAB.scriptPair + ram.u16(BGRAM.stageX4));  // $26152C
   for (let a = BGRAM.fastFwd; a < BGRAM.fastFwd + 56; a += 2) {     // $261FE0
     ram.setU16(a, 0);                                              // 28 words
@@ -1329,7 +1370,7 @@ function installScripts(ram, rom, ctx, a5, mut) {
     ram.setU32(blk + SB.cue, rom.u32(script + 4));                 // $262000
     ram.setU32(blk + SB.cur, script + 8);                          // $262004
   }
-  fastForward(ram, rom, ctx, a5, mut);                             // FALL-THROUGH
+  fastForward(ram, rom, ctx, a5, mut, acceleratedRepeat);  // FALL-THROUGH
 }
 
 /**
@@ -1345,7 +1386,7 @@ function installScripts(ram, rom, ctx, a5, mut) {
  *     rewind the replayed `04` performed;
  *   - `$81319E`/`$8131B6` -- the two blocks' ($c) rewind targets -- are cleared.
  */
-function fastForward(ram, rom, ctx, a5, mut) {
+function fastForward(ram, rom, ctx, a5, mut, acceleratedRepeat = null) {
   if (mut === 'no-fast-forward') { ram.setU16(BGRAM.fastFwd, 0); return; }
   if (ram.u16(BGRAM.clock) === 0) {                        // $26200E tst/beq
     ram.setU16(BGRAM.fastFwd, 0);                          // $26205A
@@ -1365,6 +1406,23 @@ function fastForward(ram, rom, ctx, a5, mut) {
   ram.setU32(BGRAM.scr0 + SB.rewind, 0);                   // $26204E $81319E
   ram.setU32(BGRAM.scr1 + SB.rewind, 0);                   // $262054 $8131B6
   ram.setU16(BGRAM.fastFwd, 0);                            // $26205A
+
+  // A resumed cartridge snapshot already carries a positioned map ring, so the
+  // authentic fast-forward clears both repeat targets after restoring the two
+  // column pointers. Boss Rush instead accelerates a newly cleared world beyond
+  // the final arena's permanent repeat. The optional policy path seeds that
+  // band's entry phase before this call and restores its exact target after the
+  // authentic clears, keeping the column walker inside the cartridge-owned map.
+  if (acceleratedRepeat) {
+    if (ram.u16(BGRAM.scr0 + SB.loops) !== 0xffff
+        || ram.u16(BGRAM.scr0 + SB.len) !== acceleratedRepeat.length) {
+      throw new Error(`accelerated background repeat $${
+        acceleratedRepeat.at.toString(16).toUpperCase()} was not installed by fast-forward`);
+    }
+    ram.setU32(BGRAM.scr0 + SB.rewind, acceleratedRepeat.target);
+    const consumed = (acceleratedRepeat.phase + 15) % acceleratedRepeat.length;
+    ram.setU16(BGRAM.scr0 + SB.count, acceleratedRepeat.length - consumed + 1);
+  }
 }
 
 // -------------------------------------------------------------- the object
@@ -1410,9 +1468,18 @@ export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
       + `on this ctx, so the background third stays whatever it was`);
   }
   ram.bclr8(a5 + BGO.init2, 0);                            // $2611CA
+  const entryClock = ram.u16(BGRAM.clock);
+  let acceleratedRepeat = null;
+  if (ctx.backgroundRepeatRestoreHook) {
+    const candidate = permanentRepeatAtEntry(rom, stage, entryClock);
+    if (candidate && ctx.backgroundRepeatRestoreHook(ram, {
+      stage: stage >>> 2, entryClock, ...candidate,
+    })) acceleratedRepeat = candidate;
+  }
   // colptr = stream + (clock >> 2) * 36   ($2611E0..$2611F2)
-  let colptr = u32(rom.u32(BGTAB.colStream + stage)
-    + ((ram.u16(BGRAM.clock) >>> 2) * 36));
+  let colptr = acceleratedRepeat
+    ? u32(acceleratedRepeat.target + acceleratedRepeat.phase * 36)
+    : u32(rom.u32(BGTAB.colStream + stage) + ((entryClock >>> 2) * 36));
   ram.setU16(a5 + BGO.cursor, 0);                          // $2611F4
   ram.setU32(a5 + BGO.colPtr, colptr);                     // $2611F8
   // $2611FC -- THE 15-COLUMN PRE-FILL.  Ring columns 0..14 regardless of the
@@ -1426,11 +1493,14 @@ export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
       writeMapLong(ram, rom, vram, row, col, rom.u32(colptr));
       colptr = u32(colptr + 4);
     }
+    if (acceleratedRepeat && colptr === acceleratedRepeat.end) {
+      colptr = acceleratedRepeat.target;
+    }
     vram.columnsWritten++;
   }
   ram.setU32(a5 + BGO.colPtr, colptr);                     // $26121C
   ram.setU16(a5 + BGO.cursor, nPre);                       // $261220 -- $F
-  installScripts(ram, rom, ctx, a5, mut);                  // $261226 (+$26200E)
+  installScripts(ram, rom, ctx, a5, mut, acceleratedRepeat); // $261226 (+$26200E)
   // $26122C `jsr $262316` -- clear the 8 element slots and install the per-stage
   // handler table pointer.  Both are pure state; the DRIVER is W18.
   for (let a = BGRAM.elemSlots; a < BGRAM.elemSlots + 260; a += 2) {

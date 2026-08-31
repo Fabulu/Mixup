@@ -75,6 +75,7 @@ const CUSTOM_SIMULATION_PROPERTIES = [
   'enemyBulletCollisionFilter',
   'scoreAddendTransform',
   'stageScriptInstallHook',
+  'backgroundRepeatRestoreHook',
   'stageAdvanceTransform',
   'cabinetRunStartHook',
   'cabinetRunEndHook',

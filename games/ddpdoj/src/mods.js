@@ -30,7 +30,7 @@ export const MODS = Object.freeze({
   'infinite-lives': mod({
     name: 'Infinite Lives', category: 'survival',
     blurb: 'Keep three reserve ships available after every death.',
-    effects: ['$8130BE := 3 before and after every logic frame'],
+    effects: ['$8130BE := 3 before and after live-play logic frames; stage-end tallies may spend them'],
   }),
   'unbreakable-chain': mod({
     name: 'Unbreakable Chain', category: 'survival',
@@ -51,7 +51,7 @@ export const MODS = Object.freeze({
   'bottomless-bombs': mod({
     name: 'Bottomless Bombs', category: 'arsenal', conflict: 'button2-stock', priority: 10,
     blurb: 'Keep three bombs ready and clear hyper stock so Button 2 reaches the bomb arm.',
-    effects: ['$81040A := 3', '$81B65C := 0'],
+    effects: ['$81040A := 3 during live play; stage-end tallies may spend stock', '$81B65C := 0'],
   }),
   'infinite-hyper-stock': mod({
     name: 'Infinite Hyper Stock', category: 'arsenal', conflict: 'button2-stock', priority: 20,
@@ -158,7 +158,7 @@ export const MODS = Object.freeze({
   'boss-rush': mod({
     name: 'Boss Rush', category: 'challenge',
     blurb: 'Begin every stage at the final authentic boss approach.',
-    effects: ['stage script install: scan to $FFFF, retain records from final trigger - $10, and align $8130CE'],
+    effects: ['stage install: retain records from final trigger - $10, align $8130CE, and preserve the arena map repeat'],
   }),
   'stage-remix': mod({
     name: 'Stage Remix', category: 'challenge',
@@ -515,6 +515,7 @@ export const MOD_RAM = Object.freeze({
   player2X: 0x81044c,
   logicFrame: 0x80390a,
   loopCounter: 0x813098,
+  stageEndPause: 0x8130d2,
 });
 
 const BEE_MAGNET_STEP = 0x80;
@@ -757,6 +758,7 @@ export function modGameOptions(state) {
     options.stageScriptInstallHook = (...args) => {
       if (modRunActive(state)) startAtFinalBossApproach(...args);
     };
+    options.backgroundRepeatRestoreHook = () => modRunActive(state);
   }
   if (sim.stageRemix) {
     options.stageAdvanceTransform = (value) => modRunActive(state)
@@ -777,16 +779,17 @@ export function modGameOptions(state) {
 function applyRamMods(state, ram) {
   if (!state) return;
   const s = state.loadout.sim;
+  const livePlay = ram.u16(MOD_RAM.stageEndPause) === 0;
   if (s.glassCannon) {
     ram.setU8(MOD_RAM.invulnP1, 0);
     ram.setU8(MOD_RAM.invulnP2, 0);
   }
-  if (s.infiniteLives) ram.setU16(MOD_RAM.livesP1, 3);
+  if (s.infiniteLives && livePlay) ram.setU16(MOD_RAM.livesP1, 3);
   if (s.unbreakableChain && ram.u16(MOD_RAM.chainHitsP1) !== 0) {
     ram.setU16(MOD_RAM.chainMeterP1, 0x7fff);
   }
   if (s.bottomlessBombs) {
-    ram.setU8(MOD_RAM.bombStockP1, 3);
+    if (livePlay) ram.setU8(MOD_RAM.bombStockP1, 3);
     // Button 2 selects hyper whenever this word is nonzero. Clearing it is what
     // makes a bottomless-bomb loadout remain a bomb loadout after earning one.
     ram.setU16(MOD_RAM.hyperStockP1, 0);
