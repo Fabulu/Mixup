@@ -387,6 +387,55 @@ rawTest('phase 7 runs each Version A handoff and retirement one-shot exactly onc
   ], [4, 4], 'the second live record does not duplicate retirement work');
 });
 
+rawTest('native phase 7 inset motion reaches the Stage 1 handoff without seeded progress', () => {
+  const ram = new Ram();
+  const rom = new FullRom(new Uint8Array(readFileSync(IMAGE)));
+  const handoffs = [];
+  const ctx = {
+    installPalette() {},
+    whiteStageHandoff: (...args) => handoffs.push(args),
+  };
+  clearWhiteRank15F734(ram);
+  seed(ram, rom, 3, ctx);
+  tick(ram, rom, ctx);
+  playerRecords15F1B0(ram, rom, ctx);
+  ram.setU16(WHITE_RANK.gate, 1);
+  ram.setU8(ALLOC.table + 0x04, 2);
+  ram.setU8(ALLOC.table + 0x05, 4);
+  ram.setU8(ALLOC.table + 0x08, 0);
+  ram.setU8(ALLOC.table + 0x09, 2);
+  for (let side = 0; side < 2; side++) {
+    const record = WHITE_SELECTOR.records + side * WHITE_SELECTOR.recordStride;
+    ram.setU8(record + WHITE_SELECTOR.phaseAt, 7);
+    assert.equal(ram.u16(record + 0x40), 0x1ac0);
+    assert.equal(ram.u16(record + 0x48), 0);
+  }
+
+  for (let frame = 0; frame < 56; frame++) tick(ram, rom, ctx);
+  assert.equal(handoffs.length, 0);
+  tick(ram, rom, ctx);
+  assert.equal(handoffs.length, 1);
+  assert.equal(handoffs[0][0].ran, true);
+  assert.equal(ram.u16(WHITE_SELECTOR.records + 0x48), 0x0330);
+  assert.equal(ram.u16(WHITE_SELECTOR.records + 0x40), 0x124a);
+
+  for (let frame = 57; frame < 181; frame++) tick(ram, rom, ctx);
+  for (let side = 0; side < 2; side++) {
+    const record = WHITE_SELECTOR.records + side * WHITE_SELECTOR.recordStride;
+    assert.equal(ram.u16(record + 0x40), 0);
+    assert.equal(ram.u16(record + 0x42), 3);
+    assert.equal(ram.u16(record + 0x44), 0);
+  }
+  tick(ram, rom, ctx);
+  assert.equal(ram.u16(WHITE_SELECTOR.records + 0x42), 2);
+  assert.equal(ram.u16(WHITE_SELECTOR.records + 0x44), 0x0040);
+  tick(ram, rom, ctx);
+  tick(ram, rom, ctx);
+  assert.equal(ram.u16(WHITE_SELECTOR.records + 0x42), 0);
+  assert.equal(ram.u16(WHITE_SELECTOR.records + 0x44), 0);
+  assert.equal(handoffs.length, 1);
+});
+
 rawTest('embedded Version A image completes every native selector pair through retirement', () => {
   const image = new Uint8Array(readFileSync(IMAGE));
   for (const side of [0, 1]) {

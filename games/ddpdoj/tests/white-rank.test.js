@@ -179,6 +179,30 @@ rawTest('Version A loop 2 forces both staged player life counters to zero', () =
   assert.deepEqual([ram.u16(0x8130be), ram.u16(0x8130c0)], [0, 0]);
 });
 
+rawTest('Version A allocator failures store native zero handles', () => {
+  const ram = whiteRam();
+  const rom = rawRom();
+  clearWhiteRank15F734(ram);
+  ram.setU16(ALLOC.createSp, ALLOC.createCap);
+  const children = playerRecords15F1B0(ram, rom);
+  assert.ok(children.every(({ ok }) => !ok));
+  assert.deepEqual([
+    ram.u32(WHITE_RANK.idType0), ram.u32(WHITE_RANK.idType4P1),
+    ram.u32(WHITE_RANK.idType4P2),
+  ], [0, 0, 0]);
+
+  ram.setU16(WHITE_RANK.shipP1, 0);
+  ram.setU16(WHITE_RANK.shipP2, 0x00ff);
+  ram.setU8(WHITE_RANK.dipLives, 0);
+  stagePair15F758(ram, rom, null, 0x10000e00, 0x10002a00);
+  assert.equal(ram.u32(WHITE_RANK.records + WHITE_RANK.recordStride + 0x1c), 0);
+  const [player] = dispatchRequests15F2E8(ram, rom);
+  assert.equal(player.made.ok, false);
+  assert.equal(ram.u32(WHITE_RANK.records + 0x18), 0);
+  assert.equal(ram.u16(0x81308e), 0xffff,
+    'a failed request is not counted as a live side');
+});
+
 rawTest('Version A selector visuals and cartridge roots are independently pinned', () => {
   const ram = whiteRam();
   const rom = rawRom();

@@ -425,6 +425,23 @@ function phase7(ram, rom, a5, record, side, ctx) {
     }
   }
 
+  if (ram.u16(record + 0x42) !== 0) {
+    ram.setU16(record + 0x44, 0x0040);
+    const pulse = u16(ram.u16(record + 0x42) - 1);
+    ram.setU16(record + 0x42, pulse);
+    if (pulse === 0) ram.setU16(record + 0x44, 0);
+  }
+  const inset = ram.u16(record + 0x40);
+  if (inset !== 0) {
+    const next = u16(inset - 0x0026);
+    if (inset <= 0x0026) {
+      ram.setU16(record + 0x42, 3);
+      ram.setU16(record + 0x40, 0);
+    } else {
+      ram.setU16(record + 0x40, next);
+    }
+  }
+
   if (frame >= 0x00f0) {
     ram.setU8(record + 0x35, 1);
     const travel = ram.u16(record + 0x4a);

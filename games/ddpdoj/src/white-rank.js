@@ -100,11 +100,11 @@ function priority(rom, type) {
   return rom.u16(WHITE_RANK.dispatch + type * 8 + 4);
 }
 
-function createdId(ram, made, type, ctx, site, target) {
+function createdId(ram, made, ctx, site, target) {
   if (made.ok) return ram.u32(made.addr + ALLOC.idOff);
-  note(ctx, site, `${hex(site)} stores allocator D0 at ${hex(target)} after the Version A `
-    + `create queue filled. Only its low word ${hex(type)} is known`);
-  return type;
+  note(ctx, site, `${hex(site)} stores allocator D0 = 0 at ${hex(target)} after the `
+    + 'Version A create queue filled');
+  return 0;
 }
 
 function installTx(ram, rom, ctx, site, bank, source, why) {
@@ -159,7 +159,7 @@ export function playerRecords15F1B0(ram, rom, ctx) {
   const made = [];
   for (const [type, target, site] of specs) {
     const record = stageCreate(ram, type, (t) => priority(rom, t));
-    ram.setU32(target, createdId(ram, record, type, ctx, site, target));
+    ram.setU32(target, createdId(ram, record, ctx, site, target));
     made.push(record);
   }
   ram.setU8(made[1].addr + 0x07, 0);
@@ -234,7 +234,7 @@ export function stagePair15F758(ram, rom, ctx, d0, d1) {
     }
     const absent = stageCreate(ram, 0x0b, (type) => priority(rom, type));
     ram.setU32(record + 0x1c,
-      createdId(ram, absent, 0x0b, ctx, side === 0 ? 0x15f7b0 : 0x15f7ee,
+      createdId(ram, absent, ctx, side === 0 ? 0x15f7b0 : 0x15f7ee,
         record + 0x1c));
     ram.setU8(absent.addr + 0x07, side);
     made.push(absent);
@@ -281,7 +281,7 @@ export function request4Player15F562(ram, rom, ctx, record) {
   const type = ram.u16(record + 0x14);
   const made = stageCreate(ram, type, (t) => priority(rom, t));
   ram.setU32(record + 0x18,
-    createdId(ram, made, type, ctx, 0x15f58e, record + 0x18));
+    createdId(ram, made, ctx, 0x15f58e, record + 0x18));
   ram.setU8(made.addr + 0x06, ram.u8(WHITE_RANK.playerMode));
   const side = ram.u8(record + 0x17);
   ram.setU8(made.addr + 0x07, side);
@@ -351,10 +351,10 @@ function installRankBase15FBF2(ram, rom) {
 function stageInstall15F874(ram, rom, ctx) {
   const five = stageCreate(ram, 5, (type) => priority(rom, type));
   ram.setU32(WHITE_RANK.idType5,
-    createdId(ram, five, 5, ctx, 0x15f87e, WHITE_RANK.idType5));
+    createdId(ram, five, ctx, 0x15f87e, WHITE_RANK.idType5));
   const one = stageCreate(ram, 1, (type) => priority(rom, type));
   ram.setU32(WHITE_RANK.idType1,
-    createdId(ram, one, 1, ctx, 0x15f88e, WHITE_RANK.idType1));
+    createdId(ram, one, ctx, 0x15f88e, WHITE_RANK.idType1));
   ram.setU16(one.addr + 0x06, ram.u16(WHITE_RANK.stageWordD7));
   if (ram.u16(WHITE_RANK.stageWordD6) !== 0) {
     stagePair15F758(ram, rom, ctx, 0x10000e00, 0x10002a00);
