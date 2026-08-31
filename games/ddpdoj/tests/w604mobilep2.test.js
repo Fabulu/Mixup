@@ -137,7 +137,7 @@ test('W604 the attached shared pad routes P2 play and changes coin ports safely'
   resetInput();
 });
 
-test('W604 static page enables one P2 pad selector only for authentic joined launches', () => {
+test('W604 static page enables one P2 pad selector only after an authentic join', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const ownerMarkup = html.match(/<button id="pad-owner"[\s\S]*?<\/button>/)?.[0] ?? '';
   assert.match(ownerMarkup, /hidden disabled/,
@@ -146,11 +146,17 @@ test('W604 static page enables one P2 pad selector only for authentic joined lau
     'the selector itself is not a board input');
   assert.equal([...html.matchAll(/id="pad"/g)].length, 1, 'the mobile panel is shared');
   assert.equal([...html.matchAll(/id="dpad"/g)].length, 1, 'the d-pad is not duplicated');
-  assert.equal([...html.matchAll(/padOwnerBtn\.hidden = false/g)].length, 1);
+  assert.match(html, /import \{ RAM \} from '\.\/src\/machine\.js';/);
+  assert.match(html, /let p2Joined = false;/);
+  assert.match(html, /latchP2Joined\(authenticSelection\?\.p2 != null\);/,
+    'the normalized explicit P2 pair is converted to an exact join boolean');
   assert.match(html,
-    /if \(authenticSelection\?\.p2\) \{\s*padOwnerBtn\.hidden = false;\s*padOwnerBtn\.disabled = false;/,
-    'only an authentic joined launch enables the selector');
+    /const routed = selectedFormation\s*\? selectTouchOwner\(owner, \{ p2Joined: false \}\)\s*: selectTouchOwner\(owner, \{ p2Joined \}\);/,
+    'formation stays P1-only while ordinary cabinets route the latched join fact');
   assert.match(html,
-    /selectTouchOwner\(owner, \{ p2Joined: !!authenticSelection\?\.p2 \}\)/,
-    'the page explicitly passes the genuine join fact to the owner API');
+    /if \(selectedFormation \|\| p2Joined \|\| joined !== true\) return;\s*p2Joined = true;\s*padOwnerBtn\.hidden = false;\s*padOwnerBtn\.disabled = false;/,
+    'only the exact true runtime fact reveals and enables the shared P2 selector');
+  assert.match(html,
+    /latchP2Joined\(app\.game\.ram\.u16\(RAM\.playerCountM1\) === 1\);/,
+    'the live cold cabinet latches its native two-player state');
 });

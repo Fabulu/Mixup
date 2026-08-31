@@ -653,6 +653,7 @@ import {
   boot, createAutoDismissNotice, fitCanvas, MODES, DEFAULT_MODE, toggleSound,
 } from './src/web/app.js';
 import { hashToLoadout } from './src/mods.js';
+import { RAM } from './src/machine.js';
 import { authenticSelectionFromParams } from './src/authentic.js';
 import {
   formationAuthenticOverridesFromParams, hashToFormation, hashToFormationRoster,
@@ -795,14 +796,15 @@ const padBackstop = attachPad(dpadEl,
   { onPaint: paintDpad });
 const stickBackstop = attachStick(stickzone, { onVisual: paintStick });
 
-// One shared panel defaults to P1. It may be handed to P2 only when an
-// ordinary authentic launch joined P2. Formation input consumes P1 and copies
-// it only into private P1-owned companions, so that launch keeps the panel on
-// P1 and labels why.
+// One shared panel defaults to P1. It may be handed to P2 only after the
+// cartridge has joined P2, either through an explicit authentic launch or the
+// live cabinet. Formation input consumes P1 and copies it only into private
+// P1-owned companions, so that launch keeps the panel on P1 and labels why.
+let p2Joined = false;
 function applyPadOwner(owner) {
   const routed = selectedFormation
     ? selectTouchOwner(owner, { p2Joined: false })
-    : selectTouchOwner(owner, { p2Joined: !!authenticSelection?.p2 });
+    : selectTouchOwner(owner, { p2Joined });
   if (!routed) return false;
   padBackstop();
   stickBackstop();
@@ -813,12 +815,17 @@ function applyPadOwner(owner) {
   padCoinBtn.textContent = p2 ? 'P2 COIN' : 'P1 COIN';
   return true;
 }
+function latchP2Joined(joined) {
+  if (selectedFormation || p2Joined || joined !== true) return;
+  p2Joined = true;
+  padOwnerBtn.hidden = false;
+  padOwnerBtn.disabled = false;
+}
 if (selectedFormation) {
   applyPadOwner('P1');
   formationPadNote.hidden = false;
-} else if (authenticSelection?.p2) {
-  padOwnerBtn.hidden = false;
-  padOwnerBtn.disabled = false;
+} else {
+  latchP2Joined(authenticSelection?.p2 != null);
   padOwnerBtn.addEventListener('click', () => {
     applyPadOwner(currentTouchOwner() === 'P1' ? 'P2' : 'P1');
   });
@@ -1510,6 +1517,7 @@ try {
     + ' other classes; run tools/attachreport.mjs to see them with their scores.';
 
   setInterval(() => {
+    latchP2Joined(app.game.ram.u16(RAM.playerCountM1) === 1);
     const s = app.stats();
     paintSound();
     statsEl.innerHTML = [
