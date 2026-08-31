@@ -20,6 +20,7 @@ import { runObjectDriver, ObjOrder, OBJ } from '../src/objdriver.js';
 import { Unreached } from '../src/unported.js';
 import { MoveTables } from '../src/vectors.js';
 import { Game } from '../src/main.js';
+import { WHITE_LABEL_PROFILE } from '../src/profiles.js';
 
 const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
 
@@ -130,6 +131,21 @@ test('the driver walks 20 slots IN ORDER and skips empties ($2410CA/$2410CC)', (
   assert.equal(n, live.length);
   assert.deepEqual(seen, live, 'ORDER is semantics, not a set');
   assert.equal(ctx.order.n, live.length);
+});
+
+test('missing-handler diagnostics use the active edition dispatch table', () => {
+  const ram = new Ram();
+  ram.setU16(OBJ.base, 0x8008);
+  const notes = [];
+  runObjectDriver(ram, new Map(), {
+    budget: new WorkBudget(),
+    order: new ObjOrder(),
+    unportedLog: { note: (...args) => notes.push(args) },
+    profile: WHITE_LABEL_PROFILE,
+  });
+  assert.equal(notes.length, 1);
+  assert.equal(notes[0][0],
+    WHITE_LABEL_PROFILE.objectDispatchProfile.tableAddress + 8 * 8);
 });
 
 test('objord mixes (slot<<16)|type, byte for byte with frame.lua', () => {

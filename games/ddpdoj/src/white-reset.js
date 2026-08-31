@@ -4,8 +4,7 @@
 // shared helpers are reused only where their observable RAM effect is exact.
 
 import {
-  CAM, clearLowRam23C652, clearSlotTable23C668, clearTx23C622, deferReset,
-  resetScrolls23C61E,
+  clearLowRam23C652, clearSlotTable23C668, clearTx23C622, resetScrolls23C61E,
 } from './background.js';
 import { sectionFlagSet23C194 } from './displaylist.js';
 import { inputAuxReset23D1F2, inputReset23D0D2 } from './frontend.js';
@@ -16,7 +15,12 @@ import { resetPalette2412FE, install2414BE } from './palette.js';
 import { resolveGameProfile, WHITE_LABEL_PROFILE } from './profiles.js';
 import { requireRuntimeCapability, resolveGameRuntime } from './runtime-profile.js';
 import { clear1459FA } from './stageend.js';
+import {
+  camReset140E5C, clearWhiteSelectorFrontend15B8F2,
+} from './white-hardware.js';
 import { stageWhiteVersionChooser13C34C } from './white-frontend.js';
+
+export { camReset140E5C, clearWhiteSelectorFrontend15B8F2 };
 
 export const WHITE_RESET_PROLOGUE = Object.freeze([
   0x1563ae, 0x13c4aa, 0x146a52, 0x13c8f2, 0x13be0c, 0x14536c, 0x145398,
@@ -120,30 +124,12 @@ export function coinDipInit13CA66(ram, rom) {
   }
 }
 
-/** `$140E5C`: reset both cameras without Build B's two shake-word clears. */
-export function camReset140E5C(ram) {
-  ram.setU16(CAM.bgId, 0);
-  for (const address of [CAM.bgLong, CAM.bgCross, CAM.bgAccL, CAM.bgAccC, CAM.bgFracA]) {
-    ram.setU32(address, 0);
-  }
-  ram.setU16(CAM.txId, 1);
-  for (const address of [CAM.txLong, CAM.txCross, CAM.txAccL, CAM.txAccC, CAM.txFracA]) {
-    ram.setU32(address, 0);
-  }
-  deferReset(ram);
-}
-
 /** `$1591E0`: clear only the narrow Version A front-draw fields. */
 export function frontDrawReset1591E0(ram) {
   ram.setU16(0x81e0da, 0);
   ram.setU16(0x812e08, 0);
   ram.setU16(0x812e28, 0);
   for (let address = 0x812e4c; address <= 0x812e52; address += 2) ram.setU16(address, 0);
-}
-
-/** `$15B8F2`: clear the fifteen words ending immediately before the selector records. */
-export function clearWhiteSelectorFrontend15B8F2(ram) {
-  for (let i = 0; i < 15; i++) ram.setU16(0x812e82 + i * 2, 0);
 }
 
 function screenWipe13CA32(ram, ctx) {

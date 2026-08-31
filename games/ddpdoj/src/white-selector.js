@@ -8,6 +8,9 @@ import { resolveGameProfile, WHITE_LABEL_PROFILE } from './profiles.js';
 import { requireRuntimeCapability, resolveGameRuntime } from './runtime-profile.js';
 import { u16 } from './ram.js';
 import {
+  handoff15FA60, selectionRecords15E7CC, stagePair15F758,
+} from './white-rank.js';
+import {
   WHITE_CHOOSER, WHITE_FRONTEND, whiteTakeP1Credit13CCFA, whiteTakeP2Credit13CD5C,
 } from './white-frontend.js';
 
@@ -120,7 +123,8 @@ function requireWhiteSelector(profileRequest, operation) {
 function assertRam(ram, operation) {
   if (!ram || typeof ram.u8 !== 'function' || typeof ram.u16 !== 'function'
       || typeof ram.u32 !== 'function' || typeof ram.setU8 !== 'function'
-      || typeof ram.setU16 !== 'function' || typeof ram.setU32 !== 'function') {
+      || typeof ram.setU16 !== 'function' || typeof ram.setU32 !== 'function'
+      || typeof ram.bset8 !== 'function') {
     throw new TypeError(`${operation} needs the DaiOuJou RAM interface`);
   }
 }
@@ -368,7 +372,7 @@ function phase6(ram, record, side, ctx) {
   }
 }
 
-function phase7(ram, a5, record, side, ctx) {
+function phase7(ram, rom, a5, record, side, ctx) {
   const S = WHITE_SELECTOR;
   const other = recordAddress(1 - side);
   ctx?.retirementPresentation?.(side, record, S.phaseHandlers[4]);
@@ -393,6 +397,34 @@ function phase7(ram, a5, record, side, ctx) {
 
   const frame = u16(ram.u16(record + 0x32) + 1);
   ram.setU16(record + 0x32, frame);
+  if (ram.u16(record + 0x36) < 0x3800) {
+    const speed = u16(ram.u16(record + 0x3a) + 9);
+    ram.setU16(record + 0x3a, speed);
+    ram.setU16(record + 0x36, u16(ram.u16(record + 0x36) + speed));
+  }
+  if (ram.u16(record + 0x38) < 0x1c00) {
+    const speed = u16(ram.u16(record + 0x3c) + 4);
+    ram.setU16(record + 0x3c, speed);
+    ram.setU16(record + 0x38, u16(ram.u16(record + 0x38) + speed));
+  }
+  if (ram.u16(record + 0x3e) < 0x7000) {
+    ram.setU16(record + 0x3e, u16(ram.u16(record + 0x3e) + 0x0200));
+  }
+  if (ram.u16(record + 0x40) < 0x14c0 && ram.u16(record + 0x48) < 0x3800) {
+    ram.setU16(record + 0x48, u16(ram.u16(record + 0x48) + 0x0033));
+  }
+  if (ram.u16(record + 0x48) >= 0x0300 && ram.u16(record + 0x46) < 0x7000) {
+    ram.setU16(record + 0x46, u16(ram.u16(record + 0x46) + 0x0033));
+    if (ram.bset8(a5 + S.objectExtraAt, 0) === 0) {
+      installPalettes(rom, ctx, [[0x1243f8, 0x1a]], 0x15c9b0);
+      const handoff = handoff15FA60(ram, rom, ctx,
+        ram.u8(a5 + 0x08), ram.u8(a5 + 0x04),
+        ram.u8(a5 + 0x09), ram.u8(a5 + 0x05), 0);
+      const visuals = selectionRecords15E7CC(ram, rom, a5);
+      ctx?.whiteStageHandoff?.(handoff, visuals, 0x15c99e);
+    }
+  }
+
   if (frame >= 0x00f0) {
     ram.setU8(record + 0x35, 1);
     const travel = ram.u16(record + 0x4a);
@@ -419,9 +451,8 @@ function phase7(ram, a5, record, side, ctx) {
             ram.setU16(S.recordTailFlag, 1);
             const first = side === 0 ? record : other;
             const second = side === 0 ? other : record;
-            ctx?.stagePair15F758?.(
-              ram.u32(first + 0x56), ram.u32(second + 0x56), S.stagePairSite,
-            );
+            stagePair15F758(ram, rom, ctx,
+              ram.u32(first + 0x56), ram.u32(second + 0x56));
           }
         }
       }
@@ -489,7 +520,7 @@ function walkRecord(ram, rom, a5, record, side, ctx) {
     if (phase === 4) phase4(ram, a5, record, side, ctx);
     if (phase === 5) phase5(ram, rom, a5, record, side, ctx);
     if (phase === 6) phase6(ram, record, side, ctx);
-    if (phase === 7) phase7(ram, a5, record, side, ctx);
+    if (phase === 7) phase7(ram, rom, a5, record, side, ctx);
   }
   tickTimeout(ram, record);
 }

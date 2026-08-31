@@ -116,8 +116,11 @@ export function runObjectDriver(ram, handlers, ctx) {
     }
     const h = handlers.get(t);
     if (!intercepted && h) h(ram, slot, i, ctx);
-    else if (!intercepted) unportedLog.note(0x240f62 + t * 8,
-      `object dispatch entry [${t}] -- handler not ported in wave 4`);
+    else if (!intercepted) {
+      const dispatch = ctx.profile?.objectDispatchProfile?.tableAddress ?? 0x240f62;
+      unportedLog.note(dispatch + t * 8,
+        `object dispatch entry [${t}] -- handler not ported in wave 4`);
+    }
     // The per-slot cost the budget accounts in.  ONE unit per dispatched slot,
     // deliberately crude: there is no calibration to be faithful to yet, and a
     // fabricated per-type cost would look like a measurement.

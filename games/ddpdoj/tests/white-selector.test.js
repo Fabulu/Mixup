@@ -9,6 +9,9 @@ import { Ram } from '../src/ram.js';
 import { FullRom } from '../src/rom.js';
 import { WHITE_CHOOSER } from '../src/white-frontend.js';
 import {
+  WHITE_RANK, clearWhiteRank15F734, playerRecords15F1B0,
+} from '../src/white-rank.js';
+import {
   WHITE_SELECTOR,
   seedWhiteSelector15BC16,
   whiteSelectorTick15BE3E,
@@ -307,6 +310,81 @@ test('phase 7 announces the opposite side every frame while the loop gate is set
 
   tick(ram, rom, { announceSide: (side) => announcements.push(side) });
   assert.deepEqual(announcements, [1]);
+});
+
+rawTest('phase 7 runs each Version A handoff and retirement one-shot exactly once', () => {
+  const ram = new Ram();
+  const rom = new FullRom(new Uint8Array(readFileSync(IMAGE)));
+  const palettes = [];
+  const handoffs = [];
+  const ctx = {
+    installPalette: (bank, _bytes, source, length) =>
+      palettes.push({ bank, source, length }),
+    whiteStageHandoff: (...args) => handoffs.push(args),
+  };
+  clearWhiteRank15F734(ram);
+  seed(ram, rom, 3, ctx);
+  playerRecords15F1B0(ram, rom, ctx);
+  ram.setU16(WHITE_RANK.gate, 1);
+  ram.setU8(ALLOC.table + 0x04, 2);
+  ram.setU8(ALLOC.table + 0x05, 4);
+  ram.setU8(ALLOC.table + 0x08, 0);
+  ram.setU8(ALLOC.table + 0x09, 2);
+
+  for (let side = 0; side < 2; side++) {
+    const record = WHITE_SELECTOR.records + side * WHITE_SELECTOR.recordStride;
+    ram.setU8(record + WHITE_SELECTOR.liveAt, 1);
+    ram.setU8(record + WHITE_SELECTOR.phaseAt, 7);
+    ram.setU16(record + 0x48, 0x02e0);
+  }
+  tick(ram, rom, ctx);
+
+  for (let side = 0; side < 2; side++) {
+    const record = WHITE_SELECTOR.records + side * WHITE_SELECTOR.recordStride;
+    assert.deepEqual([
+      ram.u16(record + 0x32), ram.u16(record + 0x36), ram.u16(record + 0x3a),
+      ram.u16(record + 0x38), ram.u16(record + 0x3c), ram.u16(record + 0x3e),
+      ram.u16(record + 0x46), ram.u16(record + 0x48),
+    ], [1, 9, 9, 4, 4, 0x0200, 0x0033, 0x0313]);
+  }
+  assert.equal(ram.btst8(ALLOC.table + WHITE_SELECTOR.objectExtraAt, 0), 1);
+  assert.equal(palettes.filter(({ bank, source, length }) =>
+    bank === 0x1a && source === 0x1243f8 && length === 64).length, 1);
+  assert.equal(handoffs.length, 1,
+    'both live selector records share the selector-object handoff latch');
+  assert.equal(handoffs[0][2], 0x15c99e);
+  assert.equal(handoffs[0][0].ran, true);
+  assert.deepEqual(handoffs[0][0].saved, { p1: [0, 0], p2: [1, 1] });
+  assert.deepEqual(handoffs[0][1], [0, 1]);
+  assert.equal(ram.u16(WHITE_RANK.gate), 0);
+
+  const createSp = ram.u16(ALLOC.createSp);
+  for (let side = 0; side < 2; side++) {
+    const record = WHITE_SELECTOR.records + side * WHITE_SELECTOR.recordStride;
+    ram.setU16(record + 0x32, 0x00ef);
+    ram.setU16(record + 0x4a, 0x1800);
+    ram.setU16(record + 0x4c, 2);
+    ram.setU16(record + 0x5a, 0);
+  }
+  tick(ram, rom, ctx);
+  assert.equal(ram.u16(WHITE_SELECTOR.recordTailFlag), 1);
+  assert.deepEqual([
+    ram.u16(WHITE_RANK.records),
+    ram.u16(WHITE_RANK.records + WHITE_RANK.recordStride),
+  ], [4, 4]);
+  assert.equal(ram.u16(ALLOC.createSp), createSp,
+    'request 4 remains pending until the rank handler runs');
+  assert.equal(handoffs.length, 1);
+
+  tick(ram, rom, ctx);
+  assert.deepEqual([
+    ram.u8(WHITE_SELECTOR.records + WHITE_SELECTOR.phaseAt),
+    ram.u8(WHITE_SELECTOR.records + WHITE_SELECTOR.recordStride + WHITE_SELECTOR.phaseAt),
+  ], [WHITE_SELECTOR.retiredPhase, WHITE_SELECTOR.retiredPhase]);
+  assert.deepEqual([
+    ram.u16(WHITE_RANK.records),
+    ram.u16(WHITE_RANK.records + WHITE_RANK.recordStride),
+  ], [4, 4], 'the second live record does not duplicate retirement work');
 });
 
 rawTest('embedded Version A image completes every native selector pair through retirement', () => {
