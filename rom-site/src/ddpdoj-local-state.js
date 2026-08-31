@@ -102,6 +102,10 @@ export function localReplaySeedArm(seed, ram, semaphoreOffset) {
   return arm;
 }
 
+export function p2CanJoin(joined, formationState = null) {
+  return joined === true && !formationState;
+}
+
 export function authenticP2Joined(playerCountM1, formationState = null) {
   return !formationState && playerCountM1 === 1;
 }

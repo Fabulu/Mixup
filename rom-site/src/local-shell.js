@@ -7,6 +7,7 @@ import { AudioController } from '/shared/audio.js';
 import * as DdpInput from '/games/ddpdoj/src/web/input.js';
 import * as DdpMods from '/games/ddpdoj/src/mods.js';
 import * as Formation from '/games/ddpdoj/src/formation.js';
+import { p2CanJoin } from './ddpdoj-local-state.js';
 import { attachGamepadMenu } from '/games/ddpdoj/src/web/menu-gamepad.js';
 
 const GAME_IDS = new Set(['batman', 'gradius', 'ddpdoj']);
@@ -1046,7 +1047,7 @@ class LocalShell {
   updateP2Joined(joined) {
     if (this.gameId !== 'ddpdoj') return;
     const formation = Boolean(this.state().formation);
-    this.p2Joined = Boolean(joined) && !formation;
+    this.p2Joined = p2CanJoin(joined, formation);
     if (!this.p2Joined && DdpInput.currentTouchOwner() === 'P2') {
       this.applyPadOwner('P1');
       return;
@@ -1074,7 +1075,7 @@ class LocalShell {
   applyPadOwner(owner) {
     if (this.gameId !== 'ddpdoj') return false;
     const formation = Boolean(this.state().formation);
-    const p2Joined = this.p2Joined && !formation;
+    const p2Joined = p2CanJoin(this.p2Joined, formation);
     if (owner === 'P2' && !p2Joined) return false;
     this.clearInput();
     if (!DdpInput.selectTouchOwner(owner, { p2Joined })) return false;
