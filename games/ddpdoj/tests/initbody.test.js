@@ -265,6 +265,26 @@ test('type $11 body writes the prototype HP/palette/anim and the rank-adjusted b
   assert.equal(ram.u32(rec + 0x2e), 0x0023dece);
 });
 
+test('type $80 initializes both turret sprite pointers before its first draw',
+  { skip: !HAVE && 'rip absent' }, () => {
+  const rom = realRom();
+  const ram = new Ram();
+  const { rec, sub } = freshEnemy(ram, 0x80);
+  ram.setU16(rec + 0x04, 1); // the type $80 stub owns two sub-records
+  ram.setU16(0x813092, 0); ram.setU16(0x813094, 0); ram.setU16(0x813098, 0);
+
+  runInitBodyAddr(0x273802, ram, rom, rec, { note() {} });
+
+  const heading = ram.u8(sub + 0x1b);
+  const sprite = rom.u32(0x272f7a + ((heading & 0x3e) * 2));
+  assert.notEqual(sprite, 0, 'the heading resolves to cartridge sprite art');
+  assert.equal(ram.u8(rec + 0x2d), heading, 'the first turret stores its initial facing');
+  assert.equal(ram.u8(rec + 0x33), heading, 'the second turret stores its initial facing');
+  assert.equal(ram.u32(rec + 0x28), sprite, 'the first turret is drawable immediately');
+  assert.equal(ram.u32(rec + 0x2e), sprite,
+    'the second turret cannot emit the prototype null pointer before its first re-aim');
+});
+
 test('type $10/$11 movement layer selects the visible front death bucket',
   { skip: !HAVE && 'rip absent' }, () => {
   const rom = realRom();

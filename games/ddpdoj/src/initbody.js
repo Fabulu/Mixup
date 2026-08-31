@@ -857,12 +857,18 @@ BODY.set(0x273802, (ram, rom, a5, a6, unported) => {
   }
   unported?.note(0x24200a, `$24200A aim in type $80 init -- bucket field tracks `
     + `the W24 spawn position through the aim`);
-  // the aim sets D1 (or falls back to heading); store to +$2D, quantise, read
-  // the bucket from $272F7A.  Position is W24 -> we use the heading fallback.
-  let d1 = ram.u8(a6 + S.heading);                      // bcc not taken (aim W24)
-  ram.setU8(a5 + R.rec2D, d1);                          // move.b D1,($2d,A5)
+  // `$27383A..$27388E` seeds BOTH independent turret arms before the first draw.
+  // The second arm uses the opposite short-axis bias and owns +$33/+2E.  Until
+  // this was ported, +$2E retained the prototype's null longword and emitted a
+  // 3x40 offset-zero sprite for the arm's first aim cadence.
+  let d1 = ram.u8(a6 + S.heading);                       // bcc not taken (aim W24)
+  ram.setU8(a5 + R.rec2D, d1);                           // $27385A
   d1 = (d1 & 0x3e) << 1;
-  ram.setU32(a5 + R.rec28, rom.u32(0x272F7A + d1));     // move.l (A2,D1.w),($28,A5)
+  ram.setU32(a5 + R.rec28, rom.u32(0x272F7A + d1));      // $273864
+  d1 = ram.u8(a6 + S.heading);                           // $27387E bcc / fallback
+  ram.setU8(a5 + R.rec33, d1);                           // $273884
+  d1 = (d1 & 0x3e) << 1;
+  ram.setU32(a5 + R.rec2E, rom.u32(0x272F7A + d1));      // $27388E
   // $273894: +$34 := $10, +$35 := $04 (stage>1 keeps the same here).
   ram.setU8(a5 + R.rec34, 0x10);
   ram.setU8(a5 + R.rec35, 0x04);
