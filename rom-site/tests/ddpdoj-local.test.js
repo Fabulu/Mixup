@@ -67,7 +67,7 @@ test('Mixup local preparation and launch reject edition before ROM payload acces
         ? LocalDdpdojRuntime.prepare(payload, { profile: 'ddpdoj/white-label/a' })
         : LocalDdpdojRuntime.createFromPrepared(
             payload, null, { profile: 'ddpdoj/white-label/a' }),
-      /unsupported DaiOuJou edition profile/,
+      /Mixup local DaiOuJou ROM preparation is unavailable for this DaiOuJou edition runtime/,
     );
     assert.equal(reads, 0, `${operation} touched its payload`);
   }

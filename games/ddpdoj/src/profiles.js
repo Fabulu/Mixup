@@ -2,9 +2,9 @@
 //
 // Profiles are data only. They do not import handlers or runtime code, so the
 // runtime can select one before constructing any mutable Game state without
-// creating an import cycle. Only the measured Black Label profile is trusted
-// in this first seam. Version A remains unavailable until it has independent
-// address, table, bootstrap, and checkpoint evidence.
+// creating an import cycle. Black Label and embedded Version A have independent
+// measured identities. Registering either profile does not grant executable
+// capabilities, which remain separate in runtime-profile.js.
 //
 // EVERY NUMBER IN THE PROFILE BELOW IS MEASURED. Nothing is derived by
 // arithmetic from the other embedded program's address. Build B is
@@ -23,6 +23,7 @@
 
 export const PROFILE_IDS = Object.freeze({
   BLACK_LABEL: 'ddpdoj/black-label/b',
+  WHITE_LABEL: 'ddpdoj/white-label/a',
 });
 
 export const DEFAULT_PROFILE_ID = PROFILE_IDS.BLACK_LABEL;
@@ -202,10 +203,12 @@ export function validateGameProfile(candidate) {
 
   const dispatch = candidate.objectDispatchProfile;
   assertExactFields(dispatch,
-    ['id', 'tableAddress', 'objectTableAddress', 'objectTableEnd', 'slots', 'stride'],
+    ['id', 'tableAddress', 'entries', 'objectTableAddress', 'objectTableEnd', 'slots', 'stride'],
     'profile.objectDispatchProfile');
   assertId(dispatch.id, 'profile.objectDispatchProfile.id');
-  for (const key of ['tableAddress', 'objectTableAddress', 'objectTableEnd', 'slots', 'stride']) {
+  for (const key of [
+    'tableAddress', 'entries', 'objectTableAddress', 'objectTableEnd', 'slots', 'stride',
+  ]) {
     if (!Number.isSafeInteger(dispatch[key]) || dispatch[key] <= 0) {
       throw new TypeError(`profile.objectDispatchProfile.${key} must be positive`);
     }
@@ -477,6 +480,7 @@ const PROFILE_INPUT = {
   objectDispatchProfile: {
     id: 'ddpdoj.dispatch.black-label-b.v1',
     tableAddress: 0x240f62,
+    entries: 20,
     objectTableAddress: 0x80e240,
     objectTableEnd: 0x80e880,
     slots: 20,
@@ -512,8 +516,89 @@ validateGameProfile(PROFILE_INPUT);
 export const BLACK_LABEL_PROFILE = deepFreeze(PROFILE_INPUT);
 export const SHARED_RAM_LAYOUT = BLACK_LABEL_PROFILE.ramLayout;
 
+const WHITE_PROFILE_INPUT = {
+  id: PROFILE_IDS.WHITE_LABEL,
+  revisionIdentity: {
+    edition: 'white-label',
+    set: 'ddpdojblk',
+    build: 'A',
+    programRevision: '2002.04.05 MASTER VER',
+  },
+  // The decrypted cartridge is one exact 6 MiB image containing both builds.
+  // Build A identity is not a standalone V101 ROM identity.
+  programIdentity: BLACK_LABEL_PROFILE.programIdentity,
+  codeLandmarks: {
+    loopHead: 0x13c356,
+    loopTail: 0x13c380,
+    counters: 0x13be8c,
+    call1: 0x1562f0,
+    objDriver: 0x1413f6,
+    call3: 0x145f1c,
+    spriteBuild: 0x13d61a,
+    frameSync: 0x13c5b6,
+    postVblank: 0x13d496,
+    isr6Vector: 0x13bdba,
+    isr6Body: 0x13c7d4,
+    isr6Coin: 0x13cfba,
+    isr6InputRead: 0x13d464,
+    objTableInit: 0x1413b6,
+    objAlloc: 0x1414bc,
+    objDispatch: 0x141294,
+    versionChooser: 0x13beea,
+    versionChooserExit: 0x13c0e6,
+    frontEndStage: 0x13c0f2,
+    stageStart: 0x142d14,
+  },
+  ramLayout: SHARED_RAM_LAYOUT,
+  bootProfile: {
+    id: 'ddpdoj.boot.white-label-a.v1',
+    resetEntry: 0x13c24e,
+    inputBits: {
+      up: 0, down: 1, left: 2, right: 3, b1: 4, b2: 5, b3: 6, start: 15,
+    },
+  },
+  objectDispatchProfile: {
+    id: 'ddpdoj.dispatch.white-label-a.v1',
+    tableAddress: 0x141294,
+    entries: 21,
+    objectTableAddress: 0x80e240,
+    objectTableEnd: 0x80e880,
+    slots: 20,
+    stride: 0x50,
+  },
+  selectorProfile: {
+    id: 'ddpdoj.selector.white-label-a.v1',
+    horizontalHitbox: 0xc0,
+    // Independently decoded at $148CBC..$148D4C. These are not copied from B.
+    clamp: {
+      yMax: 0x6500,
+      yMin: 0x0800,
+      xMin: 0x0300,
+      xMax: 0x3500,
+    },
+  },
+  progressionProfile: {
+    id: 'ddpdoj.progression.white-label-a.v1',
+    build: 'A',
+    loopOffer: false,
+  },
+  tableManifest: {
+    id: 'ddpdoj.tables.white-label-a.v1',
+    set: 'ddpdojblk',
+    build: 'A',
+    imageSha256: BLACK_LABEL_PROFILE.programIdentity.imageSha256,
+  },
+  // This identity is reserved now so White checkpoints cannot enter Black's
+  // namespace. No checkpoint capability is registered yet.
+  checkpointNamespace: 'ddpdoj.progression.white-label-a.v1',
+};
+
+validateGameProfile(WHITE_PROFILE_INPUT);
+export const WHITE_LABEL_PROFILE = deepFreeze(WHITE_PROFILE_INPUT);
+
 const TRUSTED_PROFILES = new Map([
   [BLACK_LABEL_PROFILE.id, BLACK_LABEL_PROFILE],
+  [WHITE_LABEL_PROFILE.id, WHITE_LABEL_PROFILE],
 ]);
 
 /** Resolve only a trusted registered profile, before a Game touches mutable state. */
@@ -523,7 +608,7 @@ export function resolveGameProfile(request = DEFAULT_PROFILE_ID) {
     if (!profile) throw new RangeError(`unsupported DaiOuJou edition profile ${request}`);
     return profile;
   }
-  if (request === BLACK_LABEL_PROFILE) return request;
+  if (request === BLACK_LABEL_PROFILE || request === WHITE_LABEL_PROFILE) return request;
   if (request && typeof request === 'object') {
     validateGameProfile(request);
     throw new TypeError(`unregistered DaiOuJou edition profile ${request.id}`);

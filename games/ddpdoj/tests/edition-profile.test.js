@@ -9,6 +9,7 @@ import {
   DEFAULT_PROFILE_ID,
   PROFILE_IDS,
   SHARED_RAM_LAYOUT,
+  WHITE_LABEL_PROFILE,
   deriveProfileContext,
   resolveGameProfile,
   validateGameProfile,
@@ -78,6 +79,33 @@ test('Black edition profile is trusted, data-only, and recursively frozen', () =
   const invalid = JSON.parse(JSON.stringify(BLACK_LABEL_PROFILE));
   invalid.progressionProfile.callback = () => {};
   assert.throws(() => validateGameProfile(invalid), /unsupported function data/);
+});
+
+test('embedded Version A profile is trusted, measured, frozen, and bootstrap-only', () => {
+  assert.equal(resolveGameProfile(PROFILE_IDS.WHITE_LABEL), WHITE_LABEL_PROFILE);
+  assert.equal(resolveGameProfile(WHITE_LABEL_PROFILE), WHITE_LABEL_PROFILE);
+  assert.equal(validateGameProfile(WHITE_LABEL_PROFILE), WHITE_LABEL_PROFILE);
+  assertDeepFrozen(WHITE_LABEL_PROFILE);
+
+  assert.equal(WHITE_LABEL_PROFILE.revisionIdentity.build, 'A');
+  assert.equal(WHITE_LABEL_PROFILE.programIdentity, BLACK_LABEL_PROFILE.programIdentity,
+    'both embedded editions belong to one exact decrypted cartridge image');
+  assert.equal(WHITE_LABEL_PROFILE.ramLayout, SHARED_RAM_LAYOUT,
+    'independent A and B evidence identifies one exact shared RAM layout');
+  assert.equal(WHITE_LABEL_PROFILE.bootProfile.resetEntry, 0x13c24e);
+  assert.equal(WHITE_LABEL_PROFILE.codeLandmarks.loopHead, 0x13c356);
+  assert.equal(WHITE_LABEL_PROFILE.codeLandmarks.objDriver, 0x1413f6);
+  assert.equal(WHITE_LABEL_PROFILE.objectDispatchProfile.tableAddress, 0x141294);
+  assert.equal(WHITE_LABEL_PROFILE.objectDispatchProfile.entries, 21);
+  assert.equal(WHITE_LABEL_PROFILE.objectDispatchProfile.slots, 20,
+    'the A-only chooser adds a dispatch type, not an object slot');
+  assert.equal(WHITE_LABEL_PROFILE.selectorProfile.horizontalHitbox, 0xc0);
+  assert.deepEqual(WHITE_LABEL_PROFILE.selectorProfile.clamp, {
+    yMax: 0x6500, yMin: 0x0800, xMin: 0x0300, xMax: 0x3500,
+  });
+  assert.equal(WHITE_LABEL_PROFILE.progressionProfile.loopOffer, false);
+  assert.notEqual(WHITE_LABEL_PROFILE.checkpointNamespace,
+    BLACK_LABEL_PROFILE.checkpointNamespace);
 });
 
 test('profile validation is order-independent but rejects incomplete or hidden data', () => {
@@ -213,7 +241,7 @@ test('Game rejects unknown and forged profiles before reading seed or tables', (
   });
   assert.throws(
     () => new Game(untouched, untouched, { profile: 'ddpdoj/white-label/a' }),
-    /unsupported DaiOuJou edition profile ddpdoj\/white-label\/a/,
+    /Game construction is unavailable for this DaiOuJou edition runtime/,
   );
   assert.equal(reads, 0);
 

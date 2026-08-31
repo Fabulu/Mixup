@@ -10,9 +10,10 @@ import {
 } from '../src/localrom.js';
 import { Game } from '../src/main.js';
 import { saveRunaheadState } from '../src/runahead-state.js';
-import { BLACK_LABEL_PROFILE } from '../src/profiles.js';
+import { BLACK_LABEL_PROFILE, WHITE_LABEL_PROFILE } from '../src/profiles.js';
 import {
   BLACK_RUNTIME_BINDING,
+  WHITE_RUNTIME_BINDING,
   requireRuntimeCapability,
   resolveGameRuntime,
   resolveRuntimeProfile,
@@ -50,14 +51,27 @@ function assertHiddenIdentity(owner, name, value) {
   });
 }
 
-test('only the exact audited Black profile has executable capabilities', () => {
+test('exact audited profiles receive only their independently registered capabilities', () => {
   assert.equal(resolveGameRuntime(BLACK_LABEL_PROFILE), BLACK_RUNTIME_BINDING);
+  assert.equal(resolveGameRuntime(WHITE_LABEL_PROFILE), WHITE_RUNTIME_BINDING);
   const resolved = resolveRuntimeProfile();
   assert.equal(resolved.profile, BLACK_LABEL_PROFILE);
   assert.equal(resolved.runtime, BLACK_RUNTIME_BINDING);
   assert.equal(Object.isFrozen(resolved), true);
-  assert.equal(Object.isFrozen(BLACK_RUNTIME_BINDING), true);
-  assert.equal(Object.isFrozen(BLACK_RUNTIME_BINDING.capabilities), true);
+  for (const runtime of [BLACK_RUNTIME_BINDING, WHITE_RUNTIME_BINDING]) {
+    assert.equal(Object.isFrozen(runtime), true);
+    assert.equal(Object.isFrozen(runtime.capabilities), true);
+  }
+  assert.equal(WHITE_RUNTIME_BINDING.profile, WHITE_LABEL_PROFILE);
+  assert.equal(Object.hasOwn(WHITE_RUNTIME_BINDING.capabilities, 'frontendBootstrap'), true);
+  for (const capability of [
+    'game', 'authenticSelector', 'localRom', 'legacyReplay', 'legacyCheckpoint', 'legacyBundle',
+  ]) {
+    assert.throws(
+      () => requireRuntimeCapability(WHITE_RUNTIME_BINDING, capability, 'White operation'),
+      /White operation is unavailable/,
+    );
+  }
 
   const measuredClone = JSON.parse(JSON.stringify(BLACK_LABEL_PROFILE));
   assert.throws(() => resolveGameRuntime(measuredClone), /no executable runtime/);
@@ -116,7 +130,7 @@ test('bundle request and table identity fail before unrelated asset reads', asyn
       reads++;
       throw new Error('asset input was touched');
     }, { profile: 'ddpdoj/white-label/a' }),
-    /unsupported DaiOuJou edition profile/,
+    /Published bundle is unavailable for this DaiOuJou edition runtime/,
   );
   assert.equal(reads, 0);
 
@@ -155,7 +169,7 @@ test('Black-only selector, local tables, and replay ingress reject invalid ident
   });
   assert.throws(
     () => tablesFromMainCpu(untouched, 'ddpdoj/white-label/a'),
-    /unsupported DaiOuJou edition profile/,
+    /Local table extraction is unavailable for this DaiOuJou edition runtime/,
   );
   assert.equal(reads, 0);
 
@@ -167,7 +181,7 @@ test('Black-only selector, local tables, and replay ingress reject invalid ident
   });
   assert.throws(
     () => validateReplay(replay, { profile: 'ddpdoj/white-label/a' }),
-    /unsupported DaiOuJou edition profile/,
+    /Legacy replay is unavailable for this DaiOuJou edition runtime/,
   );
   assert.equal(reads, 0);
   assert.throws(
@@ -176,13 +190,14 @@ test('Black-only selector, local tables, and replay ingress reject invalid ident
   );
 });
 
-test('all Black local-ROM ingress resolves edition before reading input', async () => {
-  for (const [operation, invoke] of [
-    ['decrypt', (input) => decryptPy2k2(input, 'ddpdoj/white-label/a')],
-    ['identity', (input) => assertMainCpuIdentity(input, {
+test('all Black-only local-ROM ingress resolves edition before reading input', async () => {
+  for (const [operation, unavailable, invoke] of [
+    ['decrypt', 'DaiOuJou program decryption',
+      (input) => decryptPy2k2(input, 'ddpdoj/white-label/a')],
+    ['identity', 'DaiOuJou maincpu validation', (input) => assertMainCpuIdentity(input, {
       profile: 'ddpdoj/white-label/a',
     })],
-    ['construction', (input) => buildMainCpu(input, {
+    ['construction', 'DaiOuJou maincpu construction', (input) => buildMainCpu(input, {
       profile: 'ddpdoj/white-label/a',
     })],
   ]) {
@@ -195,7 +210,7 @@ test('all Black local-ROM ingress resolves edition before reading input', async 
     });
     await assert.rejects(
       async () => invoke(input),
-      /unsupported DaiOuJou edition profile/,
+      new RegExp(`${unavailable} is unavailable for this DaiOuJou edition runtime`),
     );
     assert.equal(reads, 0, `${operation} touched its input`);
   }
@@ -211,7 +226,7 @@ test('checkpoint restore and read resolve edition before payload or file access'
   });
   assert.throws(
     () => restoreCheckpoint(document, {}, { profile: 'ddpdoj/white-label/a' }),
-    /unsupported DaiOuJou edition profile/,
+    /Progression checkpoint v2 is unavailable for this DaiOuJou edition runtime/,
   );
   assert.equal(reads, 0);
 
@@ -219,7 +234,7 @@ test('checkpoint restore and read resolve edition before payload or file access'
     readCheckpoint(new URL('./missing-edition-runtime-checkpoint.json', import.meta.url), {}, {
       profile: 'ddpdoj/white-label/a',
     }),
-    /unsupported DaiOuJou edition profile/,
+    /Progression checkpoint v2 is unavailable for this DaiOuJou edition runtime/,
   );
 });
 

@@ -5,7 +5,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { MACHINE } from '../src/machine.js';
-import { BLACK_LABEL_PROFILE, PROFILE_IDS } from '../src/profiles.js';
+import {
+  BLACK_LABEL_PROFILE, PROFILE_IDS, WHITE_LABEL_PROFILE,
+} from '../src/profiles.js';
 import {
   armSoundOnFirstGesture, boot, bundleOptionsForGameJson, launchSeedForBrowser, toggleSound,
 } from '../src/web/app.js';
@@ -27,14 +29,13 @@ test('browser bundle metadata defaults only absent legacy metadata to trusted Bl
   assert.equal(explicit.profile, BLACK_LABEL_PROFILE);
   assert.equal(explicit.dropTile, 7, 'an explicit matching Black request preserves break options');
 
-  assert.throws(
-    () => bundleOptionsForGameJson({ profileId: WHITE_PROFILE_ID }),
-    /unsupported DaiOuJou edition profile ddpdoj\/white-label\/a/,
-  );
+  const white = bundleOptionsForGameJson({ profileId: WHITE_PROFILE_ID });
+  assert.equal(white.profile, WHITE_LABEL_PROFILE,
+    'trusted embedded Version A metadata resolves without granting bundle launch');
   assert.throws(
     () => bundleOptionsForGameJson(
       { profileId: PROFILE_IDS.BLACK_LABEL }, { profile: WHITE_PROFILE_ID }),
-    /unsupported DaiOuJou edition profile ddpdoj\/white-label\/a/,
+    /bundleOpts\.profile does not match game\.json profileId/,
   );
 });
 

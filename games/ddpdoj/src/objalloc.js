@@ -368,3 +368,7 @@ export function objTableInit24107C(ram) {
   }
   // $2410BA rts
 }
+
+// Build A $1413B6 has the same independently decoded RAM writes and 20-pass
+// extent. The two editions share this exact allocator state, not a code address.
+export const objTableInit1413B6 = objTableInit24107C;

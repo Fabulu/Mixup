@@ -411,6 +411,10 @@ export function clear24631C(ram) {
     ram.setU32(a + 0x2c, 0);                            // $24635A move.l #$0,($2C,A0)
   }
 }
+
+// Build A $1459FA is the independently paired routine with the same RAM roots,
+// loop bounds, and store widths. The alias records shared behavior, not code.
+export const clear1459FA = clear24631C;
 function clear28D552(ram) {
   for (let i = 0; i <= SE.resultWords; i++) ram.setU16(SE.result + i * 2, 0);
 }

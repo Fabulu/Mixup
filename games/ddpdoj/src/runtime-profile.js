@@ -1,4 +1,6 @@
-import { BLACK_LABEL_PROFILE, resolveGameProfile } from './profiles.js';
+import {
+  BLACK_LABEL_PROFILE, WHITE_LABEL_PROFILE, resolveGameProfile,
+} from './profiles.js';
 
 // Executable capabilities are deliberately separate from trusted profile data.
 // Registering measured edition data must never make the existing Black runtime
@@ -13,18 +15,30 @@ const BLACK_CAPABILITIES = Object.freeze({
   legacyBundle: 'ddpdoj.runtime.black-label-b.bundle-v1',
 });
 
+const WHITE_CAPABILITIES = Object.freeze({
+  frontendBootstrap: 'ddpdoj.runtime.white-label-a.frontend-bootstrap.v1',
+});
+
 export const BLACK_RUNTIME_BINDING = Object.freeze({
   id: 'ddpdoj.runtime/black-label/b/v1',
   profile: BLACK_LABEL_PROFILE,
   capabilities: BLACK_CAPABILITIES,
 });
 
+export const WHITE_RUNTIME_BINDING = Object.freeze({
+  id: 'ddpdoj.runtime/white-label/a/v1',
+  profile: WHITE_LABEL_PROFILE,
+  capabilities: WHITE_CAPABILITIES,
+});
+
 const EXECUTABLE_RUNTIMES = new Map([
   [BLACK_LABEL_PROFILE, BLACK_RUNTIME_BINDING],
+  [WHITE_LABEL_PROFILE, WHITE_RUNTIME_BINDING],
 ]);
 
 const REGISTERED_RUNTIME_CAPABILITIES = new Map([
   [BLACK_RUNTIME_BINDING, BLACK_CAPABILITIES],
+  [WHITE_RUNTIME_BINDING, WHITE_CAPABILITIES],
 ]);
 
 /** Resolve an executable binding only for the exact trusted profile object. */
