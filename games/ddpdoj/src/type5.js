@@ -135,6 +135,7 @@ import { shotHandlers } from './shots.js';
 import { runOptionObject } from './options.js';
 import { drawShip, drawShipAlt, SHIP_MUTATE } from './shipsprite.js';
 import { RAM, ROM } from './machine.js';
+import { deriveProfileContext } from './profiles.js';
 import { runEnemyFrame, enemyHandlerMap } from './enemyframe.js';
 import { reapSubRecords, SUB_REAPER, resetAndInstallStage26331E } from './spawn.js';
 import { runBulletDriver, runClearTimer } from './bulletdriver.js';
@@ -356,8 +357,8 @@ export function makeType5(rom) {
           // `notes` is what src/mover.js calls the log; `ram` is not on Game's
           // ctx at all.  Both are supplied here, once, rather than renamed
           // across two files this wave is not the reviewer for.
-          ctx.bulletFrame = runBulletDriver({ ...ctx, ram, rom,
-            notes: ctx.unportedLog });
+          ctx.bulletFrame = runBulletDriver(deriveProfileContext(ctx, { ram, rom,
+            notes: ctx.unportedLog }));
           break;
         case TYPE5.clearTimer:                          // $28B65E -> $25354C
           runClearTimer(ram);

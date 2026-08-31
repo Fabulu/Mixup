@@ -55,6 +55,7 @@
 import { runSpawnWalker } from './spawn.js';
 import { runEnemyDriver } from './enemies.js';
 import { handlerMap } from './handlers.js';
+import { deriveProfileContext } from './profiles.js';
 
 /** The addresses this file is the port of. */
 export const ENEMY_FRAME = {
@@ -115,5 +116,5 @@ export function runEnemyFrame(ram, rom, ctx, handlers) {
 
 /** `Game`'s ctx as `src/handlers.js` expects it (see THE CONTEXT SHIM above). */
 export function hctx(ctx) {
-  return { ...ctx, unported: ctx.unportedLog };
+  return deriveProfileContext(ctx, { unported: ctx.unportedLog });
 }

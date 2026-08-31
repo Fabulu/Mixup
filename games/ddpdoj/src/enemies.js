@@ -78,6 +78,7 @@
 
 import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
+import { deriveProfileContext } from './profiles.js';
 
 export const ENEMY = {
   table: 0x81332c,         // $263514 lea $81332C,A5
@@ -153,15 +154,14 @@ export function runEnemyDriver(ram, handlers, ctx) {
     // is not fatal: the same handler must also retire its common-band record.
     const deathHook = rec >= ENEMY.bandCommon ? ctx?.enemyDeathHook : null;
     let fatal = null;
-    const handlerCtx = deathHook ? {
-      ...ctx,
+    const handlerCtx = deathHook ? deriveProfileContext(ctx, {
       killEvent: (d0, d1) => {
         fatal = {
           rec, sub, y: ram.u16(sub + 0x02), x: ram.u16(sub + 0x04), d0, d1,
         };
         ctx.killEvent?.(d0, d1);
       },
-    } : ctx;
+    }) : ctx;
     const receiptContext = ctx?.privateDamageReceiptHook ? {
       main: rec,
       sub,

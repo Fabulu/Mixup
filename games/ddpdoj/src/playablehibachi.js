@@ -14,6 +14,7 @@ import {
   gun8Init2A8800, gun8Step2A883A,
 } from './hibachiguns.js';
 import { MACHINE, P, RAM } from './machine.js';
+import { deriveProfileContext } from './profiles.js';
 import { i16, u16 } from './ram.js';
 import { StrictSidecarMemory } from './sidecarmemory.js';
 import { encodeRegisterRequest, NAMED_BUCKETS } from './spritequeue.js';
@@ -509,8 +510,7 @@ export function stepPlayableHibachiWeapon(state, ram, rec, playerIdx, ctx) {
     return true;
   }
 
-  const privateCtx = {
-    ...ctx,
+  const privateCtx = deriveProfileContext(ctx, {
     privateTargetRecord: target,
     privateA1StopHook: (script) => {
       if (script !== gun) return false;
@@ -521,7 +521,7 @@ export function stepPlayableHibachiWeapon(state, ram, rec, playerIdx, ctx) {
       ctx.bulletSpawn?.(site, result, callRegs, entry);
       claimSpawnedBullets(state, player, ram, rec, result);
     },
-  };
+  });
   step(player.memory, ctx.rom, privateCtx,
     player.layout.gun, player.layout.body, player.layout.parts);
   runtime.frames++;

@@ -11,7 +11,7 @@
 // m_mainram and as the `sram` NVRAM device), which is why a seed taken with
 // -nvram_save is a snapshot of exactly this array.
 
-import { MACHINE } from './machine.js';
+import { SHARED_RAM_LAYOUT } from './profiles.js';
 
 /** 16-bit two's complement, the size nearly every player field is. */
 export const i16 = (v) => (v << 16) >> 16;
@@ -28,15 +28,22 @@ export const u32 = (v) => v >>> 0;
 export const asr = (v, n) => v >> n;
 
 export class Ram {
-  constructor(bytes) {
-    if (bytes && bytes.length !== MACHINE.ramSize) {
-      throw new Error(`seed is ${bytes.length} bytes, expected ${MACHINE.ramSize}`);
+  constructor(bytes, layout = SHARED_RAM_LAYOUT) {
+    const machine = layout?.machine;
+    if (!Number.isSafeInteger(machine?.ramBase) || !Number.isSafeInteger(machine?.ramSize)
+        || machine.ramSize <= 0) {
+      throw new TypeError('RAM layout must declare a base and positive size');
     }
-    this.b = bytes ? Uint8Array.from(bytes) : new Uint8Array(MACHINE.ramSize);
+    Object.defineProperty(this, 'ramLayout', { value: layout });
+    if (bytes && bytes.length !== machine.ramSize) {
+      throw new Error(`seed is ${bytes.length} bytes, expected ${machine.ramSize}`);
+    }
+    this.b = bytes ? Uint8Array.from(bytes) : new Uint8Array(machine.ramSize);
     this.dv = new DataView(this.b.buffer, this.b.byteOffset, this.b.byteLength);
   }
   #off(a) {
-    const o = a - MACHINE.ramBase;
+    const machine = this.ramLayout.machine;
+    const o = a - machine.ramBase;
     // WAVE 44: `!(o >= 0 && o < size)`, NOT `o < 0 || o >= size`, and the
     // difference is NaN.  `NaN < 0` and `NaN >= size` are BOTH false, so the old
     // form let a NaN address through and `DataView.getUint16(NaN)` reads offset
@@ -47,7 +54,7 @@ export class Ram {
     // NaN and the ship's position came back as display-list word 0), and the
     // measurement looked wrong rather than broken.  Same two comparisons, same
     // cost, one more failure mode caught.
-    if (!(o >= 0 && o < MACHINE.ramSize)) {
+    if (!(o >= 0 && o < machine.ramSize)) {
       throw new RangeError(`${Number.isFinite(a) ? `$${a.toString(16)}` : a} `
         + 'is outside main RAM');
     }
@@ -79,5 +86,5 @@ export class Ram {
     return old;
   }
   btst8(a, n) { return (this.b[this.#off(a)] >> n) & 1; }
-  clone() { return new Ram(this.b); }
+  clone() { return new Ram(this.b, this.ramLayout); }
 }

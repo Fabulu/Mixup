@@ -54,6 +54,7 @@
 // ---------------------------------------------------------------------------
 
 import { RAM, ROM, MACHINE } from './machine.js';
+import { assertProfileTables, resolveGameProfile } from './profiles.js';
 import { Ram, u16, i16 } from './ram.js';
 import { postVblankEdges } from './input.js';
 import { irq6, coinDebounce13CEC8, COIN } from './isr.js';
@@ -335,7 +336,10 @@ export class Game {
    * @param opts     { videoFrame, logicFrame, budgetUnits }
    */
   constructor(seed, tables, opts = {}) {
-    this.ram = new Ram(seed);
+    const profile = resolveGameProfile(opts.profile);
+    assertProfileTables(profile, tables);
+    Object.defineProperty(this, 'profile', { value: profile });
+    this.ram = new Ram(seed, profile.ramLayout);
     // WAVE 8: the cartridge, as a set of declared windows.  The shot spawn
     // follows pointers out of a ROM template, so the port reads ROM the way the
     // 68000 does and throws BY ADDRESS on anything the exporter did not cover.
@@ -596,7 +600,7 @@ export class Game {
     const privateScoreFrameHook = installedPrivateScoreFrameHook
       ? (event) => installedPrivateScoreFrameHook(this, event)
       : null;
-    return {
+    const ctx = {
       tables: this.tables,
       rom: this.rom,
       prot: this.prot,          // WAVE 12: the $500000 latch, on the ship's own
@@ -703,9 +707,9 @@ export class Game {
       // files call `ctx.unported?.note(..)` at about thirty sites, and until this
       // line every one of them was a NO-OP from the driver: `#ctx()` carried the
       // log only as `unportedLog` (the name twenty-eight reads elsewhere use) and
-      // only `enemyframe.js:118` re-aliased it with `{...ctx, unported:
-      // ctx.unportedLog}`. So the mechanism that keeps an unported callee
-      // COUNTABLE rather than an invisible skip -- the whole point of
+      // only `enemyframe.js` re-aliased it in a derived handler context. The
+      // mechanism that keeps an unported callee COUNTABLE rather than an invisible
+      // skip -- the whole point of
       // src/unported.js -- was switched off for exactly the six files W374/W375
       // connected to the driver. An ALIAS, not a rename: `unportedLog` stays.
       unported: this.unportedLog,
@@ -976,6 +980,8 @@ export class Game {
         this.itemCollects.set(k, (this.itemCollects.get(k) ?? 0) + 1);
       },
     };
+    Object.defineProperty(ctx, 'profile', { value: this.profile });
+    return ctx;
   }
 
   /** $23BE8C -- main-loop call #0. */

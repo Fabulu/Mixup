@@ -77,6 +77,7 @@
 
 import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
+import { deriveProfileContext } from './profiles.js';
 
 export const SHOT = {
   p1Table: 0x810572,       // $253A70 lea $810572,A6
@@ -142,7 +143,7 @@ function validateDriverResources(resources) {
 
 function driveShotPool(ram, rom, handlers, ctx, resources, scroll) {
   const handlerCtx = resources.presentationSink == null
-    ? ctx : { ...ctx, shotPresentationSink: resources.presentationSink };
+    ? ctx : deriveProfileContext(ctx, { shotPresentationSink: resources.presentationSink });
   let processed = 0;
   for (let i = 0; i < resources.slots; i++) {
     const rec = resources.pool + i * resources.stride;
