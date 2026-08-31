@@ -3215,19 +3215,28 @@ def gate_asset_free(browser, origin: str) -> None:
             replay_tables = json.loads(tables_bytes.decode("utf-8"))
             ram_bytes = base64.b64decode(replay["seed"]["ramB64"], validate=True)
             bg_bytes = base64.b64decode(replay["seed"]["bgB64"], validate=True)
+            portin_bytes = base64.b64decode(replay["portin"]["b64"], validate=True)
+            coinin_bytes = base64.b64decode(replay["coinin"]["b64"], validate=True)
         except (KeyError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise GateFailure(f"downloaded local replay is malformed: {error}") from error
-        require(replay.get("format") == "ddpdoj.replay/v1"
+        require(replay.get("format") == "ddpdoj.replay/v2"
                 and replay.get("build") == "B"
                 and replay.get("version", {}).get("buildId") == "mixup-local",
-                "downloaded replay lost its Mixup-local v1 identity")
+                "downloaded replay lost its Mixup-local v2 identity")
         require(replay.get("seed", {}).get("arm") == 2,
                 "Mixup-local replay did not retain active slowdown in its seed")
         require(replay.get("poke") == "",
                 "Mixup-local recording acquired an undeclared RAM poke")
-        require(isinstance(replay.get("portin", {}).get("count"), int)
-                and replay["portin"]["count"] >= 30,
+        port_count = replay.get("portin", {}).get("count")
+        coin_count = replay.get("coinin", {}).get("count")
+        require(isinstance(port_count, int) and port_count >= 30,
                 f"Mixup REC captured too few complete frames: {replay.get('portin')!r}")
+        require(coin_count == port_count
+                and replay["portin"].get("encoding") == "u16be"
+                and replay["coinin"].get("encoding") == "u16be"
+                and len(portin_bytes) == port_count * 2
+                and len(coinin_bytes) == coin_count * 2,
+                "Mixup REC did not save equal valid player and coin streams")
         require(len(ram_bytes) == 0x20000 and len(bg_bytes) == 0x1000,
                 "Mixup-local replay seeds have the wrong RAM or BG size")
         require(isinstance(replay_tables, dict) and "rom" not in replay_tables,
