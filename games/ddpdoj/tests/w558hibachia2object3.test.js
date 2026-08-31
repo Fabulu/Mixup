@@ -231,20 +231,21 @@ test('W558 ships all 64 shared part frames in the boss shard', { skip: SKIP_ASSE
   }
   const first = beU32(HIBACHI_A2.object3Art);
   const last = beU32(HIBACHI_A2.object3Art + (HIBACHI_A2.object3ArtFrames - 1) * 4);
-  // W630 inserts 7,956 mask words in boot shard 0, shifting both bases but not their extents.
-  assert.deepEqual(rows.get(first), { base: 2496744, maskWords: 562 });
-  assert.deepEqual(rows.get(last), { base: 2532150, maskWords: 562 });
+  // The current cold-P2 harvests insert 22,030 mask words ahead of these streams.
+  // Their authentic extents do not change.
+  assert.deepEqual(rows.get(first), { base: 2519958, maskWords: 562 });
+  assert.deepEqual(rows.get(last), { base: 2555364, maskWords: 562 });
   for (let i = 0; i < HIBACHI_A2.object3ArtFrames; i++) {
     assert.equal(rows.get(beU32(HIBACHI_A2.object3Art + i * 4))?.maskWords, 562);
   }
   const shard = manifest.spr.shards[17];
-  assert.equal(manifest.spr.streamCount, 5963,
-    'W630 adds exactly 70 boot-shard name-entry streams to the prior 5,893');
-  assert.equal(shard.streams, 1579);
-  assert.equal(shard.maskLen, 915358);
-  assert.equal(shard.colLen, 2297683);
-  assert.equal(manifest.spr.maskUsed, 2958942,
-    'W630 adds exactly 7,956 mask words to the prior bundle');
-  assert.equal(manifest.spr.colUsed, 7378905,
-    'W630 adds exactly 10,296 colour words to the prior bundle');
+  assert.equal(manifest.spr.streamCount, 6190,
+    'W647 adds 32 cold-P2 rank and tally streams to the W645 bundle');
+  assert.equal(shard.streams, 1783);
+  assert.equal(shard.maskLen, 927494);
+  assert.equal(shard.colLen, 2318852);
+  assert.equal(manifest.spr.maskUsed, 2993108,
+    'the W647 bundle has the exact final mask-word identity');
+  assert.equal(manifest.spr.colUsed, 7454936,
+    'the W647 bundle has the exact final colour-word identity');
 });

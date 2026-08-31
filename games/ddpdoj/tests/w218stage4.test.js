@@ -107,13 +107,14 @@ test('W218 pins the type-$9F/$A4 closures and complete live art set',
     // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
     // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
     // shard 9 at 313/166,218.
-    assert.equal(manifest.spr.streamCount, 5963,
+    assert.equal(manifest.spr.streamCount, 6190,
       'W220 adds 64 live boss-part streams after the arrival body; W275 adds the 50 '
       + 'of the ship\'s dying animation. W497 then adds 543 authentic Type-B/selection '
       + 'streams, W498 adds nine Game Over streams, W589 adds 105 slot-7 list-B streams, '
       + 'W597 adds 82 hyper streams, W598 adds 101 complete-ending streams, W626 adds 194 '
-      + 'cabinet and ending streams, W627 adds 63 Stage 5 streams, and W630 adds 70 '
-      + 'boot-shard name-entry streams. The bundle total is exact, not a floor');
+      + 'cabinet and ending streams, W627 adds 63 Stage 5 streams, W630 adds 70 '
+      + 'boot-shard name-entry streams, W633 through W645 add 195 cold-campaign streams, '
+      + 'and W647 adds 32 cold-P2 presentation streams. The bundle total is exact, not a floor');
   });
 
 test('W218 real clock-$266 spawn damages, sheds a live fragment, and draws it',

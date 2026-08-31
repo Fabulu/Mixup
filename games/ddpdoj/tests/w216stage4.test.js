@@ -88,8 +88,8 @@ test('W216 exact Type-A3 closure and 49 newly shipped streams', { skip: SKIP }, 
   // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
   // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
   // shard 9 at 313/166,218.
-  assert.equal(manifest.spr.streamCount, 5963,
-    'W630 adds exactly 70 boot-shard name-entry streams to the prior 5,893');
+  assert.equal(manifest.spr.streamCount, 6190,
+    'W647 adds 32 cold-P2 rank and tally streams to the W645 bundle');
 });
 
 test('W216 real clock-$234 carrier dies into Pool-A 18/19 and collects visibly',

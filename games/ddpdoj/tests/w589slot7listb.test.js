@@ -417,8 +417,8 @@ test('W589 browser bundle packs every list-B picture and banner in shard 17',
       manifest.spr.streamCount, shard.streams,
       manifest.spr.maskUsed, manifest.spr.colUsed,
       shard.maskLen, shard.colLen,
-    ], [5963, 1579, 2958942, 7378905, 915358, 2297683],
-    'W630 adds exactly 70 boot-shard streams, 7,956 mask words, and 10,296 colour words');
+    ], [6190, 1783, 2993108, 7454936, 927494, 2318852],
+    'W647 adds exactly 32 cold-P2 rank and tally streams to the W645 bundle');
     const absent = [...streams].filter((offs) => !byRom.has(offs));
     assert.deepEqual(absent, []);
     for (const offs of streams) {

@@ -193,13 +193,13 @@ test('W555 exports exactly six new authentic frames into the boss shard',
       promoted: 0,
       promotedFrom: [],
     });
-    assert.equal(manifest.spr.streamCount, 5963,
-      'W630 adds exactly 70 boot-shard name-entry streams to the prior 5,893');
-    assert.equal(manifest.spr.shards[17].streams, 1579);
-    assert.equal(manifest.spr.shards[17].maskLen, 915358);
-    assert.equal(manifest.spr.shards[17].colLen, 2297683);
-    assert.equal(manifest.spr.maskUsed, 2958942,
-      'W630 adds exactly 7,956 mask words to the prior bundle');
-    assert.equal(manifest.spr.colUsed, 7378905,
-      'W630 adds exactly 10,296 colour words to the prior bundle');
+    assert.equal(manifest.spr.streamCount, 6190,
+      'W647 adds 32 cold-P2 rank and tally streams to the W645 bundle');
+    assert.equal(manifest.spr.shards[17].streams, 1783);
+    assert.equal(manifest.spr.shards[17].maskLen, 927494);
+    assert.equal(manifest.spr.shards[17].colLen, 2318852);
+    assert.equal(manifest.spr.maskUsed, 2993108,
+      'the W647 bundle has the exact final mask-word identity');
+    assert.equal(manifest.spr.colUsed, 7454936,
+      'the W647 bundle has the exact final colour-word identity');
   });

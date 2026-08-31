@@ -211,24 +211,24 @@ test('W560 ships all six table streams and object 13 fixed stream in the boss sh
       base = (base + flat[manifest.spr.streamCount + i]) >>> 0;
       rows.set(offs, { base, maskWords: flat[manifest.spr.streamCount * 2 + i] });
     }
-    // W630 inserts 7,956 mask words in boot shard 0, shifting every later absolute base.
+    // The current cold-P2 harvests insert 22,030 mask words ahead of these streams.
     assert.deepEqual(TABLE_STREAMS.map((at) => rows.get(at)), [
-      { base: 2430760, maskWords: 1442 }, { base: 2432202, maskWords: 1442 },
-      { base: 2433644, maskWords: 1442 }, { base: 2435086, maskWords: 1442 },
-      { base: 2436528, maskWords: 1442 }, { base: 2437970, maskWords: 1442 },
+      { base: 2453974, maskWords: 1442 }, { base: 2455416, maskWords: 1442 },
+      { base: 2456858, maskWords: 1442 }, { base: 2458300, maskWords: 1442 },
+      { base: 2459742, maskWords: 1442 }, { base: 2461184, maskWords: 1442 },
     ]);
-    assert.deepEqual(rows.get(OBJECT13_STREAM), { base: 2537322, maskWords: 674 });
+    assert.deepEqual(rows.get(OBJECT13_STREAM), { base: 2560536, maskWords: 674 });
 
     const shard = manifest.spr.shards[17];
-    assert.equal(manifest.spr.streamCount, 5963,
-      'W630 adds exactly 70 boot-shard name-entry streams to the prior 5,893');
-    assert.equal(shard.streams, 1579);
-    assert.equal(shard.maskLen, 915358);
-    assert.equal(shard.colLen, 2297683);
-    assert.equal(manifest.spr.maskUsed, 2958942,
-      'W630 adds exactly 7,956 mask words to the prior bundle');
-    assert.equal(manifest.spr.colUsed, 7378905,
-      'W630 adds exactly 10,296 colour words to the prior bundle');
+    assert.equal(manifest.spr.streamCount, 6190,
+      'W647 adds 32 cold-P2 rank and tally streams to the W645 bundle');
+    assert.equal(shard.streams, 1783);
+    assert.equal(shard.maskLen, 927494);
+    assert.equal(shard.colLen, 2318852);
+    assert.equal(manifest.spr.maskUsed, 2993108,
+      'the W647 bundle has the exact final mask-word identity');
+    assert.equal(manifest.spr.colUsed, 7454936,
+      'the W647 bundle has the exact final colour-word identity');
   });
 
 test('W560 all five implemented ids emit exact requests and remain running',

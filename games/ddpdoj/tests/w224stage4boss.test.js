@@ -118,7 +118,7 @@ test('W224 pins the F1/MAIN2/MAIN3/D0 slice, its dispatch entries, and its asset
     }
 
     for (const [at, entries] of [['$29F002', 15], ['$29F096', 16], ['$29F336', 8],
-      ['$29F356', 8], ['$29F3D0', 8], ['$DAFC4', 1]]) {
+      ['$29F356', 9], ['$29F3D0', 8], ['$DAFC4', 1]]) {
       const h = manifest.spr.harvest.find((x) => x.at === at);
       assert.deepEqual([h.entries, h.distinct, h.added], [entries, entries, entries],
         `${at} harvested`);
@@ -152,8 +152,8 @@ test('W224 pins the F1/MAIN2/MAIN3/D0 slice, its dispatch entries, and its asset
     // goes 407 -> 411 streams and 54,582 -> 56,510 mask words, `spr.maskUsed` grows
     // by the SAME 1,928, and every other shard HELD -- shard 11 at 870/1,171,460 and
     // shard 9 at 313/166,218.
-    assert.equal(manifest.spr.streamCount, 5963,
-      'W630 adds exactly 70 boot-shard name-entry streams to the prior 5,893');
+    assert.equal(manifest.spr.streamCount, 6190,
+      'W647 adds 32 cold-P2 rank and tally streams to the W645 bundle');
   });
 
 test('W224 the $23000 threshold destroys the body and D0 swaps the damaged one in',

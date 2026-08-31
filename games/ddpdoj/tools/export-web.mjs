@@ -313,6 +313,12 @@ const HARVEST = Object.freeze([
     'slot-14 Game Over rank-selected table A, eight reachable descriptors'],
   [0, 0x288d82, 8, 4, 17, 0x288dc6,
     'slot-14 Game Over rank-selected table B, eight reachable descriptors'],
+  // W645. The P2 continue-label flash compares the six-bit frame cursor with
+  // $2C, so it reaches all 44 pointers here. The adjacent credit-suffix TX
+  // table at $287F7A proves the exact exclusive end.
+  [17, 0x287eca, 44, 4, 44, 0x287f7a,
+    'P2 continue-label flash, complete 44-frame sprite table ending at the '
+      + 'adjacent credit-suffix TX table'],
   // W555. Hibachi A2 object 0 selects one of these six authentic body frames
   // through the signed word offset at A6+$128. Object 1 code begins at the exact end.
   [17, 0x2a4774, 6, 4, 6, 0x2a478c,
@@ -834,6 +840,11 @@ const HARVEST = Object.freeze([
     + '-- the cartridge publishes it -- and THAT is what pins 24, exactly as '
     + '$272E7A\'s run of 160 is stopped by an index and not by a run. '
     + '[M] all 24 were missing and this is 147.3 KiB of the wave\'s 367'],
+  [17, 0x296f68, 16, 4, 16, 0x296fa8,
+    'W633: Stage-1 boss E8 type-$1E carrier, complete sixteen-frame $0618 table'],
+  [17, 0x28595c, 14, 4, 14, 0x285994,
+    'W634: HUD item/extend counter suffix, complete fourteen-frame $0420 table ending '
+    + 'at the high-score digit walk'],
 ]);
 
 /** W45's beam art: the pod muzzle `$24C906` forces onto `($a,A6)` and four of
@@ -949,6 +960,12 @@ const W621_IMMEDIATES = Object.freeze([
   [0, 0x334f60, 'type-8 arm 1 direct operator-settings stream 1'],
   [0, 0x334494, 'type-8 arm 1 direct operator-settings stream 2'],
   [0, 0x334efc, 'type-8 arm 1 direct operator-settings stream 3'],
+]);
+
+// W647. The native P2 HUD path emits this fixed banner panel directly from
+// `$284FB6`; unlike P1's panel, no prior one-player route could harvest it.
+const W647_IMMEDIATES = Object.freeze([
+  [17, 0x1cee58, 'native P2 HUD fixed banner-panel stream'],
 ]);
 
 /** Shard metadata.  `boot` is awaited by `loadBundle`; the rest are queued from
@@ -1452,11 +1469,11 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   if (unique.size !== 64 || [...unique].some((a) => !chain.has(a))
       || w203Rows.length !== 2 || w203Rows.some((r) => r.added !== 32 || r.already !== 0)
       || w203StreamsBefore !== 166 + typeBShipAdded
-      || streams.size !== 2351 + typeBShipAdded) {
+      || streams.size !== 2425 + typeBShipAdded) {
     throw new Error(`W203 type $16 art harvest drifted: ${unique.size} distinct `
       + `pointers, ${w203StreamsBefore} pre-harvest streams, ${streams.size} total; `
       + `expected 64 on the $F4 chain, ${166 + typeBShipAdded} before, and `
-      + `${2351 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
+      + `${2425 + typeBShipAdded} after with ${typeBShipAdded} Type-B ship streams`);
   }
   // W419 moved the fixed post-harvest baseline from 1975 to 2011. W498 adds
   // slot 14's separately asserted nine-stream Game Over family, making it 2020;
@@ -1465,8 +1482,12 @@ for (const [shard, base, n, stride, runsTo, endsAt, why] of HARVEST) {
   // making it 2096. W626 adds slot 15's separate complete horizontal and
   // vertical 96-glyph ending fonts, making it 2288. W627 adds six complete
   // production-selected families containing 63 distinct streams, making it 2351.
-  // W497's 17 Type-B ship streams remain an independent addition to both exact
-  // totals. The two W203 rows remain added 32 / already 0.
+  // W633 adds the Stage-1 boss E8 carrier's complete sixteen-frame family,
+  // making it 2367. W634 adds the HUD item/extend-counter suffix's complete
+  // fourteen-frame family, making it 2381. W645 adds the complete 44-frame P2
+  // continue-label flash, making it 2425. W497's 17 Type-B ship streams remain
+  // an independent addition to both exact totals. The two W203 rows remain
+  // added 32 / already 0.
 }
 
 // W630. Type $800C can request this whole presentation family on its first live
@@ -1788,6 +1809,13 @@ for (const [shard, offs, why] of W621_IMMEDIATES) {
   harvested++;
   void why;
 }
+for (const [shard, offs, why] of W647_IMMEDIATES) {
+  if (streams.has(offs)) { harvestAlready++; continue; }
+  streams.set(offs, romExtent(offs));
+  shardOfStream.set(offs, shard);
+  harvested++;
+  void why;
+}
 // `$25BC26` is not a conventional pointer table: each `$10`-byte record carries D1 at +0 and
 // the sprite stream in D2 at +8. Harvest the three derived streams explicitly into boot shard 0.
 for (const offs of W621_TABLE_STREAMS) {
@@ -1874,7 +1902,7 @@ for (const range of W621_CABINET_RANGES) {
 // complete digit and suffix tables. They live in a deferred shard because the
 // first frame does not need them, but a live chain can demand them by address.
 const HUD_CHAIN_SHARD = 17;
-function addHudStreamGroup(name, addresses, why) {
+function addHudStreamGroup(name, addresses, why, report = {}) {
   const unique = [...new Set(addresses)];
   let added = 0, already = 0;
   for (const offs of unique) {
@@ -1886,9 +1914,10 @@ function addHudStreamGroup(name, addresses, why) {
   }
   harvestAlready += already;
   const end = unique.length ? Math.max(...unique) + 4 : 0;
-  harvestReport.push({ shard: HUD_CHAIN_SHARD, base: 0, entries: addresses.length,
-    stride: 0, runsTo: unique.length, endsAt: end, distinct: unique.length,
-    added, already, why: `${name}: ${why}` });
+  harvestReport.push({ shard: HUD_CHAIN_SHARD, base: report.base ?? 0,
+    entries: report.entries ?? addresses.length, stride: report.stride ?? 0,
+    runsTo: report.runsTo ?? unique.length, endsAt: report.endsAt ?? end,
+    distinct: unique.length, added, already, why: `${name}: ${why}` });
 }
 
 const chainBarStreams = new Set();
@@ -1942,6 +1971,80 @@ if (new Set(popupSuffixStreams).size !== 12) {
 addHudStreamGroup('popup suffix', popupSuffixStreams,
   '$285784 twelve suffix zoom entries');
 
+// W635. The item/extend row's late arm selects one of ten base longwords, then
+// adds one of the four phase words at $285954. Two phase cells alias $410, so
+// the complete producer-owned family is three ten-stream blocks. Resolve the
+// full effective-address union before adding any member so a malformed phase
+// cannot leave a partly exported HUD family.
+checkTableExtent(0x28592c, 10, 4, 10, 0x285954,
+  'HUD item/extend-counter late arm, ten base pointers ending on the phase-word table');
+const itemLatePhaseWords = Object.freeze(Array.from({ length: 4 }, (_, i) =>
+  romBe16(0x285954 + i * 2)));
+if (itemLatePhaseWords.join(',') !== '0,1040,520,1040') {
+  throw new Error(`W635 item-row phase words are ${itemLatePhaseWords.map((n) =>
+    `$${n.toString(16).toUpperCase()}`).join(', ')}, expected $0,$410,$208,$410`);
+}
+const itemLateBiases = Object.freeze([...new Set(itemLatePhaseWords)].sort((a, b) => a - b));
+const itemLateStreams = itemLateBiases.flatMap((bias) =>
+  Array.from({ length: 10 }, (_, i) =>
+    (romBe32(0x28592c + i * 4) & 0x7fffff) + bias));
+if (new Set(itemLateStreams).size !== 30
+    || itemLateStreams[0] !== 0x1cdb24
+    || itemLateStreams.at(-1) !== 0x1ce108) {
+  throw new Error(`W635 item-row late table resolves ${new Set(itemLateStreams).size} distinct `
+    + `streams from $${itemLateStreams[0]?.toString(16).toUpperCase()} through `
+    + `$${itemLateStreams.at(-1)?.toString(16).toUpperCase()}, expected 30 from $1CDB24 `
+    + 'through $1CE108');
+}
+// Validate every raw extent before mutating either packed map.
+const itemLateExtents = new Map(itemLateStreams.map((offs) => [offs, romExtent(offs)]));
+if (itemLateExtents.size !== itemLateStreams.length) {
+  throw new Error('W635 item-row late family did not resolve all thirty exact stream extents');
+}
+addHudStreamGroup('item/extend row late phases', itemLateStreams,
+  '$28592C ten base longwords plus unique $285954 phase biases $0/$208/$410', {
+    base: 0x28592c, entries: 10, stride: 4, runsTo: 10, endsAt: 0x285954,
+  });
+
+// W641. The item/extend row's early arm maps its $0..$B phase through
+// zoomLevel4() to four longword jump entries, then indexes one of ten digits.
+// The four adjacent ten-entry tables are a complete forty-stream family. The
+// following $28592C longword starts the separately owned W635 late-arm table,
+// so the producer's four jump targets, rather than a coincidental valid-pointer
+// run, pin this boundary.
+const itemEarlyTableBases = Object.freeze(Array.from({ length: 4 }, (_, index) =>
+  romBe32(0x28587c + index * 4)));
+if (itemEarlyTableBases.join(',') !== '2644108,2644148,2644188,2644228') {
+  throw new Error(`W641 item-row jump table is ${itemEarlyTableBases.map((n) =>
+    `$${n.toString(16).toUpperCase()}`).join(', ')}, expected `
+    + '$28588C,$2858B4,$2858DC,$285904');
+}
+const itemEarlyStreams = itemEarlyTableBases.flatMap((base) =>
+  Array.from({ length: 10 }, (_, digit) => romBe32(base + digit * 4) & 0x7fffff));
+if (itemEarlyTableBases[0] !== 0x28588c
+    || itemEarlyTableBases.at(-1) + 10 * 4 !== 0x28592c
+    || new Set(itemEarlyStreams).size !== 40
+    || itemEarlyStreams[0] !== 0x1ccd64
+    || itemEarlyStreams.at(-1) !== 0x1cd550) {
+  throw new Error(`W641 item-row early tables resolve ${new Set(itemEarlyStreams).size} `
+    + `distinct streams from $${itemEarlyStreams[0]?.toString(16).toUpperCase()} through `
+    + `$${itemEarlyStreams.at(-1)?.toString(16).toUpperCase()}, expected 40 from `
+    + '$1CCD64 through $1CD550 ending exactly at the W635 table');
+}
+for (let index = 1; index < itemEarlyStreams.length; index++) {
+  if (itemEarlyStreams[index] - itemEarlyStreams[index - 1] !== 0x34) {
+    throw new Error(`W641 item-row early stream ${index} is not the next exact $34-word row`);
+  }
+}
+const itemEarlyExtents = new Map(itemEarlyStreams.map((offs) => [offs, romExtent(offs)]));
+if (itemEarlyExtents.size !== itemEarlyStreams.length) {
+  throw new Error('W641 item-row early family did not resolve all forty exact stream extents');
+}
+addHudStreamGroup('item/extend row early digits', itemEarlyStreams,
+  '$28587C four jump entries select four adjacent ten-digit tables at $28588C..$28592B', {
+    base: 0x28587c, entries: 4, stride: 4, runsTo: 4, endsAt: 0x28592c,
+  });
+
 // W234 (docket D6): THE BEE POPUP. $2811BE draws one fixed tile $20168C and
 // $28129E draws the x2 indicator from $2812D4's five, cycled by ($12,A6). Six
 // streams, none of which had ever been harvested, so the popup would have drawn
@@ -1974,21 +2077,44 @@ addHudStreamGroup('popup suffix', popupSuffixStreams,
     '$28EE1E five per-stage banner pictures, read by $28EDC0');
 }
 
-// W230 (docket D5): THE RANK ICONS. `src/hud.js` reads $2882A6 (P1) and $288326
-// (P2), eight longwords each, at $285D64/$285DC4 and $285EDA/$285F3E. Neither
-// table had ever been harvested, so the port enqueued a rank icon every frame and
-// the page had no stream to draw: the descriptor sweep
-// (tools/w230descriptorsweep.mjs) found these five of $2882A6's eight live in a
-// 900-frame stage-1 run and NOTHING else missing bundle-wide.
+// W230+W647 (docket D5): THE RANK ICONS. `src/hud.js` reads $2882A6 (P1)
+// and $288326 (P2) at $285D64/$285DC4 and $285EDA/$285F3E. Each cartridge
+// table contains 32 longwords, not eight: the verified $1C stream delta continues
+// through all 32 entries and breaks exactly at the next table. A cold native P2
+// campaign reaches entry 8 at $288346, beyond the original one-player sweep.
 for (const [base, who] of [[0x2882a6, 'P1'], [0x288326, 'P2']]) {
   const icons = [];
-  for (let i = 0; i < 8; i++) icons.push(romBe32(base + i * 4));
-  if (new Set(icons).size !== 8) {
-    throw new Error(`W230 the ${who} rank-icon table $${base.toString(16)} `
-      + `resolves ${new Set(icons).size} streams, not eight distinct entries`);
+  for (let i = 0; i < 32; i++) icons.push(romBe32(base + i * 4));
+  if (new Set(icons).size !== 32) {
+    throw new Error(`W230+W647 the ${who} rank-icon table $${base.toString(16)} `
+      + `resolves ${new Set(icons).size} streams, not 32 distinct entries`);
   }
   addHudStreamGroup(`rank icons ${who}`, icons,
-    `$${base.toString(16).toUpperCase()} eight rank-icon frames`);
+    `$${base.toString(16).toUpperCase()} 32 rank-icon frames`);
+}
+
+// W647. The tally screen has two fixed value-row streams, eight blink phases,
+// one fixed header, and one side-specific pair of labels. The four labels form
+// one exact $24-spaced family; the branch at $25DDDE selects its first pair for
+// P1 or second pair for P2. A one-player campaign never asks for all side-1 art,
+// so harvest the complete fixed presentation from its producers rather than
+// relying on whichever side and blink phase a sweep reached.
+{
+  const tallyBlink = [
+    0x333fc4, 0x334010, 0x33405c, 0x3340a8,
+    0x3340f4, 0x334140, 0x33418c, 0x3341d8,
+  ];
+  const tallyValues = [0x334224, 0x334424];
+  const tallyHeaders = [0x334300, 0x334394, 0x3343b8, 0x3343dc, 0x334400];
+  if (new Set([...tallyBlink, ...tallyValues, ...tallyHeaders]).size !== 15
+      || tallyBlink.slice(1).some((offs, index) => offs - tallyBlink[index] !== 0x4c)
+      || tallyHeaders.slice(2).some((offs, index) => offs - tallyHeaders[index + 1] !== 0x24)) {
+    throw new Error('W647 tally presentation must contain eight $4C-spaced blink streams, '
+      + 'two value-row streams, one fixed header, and four $24-spaced side labels');
+  }
+  addHudStreamGroup('two-player tally presentation',
+    [...tallyBlink, ...tallyValues, ...tallyHeaders],
+    '$25DE2E/$25DF8C blink tables, $25DF62/$25DFCA rows, and $25DD88 side labels');
 }
 
 // ------------------------------------------------------------------- WAVE 52
@@ -2162,8 +2288,14 @@ const BULLET_RANGES = Object.freeze([
     + 'descriptors ($281956[k]+6), the $283D4C muzzle table and both '
     + 'direction-table families ($2821FA/$282C8E via $2822EC, $282714/$2830EA '
     + 'via $283C4C)'],
-  [0x1c1418, 0x1c143c, 'kind 1\'s $281FDC `move.l #$1C1418,$a(A6)`, alone'],
-  [0x1c1658, 0x1c167c, 'kind 1\'s $281FC4 `move.l #$1C1658,$a(A6)`, alone'],
+  [0x1c1418, 0x1c1658,
+    'W642 kind 1 transform family: $281FDC installs $1C1418, $281FF2 sets a '
+    + '$10-frame lifetime, and $282000 advances $24 per frame. The complete '
+    + 'sixteen-stream cartridge family closes exactly on the alternate base'],
+  [0x1c1658, 0x1c1898,
+    'W642 ordinary transform family: $281FBA installs $1C1658, $281FF2 sets a '
+    + '$10-frame lifetime, and $282000 advances $24 per frame. The complete '
+    + 'sixteen-stream cartridge family closes where the following stream changes stride'],
   [0x1c1b68, 0x1c23d8,
     'the HIGH bullet block: the bouncers ($282F80 #$1C1B68), the tracker '
     + '($282D46 #$1C1E38) and their two rings $1C1BF8..$1C1E38 and '
@@ -4016,11 +4148,28 @@ for (const [at, entries, why] of [
   [0x29f002, 15, 'Stage-4 boss opening damaged hull'],
   [0x29f096, 16, 'Stage-4 boss settled damaged hull'],
   [0x29f336, 8, 'Stage-4 boss left linked part'],
-  [0x29f356, 8, 'Stage-4 boss shared linked overlay'],
+  [0x29f356, 9, 'Stage-4 boss shared linked overlay'],
   [0x29f3d0, 8, 'Stage-4 boss right linked part'],
 ]) harvestStage4Type9DTable(at, entries, `W224 ${why}`);
 harvestStage4Arithmetic(0x000dafc4, 1, 0,
   'W224 Stage-4 boss damaged-hull fixed overlay');
+
+// W638: A2 object 11 is the second half of the Stage-4 boss arrival. MAIN0's
+// eight-step cursor at $29F5FE selects every row before the active handoff.
+// W219 closed object 10 but omitted this adjacent, independently indexed table.
+{
+  const art = harvestStage4Type9DTable(0x29f478, 8,
+    'W638 Stage-4 Type $40 boss arrival object 11');
+  console.log(`  Stage-4 boss arrival object 11: 8 streams, ${art.added} new`);
+}
+
+// W640: every visible Type-$42 boss child rotates through all eight descriptors.
+// The producer masks its byte cursor with $1F, selecting $2A4252..$2A426E by four.
+{
+  const art = harvestStage4Type9DTable(0x2a4252, 8,
+    'W640 Stage-4 Type $42 boss child animation');
+  console.log(`  Stage-4 boss child animation: 8 streams, ${art.added} new`);
+}
 
 // ------------------------------------------------------------------- WAVE 66
 // 1f. **THE BOMB AND THE LASER BOMB.**  W64 shipped the bomb and W65 the laser
@@ -4621,6 +4770,64 @@ const B13_MEASURED = Object.freeze([
     why: 'W598 slot [7] complete three-variant intro-list union' });
   console.log(`  slot [7] shared intro presentation: ${introStreams.size} streams, `
     + `${introAdded} newly packed in deferred shard 17`);
+
+  // W643: the loop-choice menu has its own single intro script after the three
+  // W598 variants. Decode the exact $291396 list and its $29139E script through
+  // the same bytecode widths. Its 50 picture occurrences resolve 39 distinct
+  // spawn-table streams. Thirty-five overlap prior presentation families and
+  // four are unique to this menu route.
+  if (romBe32(0x291396) !== 0x29139e || romBe32(0x29139a) !== 0xffffffff) {
+    throw new Error('W643 loop-choice menu list no longer points only to $29139E');
+  }
+  const menuIntroStreams = new Set();
+  let menuIntroOccurrences = 0;
+  let menuAt = 0x29139e;
+  for (;;) {
+    const word = romBe16(menuAt);
+    if (word === 0xffff) {
+      menuAt += 2;
+      break;
+    }
+    if ((word & 0x8000) === 0) {
+      menuIntroStreams.add(romBe32(spawnTable + word * 4) & 0x7fffff);
+      menuIntroOccurrences++;
+      menuAt += 2;
+      continue;
+    }
+    const width = opcodeWidths[word];
+    if (width === undefined) {
+      throw new Error(`W643 menu intro has unknown opcode $${word.toString(16)} `
+        + `at $${menuAt.toString(16)}`);
+    }
+    menuAt += width;
+  }
+  if (menuAt !== 0x291470 || menuIntroOccurrences !== 50 || menuIntroStreams.size !== 39) {
+    throw new Error(`W643 menu intro closes at $${menuAt.toString(16)}, with `
+      + `${menuIntroOccurrences} picture occurrences and ${menuIntroStreams.size} distinct `
+      + 'streams; expected $291470, 50, and 39');
+  }
+  let menuAdded = 0, menuAlready = 0;
+  for (const offs of menuIntroStreams) {
+    if (streams.has(offs)) {
+      menuAlready++;
+      continue;
+    }
+    streams.set(offs, romExtent(offs));
+    shardOfStream.set(offs, 17);
+    menuAdded++;
+  }
+  if (menuAdded !== 4 || menuAlready !== 35) {
+    throw new Error(`W643 menu intro added ${menuAdded} streams and found ${menuAlready} `
+      + 'already harvested; expected 4 and 35');
+  }
+  harvested += menuAdded;
+  harvestAlready += menuAlready;
+  harvestReport.push({ shard: 17, base: 0x291396, entries: menuIntroOccurrences,
+    stride: 0, runsTo: 1, endsAt: menuAt, distinct: menuIntroStreams.size,
+    added: menuAdded, already: menuAlready,
+    why: 'W643 slot [7] complete loop-choice menu intro script' });
+  console.log(`  slot [7] loop-choice intro: ${menuIntroOccurrences} picture occurrences, `
+    + `${menuIntroStreams.size} streams, ${menuAdded} newly packed in deferred shard 17`);
 }
 
 const bgList = [...bgUsed].sort((a, b) => a - b);
@@ -5134,6 +5341,10 @@ const TX_TABLES_W161 = Object.freeze([
   [0x287ffe, 40, 'chain high-water, four digit families', 2, 0, 10],
   [0x2881e2, 4, 'lives icons', 1, 0, 1],
   [0x2883e6, 6, 'hyper-stock icons', 2, 5, 6],
+  // W644: `$25349A/$2534AC` select all six target rows from this exact table.
+  // Entries 4..6 deliberately share the saturated fourth picture, leaving four
+  // distinct complete 3-by-12 tile families from $C2DE through $C36D.
+  [0x2534e0, 6, 'set-item icon rows', 2, 0x0b, 0x0c],
 ]);
 const txRomSources = [];
 const addTaggedTxGrid = (word, d2, d3, columnStride) => {
@@ -5199,6 +5410,9 @@ addTaggedTxGrid(0x0404000a, 7, 1, 2); // P1 bomb stock
 addTaggedTxGrid(0x03ee000a, 7, 1, 2); // P2 bomb stock
 addTaggedTxGrid(0x0414000a, 2, 5, 6); // active hyper stock
 addTaggedTxGrid(0x02c0000a, 2, 1, 2); // SET panel run-B segment
+// W647. The native two-player HUD reaches the board's untagged tile 1 while
+// activating P2. The one-player capture never requests it.
+txUsed.add(0x0001);
 
 const txList = [...txUsed].sort((a, b) => a - b);
 
