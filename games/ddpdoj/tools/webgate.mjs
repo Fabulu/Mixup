@@ -52,6 +52,7 @@ import http from 'node:http';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { Game, RAM } from '../src/main.js';
+import { Ram } from '../src/ram.js';
 import { BIT, P } from '../src/machine.js';
 import { portWordFromBits } from '../src/input.js';
 import { loadBundle, loadSoundAssets, httpReader, AssetError } from '../src/web/assets.js';
@@ -576,22 +577,20 @@ try {
     if (named.length) console.log(`  NO ART: ${named.slice(0, 8).join(' ')}`);
     if (!portOk) code = 1;
 
-    // THE GUARD, ALIVE.  A second window past the sheet's coverage.
+    // THE GUARD, ALIVE. A second window past the sheet's original coverage.
     //
-    // `43-plan-enemy-layer.md` §3.2.2 asks for lf2400. THIS RUNS TO lf2700, and
-    // the extra 300 frames are not padding: [M] the port's $000000 3x40 records
-    // -- the landmine §1.4 measured, a stream the sheet holds TEN mask words of
-    // against a record that reads 122 -- first appear at lf2634. A window that
-    // stops at 2400 leaves the extent rule completely unexercised, which is how
-    // `--break no-extent-check` came back "NOTHING MOVED" the first time I ran
-    // it. The window is chosen to make BOTH halves of the miss rule fire.
+    // W647 classifies `$23D680`'s exact offscreen filler as intentional blank
+    // content. That removes offset zero from this live window's miss set for the
+    // right reason: those records do not read sprite ROM. The live window now
+    // proves every nonblank request has art, while its deferred-shard skips still
+    // prove that skipping a record does not terminate the list.
     //
-    // AND THE LIST THE RENDERER WOULD ACTUALLY SEE IS COUNTED, not assumed.
-    // `gVisible` re-parses the words this function produced. A skip must remove
-    // ONE record and leave the rest; if the skip is written into word 4 instead
-    // of into the width field, `parseSpriteList` stops at the first gap and the
-    // renderer silently loses the whole tail of every frame. Counting `skipped`
-    // could never see that -- the counter is incremented either way.
+    // THE EXTENT RULE IS STILL TESTED AGAINST THE PRODUCTION BUNDLE AND FUNCTION.
+    // A separate one-record RAM list asks offset zero's real ten-word stream for a
+    // 3x40 picture, which needs 122 words. The normal path must reject and name
+    // that over-read. `--break no-extent-check` must draw it and turn this gate
+    // red. This keeps the strict general guard without misclassifying cartridge
+    // filler as missing art.
     let gRec = 0, gSkip = 0, gVisible = 0;
     const gMiss = new Map();
     while (game.logicFrame < 2700) {
@@ -602,39 +601,30 @@ try {
       game.ram.setU8(0x810424, 0xff);
       game.step(0xffff);
     }
-    // ============================ WAVE 58 MOVED THIS STAGE'S SUBJECT =========
-    //
-    // and it is a TIGHTENING, not a loosening, so it is re-stated rather than
-    // nudged. Until W58 this stage asserted `$233F34` -- a 5x80 BACKGROUND
-    // element -- was among the named misses, because it was [M] the first
-    // record in the whole run with no picture anywhere. W58 SHIPS IT (shard 11,
-    // the big mid-screen structures), so that clause is now false FOR THE RIGHT
-    // REASON and keeping it would fail a green tree.
-    //
-    // What replaces it is stronger, because it is an ABSOLUTE and not an
-    // "includes": [M] over this whole window the ONLY address the guard names
-    // is `$000000`, five times. That is the EXTENT RULE half -- a record that
-    // reads 122 mask words out of a stream the sheet holds 10 of -- which is
-    // the half `--break no-extent-check` red-validates and the half that would
-    // draw garbage rather than nothing. `gMiss.size === 1` says the bundle now
-    // covers every real picture this window asks for AND that the guard is
-    // still alive; either failure moves the number.
-    const NULL_STREAM = 0x000000;               // [M] 3x40 against 10 mask words
-    const EXP_MISS_ADDRS = 1, EXP_NULL_HITS = 5;
-    const guardOk = gSkip > 0 && gMiss.size === EXP_MISS_ADDRS
-      && gMiss.get(NULL_STREAM) === EXP_NULL_HITS && gVisible === gRec;
+    const NULL_STREAM = 0x000000;
+    const nullHit = map.get(NULL_STREAM);
+    const extentRam = new Ram();
+    extentRam.setU16(RAM.spriteList + 8, (3 << 9) | 40);
+    const extent = portSpriteList(extentRam, map, {
+      mutate: portBrk === 'no-extent-check' ? portBrk : undefined,
+    });
+    const extentOk = nullHit?.[1] === 10 && extent.records === 1
+      && extent.drawn === 0 && extent.skipped === 1
+      && extent.missing.size === 1 && extent.missing.get(NULL_STREAM) === 1;
+    const guardOk = gSkip > 0 && gMiss.size === 0 && gVisible === gRec && extentOk;
     console.log(`${guardOk ? 'PASS' : 'FAIL'}: W44 the guard FIRES -- to lf2700, `
-      + `${gRec} records, ${gSkip} MISSED (expect > 0), `
-      + `${gMiss.size} distinct addresses (expect ${EXP_MISS_ADDRS}), the `
-      + `$000000 over-read x${gMiss.get(NULL_STREAM) ?? 0} (expect `
-      + `${EXP_NULL_HITS}); W58 shipped $233F34 and every other real picture `
-      + `this window asks for, so the EXTENT rule is all that is left to fire; `
-      + `the renderer still sees ${gVisible} of ${gRec} records `
-      + `(a skip must not TERMINATE the list)`);
-    console.log('  NO ART: ' + [...gMiss.entries()].sort((a, b) => b[1] - a[1])
-      .slice(0, 10)
-      .map(([o, c]) => `$${o.toString(16).toUpperCase().padStart(6, '0')}x${c}`)
-      .join(' '));
+      + `${gRec} records, ${gSkip} skipped while sprite shards are in flight `
+      + `(expect > 0), ${gMiss.size} nonblank addresses with NO ART (expect 0); `
+      + `the strict $000000 3x40 extent probe against ${nullHit?.[1] ?? 'no'} `
+      + `packed words was ${extent.skipped === 1 ? 'rejected' : 'NOT rejected'} `
+      + `(expect rejected and named once); the renderer still sees ${gVisible} of `
+      + `${gRec} live-window records (a skip must not TERMINATE the list)`);
+    if (gMiss.size) {
+      console.log('  NO ART: ' + [...gMiss.entries()].sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([o, c]) => `$${o.toString(16).toUpperCase().padStart(6, '0')}x${c}`)
+        .join(' '));
+    }
     if (!guardOk) code = 1;
 
     // ---------------------------------------------- THE ONE-FRAME HOLD, TESTED
@@ -1007,7 +997,11 @@ try {
         // W321: 6854 -> 6855. ONE record over 1200 frames, with `streams` 298,
         // `distinct` 36 and `first` 98 all held -- the smallest drift in the
         // file and the same cadence-shift shape W127 recorded above.
-        7: { streams: 298, records: 6855, distinct: 36, first: 98,
+        // W642: 298 -> 328 streams while records, distinct and first all hold.
+        // The complete two-by-sixteen transformed-bullet export adds 32 rows,
+        // two of which this shard already carried. This ordinary stage-1 window
+        // does not transform bullets, so only the exact bundle membership moves.
+        7: { streams: 328, records: 6855, distinct: 36, first: 98,
           what: 'THE ENEMY BULLETS ($281D9A\'s bulk write, buckets 22/23)' },
         // WAVE 53 -- THE IMPACT SPARK, the SAME window and the SAME four
         // absolute port-side fields.  `distinct` is 35 and not 36 ON PURPOSE:
@@ -1449,7 +1443,13 @@ try {
         // W621 assigns ten streams shared with the fighter-selector family to
         // boot shard 0. Their packed mappings remain present, while this shard's
         // ownership count becomes 860; the gameplay witnesses remain unchanged.
-        11: { streams: 860, records: 15903, distinct: 127, first: 315,
+        // Later ending and cold-campaign exports bring pre-W647 ownership to
+        // 877. W647's final cold-P2 family moves 24 out, for 853 total. Six of
+        // the streams reached by this older W58 window now belong to another shard:
+        // records 15903 -> 15773 and distinct 127 -> 121, while first holds at
+        // 315. Every reached record still draws with all shards loaded and none is
+        // pending or missing, proving this is bundle ownership rather than lost art.
+        11: { streams: 853, records: 15773, distinct: 121, first: 315,
           what: 'THE BIG MID-SCREEN STRUCTURES (buckets 2/3/7 -- the 288x208 '
             + 'hole in the middle of the playfield)' },
       };
@@ -2358,9 +2358,9 @@ try {
           + `${EXP.records - dropCount})`,
         'terminate-instead-of-zero-width': `the renderer sees ${gVisible} of `
           + `${gRec} records past the first gap (unbroken: all of them)`,
-        'no-extent-check': `the $000000 over-read is ${gMiss.has(NULL_STREAM)
-          ? 'STILL named' : 'no longer named'} and the guard `
-          + `${guardOk ? 'still passes' : 'fails'}`,
+        'no-extent-check': `the strict $000000 3x40 extent probe is ${
+          extent.missing.has(NULL_STREAM) ? 'STILL rejected' : 'no longer rejected'} `
+          + `and the guard ${guardOk ? 'still passes' : 'fails'}`,
       }[portBrk];
       console.log(`${moved ? 'EXPECTED-RED' : 'FAIL'} [--break ${portBrk}]: `
         + (moved ? why
