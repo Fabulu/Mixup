@@ -184,6 +184,7 @@ import {
   applyAuthenticSelection, normalizeAuthenticSelection,
 } from '../authentic.js';
 import { P } from '../machine.js';
+import { FILLER } from '../displaylist.js';
 import {
   Renderer, paletteRgb, resolveRgb, rotateCCW, rgbToRgba, SCREEN_W, SCREEN_H,
   parseSpriteList, BUFFER_STRIDE, RAM_STRIDE, SPRITE_LIMIT,
@@ -792,7 +793,10 @@ export function portSpriteList(ram, map, opts = {}) {
     // capture.bin (line 632).
     const w2 = words[b + 2];
     const offs = ((w2 & 0x007f) << 16) | words[b + 3];
-    if (wide === 0 || high === 0) { blank++; continue; }
+    // `$23D680` deliberately inserts this offscreen 1x1 record between display-list
+    // sections. Its zero address is not sprite art and must not become a bundle miss.
+    const filler = FILLER.every((word, index) => words[b + index] === word);
+    if (filler || wide === 0 || high === 0) { blank++; continue; }
 
     const hit = portMutating(opts, 'no-remap') ? [offs, Infinity, 0] : map.get(offs);
     const enough = hit !== undefined

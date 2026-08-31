@@ -28,6 +28,7 @@ import {
 } from '../src/web/app.js';
 import { Ram } from '../src/ram.js';
 import { RAM } from '../src/machine.js';
+import { FILLER } from '../src/displaylist.js';
 import { RAM_STRIDE } from '../src/render/spritelist.js';
 import {
   Capture, shadowProject, ATTACH_MIN_SCORE, ATTACH_MIN_FRAMES,
@@ -570,6 +571,19 @@ test('the SKIP-BY-WORD-4 mutation truncates the list -- the choice is real',
       'zeroing word 4 must LOSE the records behind the gap, or the reason the '
       + 'skip is written into the width field is untested');
   });
+
+test('the cartridge section filler is blank rather than missing sprite art', () => {
+  const ram = new Ram();
+  FILLER.forEach((word, index) => ram.setU16(RAM.spriteList + index * 2, word));
+  const r = portSpriteList(ram, new Map());
+  assert.equal(r.records, 1);
+  assert.equal(r.blank, 1, 'the exact $23D680 filler is an intentional offscreen record');
+  assert.equal(r.drawn, 0);
+  assert.equal(r.skipped, 0, 'filler offset zero is not an absent ROM stream');
+  assert.deepEqual([...r.missing], []);
+  assert.deepEqual(Array.from(r.words.slice(0, RAM_STRIDE)), FILLER,
+    'blank classification leaves the hardware filler byte-exact');
+});
 
 test('a stream that is SHORT for the record is a miss, not an over-read', () => {
   // [M] `43-plan-enemy-layer.md` §1.4, reproduced this wave over 3,000 frames:
