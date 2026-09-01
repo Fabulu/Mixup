@@ -695,6 +695,47 @@ function transformedPlayerDamage(ctx, amount, source) {
   return Math.max(0, Math.min(0xffff, Math.trunc(result)));
 }
 
+function ordinaryShotDamagePower(power, gate308c) {
+  const value = u16(power);
+  return gate308c === 0 ? u16(value - (value >>> 2)) : value;
+}
+
+/** Shared owner mask, transform, and 16-bit HP receipt for player damage. */
+export function applyPlayerDamageReceipt(
+    ram, enemy, amount, mask, source, ctx = null) {
+  ram.setU16(enemy, u16(ram.u16(enemy) | mask));
+  const damage = transformedPlayerDamage(ctx, amount, source);
+  const hp0 = ram.u16(enemy + 0x18);
+  const hp1 = u16(hp0 - damage);
+  ram.setU16(enemy + 0x18, hp1);
+  return { hp0, hp1, damage };
+}
+
+/**
+ * Apply the cartridge ordinary-shot strength rules to one enemy receipt.
+ * External friendly projectiles use this entry so ownership, the frozen
+ * three-quarter gate, mod damage transforms, and 16-bit HP subtraction cannot
+ * drift from blocks 6a/6b below.
+ */
+export function applyOrdinaryShotDamageReceipt(
+    ram, enemy, power, mask, gate308c, ctx = null) {
+  return applyPlayerDamageReceipt(ram, enemy,
+    ordinaryShotDamagePower(power, gate308c), mask, 'shot', ctx);
+}
+
+/** Exact block-6 enemy box and off-screen gates for a zero-extent shot. */
+export function ordinaryShotPointOverlapsEnemy(ram, enemy, y, x, variant, d7 = 0x2800) {
+  const offLimit = variant === 'A' ? 0x9700 : 0x8800;
+  const enemyY = ram.u16(enemy + 0x02);
+  const enemyX = ram.u16(enemy + 0x04);
+  const maxY = u16(enemyY + ram.u16(enemy + 0x10));
+  const minY = u16(enemyY - ram.u16(enemy + 0x12));
+  const maxX = u16(enemyX + ram.u16(enemy + 0x14));
+  const minX = u16(enemyX - ram.u16(enemy + 0x16));
+  return y >= minY && y <= maxY && x >= minX && x <= maxX
+    && u16(minY + d7) < offLimit;
+}
+
 export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant, ctx = null) {
   if (count === 0) return 0;                          // $244F74 / $245086 beq.w
   const offLimit = variant === 'A' ? 0x9700 : 0x8800; // $244FC4 / $2450EC
@@ -755,9 +796,7 @@ export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant,
         const hp0 = ram.u16(rec + 0x18);              // $245022 move.w $16(A5),D4
         ram.setU16(rec, u16(ram.u16(rec) | mask));    // $24502E or.w D4,-$2(A5)
         let d5 = ram.u16(sh + 0x18);                  // $245032 move.w $14(A6),D5
-        if (gate308c === 0) {                         // $245036 tst.w / bne
-          d5 = u16(d5 - (u16(d5) >>> 2));             // $24503E/$245040/$245042
-        }
+        d5 = ordinaryShotDamagePower(d5, gate308c);   // $245036..$245042
         ram.setU8(sh + 0x01, ram.u8(sh + 0x01) | 0x80);  // $245044 bset #$7,-$3(A6)
         const hp = ram.u16(rec + 0x18);               // $24504A move.w $16(A5),D4
         ram.setU16(sh + 0x18, u16(ram.u16(sh + 0x18) - hp));  // $24504E sub.w D4,$14(A6)
@@ -767,9 +806,8 @@ export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant,
         // elided -- see this function's header.
         ram.setU16(rec + 0x18, hp0);
         if (ram.u16(rec + 0x02) >= 0x6f00) continue;  // $245058 cmpi.w #$6F00,(A5)
-        d5 = transformedPlayerDamage(ctx, d5, 'shot');
-        const nhp = u16(ram.u16(rec + 0x18) - d5);    // $24505E sub.w D5,$16(A5)
-        ram.setU16(rec + 0x18, nhp);
+        const nhp = applyPlayerDamageReceipt(
+          ram, rec, d5, mask, 'shot', ctx).hp1;         // $24505E
         if ((nhp & 0x8000) !== 0) break;              // $245062 bmi $24506C
       } else {
         ram.setU16(rec, u16(ram.u16(rec) | mask));    // $24514C or.w D4,-$2(A5)
@@ -777,12 +815,9 @@ export function poolDamage(ram, pool, count, table, d7, mask, gate308c, variant,
         let d5 = ram.u16(sh + 0x18);                  // $245156 move.w $14(A6),D5
         const hp = ram.u16(rec + 0x18);               // $24515A move.w $16(A5),D4
         ram.setU16(sh + 0x18, u16(ram.u16(sh + 0x18) - hp));  // $24515E sub.w D4,$14(A6)
-        if (gate308c === 0) {                         // $245162 tst.w / bne -- AFTER
-          d5 = u16(d5 - (u16(d5) >>> 2));             // $24516A/$24516C/$24516E
-        }
-        d5 = transformedPlayerDamage(ctx, d5, 'shot');
-        const nhp = u16(ram.u16(rec + 0x18) - d5);    // $245170 sub.w D5,$16(A5)
-        ram.setU16(rec + 0x18, nhp);
+        d5 = ordinaryShotDamagePower(d5, gate308c);   // $245162..$24516E
+        const nhp = applyPlayerDamageReceipt(
+          ram, rec, d5, mask, 'shot', ctx).hp1;         // $245170
         if ((nhp & 0x8000) !== 0) break;              // $245174 bmi $24517E
       }
     }

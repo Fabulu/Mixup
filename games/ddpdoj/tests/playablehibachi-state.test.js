@@ -9,7 +9,8 @@ import {
   restoreModReplaySeed, validateModReplaySeed,
 } from '../src/mods.js';
 import {
-  PLAYABLE_HIBACHI_BASES, PLAYABLE_HIBACHI_BULLET_SLOTS,
+  PLAYABLE_HIBACHI_BASES, PLAYABLE_HIBACHI_BULLET_POWER,
+  PLAYABLE_HIBACHI_BULLET_SLOTS,
   PLAYABLE_HIBACHI_CONFLICT, PLAYABLE_HIBACHI_EXTERNAL_KIND,
   PLAYABLE_HIBACHI_PALETTE_BANKS, PLAYABLE_HIBACHI_PALETTE_SOURCES,
   PLAYABLE_HIBACHI_SIDECAR_BYTES,
@@ -42,6 +43,7 @@ test('Playable Hibachi publishes exact private geometry and palette identity', (
   assert.deepEqual(PLAYABLE_HIBACHI_BASES, [0x11000000, 0x11010000]);
   assert.equal(PLAYABLE_HIBACHI_SIDECAR_BYTES, 0x276);
   assert.equal(PLAYABLE_HIBACHI_BULLET_SLOTS, 210);
+  assert.equal(PLAYABLE_HIBACHI_BULLET_POWER, 0x0100);
   assert.deepEqual(PLAYABLE_HIBACHI_PALETTE_BANKS,
     [0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x0f]);
   assert.deepEqual(PLAYABLE_HIBACHI_PALETTE_SOURCES,
@@ -53,6 +55,7 @@ test('Playable Hibachi publishes exact private geometry and palette identity', (
   assert.equal(state.sidecars[1].byteLength, 0x276);
   assert.deepEqual([...state.selectedGuns], [-1, -1]);
   assert.equal(state.privatePaletteWords.length, 9 * 32);
+  assert.equal(state.fingerprints.bulletPower, PLAYABLE_HIBACHI_BULLET_POWER);
 });
 
 test('Playable Hibachi binds once and activates only on credited non-demo handoff', () => {

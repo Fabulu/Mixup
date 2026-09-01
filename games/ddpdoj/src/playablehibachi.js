@@ -1,7 +1,9 @@
 // Stable external state for the Playable Hibachi mod.
 
 import { BUL, REC as BULLET_REC } from './bullets.js';
-import { DMG } from './damage.js';
+import {
+  applyOrdinaryShotDamageReceipt, DMG, ordinaryShotPointOverlapsEnemy,
+} from './damage.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { BEAM, SEG } from './laser.js';
 import {
@@ -25,6 +27,8 @@ export const PLAYABLE_HIBACHI_CONFLICT = 'Formation cannot be combined with Play
 export const PLAYABLE_HIBACHI_EXTERNAL_KIND = 'ddpdoj.playable-hibachi/v1';
 export const PLAYABLE_HIBACHI_SIDECAR_BYTES = 0x276;
 export const PLAYABLE_HIBACHI_BULLET_SLOTS = 210;
+/** Over three times the strongest measured stock projectile, but not a boss erase. */
+export const PLAYABLE_HIBACHI_BULLET_POWER = 0x0100;
 export const PLAYABLE_HIBACHI_GUN_IDS = Object.freeze([0, 1, 2, 3, 5, 6, 7, 8]);
 export const PLAYABLE_HIBACHI_PALETTE_BANKS = Object.freeze([
   0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x0f,
@@ -117,6 +121,7 @@ function fingerprintObject() {
     schema: PLAYABLE_HIBACHI_EXTERNAL_KIND,
     sidecarBytes: PLAYABLE_HIBACHI_SIDECAR_BYTES,
     bulletSlots: PLAYABLE_HIBACHI_BULLET_SLOTS,
+    bulletPower: PLAYABLE_HIBACHI_BULLET_POWER,
     gunIds: PLAYABLE_HIBACHI_GUN_IDS.join(','),
     paletteBanks: PLAYABLE_HIBACHI_PALETTE_BANKS.join(','),
     paletteSources: PLAYABLE_HIBACHI_PALETTE_SOURCES
@@ -407,36 +412,29 @@ export function playableHibachiAllowsFriendlyConversion(state, event) {
   return playableHibachiBulletOwner(state, event?.bullet) === 0;
 }
 
-function pointOverlapsEnemy(ram, bullet, enemy) {
-  const y = ram.u16(bullet + BULLET_REC.posA);
-  const x = ram.u16(bullet + BULLET_REC.posB);
-  const enemyY = ram.u16(enemy + 0x02);
-  const enemyX = ram.u16(enemy + 0x04);
-  const maxY = u16(enemyY + ram.u16(enemy + 0x10));
-  const minY = u16(enemyY - ram.u16(enemy + 0x12));
-  const maxX = u16(enemyX + ram.u16(enemy + 0x14));
-  const minX = u16(enemyX - ram.u16(enemy + 0x16));
-  return y >= minY && y <= maxY && x >= minX && x <= maxX && minY < 0x9700;
-}
-
-/** Apply one cartridge HP of friendly bullet damage after native damage passes. */
+/** Apply one shared ordinary-shot receipt to each colliding friendly bullet. */
 export function runPlayableHibachiDamage(state, game) {
   assertBoundGame(state, game);
   if (!state.lifecycle.active) return 0;
   const ram = game.ram;
+  const gate308c = ram.u16(DMG.gate308c);
   let hits = 0;
   for (let slot = 0; slot < state.ownedBullets.length; slot++) {
     const owner = state.ownedBullets[slot];
     if (owner === 0) continue;
     const bullet = BUL.pool + slot * BUL.stride;
     if ((ram.u16(bullet) & 0x9000) !== TYPEBIT_ALIVE) continue;
+    const y = ram.u16(bullet + BULLET_REC.posA);
+    const x = ram.u16(bullet + BULLET_REC.posB);
     for (let enemySlot = 0; enemySlot < 150; enemySlot++) {
       const enemy = DMG.poolA + enemySlot * DMG.enemyStride;
       const type = ram.u16(enemy);
+      const variant = enemySlot < 100 ? 'A' : 'B';
       if ((type & 0xa000) !== 0xa000 || i16(ram.u16(enemy + 0x18)) < 0
-          || !pointOverlapsEnemy(ram, bullet, enemy)) continue;
-      ram.setU16(enemy, u16(type | (owner === 1 ? DMG.maskP1 : DMG.maskP2)));
-      ram.setU16(enemy + 0x18, u16(ram.u16(enemy + 0x18) - 1));
+          || !ordinaryShotPointOverlapsEnemy(ram, enemy, y, x, variant)) continue;
+      const mask = owner === 1 ? DMG.maskP1 : DMG.maskP2;
+      applyOrdinaryShotDamageReceipt(
+        ram, enemy, PLAYABLE_HIBACHI_BULLET_POWER, mask, gate308c, game);
       ram.setU16(bullet, u16(ram.u16(bullet) | 0x1000));
       hits++;
       break;

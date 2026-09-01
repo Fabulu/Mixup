@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { BOMBRAM, bombDamageAlt2456A6 } from '../src/bomb.js';
 import { BULLET_DRIVER, runScreenClear } from '../src/bulletdriver.js';
 import { BUL, REC as BULLET_REC, poolClear } from '../src/bullets.js';
-import { DMG } from '../src/damage.js';
+import { DMG, poolDamage, shotBoundingBox } from '../src/damage.js';
 import { Game } from '../src/main.js';
 import { BEAM, SEG } from '../src/laser.js';
 import { P, RAM } from '../src/machine.js';
@@ -17,7 +17,8 @@ import {
 } from '../src/mods.js';
 import { runMover } from '../src/mover.js';
 import {
-  PLAYABLE_HIBACHI_LAYOUTS, beginPlayableHibachiCreditedRun,
+  PLAYABLE_HIBACHI_BULLET_POWER, PLAYABLE_HIBACHI_LAYOUTS,
+  beginPlayableHibachiCreditedRun,
   bindPlayableHibachiGame, clearPlayableHibachiBulletOnSpawn,
   createPlayableHibachiState, filterPlayableHibachiGrazeEvent,
   playableHibachiAllowsBulletCollision, playableHibachiAllowsFriendlyConversion,
@@ -35,11 +36,19 @@ import { rebuildWorld25FD38 } from '../src/stageend.js';
 import { makeType5, notStarted28B5A8 } from '../src/type5.js';
 import { UnportedLog } from '../src/unported.js';
 import { SHOT } from '../src/weapons.js';
+import { PS, spawnShot, spawnShotTypeB } from '../src/shots.js';
 import { loadBundle } from '../src/web/assets.js';
 import { romToPackedMap } from '../src/web/app.js';
 
 const TABLES = JSON.parse(readFileSync(
   new URL('../rip/port/player.tables.json', import.meta.url), 'utf8'));
+let exactBundlePromise;
+function exactBundle() {
+  exactBundlePromise ??= loadBundle(async (name) => new Uint8Array(readFileSync(
+    new URL(`../assets/${name}`, import.meta.url),
+  )));
+  return exactBundlePromise;
+}
 const ZERO_ROM = { u8: () => 0, u16: () => 0, u32: () => 0, i16: () => 0 };
 
 function bench(playerIdx = 0) {
@@ -118,6 +127,46 @@ function armBeamRecord(ram) {
     ram.setU16(BOMBRAM.rec + offset, 0x2000);
   }
   ram.bset8(RAM.player1 + 0x01, 6);
+}
+
+function armDamageEnemy(ram, {
+  enemy = DMG.poolA, y = 0x3000, x = 0x1800, hp = 0x7fff, extent = 0x0100,
+} = {}) {
+  ram.setU16(enemy, 0xa000);
+  ram.setU16(enemy + 0x02, y);
+  ram.setU16(enemy + 0x04, x);
+  for (const offset of [0x10, 0x12, 0x14, 0x16]) ram.setU16(enemy + offset, extent);
+  ram.setU16(enemy + 0x18, hp);
+  return enemy;
+}
+
+function nativeSalvoDamage(bundle, ship) {
+  const game = new Game(bundle.seed, bundle.tables, { palCatchUp: false });
+  const { ram } = game;
+  const rec = RAM.player1;
+  for (let slot = 0; slot < SHOT.slots; slot++) {
+    for (let offset = 0; offset < SHOT.stride; offset++) {
+      ram.setU8(SHOT.p1Table + slot * SHOT.stride + offset, 0);
+    }
+  }
+  ram.setU16(rec + P.posY, 0x3000);
+  ram.setU16(rec + P.posX, 0x3000);
+  ram.setU16(rec + PS.formation, 2);
+  ram.setU16(rec + PS.power, 8);
+  ram.setU8(rec + PS.powerByte, 8);
+  ram.setU16(rec + PS.animPhase, 8);
+  ram.setU16(rec + PS.animIdx, 4);
+  ram.bclr8(rec + P.flags1, 0);
+  (ship === 0 ? spawnShot : spawnShotTypeB)(ram, game.rom, rec, {});
+
+  const enemy = armDamageEnemy(ram, {
+    y: 0x3000, x: 0x3000, hp: 0x4000, extent: 0x1000,
+  });
+  ram.setU16(DMG.gate308c, 1);
+  assert.equal(shotBoundingBox(ram, SHOT.p1Table, 0x2800), true);
+  const hits = poolDamage(ram, enemy, 1, SHOT.p1Table, 0x2800,
+    DMG.maskP1, ram.u16(DMG.gate308c), 'A');
+  return { hits, damage: 0x4000 - ram.u16(enemy + 0x18) };
 }
 
 test('playerWeaponHook skips native auto-shot and ordinary cadence for P1 and P2', () => {
@@ -617,40 +666,128 @@ test('owned bullets cannot graze, hit players, or convert to friendly shots', ()
   });
 });
 
-test('owned P1 and P2 bullets deal one credited HP once', () => {
-  const game = new Game(null, TABLES, { palCatchUp: false });
-  const state = createPlayableHibachiState();
-  bindPlayableHibachiGame(state, game);
-  beginPlayableHibachiCreditedRun(state, game, {});
-  const enemy = DMG.poolA;
-  game.ram.setU16(enemy, 0xa000);
-  game.ram.setU16(enemy + 0x02, 0x3000);
-  game.ram.setU16(enemy + 0x04, 0x1800);
-  for (const offset of [0x10, 0x12, 0x14, 0x16]) game.ram.setU16(enemy + offset, 0x100);
-  game.ram.setU16(enemy + 0x18, 3);
-
-  for (const [slot, owner, mask, hp] of [
-    [5, 1, DMG.maskP1, 2],
-    [6, 2, DMG.maskP2, 1],
+test('owned P1 and P2 bullets use native damage receipts and retire finitely', () => {
+  for (const [slot, owner, mask] of [
+    [5, 1, DMG.maskP1],
+    [6, 2, DMG.maskP2],
   ]) {
+    const { game, mods } = playableRetireBench();
+    const state = mods.playableHibachi;
+    const enemy = armDamageEnemy(game.ram, { hp: 0x4000 });
+    game.ram.setU16(DMG.gate308c, 1);
     const bullet = BUL.pool + slot * BUL.stride;
     state.ownedBullets[slot] = owner;
     game.ram.setU16(bullet, 0x8000);
     game.ram.setU16(bullet + BULLET_REC.posA, 0x3000);
     game.ram.setU16(bullet + BULLET_REC.posB, 0x1800);
-    assert.equal(runPlayableHibachiDamage(state, game), 1);
-    assert.equal(game.ram.u16(enemy + 0x18), hp);
+
+    assert.equal(game.privateDamageTailHook(game), 1);
+    assert.equal(game.ram.u16(enemy + 0x18), 0x4000 - PLAYABLE_HIBACHI_BULLET_POWER);
     assert.ok((game.ram.u16(enemy) & mask) !== 0);
     assert.ok((game.ram.u16(bullet) & 0x1000) !== 0);
-    assert.equal(runPlayableHibachiDamage(state, game), 0,
-      'the kill bit prevents a second damage receipt');
+    assert.equal(game.privateDamageTailHook(game), 0,
+      'the kill receipt prevents a second HP debit');
+
+    runMover(game);
+    assert.equal(game.ram.u16(bullet), 0, 'the native mover frees a hit projectile');
+    assert.equal(state.ownedBullets[slot], 0,
+      'the native retirement callback clears external ownership');
   }
 });
 
+test('all launch and second-form guns produce real damage and finite bullets', () => {
+  const attacks = [
+    { gun: 0, held: 0x00, hyper: 0, deadline: 34 },
+    { gun: 1, held: 0x10, hyper: 0, deadline: 34 },
+    { gun: 2, held: 0x50, hyper: 0, deadline: 34 },
+    { gun: 3, held: 0x40, hyper: 0, deadline: 34 },
+    { gun: 5, held: 0x00, hyper: 1, deadline: 34 },
+    { gun: 6, held: 0x10, hyper: 1, deadline: 34 },
+    { gun: 7, held: 0x50, hyper: 1, deadline: 98 },
+    { gun: 8, held: 0x40, hyper: 1, deadline: 98 },
+  ];
+
+  for (const attack of attacks) {
+    const { game, mods } = playableRetireBench();
+    const state = mods.playableHibachi;
+    const rec = RAM.player1;
+    game.ram.setU16(rec, 0x8000);
+    game.ram.setU16(rec + P.posY, 0x3000);
+    game.ram.setU16(rec + P.posX, 0x1800);
+    game.ram.setU8(rec + P.dirByte, attack.held);
+    game.ram.setU16(DMG.hyper1, attack.hyper);
+    const enemy = armDamageEnemy(game.ram, { y: 0x2400, x: 0x1700 });
+
+    let frames = 0;
+    while (frames < attack.deadline && !state.ownedBullets.some(Boolean)) {
+      assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
+      frames++;
+    }
+    assert.equal(state.selectedGuns[0], attack.gun);
+    assert.ok(state.ownedBullets.some((owner) => owner === 1),
+      `gun ${attack.gun} must produce a P1 projectile by frame ${attack.deadline}`);
+    if (attack.gun === 0) {
+      assert.equal(state.players[0].runtime.bodyInitialized, true,
+        'the first form exists on the launch frame');
+      assert.equal(state.players[0].memory.u16(state.players[0].layout.parts), 0x8000);
+    }
+
+    const firstSlot = state.ownedBullets.findIndex((owner) => owner === 1);
+    const firstBullet = BUL.pool + firstSlot * BUL.stride;
+    game.ram.setU16(enemy + 0x02, game.ram.u16(firstBullet + BULLET_REC.posA));
+    game.ram.setU16(enemy + 0x04, game.ram.u16(firstBullet + BULLET_REC.posB));
+    game.ram.setU16(enemy + 0x18, 0x7fff);
+    for (const offset of [0x10, 0x12, 0x14, 0x16]) game.ram.setU16(enemy + offset, 0x20);
+    game.ram.setU16(DMG.gate308c, 1);
+
+    const hits = game.privateDamageTailHook(game);
+    assert.ok(hits >= 1, `gun ${attack.gun} must debit real enemy HP`);
+    assert.equal(game.ram.u16(enemy + 0x18),
+      0x7fff - hits * PLAYABLE_HIBACHI_BULLET_POWER);
+    assert.ok((game.ram.u16(enemy) & DMG.maskP1) !== 0);
+    const killed = [...state.ownedBullets].flatMap((owner, slot) =>
+      owner !== 0 && (game.ram.u16(BUL.pool + slot * BUL.stride) & 0x1000) !== 0
+        ? [slot] : []);
+    assert.equal(killed.length, hits);
+
+    runMover(game);
+    for (const slot of killed) {
+      assert.equal(game.ram.u16(BUL.pool + slot * BUL.stride), 0,
+        `gun ${attack.gun} bullet ${slot} must free on the next mover pass`);
+      assert.equal(state.ownedBullets[slot], 0);
+    }
+  }
+});
+
+test('one collision window beats both exact native ship salvos without erasing a boss',
+  async () => {
+    const bundle = await exactBundle();
+    const typeA = nativeSalvoDamage(bundle, 0);
+    const typeB = nativeSalvoDamage(bundle, 2);
+    assert.deepEqual(typeA, { hits: 2, damage: 130 });
+    assert.deepEqual(typeB, { hits: 2, damage: 114 });
+
+    const { game, mods } = playableRetireBench();
+    const enemy = armDamageEnemy(game.ram, { hp: 0x7fff });
+    game.ram.setU16(DMG.gate308c, 1);
+    const slot = 0;
+    const bullet = BUL.pool + slot * BUL.stride;
+    mods.playableHibachi.ownedBullets[slot] = 1;
+    game.ram.setU16(bullet, 0x8000);
+    game.ram.setU16(bullet + BULLET_REC.posA, 0x3000);
+    game.ram.setU16(bullet + BULLET_REC.posB, 0x1800);
+
+    assert.equal(game.privateDamageTailHook(game), 1);
+    const hibachiDamage = 0x7fff - game.ram.u16(enemy + 0x18);
+    assert.equal(hibachiDamage, PLAYABLE_HIBACHI_BULLET_POWER);
+    assert.ok(hibachiDamage > typeA.damage);
+    assert.ok(hibachiDamage > typeB.damage);
+    assert.ok(game.ram.u16(enemy + 0x18) > 0x7e00,
+      'one projectile leaves cartridge-scale boss HP intact');
+  });
+
 test('published bundle drives credited Playable Hibachi combat and art', async () => {
-  const bundle = await loadBundle(async (name) => new Uint8Array(readFileSync(
-    new URL(`../assets/${name}`, import.meta.url),
-  )));
+  const bundle = await exactBundle();
   const mods = createModState(resolveLoadout(['playable-hibachi']));
   prepareModCabinetBoot(mods);
   const game = new Game(null, bundle.tables, {
@@ -676,7 +813,7 @@ test('published bundle drives credited Playable Hibachi combat and art', async (
   for (const offset of [0x10, 0x12, 0x14, 0x16]) {
     game.ram.setU16(enemy + offset, 0x100);
   }
-  game.ram.setU16(enemy + 0x18, 3);
+  game.ram.setU16(enemy + 0x18, 0x4000);
 
   let weaponCalls = 0;
   while (weaponCalls < 64 && !mods.playableHibachi.ownedBullets.some(Boolean)) {
@@ -717,9 +854,11 @@ test('published bundle drives credited Playable Hibachi combat and art', async (
 
   game.ram.setU16(enemy + 0x02, game.ram.u16(bullet + BULLET_REC.posA));
   game.ram.setU16(enemy + 0x04, game.ram.u16(bullet + BULLET_REC.posB));
+  game.ram.setU16(DMG.gate308c, 1);
   const hits = game.privateDamageTailHook(game);
   assert.equal(hits, 3);
-  assert.equal(game.ram.u16(enemy + 0x18), 0);
+  assert.equal(game.ram.u16(enemy + 0x18),
+    0x4000 - hits * PLAYABLE_HIBACHI_BULLET_POWER);
   assert.ok((game.ram.u16(enemy) & DMG.maskP1) !== 0);
   assert.equal(ownedSlots.filter((ownedSlot) =>
     (game.ram.u16(BUL.pool + ownedSlot * BUL.stride) & 0x1000) !== 0).length, hits);
