@@ -1,7 +1,7 @@
-// Embedded Version A player initialization and movement through `$148DC2`.
-// Weapons, options, death, stage-clear flight, and the `$1494F2` draw tail remain
+// Embedded Version A player initialization and nonfiring control through `$1494F2`.
+// Shot producers, options, death, stage-clear flight, and the draw tail remain
 // separate campaign slices. Reaching one of those branches is either a named
-// boundary or a loud throw, never an alias to Build B code.
+// boundary or a loud throw, never an unverified alias to Build B code.
 
 import { resolveGameProfile, WHITE_LABEL_PROFILE } from './profiles.js';
 import { requireRuntimeCapability, resolveGameRuntime } from './runtime-profile.js';
@@ -22,6 +22,17 @@ export const WHITE_PLAYER = Object.freeze({
   templateWords: 49,
   update: 0x148bae,
   movementBoundary: 0x148e5e,
+  autoShot: 0x148e5e,
+  autoShotBoundary: 0x148eb2,
+  button2: 0x148eb2,
+  button2Boundary: 0x148ec8,
+  shotCadence: 0x1491d0,
+  shotInvalid: 0x149294,
+  shotShip0: 0x1492a0,
+  shotShip2: 0x1493d0,
+  autoShotSetting: 0x80380f,
+  button2Gate: 0x8130ce,
+  drawTail: 0x1494f2,
   firstFrameBoundary: 0x1494f2,
   directionTable: 0x154898,
   foldTable: 0x141bee,
@@ -252,7 +263,7 @@ function appliedVelocity(ram, address, overshoot) {
   ram.setU16(address, u16(i16(ram.u16(address)) - i16(overshoot)));
 }
 
-function finishMovement(ram, rom, rec, ctx, d2, d3, skipClamps) {
+function finishMovement(ram, rom, rec, ctx, ownerIndex, d2, d3, skipClamps) {
   const direction = ram.u8(rec + P.dirByte);
   if (!skipClamps) {
     if ((direction & 0x04) !== 0) {
@@ -315,11 +326,108 @@ function finishMovement(ram, rom, rec, ctx, d2, d3, skipClamps) {
     ram.setU16(rec + P.posX,
       u16(ram.u16(rec + P.posX) - ram.u16(WHITE_PLAYER.xAdjust)));
   }
-  return Object.freeze({ phase: 'moved', boundary: WHITE_PLAYER.movementBoundary,
+  const post = postMovement148E5E(ram, rec, ownerIndex);
+  return Object.freeze({ phase: 'moved', boundary: post.boundary,
     y: ram.u16(rec + P.posY), x: ram.u16(rec + P.posX) });
 }
 
-function update(ram, rom, slot, c, ctx) {
+function autoShot148E5E(ram, rec, ownerIndex) {
+  if (ram.u8(WHITE_PLAYER.autoShotSetting) === 0
+      || !ram.btst8(rec + P.dirByte, 6)
+      || ram.u8(rec + 0x3c) !== 0) return;
+  const options = owner(ownerIndex).option;
+  ram.bclr8(rec + P.btnByte, 4);
+  ram.bclr8(rec + P.flags1, 3);
+  ram.bclr8(options + P.flags1, 3);
+  if (ram.bchg8(rec + P.flags1, 4) !== 0) return;
+  ram.bset8(rec + P.flags1, 3);
+  ram.bset8(options + P.flags1, 3);
+  ram.bset8(rec + P.btnByte, 4);
+}
+
+/**
+ * `$148E5E..$148EB1`: Version A's auto-shot edge synthesizer.
+ *
+ * The exporter pins this 84-byte block as an exact copy of Build B
+ * `$2497AA..$2497FD`. The recurring tick runs this immediately before cadence,
+ * so cadence sees a synthetic edge in the same frame rather than a cached byte.
+ */
+export function whiteAutoShot148E5E(ram, rec, slot, profileRequest) {
+  requireWhitePlayers(profileRequest, 'White Label Stage 1 auto-shot');
+  const marker = ram.u8(slot + 0x07);
+  if (marker !== 0 && marker !== 1) {
+    throw new RangeError(`White Label auto-shot owner marker ${marker} is outside {0, 1}`);
+  }
+  autoShot148E5E(ram, rec, marker);
+  return Object.freeze({
+    phase: 'auto-shot', boundary: WHITE_PLAYER.autoShotBoundary, ownerIndex: marker,
+  });
+}
+
+const cadenceTail1494F2 = () => Object.freeze({
+  phase: 'cadence', boundary: WHITE_PLAYER.drawTail,
+});
+
+function shotCadence1491D0(ram, rec) {
+  const hyper = ram.btst8(rec + P.flags1, 0) !== 0;
+  ram.setU8(rec + 0x56, ram.u8(rec + (hyper ? 0x55 : 0x54)));
+  if (ram.u8(rec + 0x3f) !== 0) return cadenceTail1494F2();
+
+  if (ram.btst8(rec + P.btnByte, 4)) {
+    ram.setU8(rec + 0x3c, 1);
+    const source = hyper ? 8 : ram.u8(rec + 0x21);
+    ram.setU8(rec + 0x2b, (((source >> 1) & 6) + ram.u8(rec + 0x2d)) & 0xff);
+    if (ram.bclr8(rec + P.flags1, 3)) {
+      ram.bset8(rec + P.state, 3);
+      ram.setU8(rec + 0x2b, 0);
+    } else if (ram.bclr8(rec + P.state, 3)) {
+      ram.setU8(rec + 0x2a, 1);
+      return cadenceTail1494F2();
+    }
+  } else {
+    ram.setU8(rec + 0x3c, 0);
+    ram.bclr8(rec + P.state, 3);
+    ram.bclr8(rec + P.flags1, 4);
+    if (ram.u8(rec + 0x2b) === 0) return cadenceTail1494F2();
+    ram.setU8(rec + 0x2a, (ram.u8(rec + 0x2a) - 1) & 0xff);
+    if (ram.u8(rec + 0x2a) !== 0) return cadenceTail1494F2();
+    ram.setU8(rec + 0x2b, (ram.u8(rec + 0x2b) - 1) & 0xff);
+    ram.bset8(rec + P.state, 3);
+    ram.bset8(rec + P.flags1, 4);
+  }
+
+  const ship = ram.u16(rec + 0x58);
+  const reload = hyper || (ship === 0 && ram.u16(rec + 0x20) === 8)
+    ? 2 : ram.u8(rec + 0x2c);
+  ram.setU8(rec + 0x2a, reload);
+  if (ship === 0) {
+    unreached(WHITE_PLAYER.shotShip0,
+      'the White Label ship-0 shot producer has no live type-5 consumer');
+  }
+  if (ship === 2) {
+    unreached(WHITE_PLAYER.shotShip2,
+      'the White Label ship-2 shot producer has no live type-5 consumer');
+  }
+  unreached(WHITE_PLAYER.shotInvalid,
+    `the White Label shot ship selector ${ship} is outside {0, 2}`);
+}
+
+/** `$1491D0..$1494F1`: Version A's ordinary-shot cadence through its producer seam. */
+export function whiteShotCadence1491D0(ram, rec, profileRequest) {
+  requireWhitePlayers(profileRequest, 'White Label Stage 1 shot cadence');
+  return shotCadence1491D0(ram, rec);
+}
+
+function postMovement148E5E(ram, rec, ownerIndex) {
+  autoShot148E5E(ram, rec, ownerIndex);
+  if (ram.u16(WHITE_PLAYER.button2Gate) >= 4 && ram.btst8(rec + P.dirByte, 5)) {
+    unreached(WHITE_PLAYER.button2Boundary,
+      'the White Label held Button 2 bomb and hyper path is outside this player slice');
+  }
+  return shotCadence1491D0(ram, rec);
+}
+
+function update(ram, rom, slot, c, ctx, ownerIndex) {
   const rec = c.rec;
   const marker = ram.u8(slot + 0x07);
   ram.setU8(rec + P.playerIdx, marker);
@@ -364,7 +472,7 @@ function update(ram, rom, slot, c, ctx) {
   ram.setU8(rec + P.angle, angle);
   if ((angle & 0x80) !== 0) {
     tiltDecay(ram, rec);
-    return finishMovement(ram, rom, rec, ctx,
+    return finishMovement(ram, rom, rec, ctx, ownerIndex,
       ram.u16(rec + P.posY), ram.u16(rec + P.posX), true);
   }
 
@@ -377,15 +485,19 @@ function update(ram, rom, slot, c, ctx) {
   ram.setU16(rec + P.velY, u16(dy));
   ram.setU16(rec + P.velX, u16(dx));
   ram.setU16(rec + P.lastVelX, u16(dx));
-  return finishMovement(ram, rom, rec, ctx,
+  return finishMovement(ram, rom, rec, ctx, ownerIndex,
     ram.u16(rec + P.posY), ram.u16(rec + P.posX), false);
 }
 
 function tick(ram, rom, slot, ctx, profileRequest, side) {
   requireWhitePlayers(profileRequest, 'White Label Stage 1 player tick');
   const c = owner(side);
+  const marker = ram.u8(slot + 0x07);
+  if (marker !== side) {
+    throw new RangeError(`White Label type-${side + 2} owner marker ${marker} must be ${side}`);
+  }
   ram.setU16(0x813090, ram.u16(0x813090) | c.liveBit);
-  if (ram.bset8(slot + 0x03, 0)) return update(ram, rom, slot, c, ctx);
+  if (ram.bset8(slot + 0x03, 0)) return update(ram, rom, slot, c, ctx, side);
   return initialize(ram, rom, slot, c, ctx);
 }
 

@@ -10,11 +10,13 @@ import { Ram, i16 } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { Unreached } from '../src/unported.js';
 import {
-  WHITE_PLAYER, whitePlayerP1Tick14889E, whitePlayerP2Tick14891E,
+  WHITE_PLAYER, whiteAutoShot148E5E, whiteShotCadence1491D0,
+  whitePlayerP1Tick14889E, whitePlayerP2Tick14891E,
 } from '../src/white-player.js';
 import { createWhiteStage1PlayerHandlers } from '../src/white-runtime.js';
 
 const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
+const IMAGE = fileURLToPath(new URL('../tools/oracle/out/maincpu.bin', import.meta.url));
 const RAM = WHITE_LABEL_PROFILE.ramLayout.addresses;
 const P = WHITE_LABEL_PROFILE.ramLayout.playerFields;
 const CLAMP = WHITE_LABEL_PROFILE.selectorProfile.clamp;
@@ -50,7 +52,9 @@ function initializedPair() {
   return { ram, p1slot, p2slot };
 }
 
-function movingOwner({ y, x, direction, side = 0, speed = 22 }) {
+function movingOwner({
+  y, x, direction, side = 0, speed = 22, edge = 0, autoShot = 0, button2Gate = 0,
+}) {
   const ram = new Ram();
   const address = slot(ram, 0, side, { y, x, fresh: false });
   const rec = side === 0 ? WHITE_PLAYER.p1.rec : WHITE_PLAYER.p2.rec;
@@ -59,11 +63,72 @@ function movingOwner({ y, x, direction, side = 0, speed = 22 }) {
   ram.setU8(rec + P.speedIdx, speed);
   ram.setU8(rec + P.baseSpeed, speed);
   ram.setU8(rec + P.invuln, 0xff);
+  ram.setU8(WHITE_PLAYER.autoShotSetting, autoShot);
+  ram.setU16(WHITE_PLAYER.button2Gate, button2Gate);
   ram.setU16(side === 0 ? RAM.p1raw : RAM.p2raw, direction);
+  ram.setU16(side === 0 ? RAM.p1edge : RAM.p2edge, edge);
   const result = side === 0
     ? whitePlayerP1Tick14889E(ram, rom, address)
     : whitePlayerP2Tick14891E(ram, rom, address);
   return { ram, rec, result };
+}
+
+function autoShotOwner({
+  side = 0, setting = 1, held = 0x40, edge = 0, p3c = 0,
+  flags1 = 0, optionFlags = 0x03,
+} = {}) {
+  const ram = new Ram();
+  const address = slot(ram, 0, side, { fresh: false });
+  const c = side === 0 ? WHITE_PLAYER.p1 : WHITE_PLAYER.p2;
+  ram.setU8(WHITE_PLAYER.autoShotSetting, setting);
+  ram.setU8(c.rec + P.dirByte, held);
+  ram.setU8(c.rec + P.btnByte, edge);
+  ram.setU8(c.rec + 0x3c, p3c);
+  ram.setU8(c.rec + P.flags1, flags1);
+  ram.setU16(c.rec + 0x20, 0x1357);
+  ram.setU16(c.rec + 0x22, 0x2468);
+  ram.setU32(c.powerList, 0x10203040);
+  ram.setU32(c.powerList + 4, 0x50607080);
+  ram.setU8(WHITE_PLAYER.p1.option + P.flags1, optionFlags);
+  ram.setU8(WHITE_PLAYER.p2.option + P.flags1, optionFlags);
+  const result = whiteAutoShot148E5E(ram, c.rec, address);
+  return { ram, rec: c.rec, option: c.option, powerList: c.powerList, result };
+}
+
+function cadenceOwner({
+  side = 0, state = 0, flags1 = 0, edge = 0, burstSource = 0,
+  bias = 0, countdown = 0, remaining = 0, reload = 5, laser = 0,
+  ship = 0, power = 0, normal = 0x12, hyper = 0x34, p3c = 0,
+} = {}) {
+  const ram = new Ram();
+  const rec = side === 0 ? WHITE_PLAYER.p1.rec : WHITE_PLAYER.p2.rec;
+  ram.setU8(rec + P.state, state);
+  ram.setU8(rec + P.flags1, flags1);
+  ram.setU8(rec + P.btnByte, edge);
+  ram.setU16(rec + 0x20, power);
+  ram.setU8(rec + 0x21, burstSource);
+  ram.setU8(rec + 0x2a, countdown);
+  ram.setU8(rec + 0x2b, remaining);
+  ram.setU8(rec + 0x2c, reload);
+  ram.setU8(rec + 0x2d, bias);
+  ram.setU8(rec + 0x3c, p3c);
+  ram.setU8(rec + 0x3f, laser);
+  ram.setU8(rec + 0x54, normal);
+  ram.setU8(rec + 0x55, hyper);
+  ram.setU16(rec + 0x58, ship);
+  return {
+    ram,
+    rec,
+    run: () => whiteShotCadence1491D0(ram, rec),
+  };
+}
+
+function assertUnreachedAt(run, address) {
+  assert.throws(run, (error) => {
+    assert.ok(error instanceof Unreached);
+    assert.equal(error.romAddress, address);
+    return true;
+  });
 }
 
 test('private player entry rejects Black before touching RAM or cartridge input', () => {
@@ -77,6 +142,16 @@ test('private player entry rejects Black before touching RAM or cartridge input'
   assert.throws(
     () => whitePlayerP1Tick14889E(untouched, untouched, 0, null, BLACK_LABEL_PROFILE),
     /White Label Stage 1 player tick is unavailable/,
+  );
+  assert.equal(reads, 0);
+  assert.throws(
+    () => whiteAutoShot148E5E(untouched, 0, 0, BLACK_LABEL_PROFILE),
+    /White Label Stage 1 auto-shot is unavailable/,
+  );
+  assert.equal(reads, 0);
+  assert.throws(
+    () => whiteShotCadence1491D0(untouched, 0, BLACK_LABEL_PROFILE),
+    /White Label Stage 1 shot cadence is unavailable/,
   );
   assert.equal(reads, 0);
   assert.throws(
@@ -123,7 +198,7 @@ test('first player frame initializes at the slot position without reading moveme
   assert.equal(ram.u8(WHITE_PLAYER.p1.rec + P.speedIdx), 22);
 
   const second = whitePlayerP1Tick14889E(ram, rom, address);
-  assert.equal(second.boundary, WHITE_PLAYER.movementBoundary);
+  assert.equal(second.boundary, WHITE_PLAYER.drawTail);
   assert.ok(ram.u16(WHITE_PLAYER.p1.rec + P.posX) > 0x3456,
     'the same held input begins movement only on frame two');
 });
@@ -171,6 +246,190 @@ test('Version A rejects conflicting direction through $FF without repairing posi
   assert.equal(moved.ram.u8(moved.rec + P.angle), 0xff);
   assert.equal(moved.ram.u16(moved.rec + P.posY), CLAMP.yMax + 500);
   assert.equal(moved.ram.u16(moved.rec + P.velY), 0);
+});
+
+test('Version A $148E5E auto-shot is the exact 84-byte Build B twin', {
+  skip: existsSync(IMAGE) ? false : `${IMAGE} missing; run the oracle derive step`,
+}, () => {
+  const image = readFileSync(IMAGE);
+  const white = image.subarray(WHITE_PLAYER.autoShot, WHITE_PLAYER.autoShotBoundary);
+  const black = image.subarray(0x2497aa, 0x2497fe);
+  assert.equal(WHITE_PLAYER.autoShot, WHITE_PLAYER.movementBoundary);
+  assert.equal(white.length, 0x54);
+  assert.deepEqual(white, black);
+});
+
+test('Version A dead Button 3 block remains unreachable', () => {
+  const edgeOnly = autoShotOwner({ held: 0, edge: 0x40 });
+  assert.equal(edgeOnly.ram.u16(edgeOnly.rec + 0x20), 0x1357);
+  assert.equal(edgeOnly.ram.u16(edgeOnly.rec + 0x22), 0x2468);
+  assert.equal(edgeOnly.ram.u32(edgeOnly.powerList), 0x10203040);
+  assert.equal(edgeOnly.ram.u32(edgeOnly.powerList + 4), 0x50607080);
+});
+
+test('Version A auto-shot preserves all three native gates and reads held input', () => {
+  const settingOff = autoShotOwner({ setting: 0 });
+  assert.equal(settingOff.ram.u8(settingOff.rec + P.flags1), 0);
+  assert.equal(settingOff.ram.u8(settingOff.rec + P.btnByte), 0);
+  assert.equal(settingOff.ram.u8(settingOff.option + P.flags1), 0x03);
+
+  const edgeOnly = autoShotOwner({ held: 0, edge: 0x40 });
+  assert.equal(edgeOnly.ram.u8(edgeOnly.rec + P.flags1), 0);
+  assert.equal(edgeOnly.ram.u8(edgeOnly.rec + P.btnByte), 0x40);
+
+  const armed = autoShotOwner({ held: 0x40, edge: 0 });
+  assert.equal(armed.ram.u8(armed.rec + P.flags1), 0x18);
+  assert.equal(armed.ram.u8(armed.rec + P.btnByte), 0x10);
+
+  const cadenceBusy = autoShotOwner({ p3c: 1 });
+  assert.equal(cadenceBusy.ram.u8(cadenceBusy.rec + P.flags1), 0);
+  assert.equal(cadenceBusy.ram.u8(cadenceBusy.rec + P.btnByte), 0);
+});
+
+test('Version A auto-shot pins divider phase and clears stale synthetic state', () => {
+  const fired = autoShotOwner();
+  assert.deepEqual(fired.result, {
+    phase: 'auto-shot', boundary: WHITE_PLAYER.autoShotBoundary, ownerIndex: 0,
+  });
+  assert.equal(fired.ram.u8(fired.option + P.flags1), 0x0b);
+
+  const skipped = autoShotOwner({ flags1: 0x18, edge: 0x10, optionFlags: 0x0b });
+  assert.equal(skipped.ram.u8(skipped.rec + P.flags1), 0);
+  assert.equal(skipped.ram.u8(skipped.rec + P.btnByte), 0);
+  assert.equal(skipped.ram.u8(skipped.option + P.flags1), 0x03);
+});
+
+test('Version A auto-shot mutates only the option record selected by the slot owner', () => {
+  const p1 = autoShotOwner({ side: 0 });
+  assert.equal(p1.ram.u8(WHITE_PLAYER.p1.option + P.flags1), 0x0b);
+  assert.equal(p1.ram.u8(WHITE_PLAYER.p2.option + P.flags1), 0x03);
+
+  const p2 = autoShotOwner({ side: 1 });
+  assert.deepEqual(p2.result, {
+    phase: 'auto-shot', boundary: WHITE_PLAYER.autoShotBoundary, ownerIndex: 1,
+  });
+  assert.equal(p2.ram.u8(WHITE_PLAYER.p1.option + P.flags1), 0x03);
+  assert.equal(p2.ram.u8(WHITE_PLAYER.p2.option + P.flags1), 0x0b);
+
+  const invalid = new Ram();
+  const invalidSlot = slot(invalid, 0, 2, { fresh: false });
+  assert.throws(
+    () => whiteAutoShot148E5E(invalid, WHITE_PLAYER.p1.rec, invalidSlot),
+    /owner marker 2 is outside \{0, 1\}/,
+  );
+});
+
+test('Version A cadence selects the shot byte and closes idle and laser-active paths', () => {
+  const idle = cadenceOwner({ state: 0x08, flags1: 0x10, p3c: 7 });
+  assert.deepEqual(idle.run(), {
+    phase: 'cadence', boundary: WHITE_PLAYER.drawTail,
+  });
+  assert.equal(idle.ram.u8(idle.rec + 0x56), 0x12);
+  assert.equal(idle.ram.u8(idle.rec + 0x3c), 0);
+  assert.equal(idle.ram.btst8(idle.rec + P.state, 3), 0);
+  assert.equal(idle.ram.btst8(idle.rec + P.flags1, 4), 0);
+
+  const laser = cadenceOwner({ flags1: 1, laser: 1, p3c: 7 });
+  assert.equal(laser.run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(laser.ram.u8(laser.rec + 0x56), 0x34);
+  assert.equal(laser.ram.u8(laser.rec + 0x3c), 7,
+    'the laser-active branch skips the cadence state machine');
+
+  const hyperOnly = cadenceOwner({ flags1: 1, p3c: 7 });
+  assert.equal(hyperOnly.run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(hyperOnly.ram.u8(hyperOnly.rec + 0x3c), 0,
+    'hyper bit 0 selects bytes but does not masquerade as laser-active +$3F');
+});
+
+test('Version A cadence consumes real and synthesized edges with exact burst state', () => {
+  const real = cadenceOwner({
+    edge: 0x10, burstSource: 8, bias: 2, reload: 7, ship: 0, power: 8,
+  });
+  assertUnreachedAt(real.run, WHITE_PLAYER.shotShip0);
+  assert.equal(real.ram.u8(real.rec + 0x2b), 6);
+  assert.equal(real.ram.u8(real.rec + 0x2a), 2,
+    'ship 0 at power 8 forces the native two-frame reload');
+  assert.equal(real.ram.u8(real.rec + 0x3c), 1);
+
+  const synthetic = cadenceOwner({ flags1: 0x08, edge: 0x10, ship: 2, reload: 9 });
+  assertUnreachedAt(synthetic.run, WHITE_PLAYER.shotShip2);
+  assert.equal(synthetic.ram.u8(synthetic.rec + 0x2b), 0);
+  assert.equal(synthetic.ram.u8(synthetic.rec + 0x2a), 9);
+  assert.equal(synthetic.ram.btst8(synthetic.rec + P.state, 3), 1);
+  assert.equal(synthetic.ram.btst8(synthetic.rec + P.flags1, 3), 0);
+
+  const repeated = cadenceOwner({ state: 0x08, edge: 0x10, burstSource: 8 });
+  assert.equal(repeated.run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(repeated.ram.u8(repeated.rec + 0x2a), 1);
+  assert.equal(repeated.ram.btst8(repeated.rec + P.state, 3), 0);
+
+  const invalid = cadenceOwner({ edge: 0x10, ship: 1 });
+  assertUnreachedAt(invalid.run, WHITE_PLAYER.shotInvalid);
+});
+
+test('Version A no-edge cadence preserves 8-bit countdown and reload phase', () => {
+  const waiting = cadenceOwner({
+    state: 0x08, flags1: 0x10, countdown: 2, remaining: 2,
+  });
+  assert.equal(waiting.run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(waiting.ram.u8(waiting.rec + 0x2a), 1);
+  assert.equal(waiting.ram.u8(waiting.rec + 0x2b), 2);
+  assert.equal(waiting.ram.btst8(waiting.rec + P.state, 3), 0);
+  assert.equal(waiting.ram.btst8(waiting.rec + P.flags1, 4), 0);
+
+  const ready = cadenceOwner({ countdown: 1, remaining: 2, ship: 2, reload: 6 });
+  assertUnreachedAt(ready.run, WHITE_PLAYER.shotShip2);
+  assert.equal(ready.ram.u8(ready.rec + 0x2b), 1);
+  assert.equal(ready.ram.u8(ready.rec + 0x2a), 6);
+  assert.equal(ready.ram.btst8(ready.rec + P.state, 3), 1);
+  assert.equal(ready.ram.btst8(ready.rec + P.flags1, 4), 1);
+
+  const wrapped = cadenceOwner({ countdown: 0, remaining: 2 });
+  assert.equal(wrapped.run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(wrapped.ram.u8(wrapped.rec + 0x2a), 0xff);
+  assert.equal(wrapped.ram.u8(wrapped.rec + 0x2b), 2);
+});
+
+test('Version A recurring tick uses held Button 2 gates before cadence', () => {
+  const gatedOff = movingOwner({
+    y: 0x2000, x: 0x1800, direction: 0x20, button2Gate: 3,
+  });
+  assert.equal(gatedOff.result.boundary, WHITE_PLAYER.drawTail);
+
+  const edgeOnly = movingOwner({
+    y: 0x2000, x: 0x1800, direction: 0, edge: 0x20, button2Gate: 4,
+  });
+  assert.equal(edgeOnly.result.boundary, WHITE_PLAYER.drawTail);
+
+  assertUnreachedAt(() => movingOwner({
+    y: 0x2000, x: 0x1800, direction: 0x20, button2Gate: 4,
+  }), WHITE_PLAYER.button2Boundary);
+});
+
+test('Version A recurring tick consumes synthesized auto-shot edges in the same frame', () => {
+  const ram = new Ram();
+  const address = slot(ram, 0, 0, { fresh: false });
+  const rec = WHITE_PLAYER.p1.rec;
+  ram.setU16(rec + P.posY, 0x2000);
+  ram.setU16(rec + P.posX, 0x1800);
+  ram.setU8(rec + P.speedIdx, 22);
+  ram.setU8(rec + P.baseSpeed, 22);
+  ram.setU8(rec + P.invuln, 0xff);
+  ram.setU8(rec + 0x2c, 5);
+  ram.setU16(RAM.p1raw, 0x0040);
+  ram.setU16(RAM.p1edge, 0);
+  ram.setU8(WHITE_PLAYER.autoShotSetting, 1);
+  const run = () => whitePlayerP1Tick14889E(ram, rom, address);
+
+  assertUnreachedAt(run, WHITE_PLAYER.shotShip0);
+  assert.equal(ram.u8(rec + 0x3c), 1);
+  assert.equal(ram.u8(rec + 0x2b), 0);
+
+  assert.equal(run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(ram.u8(rec + 0x3c), 0);
+  assert.equal(ram.btst8(rec + P.flags1, 4), 0);
+
+  assertUnreachedAt(run, WHITE_PLAYER.shotShip0);
 });
 
 test('host companion markers 2 and 3 cannot fall through the native type 3 owner', () => {

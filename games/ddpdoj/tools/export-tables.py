@@ -11159,6 +11159,52 @@ def check_white_label_frontend_windows(d: bytes) -> None:
     for speed in WHITE_PLAYER_SPEEDS:
         if u32(d, 0x100920 + speed * 4) != 0x100D20 + speed * 0x208:
             raise SystemExit(f"White A player speed {speed} pointer changed")
+    if u32(d, 0x148DC2) != 0x6000009A:
+        raise SystemExit("White A player movement no longer branches directly to $148E5E")
+    white_auto_shot = d[0x148E5E:0x148EB2]
+    black_auto_shot = d[0x2497AA:0x2497FE]
+    if len(white_auto_shot) != 0x54 or white_auto_shot != black_auto_shot:
+        raise SystemExit(
+            "White A $148E5E..$148EB1 is no longer the exact 84-byte twin of "
+            "Black B $2497AA..$2497FD")
+
+    white_button2 = d[0x148EB2:0x1491D0]
+    if len(white_button2) != 0x31E \
+            or hashlib.sha256(white_button2).hexdigest() \
+            != "7c639e93295598065fdcf29ba6516ee9b6d2d3b112554d8b6f6d5c20811b6870":
+        raise SystemExit("White A held Button 2 control changed before $1491D0")
+    if d[0x1491D0:0x1492E2] != d[0x249B2C:0x249C3E]:
+        raise SystemExit("White A shot-cadence prefix is no longer the exact Build B twin")
+    white_cadence = bytearray(d[0x1491D0:0x1494F2])
+    black_cadence = d[0x249B2C:0x249E4E]
+    cadence_operands = (
+        (0x1492E2, 0x249C3E, "43f900154aa6", "43f9002554ea"),
+        (0x14932C, 0x249C88, "43f900154abe", "43f900255502"),
+        (0x149410, 0x249D6C, "43f900154ad6", "43f90025551a"),
+        (0x149328, 0x249C84, "6100056c", "6100059c"),
+        (0x149366, 0x249CC2, "610005e2", "61000612"),
+        (0x1493A4, 0x249D00, "610005a4", "610005d4"),
+        (0x14948C, 0x249DE8, "61000462", "61000492"),
+        (0x149492, 0x249DEE, "6100051c", "6100054c"),
+        (0x1494CC, 0x249E28, "610004e2", "61000512"),
+        (0x1493B6, 0x249D12, "41f90018aee0", "41f90028c3ba"),
+        (0x1493C4, 0x249D20, "41f90018af14", "41f90028c3ee"),
+        (0x1494DC, 0x249E38, "41f90018aefa", "41f90028c3d4"),
+        (0x1494EA, 0x249E46, "41f90018af14", "41f90028c3ee"),
+    )
+    for white_at, black_at, white_hex, black_hex in cadence_operands:
+        white_bytes = bytes.fromhex(white_hex)
+        black_bytes = bytes.fromhex(black_hex)
+        if d[white_at:white_at + len(white_bytes)] != white_bytes \
+                or d[black_at:black_at + len(black_bytes)] != black_bytes:
+            raise SystemExit(f"White A shot-cadence operand changed at ${white_at:06X}")
+        offset = white_at - 0x1491D0
+        white_cadence[offset:offset + len(white_bytes)] = black_bytes
+    if bytes(white_cadence) != black_cadence:
+        raise SystemExit(
+            "White A and Black B shot cadence diverged beyond 13 explicit operands")
+    if d[0x1494F2:0x1494F8] != bytes.fromhex("41f9001548f6"):
+        raise SystemExit("White A player draw-tail boundary changed at $1494F2")
 
     chooser = [(0, 0, 0x0000, 0x1259F8, 0x1F, 8),
                (0, 0, 0x0040, 0x1259B8, 0x1F, 8),
