@@ -47,10 +47,51 @@ export function draw(ram, rom) {
   return rom.u32(RNG.table + i * 4);                       // $2433C8
 }
 
-/** D1's low word, sign-extended -- what every caller in the shot handlers uses. */
+/** D1's low word, sign-extended: what every caller in the shot handlers uses. */
 export function drawWord(ram, rom) {
   const v = draw(ram, rom) & 0xffff;
   return v >= 0x8000 ? v - 0x10000 : v;
+}
+
+function validateBoundedDraw(resources, entries) {
+  if (!resources || !Number.isSafeInteger(resources.table)
+      || resources.entries !== entries) {
+    throw new TypeError(`bounded RNG resource must supply a ${entries}-entry cartridge table`);
+  }
+  return resources;
+}
+
+function advanceSharedCounter(ram) {
+  ram.setU8(RNG.counter, (ram.u8(RNG.counter) + 1) & 0xff);
+  return u16(ram.u16(RNG.state));
+}
+
+/** Resource-bound 64-longword member used by an edition's ordinary-shot hit path. */
+export function drawWordWithResources(ram, rom, suppliedResources) {
+  const resources = validateBoundedDraw(suppliedResources, 64);
+  const index = advanceSharedCounter(ram) & 0x3f;
+  const value = rom.u32(resources.table + index * 4) & 0xffff;
+  return value >= 0x8000 ? value - 0x10000 : value;
+}
+
+/** Resource-bound unmasked signed-byte member used by the spark slot filler. */
+export function drawSignedByteWithResources(ram, rom, suppliedResources) {
+  const resources = validateBoundedDraw(suppliedResources, 256);
+  const state = advanceSharedCounter(ram);
+  const index = state >= 0x8000 ? state - 0x10000 : state;
+  const value = rom.u8(resources.table + index);
+  return value >= 0x80 ? value - 0x100 : value;
+}
+
+/** Resource-bound masked byte member used by the spark fill tail. */
+export function drawByteWithResources(ram, rom, suppliedResources) {
+  const resources = suppliedResources;
+  if (!resources || !Number.isSafeInteger(resources.table)
+      || (resources.entries !== 64 && resources.entries !== 128)) {
+    throw new TypeError('bounded byte RNG resource must supply a 64- or 128-entry cartridge table');
+  }
+  const index = advanceSharedCounter(ram) & (resources.entries - 1);
+  return rom.u8(resources.table + index);
 }
 
 // ===========================================================================

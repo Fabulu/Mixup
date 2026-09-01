@@ -109,11 +109,13 @@ export const NATIVE_SHOT_DRIVER_RESOURCES = Object.freeze([
     ownerIndex: 0, pool: SHOT.p1Table, player: SHOT.p1Rec,
     slots: SHOT.slots, stride: SHOT.stride, scrollDelta: SHOT.scrollDelta,
     liveCounter: SHOT.liveCount, presentationSink: null, requestTelemetry: true,
+    dispatchEntries: SHOT_HANDLERS, dispatchTable: SHOT.dispatch,
   }),
   Object.freeze({
     ownerIndex: 1, pool: SHOT.p2Table, player: SHOT.p2Rec,
     slots: SHOT.slots, stride: SHOT.stride, scrollDelta: SHOT.scrollDelta,
     liveCounter: SHOT.liveCount, presentationSink: null, requestTelemetry: true,
+    dispatchEntries: SHOT_HANDLERS, dispatchTable: SHOT.dispatch,
   }),
 ]);
 
@@ -138,6 +140,11 @@ function validateDriverResources(resources) {
   if (typeof resources.requestTelemetry !== 'boolean') {
     throw new TypeError('shot driver request telemetry policy must be Boolean');
   }
+  if (!Array.isArray(resources.dispatchEntries) || resources.dispatchEntries.length !== 16
+      || resources.dispatchEntries.some((address) => !Number.isSafeInteger(address))
+      || !Number.isSafeInteger(resources.dispatchTable)) {
+    throw new TypeError('shot driver resources need a 16-entry cartridge dispatch table');
+  }
   return resources;
 }
 
@@ -153,17 +160,15 @@ function driveShotPool(ram, rom, handlers, ctx, resources, scroll) {
       ram.setU16(resources.liveCounter, u16(ram.u16(resources.liveCounter) + 1));
     }
     ram.setU16(rec + 4, u16(i16(ram.u16(rec + 4)) - scroll));
-    const h = SHOT_HANDLERS[t & 0xf];
+    const h = resources.dispatchEntries[t & 0xf];
     const fn = handlers?.get(h);
     if (!fn) {
       unreached(h, `player-shot handler $${h.toString(16).toUpperCase()} `
-        + `(dispatch entry [${t & 0xf}] of the 16 at $253ADE), for the record `
+        + `(dispatch entry [${t & 0xf}] of the 16 at $${resources.dispatchTable
+          .toString(16).toUpperCase()}), for the record `
         + `at $${rec.toString(16).toUpperCase()} with type word `
-        + `$${t.toString(16).toUpperCase()}. Wave 5 measured only FOUR of the `
-        + `sixteen reached in the stage-1 opening ($253B1E $253E34 $253BDA `
-        + `$253EC6), while W497's shotHandlers() supplies every cartridge `
-        + `entry. Reaching this fallback means the caller passed an incomplete `
-        + `handler map`);
+        + `$${t.toString(16).toUpperCase()}. The caller supplied no audited `
+        + `handler for this cartridge dispatch entry`);
     }
     const q0 = resources.requestTelemetry ? ram.u16(0x80afd6) : 0;
     fn(ram, rom, rec, handlerCtx, resources.player, t & 0xff);

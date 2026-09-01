@@ -7,6 +7,7 @@ import { resolveGameProfile, WHITE_LABEL_PROFILE } from './profiles.js';
 import { requireRuntimeCapability, resolveGameRuntime } from './runtime-profile.js';
 import { asr, i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
+import { spawnWhitePlayerShot } from './white-shots.js';
 
 const P = WHITE_LABEL_PROFILE.ramLayout.playerFields;
 const RAM = WHITE_LABEL_PROFILE.ramLayout.addresses;
@@ -326,7 +327,7 @@ function finishMovement(ram, rom, rec, ctx, ownerIndex, d2, d3, skipClamps) {
     ram.setU16(rec + P.posX,
       u16(ram.u16(rec + P.posX) - ram.u16(WHITE_PLAYER.xAdjust)));
   }
-  const post = postMovement148E5E(ram, rec, ownerIndex);
+  const post = postMovement148E5E(ram, rom, rec, ctx, ownerIndex);
   return Object.freeze({ phase: 'moved', boundary: post.boundary,
     y: ram.u16(rec + P.posY), x: ram.u16(rec + P.posX) });
 }
@@ -368,7 +369,7 @@ const cadenceTail1494F2 = () => Object.freeze({
   phase: 'cadence', boundary: WHITE_PLAYER.drawTail,
 });
 
-function shotCadence1491D0(ram, rec) {
+function shotCadence1491D0(ram, rom, rec, ctx, ownerIndex) {
   const hyper = ram.btst8(rec + P.flags1, 0) !== 0;
   ram.setU8(rec + 0x56, ram.u8(rec + (hyper ? 0x55 : 0x54)));
   if (ram.u8(rec + 0x3f) !== 0) return cadenceTail1494F2();
@@ -400,31 +401,27 @@ function shotCadence1491D0(ram, rec) {
   const reload = hyper || (ship === 0 && ram.u16(rec + 0x20) === 8)
     ? 2 : ram.u8(rec + 0x2c);
   ram.setU8(rec + 0x2a, reload);
-  if (ship === 0) {
-    unreached(WHITE_PLAYER.shotShip0,
-      'the White Label ship-0 shot producer has no live type-5 consumer');
-  }
-  if (ship === 2) {
-    unreached(WHITE_PLAYER.shotShip2,
-      'the White Label ship-2 shot producer has no live type-5 consumer');
+  if (ship === 0 || ship === 2) {
+    spawnWhitePlayerShot(ram, rom, rec, ctx, ownerIndex);
+    return cadenceTail1494F2();
   }
   unreached(WHITE_PLAYER.shotInvalid,
     `the White Label shot ship selector ${ship} is outside {0, 2}`);
 }
 
 /** `$1491D0..$1494F1`: Version A's ordinary-shot cadence through its producer seam. */
-export function whiteShotCadence1491D0(ram, rec, profileRequest) {
+export function whiteShotCadence1491D0(ram, rom, rec, ctx, ownerIndex, profileRequest) {
   requireWhitePlayers(profileRequest, 'White Label Stage 1 shot cadence');
-  return shotCadence1491D0(ram, rec);
+  return shotCadence1491D0(ram, rom, rec, ctx, ownerIndex);
 }
 
-function postMovement148E5E(ram, rec, ownerIndex) {
+function postMovement148E5E(ram, rom, rec, ctx, ownerIndex) {
   autoShot148E5E(ram, rec, ownerIndex);
   if (ram.u16(WHITE_PLAYER.button2Gate) >= 4 && ram.btst8(rec + P.dirByte, 5)) {
     unreached(WHITE_PLAYER.button2Boundary,
       'the White Label held Button 2 bomb and hyper path is outside this player slice');
   }
-  return shotCadence1491D0(ram, rec);
+  return shotCadence1491D0(ram, rom, rec, ctx, ownerIndex);
 }
 
 function update(ram, rom, slot, c, ctx, ownerIndex) {

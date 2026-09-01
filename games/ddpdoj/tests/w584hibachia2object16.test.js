@@ -48,7 +48,7 @@ const W584_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const W583_TABLE = SKIP ? null : tableBeforeW584(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(W584_TABLE.rom);
 const MT = SKIP ? null : new MoveTables(W584_TABLE, ROM);
-const LIVE_TABLE_HASH = 'de89564cd0e61927e5780855f4a3ebc42c13086aedf71114ce345d63e9326ee1';
+const LIVE_TABLE_HASH = '322e5598740b7a497313c8c80978869e6e2701275cd1899a7423e00b0ae8ed60';
 const PRE_W627_TABLE_HASH = '02c3aea71c84407cdb17bfa454ddc3abac4a62171ec59c627f4d99f3cb9f439e';
 const TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const STORED_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
@@ -158,7 +158,7 @@ test('W584 table migration is strict, additive, ordered, and identity-pinned',
       TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(TABLE_JSON),
-    ], [1014, 478681, 77, 1014, 478681, LIVE_TABLE_HASH]);
+    ], [1151, 512851, 77, 1151, 512851, LIVE_TABLE_HASH]);
     assert.deepEqual([
       PRE_W627_TABLE.rom.windows.length,
       PRE_W627_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),

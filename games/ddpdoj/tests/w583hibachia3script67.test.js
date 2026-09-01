@@ -45,7 +45,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = 'de89564cd0e61927e5780855f4a3ebc42c13086aedf71114ce345d63e9326ee1';
+const LIVE_TABLE_HASH = '322e5598740b7a497313c8c80978869e6e2701275cd1899a7423e00b0ae8ed60';
 const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const STORED_W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const REC = 0x810c00;
@@ -141,10 +141,10 @@ test('W583 pins the exact raw family, table identity, registrations, and no ROM 
       HIBACHI_A3.s7Init, HIBACHI_A3.s7Step,
     ]) assert.equal(registered.filter((entry) => entry === address).length, 1);
 
-    assert.equal(ROM_WINDOW_COUNT, 1014);
+    assert.equal(ROM_WINDOW_COUNT, 1151);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 1014);
-    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 478681);
+    assert.equal(TABLE_JSON.rom.windows.length, 1151);
+    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 512851);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W583:')), []);
   });

@@ -1288,5 +1288,6 @@ export function shotCadence249B2C(ram, rec, ctx, suppliedResources, btnStale) {
     spawnShotTypeBWithResources(ram, ctx.rom, rec, ctx, resources.shotResources);
     return;
   }
-  unreached(0x249bf8, `ship selector ${ship} is outside the cartridge set {0, 2}`);
+  unreached(resources.shotResources.invalidSite,
+    `ship selector ${ship} is outside the cartridge set {0, 2}`);
 }

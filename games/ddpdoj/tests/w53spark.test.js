@@ -608,7 +608,7 @@ test('$253C18 SPAWNS the spark now -- it is not a counted note any more', () => 
   // run against the real gate in §4 of the worklog rather than here.  This one
   // exists so the unit suite notices if the call is deleted.
   const s = fs.readFileSync(new URL('../src/shots.js', import.meta.url), 'utf8');
-  assert.ok(/spawnSpark\(ram, rom, ctx, rec,\s*shotSparkAllocatorPlayer\(ctx, prec\)\);/.test(s),
+  assert.ok(/lifecycleSpark\(ram, rom, ctx, rec,\s*shotSparkAllocatorPlayer\(ctx, prec\), resources\);/.test(s),
     '$253C1A jsr $289F54 keeps A6 as the shot and selects the exact spark-pool player');
   assert.ok(!/note\(0x289f54/.test(s),
     'and the wave-8 note that called it "the $289xxx effect family, unported" is gone');

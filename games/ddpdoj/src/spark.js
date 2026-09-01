@@ -167,6 +167,7 @@ import { BUCKETS, ENQUEUE_MASK, NO_ZOOM_OR } from './spritequeue.js';
 import {
   drawByte242E24, drawSigned242FFC, drawByte28ABE0,
   drawNegative242EC2, drawByte28AB86, drawByte24311A,
+  drawSignedByteWithResources, drawByteWithResources,
 } from './rng.js';
 
 export const SPARK = {
@@ -199,7 +200,73 @@ export const SPARK = {
   p2Power: 0x81046a,         // $28A28E move.w $81046A,D1   (D7 > 0)
 };
 
-/** `$289FC0` and `$289FDA`, the two heads, and the fields they differ in.
+export const NATIVE_SPARK_RESOURCES = Object.freeze({
+  p1Base: SPARK.p1Base,
+  p2Base: SPARK.p2Base,
+  stride: SPARK.stride,
+  perPlayer: SPARK.perPlayer,
+  perPlayerNarrow: SPARK.perPlayerNarrow,
+  slots: SPARK.slots,
+  count: SPARK.count,
+  budget: SPARK.budget,
+  budgetReload: SPARK.budgetReload,
+  clearWords: SPARK.clearWords,
+  gateAlloc: SPARK.gateAlloc,
+  gateWidth: SPARK.gateWidth,
+  bucket: SPARK.bucket,
+  emitTable: SPARK.emitTable,
+  ptrTable: SPARK.ptrTable,
+  fillTable: SPARK.fillTable,
+  kindSpark: SPARK.kindSpark,
+  cullY: SPARK.cullY,
+  posShift: SPARK.posShift,
+  p1PlayerRec: SPARK.p1PlayerRec,
+  signedRng: Object.freeze({ table: 0x24301a, entries: 256 }),
+  speedRng: Object.freeze({ table: 0x242e42, entries: 128 }),
+  angleRng: Object.freeze({ table: 0x28abfa, entries: 64 }),
+  allocatorSite: 0x289f54,
+  allocatorFailureSite: 0x289f4e,
+  poolFullSite: 0x28a078,
+  slotFillerSite: 0x28a1da,
+  shotFillTailSite: 0x28a39e,
+  driverSite: 0x28a098,
+  driverWalkSite: 0x28a0fa,
+});
+
+function validateSparkResources(resources) {
+  const exact = [
+    ['p1Base', SPARK.p1Base], ['p2Base', SPARK.p2Base],
+    ['stride', SPARK.stride], ['perPlayer', SPARK.perPlayer],
+    ['perPlayerNarrow', SPARK.perPlayerNarrow], ['slots', SPARK.slots],
+    ['count', SPARK.count], ['budget', SPARK.budget],
+    ['budgetReload', SPARK.budgetReload], ['clearWords', SPARK.clearWords],
+    ['gateAlloc', SPARK.gateAlloc], ['gateWidth', SPARK.gateWidth],
+    ['bucket', SPARK.bucket], ['kindSpark', SPARK.kindSpark],
+    ['cullY', SPARK.cullY], ['posShift', SPARK.posShift],
+    ['p1PlayerRec', SPARK.p1PlayerRec],
+  ];
+  if (!resources || exact.some(([key, value]) => resources[key] !== value)) {
+    throw new TypeError('shot spark resources must preserve the native pool geometry');
+  }
+  for (const key of ['emitTable', 'ptrTable', 'fillTable', 'allocatorSite',
+    'allocatorFailureSite', 'poolFullSite', 'slotFillerSite', 'shotFillTailSite',
+    'driverSite', 'driverWalkSite']) {
+    if (!Number.isSafeInteger(resources[key])) {
+      throw new TypeError(`shot spark resource ${key} must be a cartridge address`);
+    }
+  }
+  if (!Number.isSafeInteger(resources.signedRng?.table)
+      || resources.signedRng.entries !== 256
+      || !Number.isSafeInteger(resources.speedRng?.table)
+      || resources.speedRng.entries !== 128
+      || !Number.isSafeInteger(resources.angleRng?.table)
+      || resources.angleRng.entries !== 64) {
+    throw new TypeError('shot spark resources require exact signed, speed, and angle RNG tables');
+  }
+  return resources;
+}
+
+/** `$289FC0` and `$289FDA`, the two heads and the fields they differ in.
  *  Exported so `tests/` and `tools/export-tables.py` name them once. */
 export const BEAM_IMPACT = Object.freeze([
   { at: 0x289fc0, caller: 0x255066, base: SPARK.p1Base, d7: 0, power: SPARK.p1Power },
@@ -250,10 +317,15 @@ export const E = {
  *  "not started" branch, which `src/type5.js` throws for, so nothing in the
  *  port reaches this today.  It is here because a pool that survives a reset it
  *  should not is `50-recon` §4.3 item 6's named hazard. */
-export function clearPool(ram) {
-  for (let i = 0; i < SPARK.clearWords; i++) {           // $289F44 dbra
-    ram.setU16(SPARK.p1Base + i * 2, 0);
+export function clearPoolWithResources(ram, suppliedResources) {
+  const resources = validateSparkResources(suppliedResources);
+  for (let i = 0; i < resources.clearWords; i++) {
+    ram.setU16(resources.p1Base + i * 2, 0);
   }
+}
+
+export function clearPool(ram) {
+  clearPoolWithResources(ram, NATIVE_SPARK_RESOURCES);
 }
 
 /**
@@ -266,7 +338,9 @@ export function clearPool(ram) {
  * not an accident -- it is what lets `$28A08A dbra D2,$28A06C` keep scanning
  * from the right place when D1 asks for a second record.
  */
-function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0, d7 = 0) {
+function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0, d7 = 0,
+  suppliedResources = NATIVE_SPARK_RESOURCES) {
+  const resources = validateSparkResources(suppliedResources);
   //                                                 $28A1DC move.w D0,D3
   ram.setU16(slot + E.status, u16(d0 | 0x8000));   // $28A1DE ori.w #$8000
   ram.setU16(slot + E.selector, rom.u16(tpl));     // $28A1E4 move.w (A2)+,(A0)+
@@ -282,7 +356,7 @@ function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0, d7 = 0) {
   if (d3 & 0x8000) {                               // $28A1FC bpl $28A204
     d3 = ram.u8(spawner + 0x1d);                   // $28A1FE moveq #0 / move.b
   }
-  if (drawSigned242FFC(ram, rom) === 0) {          // $28A204 jsr / $28A20A bne
+  if (drawSignedByteWithResources(ram, rom, resources.signedRng) === 0) {
     d3 = u16(d3 | 0x2000);                         // $28A20C ori.w #$2000,D3
   }
   ram.setU16(slot + E.attr, d3);                   // $28A210 move.w D3,(A0)+
@@ -294,15 +368,15 @@ function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0, d7 = 0) {
   ram.setU32(slot + E.delayA, rom.u32(tpl + 0x0c));      // $28A216 move.l (A2)+,(A0)+
   ram.setU32(slot + E.list, rom.u32(tpl + 0x10));        // $28A218 move.l (A2)+,(A0)+
   ram.setU16(slot + E.delayB, rom.u16(tpl + 0x14));      // $28A21A move.w (A2)+,(A0)+
-  ram.setU16(SPARK.count, u16(ram.u16(SPARK.count) + 1)); // $28A21C addq.w #1
+  ram.setU16(resources.count, u16(ram.u16(resources.count) + 1)); // $28A21C addq.w #1
   // $28A222 lea ($28A232,PC),A2 / adda.w D0,A2 / movea.l (A2),A2 / jmp (A2)
   // $28A222 lea ($28A232,PC),A2 / adda.w D0,A2 / movea.l (A2),A2 / jmp (A2).
   // W53 transcribed entry 5 ($14, the shot spark); **W65 adds entry 0**, which
   // is the one and only kind `$289FF4` passes ($28A012 moveq #$0,D0) and so the
   // one the LASER BOMB reaches.  The remaining six still throw by address.
   if (d0 === 0) return fillTail28A252(ram, rom, ctx, slot, d7);   // $28A232[0]
-  if (d0 !== SPARK.kindSpark) {
-    unreached(SPARK.fillTable + d0,
+  if (d0 !== resources.kindSpark) {
+    unreached(resources.fillTable + d0,
       `$28A22C jmp (A2) -- pool E's fill tail for kind $${d0.toString(16)
         .toUpperCase()} (entry ${d0 / 4} of the eight at $28A232). W53 `
       + `transcribed entry 5 ($14, every $289F54 site) and W65 entry 0 `
@@ -310,7 +384,7 @@ function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0, d7 = 0) {
       + `$289FC0 / $289FDA -- the BEAM's three producers -- which no wave has `
       + `ported`);
   }
-  return fillTail28A39E(ram, rom, ctx, slot, spawner);
+  return fillTail28A39E(ram, rom, ctx, slot, spawner, resources);
 }
 
 /**
@@ -606,11 +680,12 @@ export function spawnBeamBody289F96(ram, rom, ctx, spawner) {
  * `$241D34` is `MoveTables.shotVector`, ported since wave 8 -- and its speed
  * index reaches $24 = 36, which is inside the exported level set (0..36).
  */
-function fillTail28A39E(ram, rom, ctx, slot, spawner) {
-  let d0 = drawByte242E24(ram, rom);               // $28A3A2 jsr $242E24
+function fillTail28A39E(ram, rom, ctx, slot, spawner, suppliedResources) {
+  const resources = validateSparkResources(suppliedResources);
+  let d0 = drawByteWithResources(ram, rom, resources.speedRng);
   d0 = (d0 + 8) & 0xff;                            // $28A3A8 addq.b #8,D0
   if (d0 >= 0x24) d0 = 0x24;                       // $28A3AA/$28A3B0
-  let d1 = drawByte28ABE0(ram, rom);               // $28A3B2 bsr $28ABE0
+  let d1 = drawByteWithResources(ram, rom, resources.angleRng);
   d1 = (d1 + ram.u8(spawner + 0x1b)) & 0xff;       // $28A3B6 add.b ($1b,A6),D1
   const v = ctx.tables.shotVector(d0, d1);         // $28A3BA jsr $241D34
   ram.setU16(slot + E.vel, u16(v.dy));             // $28A3C0 move.w D2,(A0)+
@@ -619,7 +694,7 @@ function fillTail28A39E(ram, rom, ctx, slot, spawner) {
   const d3x4 = u16(u16(v.dx + v.dx) + u16(v.dx + v.dx));  // $28A3C6/$28A3C8
   ram.setU16(slot + E.pos, u16(ram.u16(slot + E.pos) + d2x4));       // $28A3CC
   ram.setU16(slot + E.pos + 2, u16(ram.u16(slot + E.pos + 2) + d3x4)); // $28A3D0
-  return slot + SPARK.stride;                      // $28A3CA left A0 here
+  return slot + resources.stride;                  // $28A3CA left A0 here
 }
 
 /**
@@ -634,13 +709,16 @@ function fillTail28A39E(ram, rom, ctx, slot, spawner) {
  *                counts it, because W33 §4's leak was four green waves of a
  *                failure nobody counted.
  */
-export function spawnSpark(ram, rom, ctx, spawner, player, d0 = SPARK.kindSpark) {
-  if (ram.u16(SPARK.gateAlloc) !== 0) {                  // $289F54 tst.w $813098
-    ctx?.unportedLog?.note(0x289f4e, `$289F5A bne $289F4E -- pool E's allocator `
-      + `took its $813098 FAILURE RETURN (ori #1,SR). No spark was spawned`);
+export function spawnSparkWithResources(ram, rom, ctx, spawner, player,
+  suppliedResources, d0 = suppliedResources?.kindSpark) {
+  const resources = validateSparkResources(suppliedResources);
+  if (ram.u16(resources.gateAlloc) !== 0) {                // $289F54 tst.w $813098
+    ctx?.unportedLog?.note(resources.allocatorFailureSite, `pool E's allocator took its `
+      + `$813098 FAILURE RETURN at $${resources.allocatorFailureSite.toString(16)
+        .toUpperCase()} (ori #1,SR). No spark was spawned`);
     return false;
   }
-  ram.setU8(0x803917, (ram.u8(0x803917) + 1) & 0xff);    // $289F62 addq.b #1
+  ram.setU8(0x803917, (ram.u8(0x803917) + 1) & 0xff);      // $289F62 addq.b #1
   // $289F68 move.w $803916,D5 / $289F6E add.w D5,D5 / $289F70 add.w D5,D5.
   // BOTH doublings are WORD ops, so D5 wraps at $10000, and `$289F78
   // movea.l (A2,D5.w),A2` then SIGN-EXTENDS it -- a state above $3FFF would
@@ -649,11 +727,17 @@ export function spawnSpark(ram, rom, ctx, spawner, player, d0 = SPARK.kindSpark)
   // `src/rng.js` RNG_242FDE makes for its own unmasked read), and the ROM
   // window turns it into a loud named throw rather than a wrong template if
   // that ever stops being true.
-  const d5 = i16(u16(u16(ram.u16(0x803916)) * 2) * 2);   // $289F68..$289F70
-  const tpl = rom.u32(SPARK.ptrTable + d5);              // $289F78 movea.l (A2,D5.w)
-  const a0 = player === SPARK.p1PlayerRec                // $289F82 cmpa.l
-    ? SPARK.p1Base : SPARK.p2Base;
-  return poolETail(ram, rom, ctx, a0, tpl, spawner, d0, 0, 0x289f54);
+  const d5 = i16(u16(u16(ram.u16(0x803916)) * 2) * 2);     // $289F68..$289F70
+  const tpl = rom.u32(resources.ptrTable + d5);            // $289F78 movea.l (A2,D5.w)
+  const a0 = player === resources.p1PlayerRec              // $289F82 cmpa.l
+    ? resources.p1Base : resources.p2Base;
+  return poolETail(ram, rom, ctx, a0, tpl, spawner, d0, 0,
+    resources.allocatorSite, 0, resources);
+}
+
+export function spawnSpark(ram, rom, ctx, spawner, player, d0 = SPARK.kindSpark) {
+  return spawnSparkWithResources(ram, rom, ctx, spawner, player,
+    NATIVE_SPARK_RESOURCES, d0);
 }
 
 /**
@@ -671,10 +755,12 @@ export function spawnSpark(ram, rom, ctx, spawner, player, d0 = SPARK.kindSpark)
  * @param d7 the head's D7 -- 0 from `$289F54`, `$FFFF` from `$289FF4`.
  * @returns {boolean} false on the `$28A078` "no free slot" failure return.
  */
-function poolETail(ram, rom, ctx, base, tpl, spawner, d0, d7, site, d1In = 0) {
+function poolETail(ram, rom, ctx, base, tpl, spawner, d0, d7, site, d1In = 0,
+  suppliedResources = NATIVE_SPARK_RESOURCES) {
+  const resources = validateSparkResources(suppliedResources);
   let a0 = base;
-  let d2 = ram.u16(SPARK.gateWidth) !== 0                // $28A062/$28A068
-    ? SPARK.perPlayer - 1 : SPARK.perPlayerNarrow - 1;   // $28A060/$28A06A moveq
+  let d2 = ram.u16(resources.gateWidth) !== 0              // $28A062/$28A068
+    ? resources.perPlayer - 1 : resources.perPlayerNarrow - 1; // $28A060/$28A06A moveq
   // D1 IS THE EXTRA-RECORD COUNTER, AND IT IS NOT ALWAYS ZERO. `$289F60`, `$289FF8` and
   // `$289FC4` all `moveq #$0,D1`, which is why this was a constant until W324 -- but
   // `$289F9A moveq #$1,D1` is the fourth head into this same tail, and one extra pass of the
@@ -682,16 +768,16 @@ function poolETail(ram, rom, ctx, base, tpl, spawner, d0, d7, site, d1In = 0) {
   let d1 = d1In;
   for (;;) {
     if (ram.u16(a0 + E.status) === 0) {                  // $28A06C tst.w (A0)
-      a0 = fillSlot(ram, rom, ctx, a0, tpl, spawner, d0, d7);  // $28A082 bsr
+      a0 = fillSlot(ram, rom, ctx, a0, tpl, spawner, d0, d7, resources); // $28A082 bsr
       if (--d1 < 0) return true;                         // $28A086 subq/bcs
       if (d2-- === 0) return true;                       // $28A08A dbra -> $28A08E
       continue;
     }
-    a0 += SPARK.stride;                                  // $28A070 lea ($22,A0),A0
-    if (d2-- === 0) {                                    // $28A074 dbra D2
-      ctx?.unportedLog?.note(0x28a078, `$28A078 -- pool E's allocator (entered `
+    a0 += resources.stride;                                // $28A070 lea ($22,A0),A0
+    if (d2-- === 0) {                                      // $28A074 dbra D2
+      ctx?.unportedLog?.note(resources.poolFullSite, `pool E's allocator (entered `
         + `at $${site.toString(16).toUpperCase()}) found NO FREE SLOT in the `
-        + `player's ${ram.u16(SPARK.gateWidth) !== 0 ? 30 : 15} and returned `
+        + `player's ${ram.u16(resources.gateWidth) !== 0 ? 30 : 15} and returned `
         + `FAILURE (ori #1,SR). The record was DISCARDED. This is the event `
         + `W33 4 says must be counted rather than assumed impossible`);
       return false;
@@ -742,15 +828,16 @@ export const EMIT_ENTRY = Object.freeze({
  * @returns {{records:number, live:number, freed:number}} telemetry; the ROM
  *          returns nothing.  Nothing in the port's own path reads it.
  */
-export function runSparkDriver(ram, rom, ctx) {
-  const bucket = BUCKETS[SPARK.bucket];
+export function runSparkDriverWithResources(ram, rom, ctx, suppliedResources) {
+  const resources = validateSparkResources(suppliedResources);
+  const bucket = BUCKETS[resources.bucket];
   const d0zero = 0;                                       // $28A098 moveq #$0,D0
   // $28A09A..$28A0AE.  With D0 = 0 the `sub.w` never borrows, so `$28A0AA
   // clr.w $81DB8E` is transcribed-and-unexercised: the budget is always $D0.
-  let budget = u16(SPARK.budgetReload - d0zero);
-  if (SPARK.budgetReload - d0zero < 0) budget = 0;        // $28A0A8 bcc / $28A0AA
-  ram.setU16(SPARK.budget, budget);
-  const live = ram.u16(SPARK.count);                      // $28A0B0 move.w $81DB8C,D7
+  let budget = u16(resources.budgetReload - d0zero);
+  if (resources.budgetReload - d0zero < 0) budget = 0;    // $28A0A8 bcc / $28A0AA
+  ram.setU16(resources.budget, budget);
+  const live = ram.u16(resources.count);                  // $28A0B0 move.w $81DB8C,D7
   if (live === 0) return { records: 0, live: 0, freed: 0 };  // $28A0B6 beq $28A096
   let d7 = live - 1;                                      // $28A0B8 subq.w #1,D7
   // $28A0BA..$28A0C8.  D6's HIGH word is -($803912) and is READ BY NOTHING; only
@@ -762,23 +849,23 @@ export function runSparkDriver(ram, rom, ctx) {
   // $28A0CA..$28A0D0: D5 = $7000 in the HIGH word, the budget in the LOW word.
   // `$28A102 subq.w #1,D5` is a WORD op: it never borrows into the high word, so
   // the high half stays $7000 for the whole frame and only `budget` moves.
-  const d5hi = (SPARK.cullY << 16) >>> 0;
-  const d4 = SPARK.posShift;                              // $28A0D6 moveq #$6,D4
+  const d5hi = (resources.cullY << 16) >>> 0;
+  const d4 = resources.posShift;                           // $28A0D6 moveq #$6,D4
   const d3 = ENQUEUE_MASK;                                // $28A0D8 move.l #$07FF03FF
   const d2 = NO_ZOOM_OR;                                  // $28A0DE move.l #$80008000
-  let a6 = SPARK.p1Base;                                  // $28A0E6 lea $81D394,A6
+  let a6 = resources.p1Base;                              // $28A0E6 lea $81D394,A6
   const a4start = bucket.buffer;                          // $28A0EC lea $808FA4,A4
   let a4 = a4start;                                       // $28A0F2 move.l A4,-(A7)
-  const poolEnd = SPARK.p1Base + SPARK.slots * SPARK.stride;
+  const poolEnd = resources.p1Base + resources.slots * resources.stride;
   let records = 0, freed = 0;
 
   for (;;) {
     // $28A0FA move.w (A6)+,D0 / beq $28A0F6 lea ($20,A6),A6 -- skip a FREE slot
     // WITHOUT consuming a dbra.
     while (ram.u16(a6 + E.status) === 0) {                // $28A0FC beq
-      a6 += SPARK.stride;                                 // $28A0F6 lea ($20,A6)
+      a6 += resources.stride;                             // $28A0F6 lea ($20,A6)
       if (a6 >= poolEnd) {
-        unreached(0x28a0fa, `$28A0FA walked past $${poolEnd.toString(16)
+        unreached(resources.driverWalkSite, `pool E's driver walked past $${poolEnd.toString(16)
           .toUpperCase()}, the end of pool E's 60 slots, still looking for the `
           + `${d7 + 1} live record(s) $81DB8C claims. The count word and the `
           + `slots disagree -- the ROM has no guard here and would read the `
@@ -787,9 +874,9 @@ export function runSparkDriver(ram, rom, ctx) {
     }
     if (budget === 0) {                                   // $28A0FE tst.w D5 / beq
       ram.setU16(a6 + E.status, 0);                       // $28A116 clr.w (-$2,A6)
-      ram.setU16(SPARK.count, u16(ram.u16(SPARK.count) - 1));  // $28A11A subq.w #1
+      ram.setU16(resources.count, u16(ram.u16(resources.count) - 1)); // $28A11A subq.w #1
       freed++;
-      a6 += SPARK.stride;                                 // $28A120 lea ($20,A6)
+      a6 += resources.stride;                              // $28A120 lea ($20,A6)
       if (d7-- === 0) break;                              // $28A124 dbra D7
       continue;
     }
@@ -797,7 +884,7 @@ export function runSparkDriver(ram, rom, ctx) {
     const d5 = (d5hi | budget) >>> 0;
     const sel = ram.u16(a6 + E.selector);                 // $28A104 move.w (A6)+,D0
     if (!(sel in EMIT_ENTRY)) {                           // $28A106..$28A110
-      unreached(0x28a140, `pool E's emitter selector ($2,A6) = $${sel.toString(16)
+      unreached(resources.emitTable, `pool E's emitter selector ($2,A6) = $${sel.toString(16)
         .toUpperCase()} is a raw BYTE offset into the FOUR-entry table $28A140 `
         + `and only 0, 4, 8 and $C are entries. The longword at $28A150 is `
         + `\`532E 0016\` = subq.b #1,($16,A6) -- CODE -- so the board would jmp `
@@ -827,9 +914,9 @@ export function runSparkDriver(ram, rom, ctx) {
       ram.setU16(a6 + E.cursor, u16(cur - 4));            // $28A160 subq.w #4
       if (cur < 4) {                                      // $28A164 bcs $28A1A0
         ram.setU16(a6 + E.status, 0);                     // $28A1A0 clr.w (-$4,A6)
-        ram.setU16(SPARK.count, u16(ram.u16(SPARK.count) - 1));  // $28A1A4
+        ram.setU16(resources.count, u16(ram.u16(resources.count) - 1)); // $28A1A4
         freed++;
-        a6 += SPARK.stride;                               // $28A1AA lea ($1e,A6)
+        a6 += resources.stride;                            // $28A1AA lea ($1e,A6)
         if (d7-- === 0) break;                            // $28A1AE dbra D7
         continue;
       }
@@ -845,9 +932,9 @@ export function runSparkDriver(ram, rom, ctx) {
     // $28A178 tst.w D6 / bmi $28A180 -- skip the cull when $80390C is negative.
     if (!cullSkip && d0 >= d5) {                          // $28A17C cmp.l D5,D0 / bcc
       ram.setU16(a6 + E.status, 0);                       // $28A1BC clr.w (-$8,A6)
-      ram.setU16(SPARK.count, u16(ram.u16(SPARK.count) - 1));  // $28A1C0
+      ram.setU16(resources.count, u16(ram.u16(resources.count) - 1)); // $28A1C0
       freed++;
-      a6 += SPARK.stride;                                 // $28A1C6 lea ($1a,A6)
+      a6 += resources.stride;                              // $28A1C6 lea ($1a,A6)
       if (d7-- === 0) break;                              // $28A1CA dbra D7
       continue;
     }
@@ -868,7 +955,7 @@ export function runSparkDriver(ram, rom, ctx) {
     ram.setU16(a4 + 8, ram.u16(a6 + E.size));             // $28A18A move.w (A6)+,(A4)+
     ram.setU16(a4 + 10, ram.u16(a6 + E.attr));            // $28A18C move.w (A6),(A4)+
     a4 += 12; records++;
-    a6 += SPARK.stride;                                   // $28A18E lea ($14,A6),A6
+    a6 += resources.stride;                               // $28A18E lea ($14,A6),A6
     if (d7-- === 0) break;                                // $28A192 dbra D7
   }
   // $28A128/$28A196/$28A1B2/$28A1CE -- all four exits do the same two
@@ -877,6 +964,13 @@ export function runSparkDriver(ram, rom, ctx) {
   // shared with a per-record producer inside one frame.
   ram.setU16(bucket.counter, u16(a4 - a4start));
   return { records, live, freed };
+}
+
+export function runSparkDriver(ram, rom, ctx) {
+  const resources = SPARK.budgetReload === NATIVE_SPARK_RESOURCES.budgetReload
+    ? NATIVE_SPARK_RESOURCES
+    : { ...NATIVE_SPARK_RESOURCES, budgetReload: SPARK.budgetReload };
+  return runSparkDriverWithResources(ram, rom, ctx, resources);
 }
 
 /** `$28A132` -- delay counter A.  Returns whether the animation advances.

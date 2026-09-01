@@ -51,8 +51,8 @@ import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueShotSprite, enqueueZoomedRequest } from './spritequeue.js';
 import { SHOT } from './weapons.js';
-import { drawWord } from './rng.js';
-import { spawnSpark } from './spark.js';
+import { drawWord, drawWordWithResources } from './rng.js';
+import { spawnSpark, spawnSparkWithResources } from './spark.js';
 
 /** Record offsets, named once. */
 export const S = {
@@ -115,6 +115,12 @@ export const NATIVE_SHOT_RESOURCES = Object.freeze([
     primaryTable: SPAWN.ptrPrimary,
     secondaryTable: SPAWN.ptrSecondary,
     typeBTable: SPAWN.ptrTypeB,
+    ship0Sound: 0x28c3ba,
+    ship2Sound: 0x28c3d4,
+    hyperSound: 0x28c3ee,
+    ship0Site: SPAWN.ship0,
+    ship2Site: SPAWN.ship2,
+    invalidSite: SPAWN.jumpTable,
     soundPolicy: 'native',
   }),
   Object.freeze({
@@ -127,6 +133,12 @@ export const NATIVE_SHOT_RESOURCES = Object.freeze([
     primaryTable: SPAWN.ptrPrimary,
     secondaryTable: SPAWN.ptrSecondary,
     typeBTable: SPAWN.ptrTypeB,
+    ship0Sound: 0x28c3ba,
+    ship2Sound: 0x28c3d4,
+    hyperSound: 0x28c3ee,
+    ship0Site: SPAWN.ship0,
+    ship2Site: SPAWN.ship2,
+    invalidSite: SPAWN.jumpTable,
     soundPolicy: 'native',
   }),
 ]);
@@ -138,15 +150,28 @@ function validateShotResources(resources) {
       || !Number.isSafeInteger(resources.gate308c)
       || !Number.isSafeInteger(resources.primaryTable)
       || !Number.isSafeInteger(resources.secondaryTable)
-      || !Number.isSafeInteger(resources.typeBTable)) {
+      || !Number.isSafeInteger(resources.typeBTable)
+      || !Number.isSafeInteger(resources.ship0Sound)
+      || !Number.isSafeInteger(resources.ship2Sound)
+      || !Number.isSafeInteger(resources.hyperSound)
+      || !Number.isSafeInteger(resources.ship0Site)
+      || !Number.isSafeInteger(resources.ship2Site)
+      || !Number.isSafeInteger(resources.invalidSite)) {
     throw new TypeError('ordinary-shot resources must supply owner, pool, counters, and cartridge tables');
   }
   if (resources.slots !== SHOT.slots || resources.stride !== SHOT.stride) {
     throw new RangeError(`ordinary-shot pool must be ${SHOT.slots} records of $${
       SHOT.stride.toString(16)} bytes`);
   }
-  if (resources.soundPolicy !== 'native' && resources.soundPolicy !== 'silent') {
-    throw new TypeError('ordinary-shot resources require a native or silent sound policy');
+  if (!['native', 'mapped', 'silent'].includes(resources.soundPolicy)) {
+    throw new TypeError('ordinary-shot resources require a native, mapped, or silent sound policy');
+  }
+  if (resources.soundPolicy === 'mapped') {
+    if (!resources.soundRequestMap || [resources.ship0Sound, resources.ship2Sound,
+      resources.hyperSound].some((request) =>
+      !Number.isSafeInteger(resources.soundRequestMap[request]))) {
+      throw new TypeError('mapped ordinary-shot sounds require exact wrapper aliases');
+    }
   }
   return resources;
 }
@@ -270,9 +295,11 @@ function failPlayerShotAllocation(ram, prec) {
 function postPlayerShotSound(ram, prec, ctx, normalRequest, hyper, resources) {
   if (ram.u8(prec + PS.soundGate) !== 0) return;
   ram.setU8(prec + PS.soundGate, 2);
-  if (resources.soundPolicy === 'native') {
-    ctx?.soundPost?.(hyper ? 0x28c3ee : normalRequest);
-  }
+  if (resources.soundPolicy === 'silent') return;
+  const request = hyper ? resources.hyperSound : normalRequest;
+  const runtimeRequest = resources.soundPolicy === 'mapped'
+    ? resources.soundRequestMap[request] : request;
+  ctx?.soundPost?.(runtimeRequest);
 }
 
 function noteShotSpawn(resources, ctx, kind, ...records) {
@@ -301,7 +328,8 @@ export function spawnShotWithResources(ram, rom, prec, ctx, suppliedResources) {
 
   const form = u16(ram.u16(prec + PS.formation));                   // $249C28
   if (form !== 2 && form !== 4 && form !== 6) {
-    unreached(0x249c2c, `style selector ${form} is outside the cartridge set {2, 4, 6}`);
+    unreached(resources.ship0Site,
+      `style selector ${form} is outside the cartridge set {2, 4, 6}`);
   }
   let d0 = u16((form - 2) << 2);                                    // $249C2C
   if (hyper) d0 = u16(d0 + 4);                                      // $249C3A
@@ -326,7 +354,7 @@ export function spawnShotWithResources(ram, rom, prec, ctx, suppliedResources) {
     }
     fillShotRecord(ram, rom, a0, primary, prec, true);              // $249D00
     noteShotSpawn(resources, ctx, 'single', a0);
-    postPlayerShotSound(ram, prec, ctx, 0x28c3ba, hyper, resources);
+    postPlayerShotSound(ram, prec, ctx, resources.ship0Sound, hyper, resources);
     return;
   }
 
@@ -367,7 +395,7 @@ export function spawnShotWithResources(ram, rom, prec, ctx, suppliedResources) {
     if (found < 0) return;                     // $249CB8 tst.w D7 / bmi $249E4E
   }
 
-  postPlayerShotSound(ram, prec, ctx, 0x28c3ba, hyper, resources);    // $249D04..$249D26
+  postPlayerShotSound(ram, prec, ctx, resources.ship0Sound, hyper, resources);    // $249D04..$249D26
 }
 
 /** `$249D2C..$249E4C`: the ship-selector-2 player shot spawn. */
@@ -384,7 +412,8 @@ export function spawnShotTypeBWithResources(ram, rom, prec, ctx, suppliedResourc
   let d7 = hyper ? 6 : rom.u16(countPtr);                           // $249D4A..$249D54
   const form = u16(ram.u16(prec + PS.formation));
   if (form !== 2 && form !== 4 && form !== 6) {
-    unreached(0x249d5c, `style selector ${form} is outside the cartridge set {2, 4, 6}`);
+    unreached(resources.ship2Site,
+      `style selector ${form} is outside the cartridge set {2, 4, 6}`);
   }
   let d0 = u16((form - 2) << 2);                                    // $249D58..$249D60
   if (hyper) d0 = u16(d0 + 4);                                      // $249D62..$249D6A
@@ -407,7 +436,7 @@ export function spawnShotTypeBWithResources(ram, rom, prec, ctx, suppliedResourc
     }
     fillShotRecord(ram, rom, rec, template, prec, true);            // $249E28
     noteShotSpawn(resources, ctx, 'type-b-single', rec);
-    postPlayerShotSound(ram, prec, ctx, 0x28c3d4, hyper, resources);
+    postPlayerShotSound(ram, prec, ctx, resources.ship2Sound, hyper, resources);
     return;
   }
 
@@ -446,7 +475,7 @@ export function spawnShotTypeBWithResources(ram, rom, prec, ctx, suppliedResourc
   fillShotRecord(ram, rom, second, template, prec);                 // $249DE8
   fillShotRecord(ram, rom, first, template + 0x26, prec, true);     // $249DEE
   noteShotSpawn(resources, ctx, 'type-b-pair', first, second);
-  postPlayerShotSound(ram, prec, ctx, 0x28c3d4, hyper, resources);    // $249E2C..$249E4C
+  postPlayerShotSound(ram, prec, ctx, resources.ship2Sound, hyper, resources);    // $249E2C..$249E4C
 }
 
 // ---------------------------------------------------------------- handlers
@@ -498,6 +527,63 @@ function emitZoomedShotSprite(ram, rec, ctx, flags) {
 // and despawns the shot when it borrows.  `bset` returns the OLD bit, so `beq`
 // is "this is the first hit".
 
+export const NATIVE_SHOT_LIFECYCLE_RESOURCES = Object.freeze({
+  gate308c: SPAWN.gate308c,
+  hitRng: Object.freeze({ table: 0x2433d0, entries: 64 }),
+  impactSound: 0x28c714,
+  impactSoundRequest: 0x28c714,
+  sparkResources: null,
+  families: Object.freeze({
+    0: Object.freeze({ normal: 0x24ddd6, hit: 0x24deb2 }),
+    1: Object.freeze({ normal: 0x24e512, hit: 0x24e5ee }),
+    4: Object.freeze({ normal: 0x24ec72, hit: 0x24ed4e }),
+    5: Object.freeze({ normal: 0x24f3d2, hit: 0x24f4ae }),
+  }),
+});
+
+const VALIDATED_IMMUTABLE_LIFECYCLE_RESOURCES = new WeakSet();
+
+function validateLifecycleResources(resources) {
+  if (resources != null && VALIDATED_IMMUTABLE_LIFECYCLE_RESOURCES.has(resources)) {
+    return resources;
+  }
+  if (!resources || !Number.isSafeInteger(resources.gate308c)
+      || !Number.isSafeInteger(resources.impactSound)
+      || !Number.isSafeInteger(resources.impactSoundRequest)
+      || !resources.hitRng || !Number.isSafeInteger(resources.hitRng.table)
+      || resources.hitRng.entries !== 64 || !resources.families) {
+    throw new TypeError('shot lifecycle resources must supply gates, RNG, sound, and family tables');
+  }
+  for (const family of [0, 1, 4, 5]) {
+    const row = resources.families[family];
+    if (!row || !Number.isSafeInteger(row.normal) || !Number.isSafeInteger(row.hit)) {
+      throw new TypeError(`shot lifecycle family ${family} needs normal and hit tables`);
+    }
+  }
+  if (Object.isFrozen(resources) && Object.isFrozen(resources.hitRng)
+      && Object.isFrozen(resources.families)
+      && [0, 1, 4, 5].every((family) => Object.isFrozen(resources.families[family]))) {
+    VALIDATED_IMMUTABLE_LIFECYCLE_RESOURCES.add(resources);
+  }
+  return resources;
+}
+
+function lifecycleDrawWord(ram, rom, resources) {
+  if (resources === NATIVE_SHOT_LIFECYCLE_RESOURCES) return drawWord(ram, rom);
+  return drawWordWithResources(ram, rom, resources.hitRng);
+}
+
+function postLifecycleImpactSound(ctx, resources) {
+  // Keep impactSound as the edition's authentic wrapper identity. The request
+  // field binds that identity to the wrapper implemented by the live sound runtime.
+  return ctx?.soundPost?.(resources.impactSoundRequest);
+}
+
+function lifecycleSpark(ram, rom, ctx, rec, player, resources) {
+  if (resources.sparkResources == null) return spawnSpark(ram, rom, ctx, rec, player);
+  return spawnSparkWithResources(ram, rom, ctx, rec, player, resources.sparkResources);
+}
+
 function shotSparkAllocatorPlayer(ctx, semanticPlayer) {
   const allocatorPlayer = ctx?.shotSparkAllocatorPlayer ?? semanticPlayer;
   if (!Number.isSafeInteger(allocatorPlayer)) {
@@ -509,7 +595,9 @@ function shotSparkAllocatorPlayer(ctx, semanticPlayer) {
 /** `$253C10..$253C94` (entry [0]) and `$253EEE..$253F52` (entry [2]) -- the
  *  FIRST hit.  Everything that differs between the two is a parameter here and
  *  is named at the instruction it comes from. */
-function firstHit(ram, rom, rec, ctx, v, prec) {
+function firstHit(ram, rom, rec, ctx, v, prec,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
   // WAVE 53 (E5a) -- THE SHOT'S IMPACT SPARK, PORTED.  This was a counted note
   // from wave 8 to W52 and the note's REASON was right about $289004 and wrong
   // about this routine: `$289F54` is not in pool B at all.  It allocates from
@@ -522,9 +610,9 @@ function firstHit(ram, rom, rec, ctx, v, prec) {
   // #$8103E6,A4` is the ONLY thing that picks P1's 30 slots over P2's. Native
   // callers use `prec`; a private logical owner can select the exact allocator
   // polarity separately while retaining its own semantic player for shot motion.
-  if (ram.u16(0x81308c) !== 0) {                                    // $253C10/$253EEE
-    spawnSpark(ram, rom, ctx, rec,
-      shotSparkAllocatorPlayer(ctx, prec));                          // $253C18/$253C1A
+  if (ram.u16(resources.gate308c) !== 0) {                                    // $253C10/$253EEE
+    lifecycleSpark(ram, rom, ctx, rec,
+      shotSparkAllocatorPlayer(ctx, prec), resources);                         // $253C18/$253C1A
   }
   let d0 = ram.u16(rec + S.velY);                                   // $253C20/$253EFE
   let d2 = ram.u16(rec + S.velX);                                   // movem.w $2c(a6),d0/d2
@@ -545,8 +633,8 @@ function firstHit(ram, rom, rec, ctx, v, prec) {
   // $253C4A..$253C5C / $253F04..$253F18 -- TWO draws off the shared $803917
   // counter, one per axis.  The shift is one of the differences between the two
   // paths: `asr.w #1` here, `asr.w #2` at $253F0A/$253F16.
-  const j0 = drawWord(ram, rom) >> v.scatterShift;                  // $253C4A/$253C50
-  const j2 = drawWord(ram, rom) >> v.scatterShift;                  // $253C54/$253C5A
+  const j0 = lifecycleDrawWord(ram, rom, resources) >> v.scatterShift;          // $253C4A/$253C50
+  const j2 = lifecycleDrawWord(ram, rom, resources) >> v.scatterShift;          // $253C54/$253C5A
   if (v.scatterIntoPos) {
     // $253F0C/$253F18: entry [2] adds the jitter STRAIGHT INTO the position and
     // then adds the velocity on top ($253F1C/$253F20).  Entry [0] adds the
@@ -570,9 +658,9 @@ function firstHit(ram, rom, rec, ctx, v, prec) {
   // body shares `$28BFEC`'s `add.w $81DEB4,D1` volume clamp with `$28C3BA` --
   // the routine six lines up that this file ALREADY labels the fire SOUND.  The
   // visual impact burst is `$289F54`, which is ported now.  A note that names
-  // the wrong subsystem sends the next implementer to the wrong wave, so it is
-  // corrected rather than left.
-  ctx.soundPost?.(0x28c714);  // WAVE A: SFX id=$24 (debounced), the shot impact SOUND CUE
+  // the wrong subsystem sends the next implementer to the wrong wave: the visual
+  // impact burst is `$289F54`, while the impact SOUND CUE below is `$28C714`.
+  postLifecycleImpactSound(ctx, resources);
     // ($253C70/$253F2E jsr $28C714 -> $28C0AE -> $28BFEC volume clamp). NOT a visual.
   // $253C76/$253F34: re-point the whole sprite block out of the table.
   const a0 = rom.u32(v.table + i16(ram.u16(rec + S.tableIdx)));     // $253C7A/$253F38
@@ -604,14 +692,16 @@ function laterHit(ram, rom, rec, v, ctx) {
 }
 
 /** `$253BDE` (entries [0]/[8]) and `$253ECA` ([2]/[10]) -- the fork. */
-function hitPath(ram, rom, rec, ctx, site, prec) {
+function hitPath(ram, rom, rec, ctx, site, prec,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
   const v = site === 0x253bde
-    ? { table: 0x24deb2, recoil: true, scatterShift: 1, scatterIntoPos: false,
-        moves: true }
+    ? { table: resources.families[0].hit, recoil: true, scatterShift: 1,
+        scatterIntoPos: false, moves: true }
     : { table: 0x25014c, recoil: false, scatterShift: 2, scatterIntoPos: true,
         moves: false };
   if (ram.bset8(rec + S.type, 1) === 0) {                           // $253BDE/$253ECA
-    return firstHit(ram, rom, rec, ctx, v, prec);                   // beq -> $253C10
+    return firstHit(ram, rom, rec, ctx, v, prec, resources);        // beq -> $253C10
   }
   return laterHit(ram, rom, rec, v, ctx);                             // bne -> $253BE4
 }
@@ -638,7 +728,9 @@ function body253B94(ram, rom, rec, ctx) {
 }
 
 /** $253B1E -- dispatch entry [0]. */
-export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
+export function handler253B1E(ram, rom, rec, ctx, prec, d1,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
   if (ram.bset8(rec + S.lowByte, 6) === 0) {                        // $253B1E
     ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);     // $253B3A
     return emitShotSprite(ram, rec, ctx);                             // $253B40
@@ -657,8 +749,11 @@ export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
     ram.u8(rec + S.angle));
   ram.setU16(rec + S.velY, u16(v.dy));                              // $253B60
   ram.setU16(rec + S.velX, u16(v.dx));
-  if (ram.u8(rec + S.lowByte) & 0x80) return hitPath(ram, rom, rec, ctx, 0x253bde, prec); // $253B66
-  const a0 = rom.u32(0x24ddd6 + i16(ram.u16(rec + S.tableIdx)));    // $253B72
+  if (ram.u8(rec + S.lowByte) & 0x80) {
+    return hitPath(ram, rom, rec, ctx, 0x253bde, prec, resources);
+  }                                                                 // $253B66
+  const a0 = rom.u32(resources.families[0].normal
+    + i16(ram.u16(rec + S.tableIdx)));                               // $253B72
   ram.setU32(rec + S.drawOff, rom.u32(a0));                         // $253B7C
   ram.setU16(rec + S.dlWord4, rom.u16(a0 + 4));                     // $253B80
   ram.setU16(rec + S.posY,                                          // $253B84
@@ -668,9 +763,11 @@ export function handler253B1E(ram, rom, rec, ctx, prec, d1) {
 }
 
 /** $253BDA -- dispatch entry [8]: `tst.b D1 / bpl $253B94`. */
-export function handler253BDA(ram, rom, rec, ctx, prec, d1) {
+export function handler253BDA(ram, rom, rec, ctx, prec, d1,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
   if ((d1 & 0x80) === 0) return body253B94(ram, rom, rec, ctx);
-  return hitPath(ram, rom, rec, ctx, 0x253bde, prec);
+  return hitPath(ram, rom, rec, ctx, 0x253bde, prec, resources);
 }
 
 /** $253E96..$253EC4 -- $253E34's OWN tail.  Not $253B94's: it clamps Y against
@@ -753,9 +850,10 @@ function typeBPlayerLaterHit(ram, rom, rec, ctx) {
 }
 
 /** `$253DAC..$253E30`, the first hit for Type-B player shots. */
-function typeBPlayerFirstHit(ram, rom, rec, ctx, prec) {
-  if (ram.u16(SPAWN.gate308c) !== 0) {
-    spawnSpark(ram, rom, ctx, rec, shotSparkAllocatorPlayer(ctx, prec));
+function typeBPlayerFirstHit(ram, rom, rec, ctx, prec, resources) {
+  if (ram.u16(resources.gate308c) !== 0) {
+    lifecycleSpark(ram, rom, ctx, rec,
+      shotSparkAllocatorPlayer(ctx, prec), resources);
   }
   let vy = ram.u16(rec + S.velY);
   let vx = ram.u16(rec + S.velX);
@@ -763,14 +861,15 @@ function typeBPlayerFirstHit(ram, rom, rec, ctx, prec) {
       && (!ram.btst8(rec + 0x29, 2) || ram.u16(rec + S.power) === 0x0a)) {
     ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + 0x0300));
   }
-  vy = u16(vy + (drawWord(ram, rom) >> 1));
-  vx = u16(vx + (drawWord(ram, rom) >> 1));
+  vy = u16(vy + (lifecycleDrawWord(ram, rom, resources) >> 1));
+  vx = u16(vx + (lifecycleDrawWord(ram, rom, resources) >> 1));
   ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + vy));
   ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + vx));
   ram.setU16(rec + S.velY, u16(i16(vy) >> 2));
   ram.setU16(rec + S.velX, u16(i16(vx) >> 2));
-  ctx.soundPost?.(0x28c714);
-  let a0 = rom.u32(0x24e5ee + i16(ram.u16(rec + S.tableIdx)));
+  postLifecycleImpactSound(ctx, resources);
+  let a0 = rom.u32(resources.families[1].hit
+    + i16(ram.u16(rec + S.tableIdx)));
   ram.setU32(rec + S.drawOff, rom.u32(a0)); a0 += 4;
   ram.setU16(rec + S.dlWord4, rom.u16(a0)); a0 += 2;
   ram.setU32(rec + S.animPtr, rom.u32(a0)); a0 += 4;
@@ -778,16 +877,18 @@ function typeBPlayerFirstHit(ram, rom, rec, ctx, prec) {
   typeBPlayerLaterHit(ram, rom, rec, ctx);
 }
 
-function typeBPlayerHit(ram, rom, rec, ctx, prec) {
+function typeBPlayerHit(ram, rom, rec, ctx, prec, resources) {
   if (ram.bset8(rec + S.type, 1) === 0) {
-    typeBPlayerFirstHit(ram, rom, rec, ctx, prec);
+    typeBPlayerFirstHit(ram, rom, rec, ctx, prec, resources);
     return;
   }
   typeBPlayerLaterHit(ram, rom, rec, ctx);
 }
 
 /** `$253C98`, dispatch entry 1 for normal Type-B player shots. */
-export function handler253C98(ram, rom, rec, ctx, prec, d1) {
+export function handler253C98(ram, rom, rec, ctx, prec, d1,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
   if (ram.bset8(rec + S.lowByte, 6) === 0) {
     ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);
     emitShotSprite(ram, rec, ctx);
@@ -801,8 +902,12 @@ export function handler253C98(ram, rom, rec, ctx, prec, d1) {
     return;
   }
   ram.setU16(rec, u16(ram.u16(rec) | 0x0008));
-  if (d1 & 0x80) { typeBPlayerHit(ram, rom, rec, ctx, prec); return; }
-  let a0 = rom.u32(0x24e512 + i16(ram.u16(rec + S.tableIdx)));
+  if (d1 & 0x80) {
+    typeBPlayerHit(ram, rom, rec, ctx, prec, resources);
+    return;
+  }
+  let a0 = rom.u32(resources.families[1].normal
+    + i16(ram.u16(rec + S.tableIdx)));
   ram.setU32(rec + S.drawOff, rom.u32(a0)); a0 += 4;
   ram.setU16(rec + S.dlWord4, rom.u16(a0)); a0 += 2;
   ram.setU16(rec + S.posY, u16(ram.u16(rec + S.posY) + rom.u16(a0)));
@@ -814,9 +919,11 @@ export function handler253C98(ram, rom, rec, ctx, prec, d1) {
 }
 
 /** `$253D52`, dispatch entry 9 for moving Type-B player shots. */
-export function handler253D52(ram, rom, rec, ctx, prec, d1) {
+export function handler253D52(ram, rom, rec, ctx, prec, d1,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
   if ((d1 & 0x80) === 0) typeBPlayerNormal(ram, rom, rec, ctx);
-  else typeBPlayerHit(ram, rom, rec, ctx, prec);
+  else typeBPlayerHit(ram, rom, rec, ctx, prec, resources);
 }
 
 /** `$253FB8..$253FE6`, the moving tail shared by entries 3 and 11. */
@@ -913,13 +1020,16 @@ function hyperShotLaterHit(ram, rom, rec, ctx) {
 }
 
 /** `$25413A/$25427E`, including the first-hit spark and velocity quarter. */
-function hyperShotHit(ram, rom, rec, ctx, prec, tables) {
+function hyperShotHit(ram, rom, rec, ctx, prec, tables,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
   if (ram.bset8(rec + S.type, 1) !== 0) {
     hyperShotLaterHit(ram, rom, rec, ctx);
     return;
   }
-  if (ram.u16(SPAWN.gate308c) !== 0) {
-    spawnSpark(ram, rom, ctx, rec, shotSparkAllocatorPlayer(ctx, prec));
+  if (ram.u16(resources.gate308c) !== 0) {
+    lifecycleSpark(ram, rom, ctx, rec,
+      shotSparkAllocatorPlayer(ctx, prec), resources);
   }
   const vy = ram.u16(rec + S.velY);
   const vx = ram.u16(rec + S.velX);
@@ -927,7 +1037,7 @@ function hyperShotHit(ram, rom, rec, ctx, prec, tables) {
   ram.setU16(rec + S.posX, u16(ram.u16(rec + S.posX) + vx));
   ram.setU16(rec + S.velY, u16(i16(vy) >> 2));
   ram.setU16(rec + S.velX, u16(i16(vx) >> 2));
-  ctx.soundPost?.(0x28c714);
+  postLifecycleImpactSound(ctx, resources);
   let a0 = rom.u32(tables.hit + i16(ram.u16(rec + S.tableIdx)));
   ram.setU32(rec + S.drawOff, rom.u32(a0)); a0 += 4;
   ram.setU16(rec + S.dlWord4, rom.u16(a0)); a0 += 2;
@@ -936,7 +1046,9 @@ function hyperShotHit(ram, rom, rec, ctx, prec, tables) {
   hyperShotLaterHit(ram, rom, rec, ctx);
 }
 
-function hyperShotBase(ram, rom, rec, ctx, prec, d1, tables) {
+function hyperShotBase(ram, rom, rec, ctx, prec, d1, tables,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
   if (ram.bset8(rec + S.lowByte, 6) === 0) {
     ram.setU8(rec + S.dlWord5, ram.u8(rec + S.dlWord5) ^ 0x40);
     emitShotSprite(ram, rec, ctx);
@@ -950,7 +1062,10 @@ function hyperShotBase(ram, rom, rec, ctx, prec, d1, tables) {
     return;
   }
   ram.setU16(rec, u16(ram.u16(rec) | 0x0008));
-  if (d1 & 0x80) { hyperShotHit(ram, rom, rec, ctx, prec, tables); return; }
+  if (d1 & 0x80) {
+    hyperShotHit(ram, rom, rec, ctx, prec, tables, resources);
+    return;
+  }
   let a0 = rom.u32(tables.normal + i16(ram.u16(rec + S.tableIdx)));
   ram.setU32(rec + S.drawOff, rom.u32(a0)); a0 += 4;
   ram.setU16(rec + S.dlWord4, rom.u16(a0)); a0 += 2;
@@ -962,19 +1077,29 @@ function hyperShotBase(ram, rom, rec, ctx, prec, d1, tables) {
   hyperShotNormal(ram, rom, rec, ctx);
 }
 
-export function handler254078(ram, rom, rec, ctx, prec, d1) {
-  hyperShotBase(ram, rom, rec, ctx, prec, d1, HYPER_SHOT.p1);
+export function handler254078(ram, rom, rec, ctx, prec, d1,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
+  hyperShotBase(ram, rom, rec, ctx, prec, d1, resources.families[4], resources);
 }
-export function handler254136(ram, rom, rec, ctx, prec, d1) {
-  if (d1 & 0x80) hyperShotHit(ram, rom, rec, ctx, prec, HYPER_SHOT.p1);
-  else hyperShotNormal(ram, rom, rec, ctx);
+export function handler254136(ram, rom, rec, ctx, prec, d1,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
+  if (d1 & 0x80) {
+    hyperShotHit(ram, rom, rec, ctx, prec, resources.families[4], resources);
+  } else hyperShotNormal(ram, rom, rec, ctx);
 }
-export function handler2541BC(ram, rom, rec, ctx, prec, d1) {
-  hyperShotBase(ram, rom, rec, ctx, prec, d1, HYPER_SHOT.p2);
+export function handler2541BC(ram, rom, rec, ctx, prec, d1,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
+  hyperShotBase(ram, rom, rec, ctx, prec, d1, resources.families[5], resources);
 }
-export function handler25427A(ram, rom, rec, ctx, prec, d1) {
-  if (d1 & 0x80) hyperShotHit(ram, rom, rec, ctx, prec, HYPER_SHOT.p2);
-  else hyperShotNormal(ram, rom, rec, ctx);
+export function handler25427A(ram, rom, rec, ctx, prec, d1,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
+  if (d1 & 0x80) {
+    hyperShotHit(ram, rom, rec, ctx, prec, resources.families[5], resources);
+  } else hyperShotNormal(ram, rom, rec, ctx);
 }
 
 function optionHyperNormal(ram, rom, rec, ctx) {
@@ -993,14 +1118,19 @@ function optionHyperNormal(ram, rom, rec, ctx) {
   emitShotSprite(ram, rec, ctx);
 }
 
-function optionHyperBase(ram, rom, rec, ctx, prec, d1, tables) {
+function optionHyperBase(ram, rom, rec, ctx, prec, d1, tables,
+  suppliedResources = NATIVE_SHOT_LIFECYCLE_RESOURCES) {
+  const resources = validateLifecycleResources(suppliedResources);
   if (ram.bset8(rec + S.lowByte, 6) === 0) {
     emitShotSprite(ram, rec, ctx);                                    // $25430E/$254438
     return;
   }
   ram.bset8(rec + S.type, 0);
   ram.setU16(rec, u16(ram.u16(rec) | 0x0008));
-  if (d1 & 0x80) { hyperShotHit(ram, rom, rec, ctx, prec, tables); return; }
+  if (d1 & 0x80) {
+    hyperShotHit(ram, rom, rec, ctx, prec, tables, resources);
+    return;
+  }
   let a0 = rom.u32(tables.normal + i16(ram.u16(rec + S.tableIdx)));
   ram.setU32(rec + S.drawOff, rom.u32(a0)); a0 += 4;
   ram.setU16(rec + S.dlWord4, rom.u16(a0));
@@ -1024,6 +1154,27 @@ export function handler25442A(ram, rom, rec, ctx, prec, d1) {
 export function handler2544CE(ram, rom, rec, ctx, prec, d1) {
   if (d1 & 0x80) hyperShotHit(ram, rom, rec, ctx, prec, HYPER_SHOT.pod1);
   else optionHyperNormal(ram, rom, rec, ctx);
+}
+
+/** Build the audited producer-reachable handler island for one cartridge dispatch. */
+export function shotHandlersWithResources(dispatchEntries, suppliedResources) {
+  const resources = validateLifecycleResources(suppliedResources);
+  if (!Array.isArray(dispatchEntries) || dispatchEntries.length !== 16
+      || dispatchEntries.some((address) => !Number.isSafeInteger(address))) {
+    throw new TypeError('resource-bound shot dispatch must contain 16 cartridge addresses');
+  }
+  const bind = (handler) => (ram, rom, rec, ctx, prec, d1) =>
+    handler(ram, rom, rec, ctx, prec, d1, resources);
+  return new Map([
+    [dispatchEntries[0], bind(handler253B1E)],
+    [dispatchEntries[1], bind(handler253C98)],
+    [dispatchEntries[4], bind(handler254078)],
+    [dispatchEntries[5], bind(handler2541BC)],
+    [dispatchEntries[8], bind(handler253BDA)],
+    [dispatchEntries[9], bind(handler253D52)],
+    [dispatchEntries[12], bind(handler254136)],
+    [dispatchEntries[13], bind(handler25427A)],
+  ]);
 }
 
 /** The dispatch map the shot driver is given, keyed by ROM address. */

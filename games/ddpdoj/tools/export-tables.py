@@ -10641,6 +10641,23 @@ def verify(t: dict) -> list[str]:
     expected_players = {(address, length) for address, length, _ in WHITE_PLAYER_WINDOWS}
     if declared_players != expected_players or not expected_players.issubset(set(wins)):
         bad.append("embedded Version A player windows drifted from the exported ROM window list")
+    for field, expected_rows in (
+            ("shotProducerWindows", WHITE_SHOT_PRODUCER_WINDOWS),
+            ("shotRuntimeWindows", WHITE_SHOT_RUNTIME_WINDOWS),
+            ("shotSpeedWindows", WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS)):
+        declared = {(int(w["base"].lstrip("$"), 16), w["len"])
+                    for w in white.get(field, [])}
+        expected = {(address, length) for address, length, _ in expected_rows}
+        if declared != expected or not expected.issubset(set(wins)):
+            bad.append(f"embedded Version A {field} drifted from the exported ROM window list")
+    if white.get("shotSpeedLevels") != list(WHITE_SHOT_SPEEDS):
+        bad.append("embedded Version A shot speed closure drifted from its manifest")
+    all_white_shot_windows = (*WHITE_SHOT_PRODUCER_WINDOWS,
+                              *WHITE_SHOT_RUNTIME_WINDOWS,
+                              *WHITE_SHOT_SPEED_WINDOWS)
+    if any(address < 0 or address + length > 0x200000
+           for address, length, _ in all_white_shot_windows):
+        bad.append("embedded Version A shot authority escaped the Build A cartridge region")
 
     def covered(a: int, n: int) -> bool:
         return any(b <= a and a + n <= b + ln for b, ln in wins)
@@ -10719,6 +10736,188 @@ def verify(t: dict) -> list[str]:
     def w32(a):
         b = win(a, 4)
         return None if b is None else struct.unpack(">I", b)[0]
+
+    # White Label Build A ordinary shots. Verify the full producer-consumer
+    # closure through the exported bytes, not through the unrestricted image.
+    # This keeps the private runtime authority sparse and makes a missing child
+    # fail here rather than at the first browser shot.
+    white_shot_windows = [(address, length)
+                          for address, length, _ in all_white_shot_windows]
+
+    def white_has(a: int, n: int) -> bool:
+        return any(base <= a and a + n <= base + length
+                   for base, length in white_shot_windows)
+
+    ordered_white = sorted(white_shot_windows)
+    for (base, length), (next_base, _) in zip(ordered_white, ordered_white[1:]):
+        if next_base < base + length:
+            bad.append(f"Version A shot windows overlap at ${next_base:06X}")
+            break
+
+    white_dispatch = (
+        0x1530DA, 0x153254, 0x1533F0, 0x153512,
+        0x153634, 0x153778, 0x1538BC, 0x1539E6,
+        0x153196, 0x15330E, 0x153482, 0x1535A4,
+        0x1536F2, 0x153836, 0x153960, 0x153A8A,
+    )
+    if tuple(w32(0x15309A + i * 4) for i in range(16)) != white_dispatch:
+        bad.append("Version A player-shot dispatch is not the exact 16-entry Build A table")
+
+    white_fold = [w16(0x141E2E + i * 2) for i in range(256)]
+    if any(value is None for value in white_fold):
+        bad.append("Version A shot fold table is not fully exported")
+    else:
+        for i, value in enumerate(white_fold):
+            folded = i % 128
+            expected = 8 * (folded if folded <= 64 else 128 - folded)
+            if value != expected:
+                bad.append(f"Version A shot fold[{i}] is {value}, expected {expected}")
+                break
+
+    for speed in WHITE_SHOT_SPEEDS:
+        pointer_at = 0x100920 + speed * 4
+        expected = 0x100D20 + speed * 0x208
+        if not white_has(pointer_at, 4) or w32(pointer_at) != expected:
+            bad.append(f"Version A shot speed {speed} pointer is missing or not ${expected:06X}")
+        if not white_has(expected, 0x208):
+            bad.append(f"Version A shot speed {speed} quadrant is not independently exported")
+
+    # Roots are indexed by style 2/4/6 and the hyper bit. The secondary ship-0
+    # root is deliberately sparse because style 4 never reads it.
+    producer_roots = (
+        (0x154AA6, (0, 4, 8, 12, 16, 20), False),
+        (0x154ABE, (0, 4, 16, 20), False),
+        (0x154AD6, (0, 4, 8, 12, 16, 20), True),
+    )
+    if white_has(0x154AC6, 8):
+        bad.append("Version A sparse secondary shot root authorized its unused style-4 cells")
+    producer_records = []
+    for root, offsets, type_b in producer_roots:
+        for offset in offsets:
+            child = w32(root + offset)
+            if child is None or not white_has(child, 0x14):
+                bad.append(f"Version A shot root ${root:06X}+${offset:X} escaped its child window")
+                continue
+            for power in range(0, 10, 2):
+                template = w32(child + power * 2)
+                pair = type_b and offset not in (8, 12)
+                records = 2 if pair else 1
+                if template is None or not white_has(template, records * 0x26):
+                    bad.append(f"Version A shot template for root ${root:06X}, "
+                               f"offset ${offset:X}, power {power} is not exported")
+                    continue
+                expected_type = (1 if type_b else 0) | (4 if offset & 4 else 0)
+                for index in range(records):
+                    record = template + index * 0x26
+                    if (w16(record) or 0) & 0x0F != expected_type:
+                        bad.append(f"Version A shot template ${record:06X} has the wrong family")
+                    producer_records.append(record)
+    if len(producer_records) != 100 or len(set(producer_records)) != 100:
+        bad.append("Version A producer closure is not exactly 100 distinct shot records")
+
+    producer_animation_lists = {w32(record + 0x0A) for record in producer_records}
+    expected_animation_lists = {
+        0x14CF60, 0x14CF6C, 0x14CF78, 0x14CF84, 0x14CF90,
+        0x14CF9C, 0x14CFA8, 0x14CFB4, 0x14CFC0,
+        0x14D69C, 0x14D6A8, 0x14D6B4, 0x14D6C0, 0x14D6CC,
+        0x14D6D8, 0x14D6E4, 0x14D6F0, 0x14D6FC,
+        0x14DDF8, 0x14DE28, 0x14DE58,
+        0x14E558, 0x14E588, 0x14E5B8,
+    }
+    if producer_animation_lists != expected_animation_lists:
+        bad.append("Version A producer animation-list identities drifted")
+    for pointer in producer_animation_lists:
+        if pointer is None or not white_has(pointer, 0x0C):
+            bad.append("Version A producer animation list is not independently exported")
+            break
+
+    producer_lifecycle_lists = {w32(record + 0x1E) for record in producer_records}
+    expected_lifecycle_lists = {
+        0x14CFCC, 0x14CFD4, 0x14CFDC, 0x14CFE4, 0x14CFEC,
+        0x14CFF4, 0x14CFFC, 0x14D004, 0x14D00C, 0x14D014,
+        0x14D01C, 0x14D024, 0x14D02C, 0x14D034, 0x14D03C,
+        0x14D708, 0x14D710, 0x14D718, 0x14D720, 0x14D728,
+        0x14D730, 0x14D738, 0x14D740, 0x14D748, 0x14D750,
+        0x14D758, 0x14D760, 0x14D768, 0x14D770, 0x14D778,
+        0x14DE88, 0x14DEB0, 0x14DED8,
+        0x14E5E8, 0x14E610, 0x14E638,
+    }
+    if producer_lifecycle_lists != expected_lifecycle_lists:
+        bad.append("Version A producer lifecycle animation identities drifted")
+    for pointer in producer_lifecycle_lists:
+        if pointer is None or not white_has(pointer, 0x08):
+            bad.append("Version A producer lifecycle animation is not independently exported")
+            break
+
+    producer_speeds = {win(record + 0x1A, 1)[0]
+                       for record in producer_records if win(record + 0x1A, 1) is not None}
+    expected_producer_speeds = set(WHITE_SHOT_SPEEDS) - set(range(8, 37))
+    if producer_speeds != expected_producer_speeds:
+        bad.append("Version A producer templates no longer derive the sparse shot-speed closure")
+
+    presentation = {
+        0: (0x14D48A, 0x14D566), 1: (0x14DBC6, 0x14DCA2),
+        4: (0x14E326, 0x14E402), 5: (0x14EA86, 0x14EB62),
+    }
+    hit_animation_drains = {}
+    for record in producer_records:
+        family = (w16(record) or 0) & 0x0F
+        table_index = w16(record + 0x24)
+        if family not in presentation or table_index is None or table_index & 3:
+            bad.append(f"Version A shot template ${record:06X} has an invalid presentation index")
+            continue
+        normal, hit = presentation[family]
+        for table, size, label in ((normal, 8, "normal"), (hit, 14, "hit")):
+            target = w32(table + table_index)
+            if (not white_has(table + table_index, 4) or target is None
+                    or not white_has(target, size)):
+                bad.append(f"Version A {label} presentation for template "
+                           f"${record:06X} escaped its exact window")
+                continue
+            if label == "hit":
+                pointer = w32(target + 6)
+                cursor = w16(target + 12)
+                if pointer is not None and cursor is not None:
+                    hit_animation_drains[pointer] = max(
+                        hit_animation_drains.get(pointer, 0), cursor)
+
+    expected_hit_animation_drains = {
+        **{pointer: 0x10 for pointer in range(0x14D044, 0x14D0D4, 0x10)},
+        **{pointer: 0x10 for pointer in range(0x14D780, 0x14D810, 0x10)},
+        **{pointer: 0x10 for pointer in (0x14DF00, 0x14DF30, 0x14DF60,
+                                        0x14E660, 0x14E690, 0x14E6C0)},
+    }
+    if hit_animation_drains != expected_hit_animation_drains:
+        bad.append("Version A hit animation drain identities drifted")
+    for pointer, cursor in hit_animation_drains.items():
+        if cursor == 0 or cursor & 3 or not white_has(pointer, cursor):
+            bad.append("Version A hit animation drain is not independently exported")
+            break
+
+    if not white_has(0x153014, 6 * 4):
+        bad.append("Version A Type-B six-long hit-flag table is not fully exported")
+
+    spark_templates = [w32(0x1892C2 + i * 4) for i in range(256)]
+    if any(template is None for template in spark_templates):
+        bad.append("Version A shot-spark pointer table is not fully exported")
+    else:
+        for template in set(spark_templates):
+            if not white_has(template, 0x16) or w16(template) != 0x000C:
+                bad.append(f"Version A shot-spark template ${template:06X} is missing or malformed")
+                continue
+            cursor = w16(template + 0x0E)
+            listing = w32(template + 0x10)
+            if (cursor is None or listing is None or cursor == 0 or cursor & 3
+                    or not white_has(listing + 4, cursor)):
+                bad.append(f"Version A shot-spark list for template ${template:06X} escaped its window")
+
+    spark_speed_rng = win(0x143192, 0x80)
+    spark_speeds = set() if spark_speed_rng is None else {
+        min((value + 8) & 0xFF, 0x24) for value in spark_speed_rng
+    }
+    if spark_speeds != set(range(8, 37)) \
+            or producer_speeds | spark_speeds != set(WHITE_SHOT_SPEEDS):
+        bad.append("Version A spark and producer speed domains do not close exactly")
 
     tps = [w32(0x281956 + 4 * k) for k in range(39)]
     if any(p is None for p in tps):
@@ -10994,8 +11193,87 @@ for _speed in WHITE_PLAYER_SPEEDS:
          f"White A player movement speed {_speed} 65-vector quadrant"),
     ])
 
+# `$1492A0` and `$1493D0` reach three sparse six-entry roots and the exact
+# flattened child region. The secondary root has no style-4 read, so its two
+# live pairs remain separate windows rather than authorizing the two zero cells.
+WHITE_SHOT_PRODUCER_WINDOWS = [
+    (0x154AA6, 0x0018, "White A shot producer primary style and hyper root"),
+    (0x154ABE, 0x0008, "White A shot producer secondary style-2 root pair"),
+    (0x154ACE, 0x0008, "White A shot producer secondary style-6 root pair"),
+    (0x154AD6, 0x0018, "White A Type-B shot producer style and hyper root"),
+    (0x154AEE, 0x0140, "White A shot producer power rows and record templates"),
+    (0x14CF60, 0x0174, "White A family 0 producer and hit animation longs"),
+    (0x14D0D4, 0x03B6, "White A family 0 producer templates through normal table"),
+    (0x14D69C, 0x0174, "White A family 1 producer and hit animation longs"),
+    (0x14D810, 0x03B6, "White A family 1 producer templates through normal table"),
+    (0x14DDF8, 0x000C, "White A family 1 Type-B style-2 animation longs"),
+    (0x14DE28, 0x000C, "White A family 1 Type-B style-4 animation longs"),
+    (0x14DE58, 0x000C, "White A family 1 Type-B style-6 animation longs"),
+    (0x14DE88, 0x0008, "White A family 1 Type-B style-2 lifecycle animation"),
+    (0x14DEB0, 0x0008, "White A family 1 Type-B style-4 lifecycle animation"),
+    (0x14DED8, 0x0008, "White A family 1 Type-B style-6 lifecycle animation"),
+    (0x14DF00, 0x0010, "White A family 1 Type-B style-2 hit animation drain"),
+    (0x14DF30, 0x0010, "White A family 1 Type-B style-4 hit animation drain"),
+    (0x14DF60, 0x0010, "White A family 1 Type-B style-6 hit animation drain"),
+    (0x14DF70, 0x03B6, "White A family 4 producer templates through normal table"),
+    (0x14E558, 0x000C, "White A family 5 Type-B style-2 animation longs"),
+    (0x14E588, 0x000C, "White A family 5 Type-B style-4 animation longs"),
+    (0x14E5B8, 0x000C, "White A family 5 Type-B style-6 animation longs"),
+    (0x14E5E8, 0x0008, "White A family 5 Type-B style-2 lifecycle animation"),
+    (0x14E610, 0x0008, "White A family 5 Type-B style-4 lifecycle animation"),
+    (0x14E638, 0x0008, "White A family 5 Type-B style-6 lifecycle animation"),
+    (0x14E660, 0x0010, "White A family 5 Type-B style-2 hit animation drain"),
+    (0x14E690, 0x0010, "White A family 5 Type-B style-4 hit animation drain"),
+    (0x14E6C0, 0x0010, "White A family 5 Type-B style-6 hit animation drain"),
+    (0x14E6D0, 0x03B6, "White A family 5 producer templates through normal table"),
+]
+
+WHITE_SHOT_SPEEDS = (
+    *range(8, 37),
+    60, 64, 68, 72, 76, 80, 84, 86, 88, 92, 94, 96,
+    102, 104, 108, 110, 112, 116, 128, 134, 216, 232,
+)
+WHITE_SHOT_SPEED_WINDOWS = []
+for _speed in WHITE_SHOT_SPEEDS:
+    WHITE_SHOT_SPEED_WINDOWS.extend([
+        (0x100920 + _speed * 4, 0x0004,
+         f"White A shot speed {_speed} pointer"),
+        (0x100D20 + _speed * 0x208, 0x0208,
+         f"White A shot speed {_speed} 65-vector quadrant"),
+    ])
+
+# Only cartridge data read by the producer-reachable 0/8, 1/9, 4/C and 5/D
+# lifecycle island is authorized. Driver, allocator, and presentation code
+# identities are pinned below but are not exported as executable byte ranges.
+WHITE_SHOT_RUNTIME_WINDOWS = [
+    (0x15309A, 0x0040, "White A complete 16-entry player-shot dispatch"),
+    (0x153014, 0x0018, "White A six-entry Type-B hit flag table"),
+    (0x141E2E, 0x0200, "White A 256-word shot movement fold table"),
+    (0x143720, 0x0100, "White A ordinary shot-hit RNG longword table"),
+    (0x14336A, 0x0100, "White A shot-spark signed RNG byte table"),
+    (0x143192, 0x0080, "White A shot-spark speed RNG byte table"),
+    (0x1890E8, 0x05DA, "White A shot-spark templates, lists, and pointer table"),
+    (0x189736, 0x0040, "White A shot-spark angle RNG byte table"),
+    (0x14D48A, 0x00DC, "White A family 0 normal shot presentation table"),
+    (0x14D566, 0x0136, "White A family 0 hit shot presentation table"),
+    (0x14DBC6, 0x00DC, "White A family 1 normal shot presentation table"),
+    (0x14DCA2, 0x0136, "White A family 1 hit shot presentation table"),
+    (0x14E326, 0x00DC, "White A family 4 normal shot presentation table"),
+    (0x14E402, 0x0136, "White A family 4 hit shot presentation table"),
+    (0x14EA86, 0x00DC, "White A family 5 normal shot presentation table"),
+    (0x14EB62, 0x0136, "White A family 5 hit shot presentation table"),
+]
+
 SHOT_WINDOWS.extend(WHITE_LABEL_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_PLAYER_WINDOWS)
+SHOT_WINDOWS.extend(WHITE_SHOT_PRODUCER_WINDOWS)
+SHOT_WINDOWS.extend(WHITE_SHOT_RUNTIME_WINDOWS)
+_white_player_window_keys = {(address, length) for address, length, _ in WHITE_PLAYER_WINDOWS}
+WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS = [
+    row for row in WHITE_SHOT_SPEED_WINDOWS
+    if (row[0], row[1]) not in _white_player_window_keys
+]
+SHOT_WINDOWS.extend(WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS)
 
 
 def _white_initial_script(d: bytes, address: int) -> list[tuple[int, ...]]:
@@ -11057,6 +11335,13 @@ def white_label_tables(d: bytes) -> dict:
                             for address, length, _ in WHITE_LABEL_WINDOWS],
         "playerWindows": [{"base": f"${address:06X}", "len": length}
                           for address, length, _ in WHITE_PLAYER_WINDOWS],
+        "shotProducerWindows": [{"base": f"${address:06X}", "len": length}
+                                for address, length, _ in WHITE_SHOT_PRODUCER_WINDOWS],
+        "shotRuntimeWindows": [{"base": f"${address:06X}", "len": length}
+                               for address, length, _ in WHITE_SHOT_RUNTIME_WINDOWS],
+        "shotSpeedWindows": [{"base": f"${address:06X}", "len": length}
+                             for address, length, _ in WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS],
+        "shotSpeedLevels": list(WHITE_SHOT_SPEEDS),
     }
 
 

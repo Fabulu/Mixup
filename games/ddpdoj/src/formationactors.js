@@ -23,7 +23,7 @@ import {
 } from './laser.js';
 import { runOrdinaryShotPath2497AA } from './player.js';
 import { shotHandlers } from './shots.js';
-import { runShotPool } from './weapons.js';
+import { SHOT, SHOT_HANDLERS, runShotPool } from './weapons.js';
 import {
   DMG, PRIVATE_DAMAGE_GEOMETRY, privateOutgoingDamagePass,
 } from './damage.js';
@@ -657,6 +657,12 @@ function bindP3ShotResources(state) {
     primaryTable: 0x2554ea,
     secondaryTable: 0x255502,
     typeBTable: 0x25551a,
+    ship0Sound: 0x28c3ba,
+    ship2Sound: 0x28c3d4,
+    hyperSound: 0x28c3ee,
+    ship0Site: 0x249bfc,
+    ship2Site: 0x249d2c,
+    invalidSite: 0x249be2,
     soundPolicy: 'silent',
   });
   const options = Object.freeze({
@@ -683,6 +689,8 @@ function bindP3ShotResources(state) {
     liveCounter: null,
     presentationSink: requestSink(14),
     requestTelemetry: false,
+    dispatchEntries: SHOT_HANDLERS,
+    dispatchTable: SHOT.dispatch,
   });
   state.shots.resources = Object.freeze({
     ordinary: Object.freeze({

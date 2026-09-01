@@ -12,6 +12,7 @@ import {
 } from './white-player.js';
 import { whiteRankTick15FAE8 } from './white-rank.js';
 import { whiteSelectorTick15BE3E } from './white-selector.js';
+import { createWhiteStage1ShotHandlers as createWhiteShotIslandHandlers } from './white-shots.js';
 
 function requireWhiteFrontendRuntime(profileRequest, operation) {
   const profile = resolveGameProfile(profileRequest === undefined
@@ -70,10 +71,16 @@ export function createWhiteStage1PlayerHandlers(rom, profileRequest) {
   ]);
 }
 
-/** Join the independently gated frontend and Stage 1 player handler islands. */
+/** Build the separately gated Version A Stage 1 shot island for native type 5. */
+export function createWhiteStage1ShotHandlers(rom, profileRequest) {
+  return createWhiteShotIslandHandlers(rom, profileRequest);
+}
+
+/** Join the independently gated frontend, player, and shot handler islands. */
 export function createWhiteStage1Handlers(rom, profileRequest) {
   return new Map([
     ...createWhiteFrontendHandlers(rom, profileRequest),
     ...createWhiteStage1PlayerHandlers(rom, profileRequest),
+    ...createWhiteStage1ShotHandlers(rom, profileRequest),
   ]);
 }

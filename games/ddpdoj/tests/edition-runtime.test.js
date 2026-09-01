@@ -65,6 +65,11 @@ test('exact audited profiles receive only their independently registered capabil
   assert.equal(WHITE_RUNTIME_BINDING.profile, WHITE_LABEL_PROFILE);
   assert.equal(Object.hasOwn(WHITE_RUNTIME_BINDING.capabilities, 'frontendBootstrap'), true);
   assert.equal(Object.hasOwn(WHITE_RUNTIME_BINDING.capabilities, 'stage1Players'), true);
+  assert.equal(WHITE_RUNTIME_BINDING.capabilities.stage1Shots,
+    'ddpdoj.runtime.white-label-a.stage1-shots.v1');
+  assert.deepEqual(Object.keys(WHITE_RUNTIME_BINDING.capabilities), [
+    'frontendBootstrap', 'stage1Players', 'stage1Shots',
+  ]);
   for (const capability of [
     'game', 'authenticSelector', 'localRom', 'legacyReplay', 'legacyCheckpoint', 'legacyBundle',
   ]) {

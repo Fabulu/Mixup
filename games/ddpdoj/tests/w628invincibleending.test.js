@@ -31,7 +31,7 @@ const SKIP = REQUIRED.every(existsSync) ? false
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const BASE_CHECKPOINT = SKIP ? null : JSON.parse(readFileSync(CHECKPOINT, 'utf8'));
 
-const TABLE_HASH = 'de89564cd0e61927e5780855f4a3ebc42c13086aedf71114ce345d63e9326ee1';
+const TABLE_HASH = '322e5598740b7a497313c8c80978869e6e2701275cd1899a7423e00b0ae8ed60';
 const CHECKPOINT_TABLE_HASH = '145945830be69de56a76312f0d44aaedd47519083d0da70fce2361ea06dba289';
 
 const canonicalHash = (value) => createHash('sha256')

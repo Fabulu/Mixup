@@ -15,7 +15,7 @@ import {
 } from '../src/white-frontend.js';
 import { bootWhiteCabinet13C24E } from '../src/white-reset.js';
 import {
-  createWhiteFrontendHandlers, createWhiteStage1Handlers,
+  createWhiteFrontendHandlers, createWhiteStage1Handlers, createWhiteStage1ShotHandlers,
 } from '../src/white-runtime.js';
 import { WHITE_PLAYER } from '../src/white-player.js';
 import { WHITE_RANK } from '../src/white-rank.js';
@@ -47,13 +47,14 @@ test('White handler-map capability rejects Black before cartridge access', () =>
   assert.equal(reads, 0);
 });
 
-test('White Stage 1 map joins only independently ported dispatch types', () => {
+test('White Stage 1 map joins the independently gated dispatch islands', () => {
   const rom = { u8() { return 0; }, u16() { return 0; }, u32() { return 0; } };
   const frontend = createWhiteFrontendHandlers(rom, WHITE_LABEL_PROFILE);
   assert.deepEqual([...frontend.keys()], [0x14, 0x08, 0x09, 0x0a]);
+  const shots = createWhiteStage1ShotHandlers(rom, WHITE_LABEL_PROFILE);
+  assert.deepEqual([...shots.keys()], [0x05]);
   const handlers = createWhiteStage1Handlers(rom, WHITE_LABEL_PROFILE);
-  assert.deepEqual([...handlers.keys()], [0x14, 0x08, 0x09, 0x0a, 0x02, 0x03]);
-  assert.equal(handlers.has(0x05), false);
+  assert.deepEqual([...handlers.keys()], [0x14, 0x08, 0x09, 0x0a, 0x02, 0x03, 0x05]);
   for (const handler of handlers.values()) assert.equal(typeof handler, 'function');
 });
 

@@ -674,11 +674,20 @@
 // are exact Build A data dependencies exposed by running the composed route
 // through `RomWindows`; none overlaps an earlier declaration. Measured:
 // 1008 -> 1014 windows, 478,417 -> 478,681 bytes, 77 -> 77 overlapping pairs.
+//
+// ---------------------------------------------------------------------------
+// EMBEDDED VERSION A SHOT CLOSURE ADDED 137 DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// Twenty-nine producer and animation windows, sixteen lifecycle and spark
+// windows, and ninety-two new sparse speed windows add 34,170 exact bytes.
+// Ten more speed windows reuse the Version A movement closure byte-for-byte.
+// Measured: 1014 -> 1151 windows, 478,681 -> 512,851 bytes,
+// 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1014;
+export const ROM_WINDOW_COUNT = 1151;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 478681;
+export const ROM_WINDOW_BYTES = 512851;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -717,8 +726,8 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 65;
-const WHITE_LABEL_WINDOW_BYTES = 21172;
+const WHITE_LABEL_WINDOW_COUNT = 202;
+const WHITE_LABEL_WINDOW_BYTES = 55342;
 
 /** Remove the later embedded Version A window family before reconstructing any
  *  earlier Black Label ledger. The edition manifest is the identity list, so a
@@ -726,10 +735,15 @@ const WHITE_LABEL_WINDOW_BYTES = 21172;
 export function tableBeforeWhiteLabel(tables) {
   const copy = JSON.parse(JSON.stringify(tables));
   const edition = copy.editions?.whiteLabel;
-  const descriptors = [
+  const descriptorRows = [
     ...(edition?.frontendWindows ?? []),
     ...(edition?.playerWindows ?? []),
+    ...(edition?.shotProducerWindows ?? []),
+    ...(edition?.shotRuntimeWindows ?? []),
+    ...(edition?.shotSpeedWindows ?? []),
   ];
+  const descriptors = [...new Map(descriptorRows.map((descriptor) =>
+    [`${descriptor.base}:${descriptor.len}`, descriptor])).values()];
   const keys = descriptors.map(({ base, len }) => `${base}:${len}`);
   const expected = new Set(keys);
   const found = copy.rom.windows.filter((window) =>

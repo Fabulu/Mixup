@@ -17,7 +17,9 @@ import {
   NATIVE_ORDINARY_SHOT_OWNERS, runOrdinaryShotPath2497AA,
 } from '../src/player.js';
 import { shotHandlers, spawnShotWithResources } from '../src/shots.js';
-import { NATIVE_SHOT_DRIVER_RESOURCES, SHOT, runShotPool } from '../src/weapons.js';
+import {
+  NATIVE_SHOT_DRIVER_RESOURCES, SHOT, SHOT_HANDLERS, runShotPool,
+} from '../src/weapons.js';
 import { BUCKETS, encodeRecordRequest, RECORD_BYTES } from '../src/spritequeue.js';
 import { DMG, shotBoundingBox } from '../src/damage.js';
 import { MOD_IDS, MODS } from '../src/mods.js';
@@ -179,8 +181,14 @@ test('W614 capabilities bind one exact 36 by $30 private pool',
     assert.equal(resources.ordinary.options, P3_VIRTUAL.options);
     assert.equal(resources.ordinary.autoShotSetting, 0x80380f);
     assert.equal(resources.ship.soundPolicy, 'silent');
+    assert.deepEqual([
+      resources.ship.ship0Sound, resources.ship.ship2Sound, resources.ship.hyperSound,
+      resources.ship.ship0Site, resources.ship.ship2Site, resources.ship.invalidSite,
+    ], [0x28c3ba, 0x28c3d4, 0x28c3ee, 0x249bfc, 0x249d2c, 0x249be2]);
     assert.equal(resources.driver.liveCounter, null);
     assert.equal(resources.driver.requestTelemetry, false);
+    assert.equal(resources.driver.dispatchEntries, SHOT_HANDLERS);
+    assert.equal(resources.driver.dispatchTable, SHOT.dispatch);
     assert.equal(typeof resources.options.presentationSink, 'function');
     assert.equal(typeof resources.driver.presentationSink, 'function');
     assert.equal(NATIVE_ORDINARY_SHOT_OWNERS.length, 2);
@@ -198,6 +206,12 @@ test('W614 capabilities bind one exact 36 by $30 private pool',
     assert.throws(() => runShotPool(state.memory, game.rom, shotHandlers(), {}, {
       ...resources.driver, liveCounter: undefined,
     }), /live counter/);
+    assert.throws(() => runShotPool(state.memory, game.rom, shotHandlers(), {}, {
+      ...resources.driver, dispatchEntries: undefined,
+    }), /16-entry cartridge dispatch table/);
+    assert.throws(() => runShotPool(state.memory, game.rom, shotHandlers(), {}, {
+      ...resources.driver, dispatchTable: undefined,
+    }), /16-entry cartridge dispatch table/);
     assert.deepEqual(activeSlots(state.memory), [],
       'malformed capabilities are rejected before private pool mutation');
   });

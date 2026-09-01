@@ -1207,6 +1207,54 @@ export function privateOutgoingDamagePass(ram, ctx, suppliedResources) {
   return result;
 }
 
+function nativeOutgoingShotPass(ram, ctx, ownerIndex) {
+  const p1 = ownerIndex === 0;
+  const table = p1 ? DMG.p1shots : DMG.p2shots;
+  const mask = p1 ? DMG.maskP1 : DMG.maskP2;
+  ram.setU16(DMG.fa72, mask);
+  ram.setU16(DMG.b6e6, ram.u16(p1 ? DMG.hyper1 : DMG.hyper2));
+  ram.setU16(DMG.b6e8, ram.u16(p1 ? DMG.hyperLvl1 : DMG.hyperLvl2));
+
+  let d7 = 0x2800;
+  const result = {
+    ran: true, ownerIndex, mask, anyShot: shotBoundingBox(ram, table, d7),
+    hitsA: 0, hitsB: 0,
+  };
+  if (!result.anyShot) return result;
+
+  const gate = ram.u16(DMG.gate308c);
+  result.hitsA = poolDamage(ram, DMG.poolA, ram.u16(DMG.poolACount),
+    table, d7, mask, gate, 'A', ctx);
+  const countB = ram.u16(DMG.poolBCount);
+  if (countB !== 0) {
+    for (const address of [BOX.maxY, BOX.minY, BOX.maxX, BOX.minX]) {
+      ram.setU16(address, u16(ram.u16(address) + 0xf000));
+    }
+    d7 = 0x1800;
+    result.hitsB = poolDamage(ram, DMG.poolB, countB, table, d7,
+      mask, gate, 'B', ctx);
+  }
+  return result;
+}
+
+/** `$18A1AC`: native P1/P2 selection followed by outgoing shot damage only. */
+export function runNativeOutgoingShotCollision(ram, ctx) {
+  const gate = ram.u16(DMG.gate308c);
+  const mirror = ram.u16(DMG.mirror2);
+  if (gate !== 0) {
+    if (ram.u16(DMG.p1rec) !== 0) {
+      return mirror === 0
+        ? nativeOutgoingShotPass(ram, ctx, 0)
+        : { ran: false, ownerIndex: null, mask: 0, anyShot: false, hitsA: 0, hitsB: 0 };
+    }
+    if (ram.u16(DMG.p2rec) !== 0 && mirror !== 0) {
+      return nativeOutgoingShotPass(ram, ctx, 1);
+    }
+    return { ran: false, ownerIndex: null, mask: 0, anyShot: false, hitsA: 0, hitsB: 0 };
+  }
+  return nativeOutgoingShotPass(ram, ctx, mirror === 0 ? 0 : 1);
+}
+
 /**
  * `$244D62` -- the pass, entered with the tail's five registers.
  *

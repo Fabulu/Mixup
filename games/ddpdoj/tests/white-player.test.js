@@ -14,6 +14,7 @@ import {
   whitePlayerP1Tick14889E, whitePlayerP2Tick14891E,
 } from '../src/white-player.js';
 import { createWhiteStage1PlayerHandlers } from '../src/white-runtime.js';
+import { WHITE_SHOT_PRODUCER_RESOURCES } from '../src/white-shots.js';
 
 const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
 const IMAGE = fileURLToPath(new URL('../tools/oracle/out/maincpu.bin', import.meta.url));
@@ -98,10 +99,16 @@ function autoShotOwner({
 function cadenceOwner({
   side = 0, state = 0, flags1 = 0, edge = 0, burstSource = 0,
   bias = 0, countdown = 0, remaining = 0, reload = 5, laser = 0,
-  ship = 0, power = 0, normal = 0x12, hyper = 0x34, p3c = 0,
+  ship = 0, style = 2, power = 0, normal = 0x12, hyper = 0x34, p3c = 0,
 } = {}) {
   const ram = new Ram();
-  const rec = side === 0 ? WHITE_PLAYER.p1.rec : WHITE_PLAYER.p2.rec;
+  const resources = WHITE_SHOT_PRODUCER_RESOURCES[side];
+  const rec = resources.player;
+  const rowOffset = (((style - 2) * 2 + ship) * 4) & 0xffff;
+  ram.setU32(resources.countPointer, rom.u32(WHITE_PLAYER.powerRows + rowOffset));
+  ram.setU16(resources.gate308c, 1);
+  ram.setU16(rec + P.posY, 0x2000);
+  ram.setU16(rec + P.posX, side === 0 ? 0x1800 : 0x2800);
   ram.setU8(rec + P.state, state);
   ram.setU8(rec + P.flags1, flags1);
   ram.setU8(rec + P.btnByte, edge);
@@ -116,11 +123,21 @@ function cadenceOwner({
   ram.setU8(rec + 0x54, normal);
   ram.setU8(rec + 0x55, hyper);
   ram.setU16(rec + 0x58, ship);
+  ram.setU16(rec + 0x5a, style);
   return {
     ram,
     rec,
-    run: () => whiteShotCadence1491D0(ram, rec),
+    resources,
+    run: () => whiteShotCadence1491D0(ram, rom, rec, {}, side),
   };
+}
+
+function activeShotCount(ram, resources) {
+  let count = 0;
+  for (let i = 0; i < resources.slots; i++) {
+    if (ram.u16(resources.pool + i * resources.stride) !== 0) count++;
+  }
+  return count;
 }
 
 function assertUnreachedAt(run, address) {
@@ -150,7 +167,9 @@ test('private player entry rejects Black before touching RAM or cartridge input'
   );
   assert.equal(reads, 0);
   assert.throws(
-    () => whiteShotCadence1491D0(untouched, 0, BLACK_LABEL_PROFILE),
+    () => whiteShotCadence1491D0(
+      untouched, untouched, 0, null, 0, BLACK_LABEL_PROFILE,
+    ),
     /White Label Stage 1 shot cadence is unavailable/,
   );
   assert.equal(reads, 0);
@@ -161,11 +180,11 @@ test('private player entry rejects Black before touching RAM or cartridge input'
   assert.equal(reads, 0);
 });
 
-test('Stage 1 factory is separate and keeps native type priorities and type 5 absent', () => {
+test('Stage 1 player factory stays separate and keeps native type priorities', () => {
   const handlers = createWhiteStage1PlayerHandlers(rom);
   assert.deepEqual([...handlers.keys()], [0x02, 0x03]);
   assert.equal(handlers.has(0x05), false,
-    'the option owner is not registered before its complete duties are ported');
+    'type 5 belongs only to the independently gated shot handler map');
 
   const entries = tables.editions.whiteLabel.dispatch.entries;
   assert.deepEqual([
@@ -177,7 +196,7 @@ test('Stage 1 factory is separate and keeps native type priorities and type 5 ab
   ]);
   assert.ok(entries[2].priority > entries[3].priority
     && entries[3].priority > entries[5].priority,
-  'native dispatch runs P1, then P2, then the future option owner');
+  'native dispatch runs P1, then P2, then the shot owner');
 });
 
 test('first player frame initializes at the slot position without reading movement input', () => {
@@ -345,14 +364,16 @@ test('Version A cadence consumes real and synthesized edges with exact burst sta
   const real = cadenceOwner({
     edge: 0x10, burstSource: 8, bias: 2, reload: 7, ship: 0, power: 8,
   });
-  assertUnreachedAt(real.run, WHITE_PLAYER.shotShip0);
+  assert.equal(real.run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(activeShotCount(real.ram, real.resources), 2);
   assert.equal(real.ram.u8(real.rec + 0x2b), 6);
   assert.equal(real.ram.u8(real.rec + 0x2a), 2,
     'ship 0 at power 8 forces the native two-frame reload');
   assert.equal(real.ram.u8(real.rec + 0x3c), 1);
 
   const synthetic = cadenceOwner({ flags1: 0x08, edge: 0x10, ship: 2, reload: 9 });
-  assertUnreachedAt(synthetic.run, WHITE_PLAYER.shotShip2);
+  assert.equal(synthetic.run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(activeShotCount(synthetic.ram, synthetic.resources), 2);
   assert.equal(synthetic.ram.u8(synthetic.rec + 0x2b), 0);
   assert.equal(synthetic.ram.u8(synthetic.rec + 0x2a), 9);
   assert.equal(synthetic.ram.btst8(synthetic.rec + P.state, 3), 1);
@@ -360,6 +381,7 @@ test('Version A cadence consumes real and synthesized edges with exact burst sta
 
   const repeated = cadenceOwner({ state: 0x08, edge: 0x10, burstSource: 8 });
   assert.equal(repeated.run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(activeShotCount(repeated.ram, repeated.resources), 0);
   assert.equal(repeated.ram.u8(repeated.rec + 0x2a), 1);
   assert.equal(repeated.ram.btst8(repeated.rec + P.state, 3), 0);
 
@@ -378,7 +400,8 @@ test('Version A no-edge cadence preserves 8-bit countdown and reload phase', () 
   assert.equal(waiting.ram.btst8(waiting.rec + P.flags1, 4), 0);
 
   const ready = cadenceOwner({ countdown: 1, remaining: 2, ship: 2, reload: 6 });
-  assertUnreachedAt(ready.run, WHITE_PLAYER.shotShip2);
+  assert.equal(ready.run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(activeShotCount(ready.ram, ready.resources), 2);
   assert.equal(ready.ram.u8(ready.rec + 0x2b), 1);
   assert.equal(ready.ram.u8(ready.rec + 0x2a), 6);
   assert.equal(ready.ram.btst8(ready.rec + P.state, 3), 1);
@@ -410,18 +433,24 @@ test('Version A recurring tick consumes synthesized auto-shot edges in the same 
   const ram = new Ram();
   const address = slot(ram, 0, 0, { fresh: false });
   const rec = WHITE_PLAYER.p1.rec;
+  const resources = WHITE_SHOT_PRODUCER_RESOURCES[0];
+  ram.setU32(resources.countPointer, rom.u32(WHITE_PLAYER.powerRows));
+  ram.setU16(resources.gate308c, 1);
   ram.setU16(rec + P.posY, 0x2000);
   ram.setU16(rec + P.posX, 0x1800);
   ram.setU8(rec + P.speedIdx, 22);
   ram.setU8(rec + P.baseSpeed, 22);
   ram.setU8(rec + P.invuln, 0xff);
   ram.setU8(rec + 0x2c, 5);
+  ram.setU16(rec + 0x58, 0);
+  ram.setU16(rec + 0x5a, 2);
   ram.setU16(RAM.p1raw, 0x0040);
   ram.setU16(RAM.p1edge, 0);
   ram.setU8(WHITE_PLAYER.autoShotSetting, 1);
   const run = () => whitePlayerP1Tick14889E(ram, rom, address);
 
-  assertUnreachedAt(run, WHITE_PLAYER.shotShip0);
+  assert.equal(run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(activeShotCount(ram, resources), 2);
   assert.equal(ram.u8(rec + 0x3c), 1);
   assert.equal(ram.u8(rec + 0x2b), 0);
 
@@ -429,7 +458,8 @@ test('Version A recurring tick consumes synthesized auto-shot edges in the same 
   assert.equal(ram.u8(rec + 0x3c), 0);
   assert.equal(ram.btst8(rec + P.flags1, 4), 0);
 
-  assertUnreachedAt(run, WHITE_PLAYER.shotShip0);
+  assert.equal(run().boundary, WHITE_PLAYER.drawTail);
+  assert.equal(activeShotCount(ram, resources), 4);
 });
 
 test('host companion markers 2 and 3 cannot fall through the native type 3 owner', () => {
