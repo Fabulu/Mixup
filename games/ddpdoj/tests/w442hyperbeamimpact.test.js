@@ -385,13 +385,12 @@ test('W442: granting $81B65C WITHOUT $81B642 measures zero hyper on the ladder '
 // and shows the 88 return. Without that arm "bucket 16 is clean" would also be
 // what a broken counter says.
 //
-//     bucket 16 (THE BEAM)      W442: 4 streams, 88 records  ->  W443: 0, 0
-//     bucket 25 (the HUD)       W442: 14 streams, 109 records -> W443: unchanged
-//     total missing streams     W442: 18, 197 records         ->  W443: 14, 109
+//     bucket 16 (THE BEAM)      W442: 4 streams, 88 records  ->  current: 0, 0
+//     bucket 25 (the HUD)       W442: 14 streams, 109 records -> current: 0, 0
+//     total missing streams     W442: 18, 197 records         ->  current: 0, 0
 //
-// The fourteen HUD frames are a second and separate gap. W479 later adds one
-// missing bonus-follower stream and record. Neither is the beam or hit
-// animation, and the current 15-stream, 110-record total is asserted below.
+// Later complete-cabinet harvests resolved the fourteen HUD frames and W479's
+// bonus-follower stream. The RED arm below still removes only the beam frames.
 // ===========================================================================
 /** the four frames of the hyper beam's animation, W442's own measurement. */
 const BEAM_FOUR = [0x022084, 0x022268, 0x02244c, 0x022630];
@@ -423,20 +422,15 @@ test('W443 (was W442 test 8): bucket 16 -- THE LASER BEAM -- now has ZERO '
     'and the PLAIN laser still has none -- it never did, which is what made '
     + 'this the hyper\'s power slot and only the hyper\'s');
 
-  // WHAT IS LEFT, counted rather than waved at. The fourteen HUD frames are a
-  // separate gap W443 deliberately did not touch. W621's complete cabinet range
-  // now includes W479's bonus follower stream.
+  // The complete sprite bundle now resolves the later HUD harvest as well.
   const only = [...hyper.missing.keys()].filter((o) => !plain.missing.has(o));
   const records = only.reduce((n, o) => n + hyper.missing.get(o), 0);
-  assert.equal(only.length, 14,
-    'the four beam streams stay fixed and W621 resolves the bonus follower');
-  assert.equal(records, 109,
-    'the historical 109 HUD records remain missing');
-  const b25 = hyper.missingBucket.get(25);
-  assert.ok(b25, 'bucket 25 -- the HUD -- still carries missing art');
-  const hudOnly = [...b25.keys()].filter((o) => !plain.missing.has(o));
-  assert.equal(hudOnly.length, 14,
-    'bucket 25 still owns the same fourteen HUD streams');
+  assert.equal(only.length, 0,
+    'the hyper adds no unresolved stream after the complete-cabinet harvest');
+  assert.equal(records, 0,
+    'the hyper adds no unresolved record after the complete-cabinet harvest');
+  assert.equal(hyper.missingBucket.has(25), false,
+    'the complete-cabinet harvest resolves the historical HUD gap');
 
   // ---- RED. Take the four back OUT of the resolved map and the defect
   // returns, to the record. A zero measured by a counter that stopped counting
@@ -452,10 +446,10 @@ test('W443 (was W442 test 8): bucket 16 -- THE LASER BEAM -- now has ZERO '
     assert.equal(red.missing.get(o), 22, `${hx(o)} on 22 of 100 frames`);
   }
   const redOnly = [...red.missing.keys()].filter((o) => !plain.missing.has(o));
-  assert.equal(redOnly.length, 18,
-    'the current fourteen plus the four deliberately removed beam streams');
-  assert.equal(redOnly.reduce((n, o) => n + red.missing.get(o), 0), 197,
-    'the current 109 missing records plus the restored 88-record beam defect');
+  assert.equal(redOnly.length, 4,
+    'only the four deliberately removed beam streams are unresolved');
+  assert.equal(redOnly.reduce((n, o) => n + red.missing.get(o), 0), 88,
+    'only the restored 88-record beam defect remains unresolved');
   // The stride, which is what says these are four frames of one animation.
   for (let i = 1; i < BEAM_FOUR.length; i++) {
     assert.equal(BEAM_FOUR[i] - BEAM_FOUR[i - 1], 0x1e4,
@@ -500,7 +494,7 @@ test('W443 (was W442 test 8b): the hyper beam still takes its art from $24BAE2 '
 // 9. The standing tripwire. This wave declares no window.
 // ===========================================================================
 test('W442 adds no ROM window and later waves reconcile the exact registry', () => {
-  assert.equal(ROM_WINDOW_COUNT, 949,
+  assert.equal(ROM_WINDOW_COUNT, 1006,
     'W551-W630 add later gameplay, menu, ending, and TX data');
   assert.equal(ROM_OVERLAP_PAIRS, 77,
     'W518 vertical glyph data overlaps W23 slot-[14] init data by ten exact bytes');

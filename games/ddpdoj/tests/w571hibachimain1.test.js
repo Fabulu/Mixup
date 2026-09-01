@@ -47,7 +47,7 @@ const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
-const LIVE_TABLE_HASH = '1654f079b80372640f000e11aaa32f7e4ec24bb546a6d683623c7e82ef755944';
+const LIVE_TABLE_HASH = '7949abd7bcdc090d86abf5e3c79487bdd4ae6f4c5e7d6bfaaa2368a71a3e5437';
 const ASSET_TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
 const W572_HASH = '0f5e8c092c2d16abe958ba0edaa5ea681fd5b296a0b110e10f91d2c6aa1a6ba9';
 const TABLE_HASH = '5c998537267ec18c9392305350a1dd7b3e4f60bfe5825bb238156864cfacca75';
@@ -122,9 +122,9 @@ async function bundle() {
 
 test('W571 adds exactly one disjoint template window and reconstructs strict W570',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 949);
-    assert.equal(TABLE_JSON.rom.windows.length, 949);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 457509);
+    assert.equal(ROM_WINDOW_COUNT, 1006);
+    assert.equal(TABLE_JSON.rom.windows.length, 1006);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 478353);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(W571_TABLE.rom.windows.length, 845);
     assert.equal(W571_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452351);

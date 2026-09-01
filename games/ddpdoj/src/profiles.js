@@ -257,6 +257,56 @@ export function assertProfileTables(profile, tables) {
   return tables;
 }
 
+/**
+ * Keep embedded windows for other edition profiles out of the selected runtime.
+ * The exported table can carry several programs from one cartridge image, but
+ * making a previously absent address readable changes an exact native route.
+ */
+export function profileRomSpec(profile, tables) {
+  const windows = tables?.rom?.windows;
+  if (!Array.isArray(windows)) {
+    throw new TypeError(`DaiOuJou tables for ${profile.id} have no ROM window list`);
+  }
+  const excluded = new Map();
+  for (const edition of Object.values(tables.editions ?? {})) {
+    if (!edition || edition.profileId === profile.id) continue;
+    for (const [field, descriptors] of Object.entries(edition)) {
+      if (!field.endsWith('Windows')) continue;
+      if (!Array.isArray(descriptors)) {
+        throw new TypeError(`${field} for an embedded DaiOuJou edition must be an array`);
+      }
+      for (const descriptor of descriptors) {
+        if (!descriptor || typeof descriptor.base !== 'string'
+            || !Number.isInteger(descriptor.len) || descriptor.len <= 0) {
+          throw new TypeError(`${field} has an invalid embedded ROM window descriptor`);
+        }
+        const key = `${descriptor.base}:${descriptor.len}`;
+        if (excluded.has(key)) {
+          throw new TypeError(`${key} is duplicated in the embedded edition manifests`);
+        }
+        excluded.set(key, 0);
+      }
+    }
+  }
+  if (excluded.size === 0) return tables.rom;
+
+  const retained = [];
+  for (const window of windows) {
+    const key = `${window.base}:${window.len}`;
+    if (!excluded.has(key)) {
+      retained.push(window);
+      continue;
+    }
+    excluded.set(key, excluded.get(key) + 1);
+  }
+  for (const [key, matches] of excluded) {
+    if (matches !== 1) {
+      throw new TypeError(`${key} resolves to ${matches} embedded ROM windows instead of one`);
+    }
+  }
+  return { ...tables.rom, windows: retained };
+}
+
 /** Preserve an immutable non-enumerable profile across a context adapter. */
 export function deriveProfileContext(source, overrides = {}) {
   const derived = { ...source, ...overrides };

@@ -14,12 +14,12 @@ import {
   runColdRound2Route,
 } from './round2routeharness.js';
 
-const TABLE_HASH = '1654f079b80372640f000e11aaa32f7e4ec24bb546a6d683623c7e82ef755944';
+const TABLE_HASH = '7949abd7bcdc090d86abf5e3c79487bdd4ae6f4c5e7d6bfaaa2368a71a3e5437';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
 const TABLE_META = Object.freeze({
   sha256: TABLE_HASH,
-  windows: 949,
-  bytes: 457509,
+  windows: 1006,
+  bytes: 478353,
   overlapPairs: 77,
 });
 const ROOT_KEYS = Object.freeze([

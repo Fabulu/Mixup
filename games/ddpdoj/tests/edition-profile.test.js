@@ -19,6 +19,7 @@ import { Game } from '../src/main.js';
 import { Ram } from '../src/ram.js';
 import { BLACK_RUNTIME_BINDING } from '../src/runtime-profile.js';
 import { OBJ } from '../src/objdriver.js';
+import { tableBeforeWhiteLabel } from './romwindowset.js';
 
 const SEED = fileURLToPath(new URL('../rip/web/seed.bin', import.meta.url));
 const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
@@ -139,6 +140,68 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
   assert.ok(declared.includes('$125B78:8928'), 'the Stage 1 column stream is exported');
   assert.ok(declared.includes('$127E58:2048'), 'the Stage 1 background palette is exported');
   for (const window of declared) assert.ok(exported.has(window), `${window} is cartridge-backed`);
+});
+
+runtimeTest('embedded Version A projection reconstructs the exact legacy Black ledger', () => {
+  const { tables } = fixtures();
+  const legacy = tableBeforeWhiteLabel(tables);
+  assert.deepEqual([
+    legacy.rom.windows.length,
+    legacy.rom.windows.reduce((sum, window) => sum + window.len, 0),
+    Object.hasOwn(legacy, 'profileId'),
+    Object.hasOwn(legacy, 'editions'),
+  ], [949, 457509, false, false]);
+  assert.deepEqual(tableBeforeWhiteLabel(legacy), legacy,
+    'the exact legacy projection is idempotent');
+
+  const partial = JSON.parse(JSON.stringify(tables));
+  const omitted = partial.editions.whiteLabel.playerWindows[0];
+  partial.rom.windows = partial.rom.windows.filter((window) =>
+    window.base !== omitted.base || window.len !== omitted.len);
+  assert.throws(() => tableBeforeWhiteLabel(partial), /partially present or duplicated/);
+
+  const duplicate = JSON.parse(JSON.stringify(tables));
+  duplicate.rom.windows.push(JSON.parse(JSON.stringify(duplicate.rom.windows.find((window) =>
+    window.base === omitted.base && window.len === omitted.len))));
+  assert.throws(() => tableBeforeWhiteLabel(duplicate), /partially present or duplicated/);
+
+  const mislabeled = JSON.parse(JSON.stringify(tables));
+  const first = mislabeled.editions.whiteLabel.frontendWindows[0];
+  mislabeled.rom.windows.find((window) =>
+    window.base === first.base && window.len === first.len).why = 'not Version A evidence';
+  assert.throws(() => tableBeforeWhiteLabel(mislabeled), /not the exact embedded Version A window/);
+});
+
+runtimeTest('Black runtime excludes every embedded Version A-only ROM window', () => {
+  const { seedBytes, tables } = fixtures();
+  const descriptors = [
+    ...tables.editions.whiteLabel.frontendWindows,
+    ...tables.editions.whiteLabel.playerWindows,
+  ];
+  const excluded = new Set(descriptors.map(({ base, len }) =>
+    `${Number.parseInt(base.slice(1), 16)}:${len}`));
+  const g = game();
+  const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
+
+  assert.equal(excluded.size, 57);
+  assert.equal(tables.rom.windows.length, 1006,
+    'runtime projection does not mutate the complete exported table');
+  assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [949, 457509]);
+  for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);
+
+  const playerOnly = tables.editions.whiteLabel.playerWindows[0];
+  const address = Number.parseInt(playerOnly.base.slice(1), 16);
+  assert.throws(() => g.rom.u8(address), (error) => error?.romAddress === address,
+    'a Black route cannot become readable by entering Version A player code');
+
+  const partial = JSON.parse(JSON.stringify(tables));
+  partial.rom.windows = partial.rom.windows.filter((window) =>
+    window.base !== playerOnly.base || window.len !== playerOnly.len);
+  assert.throws(
+    () => new Game(seedBytes.slice(), partial, { palCatchUp: false }),
+    /resolves to 0 embedded ROM windows instead of one/,
+    'a malformed edition manifest cannot silently alter the runtime projection',
+  );
 });
 
 test('profile validation is order-independent but rejects incomplete or hidden data', () => {

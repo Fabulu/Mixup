@@ -698,9 +698,55 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
+const WHITE_LABEL_WINDOW_COUNT = 57;
+const WHITE_LABEL_WINDOW_BYTES = 20844;
+
+/** Remove the later embedded Version A window family before reconstructing any
+ *  earlier Black Label ledger. The edition manifest is the identity list, so a
+ *  partial, duplicated, or mislabeled family fails instead of being hidden. */
+export function tableBeforeWhiteLabel(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const edition = copy.editions?.whiteLabel;
+  const descriptors = [
+    ...(edition?.frontendWindows ?? []),
+    ...(edition?.playerWindows ?? []),
+  ];
+  const keys = descriptors.map(({ base, len }) => `${base}:${len}`);
+  const expected = new Set(keys);
+  const found = copy.rom.windows.filter((window) =>
+    expected.has(`${window.base}:${window.len}`));
+  if (found.length === 0) {
+    if (descriptors.length === 0) return copy;
+    throw new Error('the embedded Version A manifest exists without its windows');
+  }
+  if (descriptors.length !== WHITE_LABEL_WINDOW_COUNT
+      || expected.size !== WHITE_LABEL_WINDOW_COUNT
+      || found.length !== WHITE_LABEL_WINDOW_COUNT
+      || found.reduce((sum, window) => sum + window.len, 0) !== WHITE_LABEL_WINDOW_BYTES) {
+    throw new Error('the embedded Version A windows are only partially present or duplicated');
+  }
+  for (const descriptor of descriptors) {
+    const matches = found.filter((window) =>
+      window.base === descriptor.base && window.len === descriptor.len);
+    if (matches.length !== 1 || !matches[0].why.startsWith('White A ')
+        || matches[0].hex.length !== descriptor.len * 2) {
+      throw new Error(`${descriptor.base} is not the exact embedded Version A window`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((window) =>
+    !expected.has(`${window.base}:${window.len}`));
+  if (copy.profileId !== 'ddpdoj/black-label/b') {
+    throw new Error('the embedded Version A tables do not carry the Black host profile identity');
+  }
+  delete copy.profileId;
+  delete copy.editions.whiteLabel;
+  if (Object.keys(copy.editions).length === 0) delete copy.editions;
+  return copy;
+}
+
 /** Reconstruct the exact pre-W630 table by removing its five additive windows. */
 export function tableBeforeW630(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforeWhiteLabel(tables);
   const found = copy.rom.windows.filter((window) =>
     W630_WINDOWS.some(([base]) => window.base === base));
   if (found.length === 0) return copy;
