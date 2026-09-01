@@ -31,9 +31,9 @@ const N = Object.freeze({
 });
 
 const TARGETS = Object.freeze({
-  0x00: { current: 0x80e886, dirty: 0x80fa66 },
-  0x08: { current: 0x80f086, dirty: 0x80fa68 },
-  0x10: { current: 0x80f886, dirty: 0x80fa6a },
+  0x00: { current: 0x80e886, dirty: 0x80fa66, palette: 'spr' },
+  0x08: { current: 0x80f086, dirty: 0x80fa68, palette: 'bg' },
+  0x10: { current: 0x80f886, dirty: 0x80fa6a, palette: 'tx' },
 });
 
 function timing(index) {
@@ -585,9 +585,24 @@ function stepNode(ram, rom, node) {
   }
 }
 
+function markNodeStageSourced(ram, palette, node) {
+  if (!palette?.stageSourced) return;
+  const writer = ram.u32(node + N.writer);
+  const target = Object.values(TARGETS).find((entry) => entry.dirty === writer);
+  if (!target) return;
+  const sourced = palette.stageSourced[target.palette];
+  const start = (ram.u32(node + N.current) - target.current) / 2;
+  const count = ram.u16(node + N.mode) + 1;
+  if (!Number.isInteger(start) || start < 0 || start + count > sourced.length) {
+    unreached(0x246b20, `$246B20 palette animation writes ${count} words at an invalid ${target.palette} `
+      + `staging offset ${start}`);
+  }
+  sourced.fill(1, start, start + count);
+}
+
 /** `$24683E`, main-loop call #3. Advances all live chains and frees a mode-1
  * root once every node's active word has drained to zero. */
-export function runAnimObjects24683E(ram, rom) {
+export function runAnimObjects24683E(ram, rom, palette = null) {
   let roots = 0, nodes = 0, freed = 0;
   for (let i = 0; i < ANIM_OBJECT.rootSlots; i++) {
     const root = ANIM_OBJECT.roots + i * ANIM_OBJECT.rootStride;
@@ -607,6 +622,9 @@ export function runAnimObjects24683E(ram, rom) {
       // refusal to make that wild write. Nothing live depends on it -- measured
       // by dropping it and re-running the stage1-laser-hold ladder.
       if (ram.u16(node + N.status) !== 0 && ram.u32(node + N.writer) !== 0) {
+        // The counted loader has already filled and dirtied this staging range. Carry that cartridge
+        // provenance even while the node's countdown defers its first fade step.
+        if (ram.u16(node + N.active) !== 0) markNodeStageSourced(ram, palette, node);
         stepNode(ram, rom, node);
       }
       activeSum = u16(activeSum + ram.u16(node + N.active));

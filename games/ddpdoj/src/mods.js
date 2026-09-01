@@ -16,7 +16,8 @@ import { i16 } from './ram.js';
 import { RUNAHEAD_EXTERNAL_STATE } from './runahead-state.js';
 import {
   beginPlayableHibachiCreditedRun, bindPlayableHibachiGame,
-  clearPlayableHibachiBulletOnSpawn, collectPlayableHibachiSpriteRequests,
+  capturePlayableHibachiLaunch, clearPlayableHibachiBulletOnSpawn,
+  collectPlayableHibachiSpriteRequests,
   createPlayableHibachiState,
   endPlayableHibachiRun, exportPlayableHibachiReplayState,
   filterPlayableHibachiGrazeEvent, importPlayableHibachiReplayState,
@@ -915,8 +916,10 @@ export function modGameOptions(state) {
     options.playerOptionFilter = (ram, ctx) =>
       (!option || option(ram, ctx) !== false) && !active();
     const sprite = options.playerSpriteFilter;
-    options.playerSpriteFilter = (ram, event, ctx) =>
-      (!sprite || sprite(ram, event, ctx) !== false) && !active();
+    options.playerSpriteFilter = (ram, event, ctx) => {
+      if (active()) capturePlayableHibachiLaunch(playable, event);
+      return (!sprite || sprite(ram, event, ctx) !== false) && !active();
+    };
     const virtual = options.virtualSpriteRequestHook;
     options.virtualSpriteRequestHook = (game) => {
       if (!active()) playable.virtualRequests.length = 0;

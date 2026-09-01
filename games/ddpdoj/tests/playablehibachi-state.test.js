@@ -142,6 +142,9 @@ test('Playable Hibachi runahead restores every external owner in place', () => {
   state.players[1].runtime.frames = 9;
   state.players[1].runtime.presentationFrames = 13;
   state.players[1].runtime.presentationStarted = true;
+  state.players[1].runtime.launchActive = true;
+  state.players[1].runtime.launchY = 0x2a00;
+  state.players[1].runtime.launchX = 0x2300;
 
   const identities = {
     players: state.players,
@@ -172,6 +175,9 @@ test('Playable Hibachi runahead restores every external owner in place', () => {
   state.players[1].runtime.frames = 100;
   state.players[1].runtime.presentationFrames = 101;
   state.players[1].runtime.presentationStarted = false;
+  state.players[1].runtime.launchActive = false;
+  state.players[1].runtime.launchY = 0;
+  state.players[1].runtime.launchX = 0;
   request.bytes.fill(0xff);
   request.privatePaletteBank = 1;
   request.paletteWords.fill(0xffff);
@@ -186,6 +192,9 @@ test('Playable Hibachi runahead restores every external owner in place', () => {
   assert.equal(state.players[1].runtime.frames, 9);
   assert.equal(state.players[1].runtime.presentationFrames, 13);
   assert.equal(state.players[1].runtime.presentationStarted, true);
+  assert.equal(state.players[1].runtime.launchActive, true);
+  assert.equal(state.players[1].runtime.launchY, 0x2a00);
+  assert.equal(state.players[1].runtime.launchX, 0x2300);
   assert.strictEqual(state.virtualRequests[0], request);
   assert.deepEqual([...request.bytes], Array.from({ length: 12 }, (_, index) => index));
   assert.equal(request.privatePaletteBank, 6);
@@ -226,6 +235,9 @@ test('Playable Hibachi replay validates completely before restoring in place', (
   state.players[1].runtime.presentationFrames = 17;
   state.players[0].runtime.presentationStarted = true;
   state.players[1].runtime.presentationStarted = false;
+  state.players[0].runtime.launchActive = true;
+  state.players[0].runtime.launchY = 0x3600;
+  state.players[0].runtime.launchX = 0x14c0;
   const external = exportPlayableHibachiReplayState(state);
 
   state.sidecars[0].setU32(PLAYABLE_HIBACHI_BASES[0], 0xdeadbeef);
@@ -254,6 +266,9 @@ test('Playable Hibachi replay validates completely before restoring in place', (
   assert.equal(state.players[1].runtime.presentationFrames, 17);
   assert.equal(state.players[0].runtime.presentationStarted, true);
   assert.equal(state.players[1].runtime.presentationStarted, false);
+  assert.equal(state.players[0].runtime.launchActive, true);
+  assert.equal(state.players[0].runtime.launchY, 0x3600);
+  assert.equal(state.players[0].runtime.launchX, 0x14c0);
   assert.deepEqual(owners, [
     state.sidecars[0], state.sidecarBytes[0], state.ownedBullets,
     state.selectedGuns, state.privatePaletteWords, state.lifecycle,
@@ -263,6 +278,9 @@ test('Playable Hibachi replay validates completely before restoring in place', (
   for (const runtime of legacy.playerRuntime) {
     delete runtime.presentationFrames;
     delete runtime.presentationStarted;
+    delete runtime.launchActive;
+    delete runtime.launchY;
+    delete runtime.launchX;
   }
   state.players[0].runtime.presentationFrames = 99;
   state.players[1].runtime.presentationFrames = 99;
@@ -275,6 +293,9 @@ test('Playable Hibachi replay validates completely before restoring in place', (
     legacy.playerRuntime[0].live);
   assert.equal(state.players[1].runtime.presentationStarted,
     legacy.playerRuntime[1].live);
+  assert.equal(state.players[0].runtime.launchActive, false);
+  assert.equal(state.players[0].runtime.launchY, 0);
+  assert.equal(state.players[0].runtime.launchX, 0);
 });
 
 test('replay v2 validates and restores the exact Playable Hibachi loadout', () => {

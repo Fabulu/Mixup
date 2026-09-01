@@ -12,6 +12,7 @@ import { runInitBodyAddr, INIT_BODY_ADDRESSES } from '../src/initbody.js';
 import { runHandler, HANDLER_ADDRESSES, TYPE8C_ART } from '../src/handlers.js';
 import { CUE, spawnCues28AC86 } from '../src/cues.js';
 import { ANIM_OBJECT, runAnimObjects24683E } from '../src/animobjects.js';
+import { PaletteState } from '../src/palette.js';
 import { BUCKETS } from '../src/spritequeue.js';
 import { B, POOL_B } from '../src/effects.js';
 
@@ -97,11 +98,25 @@ test('W176/3 long thresholds advance one 16-byte record and call #3 fades stagin
   assert.equal(ram.u32(A5 + 0x44), 0x278b82);
   assert.equal(ram.u16(CUE.count), 1);
 
-  const current = 0x80e886 + 0x0540;
-  assert.equal(ram.u16(current), 0);
-  runAnimObjects24683E(ram, ROM);
-  runAnimObjects24683E(ram, ROM);
-  runAnimObjects24683E(ram, ROM);
+  const palette = new PaletteState();
+  const node = ram.u32(ANIM_OBJECT.roots + 0x2c);
+  const current = ram.u32(node + 0x0e);
+  const start = (current - 0x80e886) / 2;
+  const count = ram.u16(node + 0x04) + 1;
+  const before = Array.from({ length: count }, (_, i) => ram.u16(current + i * 2));
+  assert.equal(ram.u16(node + 0x14), 2, 'the loader fill waits two countdown frames');
+  assert.ok(palette.stageSourced.spr.slice(start, start + count)
+    .every((value) => value === 0));
+
+  runAnimObjects24683E(ram, ROM, palette);
+  assert.deepEqual(Array.from({ length: count }, (_, i) => ram.u16(current + i * 2)), before,
+    'the first countdown frame keeps the loader fill unchanged');
+  assert.ok(palette.stageSourced.spr.slice(start, start + count)
+    .every((value) => value === 1),
+    'the active valid node marks its loader fill sourced before its first fade step');
+
+  runAnimObjects24683E(ram, ROM, palette);
+  runAnimObjects24683E(ram, ROM, palette);
   assert.notEqual(ram.u16(current), 0);
   assert.equal(ram.u16(0x80fa66), 1);
 });

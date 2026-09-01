@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
 import { Game, MACHINE } from '../src/main.js';
+import { ANIM_OBJECT } from '../src/animobjects.js';
 import { ALLOC } from '../src/objalloc.js';
 import {
   BOOT, COIN_DIP_RESET, OPERATOR_FACTORY, RESET_PROLOGUE, coinDipInit23C6FA,
@@ -23,6 +24,7 @@ import {
 } from '../src/fronttext.js';
 import { COIN } from '../src/isr.js';
 import { SCREEN9 } from '../src/objslot9.js';
+import { resolveLoadout } from '../src/mods.js';
 import { AssetError, loadBundle } from '../src/web/assets.js';
 import { Demo } from '../src/web/app.js';
 import {
@@ -90,6 +92,17 @@ function activeTypes(game) {
   return types;
 }
 
+function activeSpritePaletteNodes(game, targets) {
+  const nodes = [];
+  for (let i = 0; i < ANIM_OBJECT.nodeSlots; i++) {
+    const node = ANIM_OBJECT.nodes + i * ANIM_OBJECT.nodeStride;
+    if ((game.ram.u16(node) & 0x8000) === 0 || game.ram.u16(node + 0x18) === 0) continue;
+    const target = game.ram.u32(node + 0x0a);
+    if (game.ram.u32(node + 0x06) === 0x80fa66 && targets.has(target)) nodes.push(node);
+  }
+  return nodes;
+}
+
 function canvasHarness() {
   let image = null;
   let puts = 0;
@@ -135,6 +148,18 @@ function mark(demo, harness) {
 function advanceTo(demo, frame) {
   assert.ok(frame >= demo.game.logicFrame, 'cannot advance the cabinet backwards');
   while (demo.game.logicFrame < frame) demo.step();
+}
+
+function assertNativePaletteTarget(actual, target, label) {
+  for (const [channel, shift] of [['red', 10], ['green', 5], ['blue', 0]]) {
+    const have = (actual >>> shift) & 0x1f;
+    const want = (target >>> shift) & 0x1f;
+    if (have === want) continue;
+    assert.equal(want, 0x10,
+      `${label} ${channel} differs from a cartridge channel outside the native midpoint`);
+    assert.ok(have === 0x0f || have === 0x11,
+      `${label} ${channel} uses $246964..$2469D8's adjacent encoding for target $10`);
+  }
 }
 
 async function waitForQueue(queue, label) {
@@ -327,6 +352,88 @@ test('W621 required cabinet TX, exact arm-1 streams and complete sprite ranges f
     assert.deepEqual([...exact.manifest.gfx.bg.requiredColdBoot], requiredBg);
     await assert.rejects(() => exactBundle({ dropTile: requiredBg[0] }),
       /required cold-front-end BG tile \$36AA/);
+  });
+
+test('W621 cold-idle high-score palette animation keeps exact ROM provenance with pending Hibachi',
+  { skip: SKIP, timeout: 120_000 }, async (t) => {
+    const exact = await exactBundle();
+    clearCoin();
+    clearTouch();
+    t.after(() => { clearCoin(); clearTouch(); });
+    const vanillaCanvas = canvasHarness().canvas;
+    const pendingCanvas = canvasHarness().canvas;
+    const vanilla = new Demo(vanillaCanvas, exact, MACHINE.refreshHz);
+    const pending = new Demo(pendingCanvas, exact, MACHINE.refreshHz,
+      undefined, null, null, resolveLoadout(['playable-hibachi']));
+
+    const targets = new Map([
+      [0, 0x2257f8],
+      [1, 0x225838],
+      [4, 0x2258b8],
+      [5, 0x2258f8],
+      [6, 0x225938],
+      [7, 0x2254b8],
+      [8, 0x225878],
+    ]);
+    const targetAddresses = new Set(targets.values());
+    let firstNodes = [];
+    while (vanilla.game.logicFrame < 318 && firstNodes.length !== targets.size) {
+      vanilla.step();
+      firstNodes = activeSpritePaletteNodes(vanilla.game, targetAddresses);
+    }
+    const firstHighScoreFrame = vanilla.game.logicFrame;
+    assert.equal(firstNodes.length, targets.size,
+      'the first live high-score frame owns all seven cartridge palette nodes');
+    assert.equal(firstHighScoreFrame, 303,
+      'the seven nodes become live together on the first high-score palette frame');
+    for (const node of firstNodes) {
+      const start = (vanilla.game.ram.u32(node + 0x0e) - 0x80e886) / 2;
+      const count = vanilla.game.ram.u16(node + 0x04) + 1;
+      const bank = start / 32;
+      assert.equal(vanilla.game.ram.u32(node + 0x0a), targets.get(bank));
+      assert.ok(vanilla.game.palette.stageSourced.spr.slice(start, start + count)
+        .every((value) => value === 1),
+        `bank ${bank} loader fill is sourced on its first active frame`);
+    }
+
+    advanceTo(pending, firstHighScoreFrame);
+    assert.equal(activeSpritePaletteNodes(pending.game, targetAddresses).length, targets.size);
+    assert.deepEqual(
+      [...pending.game.palette.stageSourced.spr],
+      [...vanilla.game.palette.stageSourced.spr],
+      'pending Hibachi preserves first-frame animation provenance',
+    );
+    assert.deepEqual(
+      [...pending.game.palette.words], [...vanilla.game.palette.words],
+      'pending Hibachi preserves first-frame palette output',
+    );
+
+    advanceTo(vanilla, 318);
+    advanceTo(pending, 318);
+    assert.deepEqual(vanilla.game.palette.sourcedBanks(), [...targets.keys()]);
+    for (const [bank, target] of targets) {
+      const start = bank * 32;
+      assert.ok(vanilla.game.palette.sourced.slice(start, start + 32)
+        .every((value) => value === 1), `bank ${bank} is fully ROM-sourced`);
+      const actual = vanilla.game.palette.words.slice(start, start + 32);
+      const expected = Array.from({ length: 32 }, (_, index) =>
+        vanilla.game.rom.u16(target + index * 2) & 0x7fff);
+      for (let index = 0; index < 32; index++) {
+        assertNativePaletteTarget(actual[index], expected[index],
+          `bank ${bank} word ${index}`);
+      }
+    }
+    assert.deepEqual(
+      [...pending.game.palette.words], [...vanilla.game.palette.words],
+      'a pending Playable Hibachi selection cannot alter cold-idle palette output',
+    );
+    assert.deepEqual(
+      [...pending.game.palette.sourced], [...vanilla.game.palette.sourced],
+      'a pending Playable Hibachi selection preserves identical provenance',
+    );
+    assert.deepEqual(pending.mods.playableHibachi.lifecycle, {
+      bound: true, pending: true, active: false, credited: false, generation: 0,
+    });
   });
 
 test('W621 one real production Demo visibly runs cold cabinet boot, attract, selection and play',

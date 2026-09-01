@@ -2263,7 +2263,7 @@ function bounds25E4D0(ctx, side, cursor) {
 
 /** One half of `$25E4D0`. The two are PEERS, not mutually recursive: neither branches to the other,
  *  unlike `$25EF30`'s pair. `h` carries the SEVEN differences and nothing else. */
-function half25E4D0(ram, rom, ctx, a6, h) {
+function half25E4D0(ram, rom, ctx, a6, h, playerIdx) {
   const D = DRAW_25E4D0;
   const cursor = ram.u16(a6 + D.cursorAt);
   const side = ram.u16(a6 + D.sideAt);                        // $25E504 / $25E5DE move.w ($2,A6),D5
@@ -2304,7 +2304,14 @@ function half25E4D0(ram, rom, ctx, a6, h) {
   // before the two `addi.w` below, and those two are exactly what $25E560/$25E568 subtract back off
   // to rebuild emit 2's D1. Move this write one instruction later and the channel carries emit 1's
   // coordinates instead, which is a different sprite by $600 on the long axis and $400 on the short.
-  ram.setU32(a6 + D.channelAt, ((hi << 16) | lo) >>> 0);
+  const anchor = ((hi << 16) | lo) >>> 0;
+  ram.setU32(a6 + D.channelAt, anchor);
+  if (ctx?.playerSpriteFilter?.(ram, {
+    player: a6,
+    playerIdx,
+    phase: 'launch',
+    anchor,
+  }, ctx) === false) return;
 
   [hi, lo] = [lo, hi];                                       // $25E4F8 / $25E5D2 swap
   lo = u16(lo + D.undoHigh);                                 // $25E4FA / $25E5D4 addi.w #$FA00
@@ -2459,6 +2466,6 @@ export function draw25E4D0(ram, rom, ctx, a6, d7) {
   // $25E4D0 tst.w D7 -- a WORD test, so mask, the same reason `sideFromD7_25D4E4` and `draw25EF30`
   // do. `sideFromD7_25D4E4(d7)` IS this index: D7 != 0 -> 0 -> half A, D7 == 0 -> 1 -> half B.
   const side = u16(d7) !== 0 ? 0 : 1;                        // $25E4D2 beq.w $25E5B0 takes half B
-  half25E4D0(ram, rom, ctx, a6, DRAW_25E4D0.halves[side]);
+  half25E4D0(ram, rom, ctx, a6, DRAW_25E4D0.halves[side], side);
   // $25E5AE / $25E68C nop -- the two pads, and the last bytes of the routine's extent.
 }

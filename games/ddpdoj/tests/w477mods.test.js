@@ -120,6 +120,13 @@ test('W477 Playable Hibachi central state binds before cabinet lifecycle callbac
   options.cabinetRunStartHook(game.ram, { demo: false });
   assert.equal(state.playableHibachi.lifecycle.active, true);
   assert.equal(state.playableHibachi.lifecycle.generation, 1);
+  const launch = { playerIdx: 0, phase: 'launch', anchor: 0x360014c0 };
+  assert.equal(options.playerSpriteFilter(game.ram, launch), false);
+  assert.deepEqual({
+    active: state.playableHibachi.players[0].runtime.launchActive,
+    y: state.playableHibachi.players[0].runtime.launchY,
+    x: state.playableHibachi.players[0].runtime.launchX,
+  }, { active: true, y: 0x3600, x: 0x14c0 });
   assert.equal(options.playerSpriteFilter(game.ram, { player: RAM.player1 }), false);
   assert.equal(typeof options.virtualSpriteRequestHook, 'function');
   options.cabinetRunEndHook(game.ram);

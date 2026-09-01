@@ -105,6 +105,9 @@ function createPlayer(state, index) {
     frames: 0,
     presentationFrames: 0,
     presentationStarted: false,
+    launchActive: false,
+    launchY: 0,
+    launchX: 0,
   };
   return {
     index,
@@ -232,6 +235,9 @@ function resetPlayer(player, lifeIdentity = 0) {
     frames: 0,
     presentationFrames: 0,
     presentationStarted: false,
+    launchActive: false,
+    launchY: 0,
+    launchX: 0,
   });
 }
 
@@ -466,10 +472,8 @@ function claimSpawnedBullets(state, player, ram, rec, result) {
       (ram.u8(entry.addr + BULLET_REC.dir) + 0x80) & 0xff);
     ram.setU8(entry.addr + BULLET_REC.origDir,
       (ram.u8(entry.addr + BULLET_REC.origDir) + 0x80) & 0xff);
-    ram.setU16(entry.addr + BULLET_REC.posA,
-      u16(ownerY * 2 - ram.u16(entry.addr + BULLET_REC.posA)));
-    ram.setU16(entry.addr + BULLET_REC.posB,
-      u16(ownerX * 2 - ram.u16(entry.addr + BULLET_REC.posB)));
+    ram.setU16(entry.addr + BULLET_REC.posA, ownerY);
+    ram.setU16(entry.addr + BULLET_REC.posB, ownerX);
   });
 }
 
@@ -610,7 +614,20 @@ function privatePaletteIndex(nativeBank) {
   return index;
 }
 
-function collectPlayerSmallForm(state, player, game, rec) {
+export function capturePlayableHibachiLaunch(state, event) {
+  assertState(state);
+  if (!state.lifecycle.active || event?.phase !== 'launch') return false;
+  const playerIdx = event.playerIdx;
+  if (!Number.isInteger(playerIdx) || playerIdx < 0 || playerIdx > 1
+      || !Number.isInteger(event.anchor)) return false;
+  const runtime = state.players[playerIdx].runtime;
+  runtime.launchActive = true;
+  runtime.launchY = (event.anchor >>> 16) & 0xffff;
+  runtime.launchX = event.anchor & 0xffff;
+  return true;
+}
+
+function collectPlayerSmallForm(state, player, game, ownerY, ownerX) {
   const form = PLAYABLE_HIBACHI_SMALL_FORM;
   const runtime = player.runtime;
   // Presentation owns this clock because a successful native bomb bypasses the
@@ -619,8 +636,6 @@ function collectPlayerSmallForm(state, player, game, rec) {
   else runtime.presentationStarted = true;
   const frame = Math.floor(runtime.presentationFrames / form.framePeriod)
     % form.frames;
-  const ownerY = game.ram.u16(rec + P.posY);
-  const ownerX = game.ram.u16(rec + P.posX);
   state.virtualRequests.push({
     bucket: form.bucket,
     bytes: encodeRegisterRequest(
@@ -852,6 +867,17 @@ function validatePlayerRuntime(value, index) {
       throw new Error(`Playable Hibachi P${index + 1} runtime ${key} is invalid`);
     }
   }
+  const launchActive = value.launchActive ?? false;
+  if (typeof launchActive !== 'boolean') {
+    throw new Error(`Playable Hibachi P${index + 1} runtime launchActive is invalid`);
+  }
+  const launchY = value.launchY ?? 0;
+  const launchX = value.launchX ?? 0;
+  for (const [key, coordinate] of [['launchY', launchY], ['launchX', launchX]]) {
+    if (!Number.isInteger(coordinate) || coordinate < 0 || coordinate > 0xffff) {
+      throw new Error(`Playable Hibachi P${index + 1} runtime ${key} is invalid`);
+    }
+  }
   const presentationStarted = value.presentationStarted ?? value.live;
   if (typeof presentationStarted !== 'boolean') {
     throw new Error(`Playable Hibachi P${index + 1} runtime presentationStarted is invalid`);
@@ -875,6 +901,9 @@ function validatePlayerRuntime(value, index) {
     frames: value.frames,
     presentationFrames,
     presentationStarted,
+    launchActive,
+    launchY,
+    launchX,
   };
 }
 
@@ -937,8 +966,15 @@ export function collectPlayableHibachiSpriteRequests(state, game) {
   if (!state.lifecycle.active) return state.virtualRequests;
   for (let playerIdx = 0; playerIdx < 2; playerIdx++) {
     const rec = playerIdx === 0 ? RAM.player1 : RAM.player2;
-    if ((game.ram.u16(rec) & TYPEBIT_ALIVE) === 0) continue;
-    collectPlayerSmallForm(state, state.players[playerIdx], game, rec);
+    const runtime = state.players[playerIdx].runtime;
+    if ((game.ram.u16(rec) & TYPEBIT_ALIVE) !== 0) {
+      runtime.launchActive = false;
+      collectPlayerSmallForm(state, state.players[playerIdx], game,
+        game.ram.u16(rec + P.posY), game.ram.u16(rec + P.posX));
+    } else if (runtime.launchActive) {
+      collectPlayerSmallForm(state, state.players[playerIdx], game,
+        runtime.launchY, runtime.launchX);
+    }
   }
   return state.virtualRequests;
 }
