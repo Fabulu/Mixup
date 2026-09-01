@@ -831,20 +831,19 @@ const PANEL_TILES = Object.freeze({
   runA: 0x02cc000a, runB: 0x02c0000a, runC: 0x02c6000a, closer: 0x02d2000a,
 });
 
-/** `$2532B6` (P1) / `$2532D0` (P2), the SET/bonus panel's segmented bar. */
-export function setPanelBody2532B6(ram, who, rec) {
+function setPanelBody(ram, who, rec) {
   const s = PANEL_SIDES[who === 0 ? 0 : 1];
   let d1 = s.d1;
-  txPrint240E1A(ram, 8, d1, 2, 0, s.top, 2);               // $25331C
-  d1 = u16(d1 + s.step);                                    // $253322
+  txPrint240E1A(ram, 8, d1, 2, 0, s.top, 2);
+  d1 = u16(d1 + s.step);
   const step = (s.step & 0x8000) !== 0 ? s.step : u16(s.step + s.step);
-  const hi = ram.u8(rec + 0x25);                            // $253330
-  const lo = ram.u8(rec + 0x24);                            // $253338
-  const d6 = (5 - hi) & 0xff;                               // $25332C..$253334
+  const hi = ram.u8(rec + 0x25);
+  const lo = ram.u8(rec + 0x24);
+  const d6 = (5 - hi) & 0xff;
 
   let runA = 0;
   for (let n = lo; n !== 0; n = (n - 1) & 0xffff) {
-    txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runA);      // $253344
+    txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runA);
     d1 = u16(d1 + step);
     runA++;
   }
@@ -852,7 +851,7 @@ export function setPanelBody2532B6(ram, who, rec) {
   let runB = 0;
   if ((left & 0x8000) === 0 && left !== 0) {
     for (let n = 0; n < left; n++) {
-      txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runB);    // $253362
+      txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runB);
       d1 = u16(d1 + step);
       runB++;
     }
@@ -860,13 +859,23 @@ export function setPanelBody2532B6(ram, who, rec) {
   let runC = 0;
   if ((d6 & 0x80) === 0) {
     for (let n = 0; n <= d6; n++) {
-      txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runC);    // $253378
+      txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.runC);
       d1 = u16(d1 + step);
       runC++;
     }
   }
-  txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.closer);      // $25338A
+  txPrint240DC2(ram, 8, d1, 2, 1, PANEL_TILES.closer);
   return { runA, runB, runC };
+}
+
+/** `$2532B6` (P1) / `$2532D0` (P2), Build B's SET/bonus segmented bar. */
+export function setPanelBody2532B6(ram, who, rec) {
+  return setPanelBody(ram, who, rec);
+}
+
+/** `$1528C4` (P1) / `$1528DE` (P2), Build A's SET/bonus segmented bar. */
+export function setPanelBody1528C4(ram, who, rec) {
+  return setPanelBody(ram, who, rec);
 }
 
 /** `$240E84` -- the SINGLE-cell variant. dest = `$904000 + D0 + D1`, tile =

@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { ALLOC, commitCreates } from '../src/objalloc.js';
 import { BLACK_LABEL_PROFILE, WHITE_LABEL_PROFILE } from '../src/profiles.js';
 import { Ram } from '../src/ram.js';
-import { FullRom } from '../src/rom.js';
+import { FullRom, RomWindows } from '../src/rom.js';
 import {
   WHITE_PLAYER_PALETTES, WHITE_RANK, WHITE_RANK_INIT_TX,
   clearWhiteRank15F734, dispatchRequests15F2E8, handoff15FA60,
@@ -15,9 +15,15 @@ import {
 } from '../src/white-rank.js';
 
 const IMAGE = fileURLToPath(new URL('../rip/rosetta/img-ddpdojblk.bin', import.meta.url));
+const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
 const rawTest = (name, fn) => test(name, { skip: !existsSync(IMAGE) }, fn);
 const rawRom = () => new FullRom(new Uint8Array(readFileSync(IMAGE)));
+assert.ok(existsSync(TABLES),
+  `${TABLES} missing; run: python games/ddpdoj/tools/export-tables.py`);
+const tables = JSON.parse(readFileSync(TABLES, 'utf8'));
+const windowRom = () => new RomWindows(tables.rom);
 const whiteRam = () => new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
+const TX = Object.freeze({ head: 0x80b058, cursor: 0x80c8d8 });
 
 function staged(ram, index) {
   return ALLOC.createStage + index * ALLOC.stride;
@@ -163,6 +169,68 @@ rawTest('Version A request 4 stages both selected players before allocator commi
   assert.ok(activeTypes(ram).includes(3));
 });
 
+test('Version A request 9 draws both panels, gates SET items, and consumes once', () => {
+  const rom = windowRom();
+  const sideSpecs = [
+    { player: 0x8103e6, hyperStock: 0x81b65c, bonus: 0x8128f4,
+      target: 0x81040b, d1: 0x0100 },
+    { player: 0x810448, hyperStock: 0x81b65e, bonus: 0x812902,
+      target: 0x81046d, d1: 0x0f00 },
+  ];
+  const cases = [
+    { side: 0, hyper: 1, playerBit6: true, bonus: 0, drawItem: true, target: 1 },
+    { side: 1, hyper: 0, playerBit6: false, bonus: 1, drawItem: true, target: 2 },
+    { side: 0, hyper: 0, playerBit6: true, bonus: 1, drawItem: false, target: 3 },
+    { side: 1, hyper: 0, playerBit6: false, bonus: 0, drawItem: false, target: 4 },
+  ];
+
+  for (const scenario of cases) {
+    const ram = whiteRam();
+    const spec = sideSpecs[scenario.side];
+    const record = WHITE_RANK.records + scenario.side * WHITE_RANK.recordStride;
+    ram.setU16(record, 9);
+    ram.setU16(record + 2, 0x5a5a);
+    for (let offset = 4; offset < WHITE_RANK.recordStride; offset++) {
+      ram.setU8(record + offset, (0x40 + offset) & 0xff);
+    }
+    ram.setU8(record + 0x17, scenario.side);
+    const preserved = Array.from({ length: WHITE_RANK.recordStride - 4 }, (_, i) =>
+      ram.u8(record + 4 + i));
+    ram.setU16(spec.hyperStock, scenario.hyper);
+    ram.setU8(spec.player, scenario.playerBit6 ? 0x40 : 0);
+    ram.setU16(spec.bonus, scenario.bonus);
+    ram.setU8(spec.target, scenario.target);
+    ram.setU32(TX.head, 0xffffffff);
+    ram.setU32(TX.cursor, TX.head);
+    const notes = [];
+    const ctx = { unportedLog: { note: (...args) => notes.push(args) } };
+
+    const [result] = dispatchRequests15F2E8(ram, rom, ctx);
+    assert.deepEqual(result.panel, {
+      runA: 0, runB: scenario.target, runC: 6 - scenario.target,
+    });
+    assert.equal(result.side, scenario.side);
+    assert.equal(result.item !== null, scenario.drawItem);
+    const panelCells = 45;
+    const itemCells = scenario.drawItem ? 36 : 0;
+    assert.equal(ram.u32(TX.cursor), TX.head + (panelCells + itemCells) * 8,
+      'the segmented panel always precedes the optional 3 by 12 SET item');
+    if (scenario.drawItem) {
+      const tile = rom.u32(WHITE_RANK.setItemTable + (scenario.target - 1) * 4);
+      assert.deepEqual(result.item, { target: scenario.target, tile });
+      assert.equal(ram.u32(TX.head + panelCells * 8), 0x904000 + spec.d1 + 8);
+      assert.equal(ram.u32(TX.head + panelCells * 8 + 4), (0xc0000000 + tile) >>> 0);
+    }
+    assert.deepEqual([ram.u16(record), ram.u16(record + 2)], [0, 0]);
+    assert.deepEqual(Array.from({ length: WHITE_RANK.recordStride - 4 }, (_, i) =>
+      ram.u8(record + 4 + i)), preserved, 'only the two request words are cleared');
+    const after = ram.u32(TX.cursor);
+    assert.deepEqual(dispatchRequests15F2E8(ram, rom, ctx), []);
+    assert.equal(ram.u32(TX.cursor), after, 'a consumed request cannot append a second panel');
+    assert.deepEqual(notes, [], 'ported request 9 emits no unported note');
+  }
+});
+
 rawTest('Version A loop 2 forces both staged player life counters to zero', () => {
   const ram = whiteRam();
   const rom = rawRom();
@@ -218,6 +286,12 @@ rawTest('Version A selector visuals and cartridge roots are independently pinned
   assert.equal(rom.u32(WHITE_RANK.dispatch + 0x0a * 8), WHITE_RANK.handler);
   assert.equal(rom.u16(WHITE_RANK.dispatch + 0x0a * 8 + 4), 0x001f);
   assert.equal(rom.u32(WHITE_RANK.requestTable + 4 * 4), WHITE_RANK.request4);
+  assert.equal(rom.u32(WHITE_RANK.requestTable + 9 * 4), WHITE_RANK.request9);
+  assert.deepEqual(Array.from({ length: 6 }, (_, i) =>
+    rom.u32(WHITE_RANK.setItemTable + i * 4)), [
+    0x02de000a, 0x0302000a, 0x0326000a,
+    0x034a000a, 0x034a000a, 0x034a000a,
+  ]);
   assert.deepEqual(WHITE_RANK_INIT_TX.map(([, bank, source]) => [bank, source]), [
     [0, 0x122638], [1, 0x122658], [2, 0x122678], [3, 0x122698],
     [4, 0x1226b8], [5, 0x1226d8], [6, 0x122778], [7, 0x122798],

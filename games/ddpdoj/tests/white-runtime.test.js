@@ -8,18 +8,25 @@ import { ALLOC } from '../src/objalloc.js';
 import { ObjOrder, runObjectDriver } from '../src/objdriver.js';
 import { BLACK_LABEL_PROFILE, WHITE_LABEL_PROFILE } from '../src/profiles.js';
 import { Ram } from '../src/ram.js';
-import { FullRom } from '../src/rom.js';
+import { RomWindows } from '../src/rom.js';
 import {
   WHITE_CHOOSER, WHITE_FRONTEND, WHITE_VERSION_CHOOSER,
   provisionWhiteCabinetNvram,
 } from '../src/white-frontend.js';
 import { bootWhiteCabinet13C24E } from '../src/white-reset.js';
-import { createWhiteFrontendHandlers } from '../src/white-runtime.js';
+import {
+  createWhiteFrontendHandlers, createWhiteStage1Handlers,
+} from '../src/white-runtime.js';
+import { WHITE_PLAYER } from '../src/white-player.js';
 import { WHITE_RANK } from '../src/white-rank.js';
 import { WHITE_SELECTOR } from '../src/white-selector.js';
 
-const IMAGE = fileURLToPath(new URL('../rip/rosetta/img-ddpdojblk.bin', import.meta.url));
-const rawTest = (name, fn) => test(name, { skip: !existsSync(IMAGE) }, fn);
+const TABLES = fileURLToPath(new URL('../rip/port/player.tables.json', import.meta.url));
+assert.ok(existsSync(TABLES),
+  `${TABLES} missing; run: python games/ddpdoj/tools/export-tables.py`);
+const tables = JSON.parse(readFileSync(TABLES, 'utf8'));
+const WHITE_RAM = WHITE_LABEL_PROFILE.ramLayout.addresses;
+const P = WHITE_LABEL_PROFILE.ramLayout.playerFields;
 
 test('White handler-map capability rejects Black before cartridge access', () => {
   let reads = 0;
@@ -33,20 +40,38 @@ test('White handler-map capability rejects Black before cartridge access', () =>
     () => createWhiteFrontendHandlers(protectedRom, BLACK_LABEL_PROFILE),
     /White Label frontend handler map is unavailable/,
   );
+  assert.throws(
+    () => createWhiteStage1Handlers(protectedRom, BLACK_LABEL_PROFILE),
+    /White Label frontend handler map is unavailable/,
+  );
   assert.equal(reads, 0);
 });
 
-test('White frontend map exposes only independently ported dispatch types', () => {
+test('White Stage 1 map joins only independently ported dispatch types', () => {
   const rom = { u8() { return 0; }, u16() { return 0; }, u32() { return 0; } };
-  const handlers = createWhiteFrontendHandlers(rom, WHITE_LABEL_PROFILE);
-  assert.deepEqual([...handlers.keys()], [0x14, 0x08, 0x09, 0x0a]);
+  const frontend = createWhiteFrontendHandlers(rom, WHITE_LABEL_PROFILE);
+  assert.deepEqual([...frontend.keys()], [0x14, 0x08, 0x09, 0x0a]);
+  const handlers = createWhiteStage1Handlers(rom, WHITE_LABEL_PROFILE);
+  assert.deepEqual([...handlers.keys()], [0x14, 0x08, 0x09, 0x0a, 0x02, 0x03]);
+  assert.equal(handlers.has(0x05), false);
   for (const handler of handlers.values()) assert.equal(typeof handler, 'function');
 });
 
-rawTest('capability-gated queue route reaches a live two-player Version A selector', () => {
-  const rom = new FullRom(new Uint8Array(readFileSync(IMAGE)));
+test('capability-gated queue route executes live two-player Version A movement', () => {
+  const windowRom = new RomWindows(tables.rom);
+  const reads = [];
+  const rom = new Proxy(windowRom, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      if (typeof value !== 'function') return value;
+      return (address, ...args) => {
+        if (Number.isInteger(address)) reads.push(address);
+        return Reflect.apply(value, target, [address, ...args]);
+      };
+    },
+  });
   const ram = new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
-  const handlers = createWhiteFrontendHandlers(rom);
+  const handlers = createWhiteStage1Handlers(rom);
   const notes = [];
   const note = (...args) => notes.push(args);
   const ctx = {
@@ -165,6 +190,10 @@ rawTest('capability-gated queue route reaches a live two-player Version A select
   assert.deepEqual([ram.u16(ALLOC.createStage), ram.u16(ALLOC.createStage + ALLOC.stride)],
     [0x8002, 0x8003]);
   assert.equal(ram.u16(ALLOC.createSp), ALLOC.stride * 2);
+  const stagedPlayers = [0, 1].map((side) => {
+    const slot = ALLOC.createStage + side * ALLOC.stride;
+    return { y: ram.u16(slot + 0x08), x: ram.u16(slot + 0x0a) };
+  });
   assert.deepEqual([
     ram.u8(WHITE_SELECTOR.records + WHITE_SELECTOR.phaseAt),
     ram.u8(WHITE_SELECTOR.records + WHITE_SELECTOR.recordStride + WHITE_SELECTOR.phaseAt),
@@ -182,5 +211,30 @@ rawTest('capability-gated queue route reaches a live two-player Version A select
   assert.deepEqual([
     ram.u16(WHITE_RANK.records),
     ram.u16(WHITE_RANK.records + WHITE_RANK.recordStride),
-  ], [0, 0], 'each Version A request is consumed once');
+  ], [9, 9], 'each initialized Version A owner arms its request-9 continuation');
+  assert.deepEqual([
+    { y: ram.u16(WHITE_PLAYER.p1.rec + P.posY), x: ram.u16(WHITE_PLAYER.p1.rec + P.posX) },
+    { y: ram.u16(WHITE_PLAYER.p2.rec + P.posY), x: ram.u16(WHITE_PLAYER.p2.rec + P.posX) },
+  ], stagedPlayers, 'the composed map initializes each owner at its staged slot position');
+
+  const p1Before = ram.u16(WHITE_PLAYER.p1.rec + P.posX);
+  const p2Before = ram.u16(WHITE_PLAYER.p2.rec + P.posX);
+  ram.setU16(WHITE_RAM.p1raw, 0x0008);
+  ram.setU16(WHITE_RAM.p2raw, 0x0004);
+  frame();
+  assert.ok(ram.u16(WHITE_PLAYER.p1.rec + P.posX) > p1Before,
+    'P1 moves right from its own input port');
+  assert.ok(ram.u16(WHITE_PLAYER.p2.rec + P.posX) < p2Before,
+    'P2 moves left from its own input port');
+  assert.deepEqual([
+    ram.u16(WHITE_RANK.records),
+    ram.u16(WHITE_RANK.records + WHITE_RANK.recordStride),
+  ], [0, 0], 'request 9 is consumed before the second player frame');
+  assert.ok(notes.every(([, message]) => !/dispatch entry \[(2|3)\]/.test(message)),
+    'both native player owners remain connected to the composed map');
+  assert.ok(notes.every(([, message]) => !/request 9/.test(message)),
+    'both player continuation panels stay inside the ported route');
+  assert.ok(reads.length > 100);
+  assert.ok(reads.every((address) => address < 0x200000),
+    'the composed Version A route never reads a Build B cartridge address');
 });

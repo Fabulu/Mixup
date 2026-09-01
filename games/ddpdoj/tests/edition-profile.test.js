@@ -137,6 +137,14 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
   const declared = white.frontendWindows.map((window) => `${window.base}:${window.len}`);
   assert.equal(new Set(declared).size, declared.length);
   assert.ok(declared.includes('$141294:168'), 'the complete 21-entry dispatch is exported');
+  assert.ok(declared.includes('$15F2C0:40'), 'the complete player request table is exported');
+  assert.ok(declared.includes('$152AEE:24'), 'the SET-item tile table is exported');
+  assert.ok(declared.includes('$14194A:62'), 'the Stage 1 palette list is exported');
+  assert.ok(declared.includes('$125078:64'), 'the Stage 1 bank-9 palette is exported');
+  assert.ok(declared.includes('$125138:64'), 'the Stage 1 bank-7/8 palette is exported');
+  assert.ok(declared.includes('$15FBC2:48'), 'the rank configuration family is exported');
+  assert.ok(declared.includes('$15F43C:10'), 'the starting-lives table is exported');
+  assert.ok(declared.includes('$186F3C:16'), 'the first-extend threshold table is exported');
   assert.ok(declared.includes('$125B78:8928'), 'the Stage 1 column stream is exported');
   assert.ok(declared.includes('$127E58:2048'), 'the Stage 1 background palette is exported');
   for (const window of declared) assert.ok(exported.has(window), `${window} is cartridge-backed`);
@@ -183,8 +191,8 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
   const g = game();
   const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
 
-  assert.equal(excluded.size, 57);
-  assert.equal(tables.rom.windows.length, 1006,
+  assert.equal(excluded.size, 65);
+  assert.equal(tables.rom.windows.length, 1014,
     'runtime projection does not mutate the complete exported table');
   assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [949, 457509]);
   for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);

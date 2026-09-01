@@ -69,3 +69,11 @@ export function createWhiteStage1PlayerHandlers(rom, profileRequest) {
       whitePlayerP2Tick14891E(ram, rom, slot, ctx, profile)],
   ]);
 }
+
+/** Join the independently gated frontend and Stage 1 player handler islands. */
+export function createWhiteStage1Handlers(rom, profileRequest) {
+  return new Map([
+    ...createWhiteFrontendHandlers(rom, profileRequest),
+    ...createWhiteStage1PlayerHandlers(rom, profileRequest),
+  ]);
+}

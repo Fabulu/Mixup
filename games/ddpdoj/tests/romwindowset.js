@@ -656,10 +656,29 @@
 // only movement speeds 9, 15, 16, 18, and 22. Measured: 993 -> 1006 windows,
 // 474,833 -> 478,353 bytes, 77 -> 77 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1006;
+// ---------------------------------------------------------------------------
+// EMBEDDED VERSION A REQUEST 9 ADDED TWO DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The complete ten-entry player request pointer table at `$15F2C0 + $28` and
+// the six-entry SET-item tile table at `$152AEE + $18` add 64 exact bytes. Both
+// are disjoint from every prior declaration. Measured: 1006 -> 1008 windows,
+// 478,353 -> 478,417 bytes, 77 -> 77 overlapping pairs.
+//
+// ---------------------------------------------------------------------------
+// EMBEDDED VERSION A STAGE 1 ROUTE CLOSURE ADDED SIX DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The Stage 1 palette list and its two previously absent targets add three
+// windows and 190 bytes. The four rank bases with their pointer and word tables
+// add one 48-byte window. Request 4's five-entry starting-lives table and
+// four-entry first-extend threshold table add two windows and 26 bytes. All six
+// are exact Build A data dependencies exposed by running the composed route
+// through `RomWindows`; none overlaps an earlier declaration. Measured:
+// 1008 -> 1014 windows, 478,417 -> 478,681 bytes, 77 -> 77 overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 1014;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 478353;
+export const ROM_WINDOW_BYTES = 478681;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -698,8 +717,8 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 57;
-const WHITE_LABEL_WINDOW_BYTES = 20844;
+const WHITE_LABEL_WINDOW_COUNT = 65;
+const WHITE_LABEL_WINDOW_BYTES = 21172;
 
 /** Remove the later embedded Version A window family before reconstructing any
  *  earlier Black Label ledger. The edition manifest is the identity list, so a

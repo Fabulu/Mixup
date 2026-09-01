@@ -1,6 +1,8 @@
 // Embedded Version A rank frontend and Stage 1 player handoff.
 
-import { scoreDrainInit287084, slideArm287A5E } from './hud.js';
+import {
+  scoreDrainInit287084, setPanelBody1528C4, slideArm287A5E, txPrint240DC2,
+} from './hud.js';
 import { clearRankRam2603DA } from './objslot12.js';
 import { ALLOC, queueKill, stageCreate } from './objalloc.js';
 import { install2414BE, install24150A } from './palette.js';
@@ -26,6 +28,8 @@ export const WHITE_RANK = Object.freeze({
   requestTable: 0x15f2c0,
   requestDispatcher: 0x15f2e8,
   request4: 0x15f562,
+  request9: 0x15f70a,
+  setItemTable: 0x152aee,
   livesTable: 0x15f43c,
   stagePair: 0x15f758,
   stageStart: 0x15f8da,
@@ -82,6 +86,13 @@ export const WHITE_PLAYER_PALETTES = Object.freeze([
     tx: Object.freeze([0x0a, 0x122718]) }),
   Object.freeze({ spr: freezeRows([[1, 0x122938], [3, 0x1229b8], [4, 0x122a38]]),
     tx: Object.freeze([0x0a, 0x122758]) }),
+]);
+
+const REQUEST9_SIDES = Object.freeze([
+  Object.freeze({ player: 0x8103e6, hyperStock: 0x81b65c, bonus: 0x8128f4,
+    target: 0x81040b, d1: 0x0100 }),
+  Object.freeze({ player: 0x810448, hyperStock: 0x81b65e, bonus: 0x812902,
+    target: 0x81046d, d1: 0x0f00 }),
 ]);
 
 const note = (ctx, site, text) => (ctx?.unportedLog ?? ctx?.unported)?.note(site, text);
@@ -296,7 +307,26 @@ export function request4Player15F562(ram, rom, ctx, record) {
   return Object.freeze({ made, side, type, paletteArm, lives: ram.u16(lives) });
 }
 
-/** `$15F2E8`: walk both request records and dispatch the measured request-4 arm. */
+/** `$15F70A`: consume request 9 and redraw one side's SET/bonus presentation. */
+export function request9Panel15F70A(ram, rom, record) {
+  const side = ram.u8(record + 0x17) === 0 ? 0 : 1;
+  const spec = REQUEST9_SIDES[side];
+  const drawSetItem = ram.u16(spec.hyperStock) !== 0
+    || (ram.btst8(spec.player, 6) === 0 && ram.u16(spec.bonus) !== 0);
+  const panel = setPanelBody1528C4(ram, side, spec.player);
+  let item = null;
+  if (drawSetItem) {
+    const target = ram.u8(spec.target);
+    const tile = rom.u32(WHITE_RANK.setItemTable + ((target - 1) << 2));
+    txPrint240DC2(ram, 8, spec.d1, 2, 0x0b, tile);
+    item = Object.freeze({ target, tile });
+  }
+  ram.setU16(record, 0);
+  ram.setU16(record + 2, 0);
+  return Object.freeze({ side, panel: Object.freeze(panel), item });
+}
+
+/** `$15F2E8`: walk both request records and dispatch the ported Stage 1 arms. */
 export function dispatchRequests15F2E8(ram, rom, ctx) {
   const out = [];
   for (let side = 0; side < 2; side++) {
@@ -307,9 +337,13 @@ export function dispatchRequests15F2E8(ram, rom, ctx) {
       out.push(request4Player15F562(ram, rom, ctx, record));
       continue;
     }
+    if (request === 9) {
+      out.push(request9Panel15F70A(ram, rom, record));
+      continue;
+    }
     const target = rom.u32(WHITE_RANK.requestTable + request * 4);
     note(ctx, WHITE_RANK.requestDispatcher, `Version A request ${request} selects ${hex(target)} `
-      + `from ${hex(WHITE_RANK.requestTable)}; only request 4 is needed for Stage 1 entry`);
+      + `from ${hex(WHITE_RANK.requestTable)}; only requests 4 and 9 are ported here`);
   }
   return Object.freeze(out);
 }

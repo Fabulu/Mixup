@@ -10924,6 +10924,7 @@ WHITE_LABEL_WINDOWS = [
     (0x13C204, 0x0022, "White A chooser exit no-fill script, four counted entries"),
     (0x13CA3E, 0x0028, "White A coin and credit operator tables"),
     (0x141294, 0x00A8, "White A 21-entry object dispatch table"),
+    (0x14194A, 0x003E, "White A Stage 1 palette pointer list and four records"),
     (0x158AA8, 0x0008, "White A factory NVRAM defaults"),
     (0x15AE72, 0x0064, "White A high-score initial palette script"),
     (0x15AED6, 0x0042, "White A high-score no-fill palette script"),
@@ -10943,10 +10944,15 @@ WHITE_LABEL_WINDOWS = [
     (0x15EBEE, 0x0078, "White A selector sprite payload blocks"),
     (0x15EC66, 0x0040, "White A selector zoom table"),
     (0x15F190, 0x0020, "White A two-record player bootstrap table"),
+    (0x15F2C0, 0x0028, "White A complete ten-entry player request pointer table"),
+    (0x15F43C, 0x000A, "White A five-entry starting-lives table"),
+    (0x15FBC2, 0x0030, "White A four rank bases, pointer table, and word table"),
+    (0x152AEE, 0x0018, "White A six-entry SET-item tile table"),
     (0x1602D0, 0x0028, "White A background palette and column pointer tables"),
     (0x1605B8, 0x003C, "White A five-entry stage script-pair table"),
     (0x1605F4, 0x0088, "White A 22-record object palette stream and sentinel"),
     (0x186936, 0x0096, "White A nine contiguous high-score factory arrays"),
+    (0x186F3C, 0x0010, "White A four-entry first-extend threshold table"),
     (0x122618, 0x00E0, "White A warning and six reset text palettes"),
     (0x122778, 0x00A0, "White A frontend and demo text palettes"),
     (0x122838, 0x0040, "White A chooser sprite palette"),
@@ -10955,6 +10961,8 @@ WHITE_LABEL_WINDOWS = [
     (0x123D38, 0x04C0, "White A selector palette family two"),
     (0x1241F8, 0x0100, "White A selector pilot palette family"),
     (0x1242F8, 0x0340, "White A Stage 1 object palette family"),
+    (0x125078, 0x0040, "White A Stage 1 palette-list target bank 9"),
+    (0x125138, 0x0040, "White A Stage 1 palette-list target banks 7 and 8"),
     (0x125278, 0x0080, "White A Stage 1 object palette tail"),
     (0x1254B8, 0x0040, "White A high-score palette block one"),
     (0x1257F8, 0x0180, "White A high-score palette blocks two through seven"),
@@ -11063,6 +11071,75 @@ def check_white_label_frontend_windows(d: bytes) -> None:
             raise SystemExit(f"White A dispatch entry {i} changed at ${address:06X}")
     if u16(d, 0x14133C) != 0x3639:
         raise SystemExit("White A dispatch no longer ends after exactly 21 records")
+
+    request_targets = [u32(d, 0x15F2C0 + i * 4) for i in range(10)]
+    if request_targets != [0, 0x15F316, 0x15F3C4, 0x15F47C, 0x15F562,
+                           0x15F610, 0x15F6A2, 0x15F6B4, 0x15F6D6, 0x15F70A]:
+        raise SystemExit("White A player request pointer table changed")
+    rank_bases = [list(d[0x15FBC2 + i * 6:0x15FBC8 + i * 6]) for i in range(4)]
+    if rank_bases != [[0x10, 0x10, 0x18, 0x20, 0x20, 0],
+                      [0x34, 0x44, 0x54, 0x64, 0x64, 0],
+                      [0x90, 0xA8, 0xC0, 0xD8, 0xF0, 0],
+                      [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0]]:
+        raise SystemExit("White A four six-byte rank bases changed")
+    if [u32(d, 0x15FBDA + i * 4) for i in range(4)] \
+            != [0x15FBC2, 0x15FBC8, 0x15FBCE, 0x15FBD4] \
+            or [u16(d, 0x15FBEA + i * 2) for i in range(4)] \
+            != [0xFFFF, 0, 1, 2]:
+        raise SystemExit("White A rank pointer or word table changed")
+    if d[0x15FBF2:0x15FC24] != bytes.fromhex(
+            "700010390080380c4a790080392667000006103c0001d04041faffde"
+            "d0c033d000813160d04041faffc0d0c023d00081315c"):
+        raise SystemExit("White A rank-base table reader changed")
+    if [u16(d, 0x15F43C + i * 2) for i in range(5)] != [2, 3, 4, 0, 1] \
+            or d[0x15F562:0x15F576] != bytes.fromhex(
+                "206e000810390080380ed04043fafecc30b10000"):
+        raise SystemExit("White A starting-lives table or request-4 reader changed")
+    if [u32(d, 0x186F3C + i * 4) for i in range(4)] \
+            != [0x01000000, 0x05000000, 0x00500000, 0xFFFFFFFF] \
+            or d[0x185AFE:0x185B18] != bytes.fromhex(
+                "700010390080380dd040d04045f900186f3c20b2000032804e75"):
+        raise SystemExit("White A first-extend threshold table or reader changed")
+    if d[0x15F70A:0x15F72E] != bytes.fromhex(
+            "4a2e00176600000c4eb900152b06600000084eb900152b30"
+            "3cbc00003d7c000000024e75"):
+        raise SystemExit("White A request 9 side dispatch or request-word clears changed")
+    if d[0x152B06:0x152B5A] != bytes.fromhex(
+            "4a790081b65c661608390006008103e6660000144a79008128f46700000a"
+            "6100fd9e6000ff7e6000fd96"
+            "4a790081b65e66160839000600810448660000144a79008129026700000a"
+            "6100fd8e6000ff666000fd86"):
+        raise SystemExit("White A SET/bonus side wrappers changed")
+    if [u32(d, 0x152AEE + i * 4) for i in range(6)] \
+            != [0x02DE000A, 0x0302000A, 0x0326000A,
+                0x034A000A, 0x034A000A, 0x034A000A]:
+        raise SystemExit("White A SET-item tile table changed")
+    white_panel = d[0x1528C4:0x1529A4]
+    black_panel = d[0x2532B6:0x253396]
+    if white_panel.count(bytes.fromhex("0014114c")) != 1 \
+            or white_panel.count(bytes.fromhex("001410f4")) != 4:
+        raise SystemExit("White A SET/bonus panel printer calls changed")
+    normalized_panel = white_panel.replace(
+        bytes.fromhex("0014114c"), bytes.fromhex("00240e1a")).replace(
+        bytes.fromhex("001410f4"), bytes.fromhex("00240dc2"))
+    if normalized_panel != black_panel:
+        raise SystemExit("White A and Black B SET/bonus panel bodies diverged beyond call addresses")
+
+    if [u32(d, 0x14194A + i * 4) for i in range(5)] != [0x14195E] * 5:
+        raise SystemExit("White A Stage 1 palette-list pointer table changed")
+    if [u32(d, 0x14195E + i * 4) for i in range(2)] != [0x141966, 0xFFFFFFFF]:
+        raise SystemExit("White A Stage 1 palette-list root changed")
+    palette_rows = [(u16(d, 0x141966 + i * 8), u32(d, 0x14196A + i * 8))
+                    for i in range(4)]
+    if palette_rows != [(5, 0x1243B8), (7, 0x125138),
+                        (8, 0x125138), (9, 0x125078)] \
+            or u16(d, 0x141986) != 0xFFFF:
+        raise SystemExit("White A Stage 1 palette list changed")
+    for address, digest in (
+            (0x125078, "35ae91dd46cce5800ab6736f0c6956d9d39fad2b459f4da615c9d2fe92c4ebb8"),
+            (0x125138, "77ef2348ae18747a05692d476449cd5106ca07ea15cd987c6c9e9baaa3144fda")):
+        if hashlib.sha256(d[address:address + 0x40]).hexdigest() != digest:
+            raise SystemExit(f"White A Stage 1 palette-list target changed at ${address:06X}")
 
     if d[0x158AA8:0x158AB0] != bytes((0, 1, 1, 2, 1, 0, 0, 1)):
         raise SystemExit("White A factory operator defaults changed")

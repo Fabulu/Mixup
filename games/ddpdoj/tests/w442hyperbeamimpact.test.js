@@ -494,8 +494,8 @@ test('W443 (was W442 test 8b): the hyper beam still takes its art from $24BAE2 '
 // 9. The standing tripwire. This wave declares no window.
 // ===========================================================================
 test('W442 adds no ROM window and later waves reconcile the exact registry', () => {
-  assert.equal(ROM_WINDOW_COUNT, 1006,
-    'W551-W630 add later gameplay, menu, ending, and TX data');
+  assert.equal(ROM_WINDOW_COUNT, 1014,
+    'later gameplay, frontend, player, request, and route data reconcile the registry');
   assert.equal(ROM_OVERLAP_PAIRS, 77,
     'W518 vertical glyph data overlaps W23 slot-[14] init data by ten exact bytes');
 });
