@@ -244,6 +244,8 @@ test('W307 the cursor and the furniture add up, and share no bucket record', { s
 // ==================== 5. THE ARM AND LIVE ANIMATION LOAD
 
 test('W307 `$28F4A6` arms the cursor and loads four animation nodes', { skip: SKIP }, () => {
+  // W390 CORRECTION: W389 folded $246710's seeding into chainLoaderBody.
+  // W303 still counted $246410, the separate animation-node body used below.
   const ram = factory();
   nameArmGrid28F4A6(ram, ROM, A4);
   assert.equal(ram.u16(A4 + NAME_REC.cursor), 1);

@@ -409,10 +409,11 @@ test('SECTION 5: cartridge and production-source reachability are proved separat
     'player.js playerObject2491C0',
     'rank.js stagePair2603FE',
     'tallyscreen.js tallyPhase0Arm25DC2C',
-  ], 'all seven production source caller bodies are inventoried');
+    'white-rank.js armWhiteRequest15F2A6',
+  ], 'all eight production source caller bodies are inventoried');
   assert.equal((sources().map(([, text]) => text).join('\n')
-    .match(/\barmRequest25FF38\s*\(/g) ?? []).length, 8,
-  'seven calls plus the one canonical declaration exist across production source');
+    .match(/\barmRequest25FF38\s*\(/g) ?? []).length, 9,
+  'eight calls plus the one canonical declaration exist across production source');
   assert.equal((tallySource.match(/function tallyRequest25FF38\s*\(/g) ?? []).length, 0,
     'historical tally body cannot regrow');
   assert.match(tallySource, /export \{ armRequest25FF38 as tallyRequest25FF38 \};/,

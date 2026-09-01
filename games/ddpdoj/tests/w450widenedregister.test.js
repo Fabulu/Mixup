@@ -179,7 +179,7 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
       // not `mentions`"). The span rule takes the first backtick span that holds
       // an address, which is what "opens with" was always meant to mean.
       '$278320 effects.js:231 remapBucket',
-      '$283BAF bullets.js:748 behaviourFor',
+      '$283BAF bullets.js:749 behaviourFor',
     ], 'a THIRD claim is attributed differently by the two scans. Read both docs and decide '
       + 'which reading is right before adding a row here');
   });
@@ -370,6 +370,11 @@ test('SECTION 3: the widened head register is exactly these 72 addresses', () =>
 // shared marked instruction subset remains registered for duplicate cleanup after
 // functional Black Label and White Label completion.
 //
+// PLAYABLE HIBACHI moves the shared Button 2 branch out of `bombAndShotGuards`
+// into `runNativeButton2Path2497FE`, so transformative weapons can preserve the
+// native bomb/hyper route before dispatching their own weapon. The pair still
+// records a caller and the bomb implementation sharing `$2498E2` and `$249B28`.
+//
 // W453 REMOVED `bossscripts.js dist242494 <> items.js dist242494`, which shared
 // six markers and also occupied a head row. Exact cartridge bytes and the real
 // dirty-item `$27EE88` caller proved both bodies equivalent.
@@ -382,7 +387,7 @@ const BODY_REGISTER = Object.freeze([
   ['background.js elemScrollComp <> movement.js scrollCompensate', [0x2417a8, 0x2417b0]],
   ['background.js resetScrolls23C61E <> web/app.js draw', [0x23c5f2, 0x23c5fc]],
   ['bee.js collectTransform280FDC <> bee.js collectedTransform280FDC', [0x280ffc, 0x280ffe, 0x281002, 0x281010]],
-  ['bomb.js fireBomb2498E2 <> player.js bombAndShotGuards', [0x2498e2, 0x249b28]],
+  ['bomb.js fireBomb2498E2 <> player.js runNativeButton2Path2497FE', [0x2498e2, 0x249b28]],
   ['continuescreen.js continuePrompt28864C <> continuescreen.js continueWipe28871C', [0x28872a, 0x288758]],
   ['effects.js runEffectDriver <> movement.js scrollCompensate', [0x24179e, 0x2417a8, 0x2417b0]],
   ['handlers.js damageFirstHead <> handlers.js damageFirstHead269CEA', [0x242684, 0x263762]],

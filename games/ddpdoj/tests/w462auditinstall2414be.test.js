@@ -513,8 +513,8 @@ test('SECTION 5: one public canonical identity, direct callers and no private ad
       'the two private declarations and every private call are gone rather than aliased');
 
     assert.equal((allCode.match(/\bexport\s+function\s+install2414BE\s*\(/g) ?? []).length, 1);
-    assert.equal((allCode.match(/\binstall2414BE\s*\(/g) ?? []).length, 15,
-      'fourteen production invocations plus the sole declaration remain');
+    assert.equal((allCode.match(/\binstall2414BE\s*\(/g) ?? []).length, 18,
+      'seventeen production invocations plus the sole declaration remain');
     assert.doesNotMatch(allCode, /\binstall2414BE\s*:/,
       'no context callback or object property creates a second identity');
     assert.doesNotMatch(allCode, /\.install2414BE\s*\(/,
@@ -528,11 +528,13 @@ test('SECTION 5: one public canonical identity, direct callers and no private ad
     }
     assert.deepEqual(importers.sort(), [
       'frontend.js', 'objslot12.js', 'objslot17.js', 'objslot8.js', 'objslot9.js', 'rank.js',
+      'white-frontend.js', 'white-rank.js', 'white-reset.js',
     ]);
 
     const expectedCalls = Object.freeze([
       ['frontend.js', 1], ['objslot12.js', 1], ['objslot17.js', 1],
       ['objslot8.js', 5], ['objslot9.js', 1], ['palette.js', 3], ['rank.js', 3],
+      ['white-frontend.js', 1], ['white-rank.js', 1], ['white-reset.js', 1],
     ]);
     for (const [name, count] of expectedCalls) {
       assert.equal((stripComments(sourceMap.get(name)).match(/\binstall2414BE\s*\(/g) ?? []).length,
