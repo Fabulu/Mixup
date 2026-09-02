@@ -25,7 +25,7 @@ function draws() {
   return out;
 }
 
-test('W500 seeded input delay keeps the current loop choice visibly selected',
+test('W500 seeded input delay leaves both loop choices inactive like the cartridge',
   { skip: SKIP }, () => {
     const tables = JSON.parse(readFileSync(TABLES, 'utf8'));
     const rom = new RomWindows(tables.rom);
@@ -44,24 +44,35 @@ test('W500 seeded input delay keeps the current loop choice visibly selected',
     assert.equal(ram.u16(P.delayAt), LEAVES9.b.seed - 1);
     assert.equal(ram.u16(P.modeAt), 0, 'direction remains locked during the seeded delay');
     assert.deepEqual(sounds, []);
-    assert.equal(txCell(tx, P.cursor[0].d0, P.cursor[0].d1), 0xc0200002);
-    assert.equal(txCell(tx, P.cursor[1].d0, P.cursor[1].d1), 0xc03e0002,
-      'mode zero keeps its valid second cursor visibly highlighted');
+    assert.equal(txCell(tx, P.cursor[0].d0, P.cursor[0].d1), 0xc0200002,
+      'the first cursor remains inactive during the seeded delay');
+    assert.equal(txCell(tx, P.cursor[1].d0, P.cursor[1].d1), 0xc0200002,
+      'the second cursor remains inactive during the seeded delay');
     const stream = P.labels[1];
     const glyph = rom.u8(stream + 3);
     assert.equal(txCell(tx, rom.u8(stream), rom.u8(stream + 1)),
-      ((((0xc000 | glyph) << 16) >>> 0) | 2) >>> 0,
-      'the current label stays selected throughout the input lock');
+      (((0xc000 | glyph) << 16) >>> 0),
+      'the current label remains inactive during the seeded delay');
 
     for (let i = 0; i < LEAVES9.b.seed - 1; i++) perFrame25FAA4(ram, rom, ctx);
     assert.equal(ram.u16(P.delayAt), 0);
     assert.equal(ram.u16(P.modeAt), 0);
     assert.deepEqual(sounds, []);
-    assert.equal(txCell(tx, P.cursor[1].d0, P.cursor[1].d1), 0xc03e0002);
+    assert.equal(txCell(tx, P.cursor[0].d0, P.cursor[0].d1), 0xc0200002);
+    assert.equal(txCell(tx, P.cursor[1].d0, P.cursor[1].d1), 0xc0200002);
 
     perFrame25FAA4(ram, rom, ctx);
-    assert.equal(ram.u16(P.modeAt), 1, 'direction takes effect after the input lock');
+    assert.equal(ram.u16(P.modeAt), 1, 'direction takes effect on the first unlocked call');
     assert.deepEqual(sounds, [P.moveSound]);
+    assert.equal(txCell(tx, P.cursor[0].d0, P.cursor[0].d1), 0xc03e0002,
+      'the first cursor highlights mode one after the input lock');
+    assert.equal(txCell(tx, P.cursor[1].d0, P.cursor[1].d1), 0xc0200002,
+      'the second cursor remains inactive after mode one is selected');
+    const selectedStream = P.labels[0];
+    const selectedGlyph = rom.u8(selectedStream + 3);
+    assert.equal(txCell(tx, rom.u8(selectedStream), rom.u8(selectedStream + 1)),
+      ((((0xc000 | selectedGlyph) << 16) >>> 0) | 2) >>> 0,
+      'the mode-one label highlights on the first unlocked call');
   });
 
 test('W500 state 7 runs $25FAA4 cartridge mode selection, confirmation, blink, and retirement',

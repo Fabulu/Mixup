@@ -982,9 +982,6 @@ export function perFrame25FAA4(ram, rom, ctx) {
 
   if (ram.u16(P.delayAt) !== 0) {                             // $25FADA tst.w $813070
     ram.setU16(P.delayAt, u16(ram.u16(P.delayAt) - 1));      // $25FAE4 subq.w #1
-    // Keep the already-valid mode visible while the seeded input lock counts down. The cartridge
-    // clears both choices here, which makes the browser menu look desynchronized for sixty calls.
-    selectedMode25FC14(ram, rom, ctx.tx);
     return;
   }
 
