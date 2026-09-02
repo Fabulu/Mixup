@@ -4,6 +4,7 @@
 // THE NUMBER WAS 19, W450 FOUND 92, W475 LEFT 68, W497 REGISTERED 71
 // LATER HIBACHI CONSOLIDATION RETURNED THE TEMPORARY W554 ROW TO 71
 // W614 REGISTERED 17 NARROW AND 72 WIDENED CLAIMS
+// LATER RESOURCE AND HIBACHI COMPOSITION REGISTER 20 NARROW AND 73 WIDENED CLAIMS
 // ---------------------------------------------------------------------------
 // W444 built the index; W446, W447, W448 and W449 steered by it and merged five
 // addresses, each of which turned out to be a live defect. Then W449 found a
@@ -30,10 +31,10 @@
 // all four call sites retain their address-specific optional notes.
 // The live registers are:
 //
-//     shipped `export function` scan     17 addresses claimed twice or more
-//     widened head scan                  72          "
-//     of the shipped 17                  17 still there, NONE dropped
-//     newly visible                      55
+//     shipped `export function` scan     20 addresses claimed twice or more
+//     widened head scan                  73          "
+//     of the shipped 20                  20 still there, NONE dropped
+//     newly visible                      53
 //
 // ...plus a second register the old scan had no axis for at all: 28 PAIRS OF
 // BODIES that transcribe a shared RUN of ROM instructions. W456 removed four
@@ -56,7 +57,7 @@
 // ---------------------------------------------------------------------------
 //   1   the scan found something -- floors, so a broken regex cannot read clean
 //   2   the widening WEAKENS NOTHING: the shipped register is a strict subset
-//   3   THE HEAD REGISTER, exact, 72
+//   3   THE HEAD REGISTER, exact, 73
 //   4   THE BODY REGISTER, exact, 28 pairs; 22 body-only findings
 //   5   RED PROOFS on synthetic trees -- one per axis, plus two negative controls
 //   6   THE HISTORICAL POSITIVE CONTROL: W449's own `clearChain`, verbatim
@@ -147,8 +148,8 @@ test('SECTION 2: the shipped register is a STRICT SUBSET of the widened one -- n
   + 'stopped being watched', () => {
   const narrow = narrowRegister();
   const wide = headRegister();
-  assert.equal(narrow.length, 17,
-    'the shipped `export function` scan no longer reports 17. W449 left 19, W457 removed '
+  assert.equal(narrow.length, 20,
+    'the shipped `export function` scan no longer reports 20. W449 left 19, W457 removed '
     + '$25D9E6, W458 removed $25DA60, W459 removed $25FF38, W474 removed $28D520, '
     + 'W497 added the authentic $2491C0 seed adapter claim, and W614 registers the separately '
     + 'named $2497AA native facade, resource implementation, and composed path: '
@@ -185,7 +186,7 @@ test('SECTION 2b: the individual claim the two scans attribute differently is th
 
 // ---------------------------------------------------------------- SECTION 3
 
-// THE HEAD REGISTER. 72 ROM addresses claimed by two or more function-like
+// THE HEAD REGISTER. 73 ROM addresses claimed by two or more function-like
 // heads in `src/`, by name suffix or by JSDoc opening span.
 //
 // **DECLARE, NEVER WIDEN** -- W444's rule, and W446/W447/W448/W449 all kept it.
@@ -273,21 +274,21 @@ const HEAD_REGISTER = Object.freeze([
   0x24150a, 0x2415a2, 0x241688,
   0x24179e, 0x2417de, 0x242ec2,
   0x24560a, 0x2456a6, 0x246710, 0x24676a, 0x2491c0, 0x2497aa, 0x249d2c,
-  0x249e4e, 0x249ea0, 0x249ee2, 0x24c096, 0x24c338, 0x24caae,
+  0x249e4e, 0x249ea0, 0x249ee2, 0x24c338, 0x24caae,
   0x24d480, 0x253b94, 0x253d82, 0x253d90, 0x253e96, 0x2562fc, 0x2564f0, 0x259962,
   0x25a14c, 0x25cb92, 0x25e4d0, 0x25ef30,
   0x25f074, 0x26070c, 0x26134e, 0x26233a, 0x263386,
-  0x2633be, 0x2638a6, 0x268018, 0x269cea, 0x26a5e4, 0x27ea9a,
+  0x2633be, 0x2638a6, 0x268018, 0x269cea, 0x26a5e4, 0x27cbb6, 0x27ea9a,
   0x27f6e4, 0x280b3e, 0x280fdc, 0x2820cc, 0x284190, 0x2847fe,
   0x284b6a, 0x2851d2, 0x286096, 0x286128, 0x286a80,
-  0x286ae8, 0x286b9a, 0x2875b4, 0x289004, 0x289f96, 0x28ad54,
+  0x286ae8, 0x286b9a, 0x2875b4, 0x289004, 0x289f96, 0x289fc0, 0x28ad54,
   0x28cb38, 0x28ecb2,
   0x28f588, 0x292902, 0x29321c, 0x293642,
   0x29f8f0, 0x29f9b4, 0x2a00c0, 0x2a0d16, 0x2a11d4, 0x2a3af6,
   0x2a3e15,
 ]);
 
-test('SECTION 3: the widened head register is exactly these 72 addresses', () => {
+test('SECTION 3: the widened head register is exactly these 73 addresses', () => {
   const { idx } = headIndex();
   const wide = headRegister();
   assert.deepEqual(wide.map(hex), [...HEAD_REGISTER].map(hex),
@@ -300,8 +301,8 @@ test('SECTION 3: the widened head register is exactly these 72 addresses', () =>
 
   // ASSERTED AS A NUMBER TOO -- W447's lesson. An empty list satisfies a
   // `deepEqual` against a shrunken array and reads as five merges' progress.
-  assert.equal(wide.length, 72,
-    'the widened register is not 72. W450 found 92; W451 through W475 reduced it to 68, '
+  assert.equal(wide.length, 73,
+    'the widened register is not 73. W450 found 92; W451 through W475 reduced it to 68, '
     + 'W497 registers $2491C0 plus the $253D82/$253D90 Type-B hit-flag wrapper rows, '
     + 'later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate, '
     + 'and W614 registers the documented $249D2C native Type-B facade/resource split');
