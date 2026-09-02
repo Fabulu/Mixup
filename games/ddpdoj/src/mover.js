@@ -200,7 +200,11 @@ export function preflightMoverWithResources(ctx, resources, { skipContinuations 
 /** Edition-bound mover entry. */
 export function runMoverWithResources(ctx, resources) {
   assertMoverResources(resources);
-  const scoped = ctx.moverResources === resources ? ctx : { ...ctx, moverResources: resources };
+  const scoped = ctx.moverResources === resources ? ctx : {
+    ...ctx,
+    moverResources: resources,
+    bulletRetireContext: ctx.bulletRetireContext ?? ctx,
+  };
   preflightMoverWithResources(scoped, resources);
   const { ram } = scoped;
   const d6 = ram.u16(resources.scrollComp);
@@ -509,7 +513,7 @@ function freeSlotNoEffect(ctx, base) {
     reason: 'mover',
     y: ram.u16(base + REC.posA),
     x: ram.u16(base + REC.posB),
-  }, ctx);
+  }, ctx.bulletRetireContext ?? ctx);
   ram.setU16(base, 0);                               // $281E42 / $281EC4 clr.w (A6)
   ram.setU16(base + REC.posA, 0xffff);               // $281E44 / $281EC6 move.w #$ffff,$2
 }
@@ -2160,8 +2164,10 @@ CONTINUATIONS.set(0x283290, (ctx, base) => {
         if (ram.u16(0x8130dc) === 0) {                 // $2832B0 tst.w / bne
           direction = (ram.u8(base + REC.dir) + 0xb0) & 0xff; // $2832BA..$2832C0
         }
-        const result = fire({ ram, rom: ctx.rom, log: new WriteLog(ram), mut: ctx.mut },
-          0x2817c2, {
+        const result = fire({
+          ram, rom: ctx.rom, log: new WriteLog(ram), mut: ctx.mut,
+          sourceBullet: base,
+        }, 0x2817c2, {
             d0: ram.u32(base + 0x2c), d1: direction,
             d2: ram.u32(base + REC.posA), d3: 0, d4: 0,
           });                                          // $2832C2..$2832CE

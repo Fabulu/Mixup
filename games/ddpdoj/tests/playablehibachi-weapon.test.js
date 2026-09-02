@@ -9,6 +9,7 @@ import { BULLET_DRIVER, runScreenClear } from '../src/bulletdriver.js';
 import { BUL, REC as BULLET_REC, poolClear } from '../src/bullets.js';
 import { DMG, poolDamage, shotBoundingBox } from '../src/damage.js';
 import { Game } from '../src/main.js';
+import { HIBACHI_A1 } from '../src/hibachiguns.js';
 import { BEAM, SEG } from '../src/laser.js';
 import { P, RAM } from '../src/machine.js';
 import {
@@ -17,7 +18,8 @@ import {
 } from '../src/mods.js';
 import { runMover } from '../src/mover.js';
 import {
-  PLAYABLE_HIBACHI_BULLET_POWER, PLAYABLE_HIBACHI_LAYOUTS,
+  PLAYABLE_HIBACHI_BULLET_POWER, PLAYABLE_HIBACHI_HYPER_PATTERNS,
+  PLAYABLE_HIBACHI_LAYOUTS, PLAYABLE_HIBACHI_ORDINARY_PATTERNS,
   beginPlayableHibachiCreditedRun,
   bindPlayableHibachiGame, clearPlayableHibachiBulletOnSpawn,
   createPlayableHibachiState, filterPlayableHibachiGrazeEvent,
@@ -419,6 +421,8 @@ test('native death capture resets each Playable Hibachi life without crossing ow
   bindModGame(mods, game);
   game.cabinetRunStartHook(game.ram, { demo: false });
   const playable = mods.playableHibachi;
+  playable.ordinaryPatternCursors.set([12, 19]);
+  playable.hyperPatternCursors.set([3, 4]);
   const records = [RAM.player1, RAM.player2];
   for (let side = 0; side < 2; side++) {
     const rec = records[side];
@@ -446,6 +450,7 @@ test('native death capture resets each Playable Hibachi life without crossing ow
     retired: false,
     live: false,
     lifeIdentity: 1,
+    descriptorId: -1,
     gun: -1,
     frames: 0,
     presentationFrames: 0,
@@ -456,6 +461,8 @@ test('native death capture resets each Playable Hibachi life without crossing ow
   });
   assert.ok(playable.players[0].bytes.every((byte) => byte === 0));
   assert.equal(playable.selectedGuns[0], -1);
+  assert.deepEqual([...playable.ordinaryPatternCursors], [12, 19]);
+  assert.deepEqual([...playable.hyperPatternCursors], [3, 4]);
   assert.equal(playable.players[1].runtime.live, true);
   assert.equal(playable.players[1].runtime.presentationFrames, 12);
   assert.equal(playable.players[1].runtime.presentationStarted, true);
@@ -494,7 +501,7 @@ test('Playable Hibachi A5 and A6 geometry covers authentic gun accesses', () => 
     const memory = state.players[playerIdx].memory;
     const layout = PLAYABLE_HIBACHI_LAYOUTS[playerIdx];
     memory.setU32(layout.body + 0x06, layout.parts);
-    for (const offset of [0x20, 0x60, 0xc0, 0x140, 0x1ee]) {
+    for (const offset of [0x20, 0x60, 0xc0, 0x140, 0x1ee, 0x1f8]) {
       memory.setU16(layout.parts + offset, 0x5100 | playerIdx);
       assert.equal(memory.u16(layout.parts + offset), 0x5100 | playerIdx);
     }
@@ -502,53 +509,175 @@ test('Playable Hibachi A5 and A6 geometry covers authentic gun accesses', () => 
   }
 });
 
-test('Playable Hibachi selects normal and hyper guns for P1 and P2', () => {
+test('Playable Hibachi cycles edge-driven cursors independently with exact wrapping', () => {
   const game = new Game(null, TABLES, { palCatchUp: false });
   const state = createPlayableHibachiState();
   bindPlayableHibachiGame(state, game);
   beginPlayableHibachiCreditedRun(state, game, {});
-  const enemy = DMG.poolA;
-  game.ram.setU16(enemy, 0xa000);
-  game.ram.setU16(enemy + 0x02, 0x2400);
-  game.ram.setU16(enemy + 0x04, 0x1700);
-  game.ram.setU16(enemy + 0x18, 10);
-
-  const selections = [
-    [RAM.player1, 0, 0x00, 0, 0],
-    [RAM.player1, 0, 0x10, 0, 1],
-    [RAM.player1, 0, 0x50, 0, 2],
-    [RAM.player1, 0, 0x40, 0, 3],
-    [RAM.player1, 0, 0x40, 1, 8],
-    [RAM.player2, 1, 0x10, 1, 6],
-  ];
-  for (const [rec, playerIdx, held, hyper, expected] of selections) {
+  const records = [RAM.player1, RAM.player2];
+  const hyperWords = [DMG.hyper1, DMG.hyper2];
+  for (let playerIdx = 0; playerIdx < 2; playerIdx++) {
+    const rec = records[playerIdx];
     game.ram.setU16(rec, 0x8000);
     game.ram.setU16(rec + P.posY, 0x3000 + playerIdx * 0x100);
     game.ram.setU16(rec + P.posX, 0x1800 + playerIdx * 0x100);
+    state.players[playerIdx].runtime.presentationFrames = 41 + playerIdx;
+  }
+  const step = (playerIdx, { edge = 0, held = 0, hyper = 0 } = {}) => {
+    const rec = records[playerIdx];
+    game.ram.setU8(rec + P.btnByte, edge);
     game.ram.setU8(rec + P.dirByte, held);
-    game.ram.setU16(playerIdx === 0 ? 0x81b63e : 0x81b640, hyper);
-    const presentationFrames = state.players[playerIdx].runtime.presentationFrames;
+    game.ram.setU16(hyperWords[playerIdx], hyper);
     assert.equal(stepPlayableHibachiWeapon(
       state, game.ram, rec, playerIdx, { rom: game.rom }), true);
-    assert.equal(state.selectedGuns[playerIdx], expected);
-    assert.equal(state.players[playerIdx].runtime.gun, expected);
-    assert.equal(state.players[playerIdx].runtime.presentationFrames, presentationFrames,
-      'SHOT/AUTO and hyper changes cannot restart the small-form animation');
+  };
+
+  assert.deepEqual([...state.ordinaryPatternCursors], [5, 5]);
+  assert.deepEqual([...state.hyperPatternCursors], [1, 1]);
+  step(0, { held: 0x40 });
+  assert.equal(state.ordinaryPatternCursors[0], 5,
+    'held Auto without an edge does not move');
+  step(0, { edge: 0x40, held: 0x40 });
+  assert.equal(state.ordinaryPatternCursors[0], 6);
+  step(0, { held: 0x40 });
+  step(0);
+  assert.equal(state.ordinaryPatternCursors[0], 6,
+    'holding and releasing Auto do not repeat or revert');
+  step(0, { edge: 0x10 });
+  assert.equal(state.ordinaryPatternCursors[0], 5);
+  step(0, { edge: 0x10 });
+  assert.equal(state.ordinaryPatternCursors[0], 20,
+    'Shot wraps ordinary pattern 5 backward to 20');
+  step(0, { edge: 0x50 });
+  assert.equal(state.ordinaryPatternCursors[0], 20,
+    'simultaneous Shot and Auto edges cancel');
+  step(0, { edge: 0x40 });
+  assert.equal(state.ordinaryPatternCursors[0], 5,
+    'Auto wraps ordinary pattern 20 forward to 5');
+
+  step(0, { hyper: 1 });
+  assert.equal(state.hyperPatternCursors[0], 1);
+  assert.equal(state.ordinaryPatternCursors[0], 5);
+  step(0, { edge: 0x10, hyper: 1 });
+  assert.equal(state.hyperPatternCursors[0], 4,
+    'Shot wraps hyper pattern 1 backward to 4');
+  step(0, { edge: 0x40, hyper: 1 });
+  assert.equal(state.hyperPatternCursors[0], 1,
+    'Auto wraps hyper pattern 4 forward to 1');
+  step(0, { edge: 0x40, hyper: 1 });
+  assert.equal(state.hyperPatternCursors[0], 2);
+  step(0);
+  assert.equal(state.ordinaryPatternCursors[0], 5,
+    'leaving hyper restores the independent ordinary cursor');
+  step(0, { hyper: 1 });
+  assert.equal(state.hyperPatternCursors[0], 2,
+    're-entering hyper restores the independent hyper cursor');
+
+  step(1, { edge: 0x40 });
+  step(1, { edge: 0x10, hyper: 1 });
+  assert.deepEqual([...state.ordinaryPatternCursors], [5, 6]);
+  assert.deepEqual([...state.hyperPatternCursors], [2, 4]);
+  assert.equal(state.players[0].runtime.presentationFrames, 41);
+  assert.equal(state.players[1].runtime.presentationFrames, 42);
+});
+
+test('all 20 Playable Hibachi descriptors map and restart by unique pattern identity', () => {
+  const game = new Game(null, TABLES, { palCatchUp: false });
+  const state = createPlayableHibachiState();
+  bindPlayableHibachiGame(state, game);
+  beginPlayableHibachiCreditedRun(state, game, {});
+  const rec = RAM.player1;
+  game.ram.setU16(rec, 0x8000);
+  game.ram.setU16(rec + P.posY, 0x3000);
+  game.ram.setU16(rec + P.posX, 0x1800);
+  game.ram.setU8(rec + P.btnByte, 0);
+  game.ram.setU8(rec + P.dirByte, 0);
+  state.players[0].runtime.presentationFrames = 73;
+  const step = (hyper = false) => {
+    game.ram.setU16(DMG.hyper1, hyper ? 1 : 0);
+    assert.equal(stepPlayableHibachiWeapon(
+      state, game.ram, rec, 0, { rom: game.rom }), true);
+  };
+
+  const ordinaryGuns = [0, 1, 2, 3, 5, 6, 7, 8, 9, 0x0a, 0x0b, 0, 1, 2, 3, 4];
+  assert.deepEqual(PLAYABLE_HIBACHI_ORDINARY_PATTERNS.map(({ gun }) => gun), ordinaryGuns);
+  const identity = ({ id, bank, pattern, family, gun, init, step: run, finite }) =>
+    [id, bank, pattern, family, gun, init.name, run.name, finite];
+  assert.deepEqual([
+    ...PLAYABLE_HIBACHI_ORDINARY_PATTERNS,
+    ...PLAYABLE_HIBACHI_HYPER_PATTERNS,
+  ].map(identity), [
+    [0, 'ordinary', 5, 'main', 0, 'gun0Init2A738A', 'gun0Step2A7400', true],
+    [1, 'ordinary', 6, 'main', 1, 'gun1Init2A7850', 'gun1Step2A78D0', true],
+    [2, 'ordinary', 7, 'main', 2, 'gun2Init2A7AB2', 'gun2Step2A7B20', true],
+    [3, 'ordinary', 8, 'main', 3, 'gun3Init2A7E64', 'gun3Step2A7E96', true],
+    [4, 'ordinary', 9, 'shared', 5, 'gun5Init2A81BC', 'gun5Step2A8206', true],
+    [5, 'ordinary', 10, 'shared', 6, 'gun6Init2A8370', 'gun6Step2A8396', true],
+    [6, 'ordinary', 11, 'shared', 7, 'gun7Init2A8516', 'gun7Step2A8538', true],
+    [7, 'ordinary', 12, 'shared', 8, 'gun8Init2A8800', 'gun8Step2A883A', true],
+    [8, 'ordinary', 13, 'shared', 9, 'gun9Init2A89BA', 'gun9Step2A89F4', true],
+    [9, 'ordinary', 14, 'shared', 0x0a, 'gunAInit2A8B7C', 'gunAStep2A8BC0', true],
+    [10, 'ordinary', 15, 'shared', 0x0b, 'gunBInit2A8C9A', 'gunBStep2A8CB2', true],
+    [11, 'ordinary', 16, 'alternate', 0, 'altGun0Init2A9366', 'altGun0Step2A93DC', true],
+    [12, 'ordinary', 17, 'alternate', 1, 'altGun1Init2A97F4', 'altGun1Step2A9874', true],
+    [13, 'ordinary', 18, 'alternate', 2, 'altGun2Init2A9AA0', 'altGun2Step2A9B0E', true],
+    [14, 'ordinary', 19, 'alternate', 3, 'altGun3Init2A9E84', 'altGun3Step2A9EB6', true],
+    [15, 'ordinary', 20, 'alternate', 4, 'altGun4Init2AA072', 'altGun4Step2AA084', false],
+    [16, 'hyper', 1, 'shared', 5, 'gun5Init2A81BC', 'gun5Step2A8206', true],
+    [17, 'hyper', 2, 'shared', 6, 'gun6Init2A8370', 'gun6Step2A8396', true],
+    [18, 'hyper', 3, 'shared', 7, 'gun7Init2A8516', 'gun7Step2A8538', true],
+    [19, 'hyper', 4, 'shared', 8, 'gun8Init2A8800', 'gun8Step2A883A', true],
+  ]);
+  for (const descriptor of PLAYABLE_HIBACHI_ORDINARY_PATTERNS) {
+    state.ordinaryPatternCursors[0] = descriptor.pattern;
+    step(false);
+    assert.equal(state.players[0].runtime.descriptorId, descriptor.id);
+    assert.equal(state.players[0].runtime.gun, descriptor.gun);
+    assert.equal(state.selectedGuns[0], descriptor.gun);
   }
+  const hyperGuns = [5, 6, 7, 8];
+  assert.deepEqual(PLAYABLE_HIBACHI_HYPER_PATTERNS.map(({ gun }) => gun), hyperGuns);
+  for (const descriptor of PLAYABLE_HIBACHI_HYPER_PATTERNS) {
+    state.hyperPatternCursors[0] = descriptor.pattern;
+    step(true);
+    assert.equal(state.players[0].runtime.descriptorId, descriptor.id);
+    assert.equal(state.players[0].runtime.gun, descriptor.gun);
+    assert.equal(state.selectedGuns[0], descriptor.gun);
+  }
+  assert.equal(state.players[0].runtime.presentationFrames, 73,
+    'weapon changes never restart the small-form presentation clock');
 
-  game.ram.setU16(RAM.player1, 0);
-  assert.equal(stepPlayableHibachiWeapon(
-    state, game.ram, RAM.player1, 0, { rom: game.rom }), false);
-  game.ram.setU16(RAM.player1, 0x8000);
-  assert.equal(stepPlayableHibachiWeapon(
-    state, game.ram, RAM.player1, 0, { rom: game.rom }), true);
-  assert.equal(state.players[0].runtime.presentationFrames, 0,
-    'a new life restarts the small-form animation');
+  state.ordinaryPatternCursors[0] = 5;
+  step(false);
+  assert.equal(state.players[0].runtime.descriptorId, 0);
+  step(false);
+  assert.equal(state.players[0].runtime.frames, 1,
+    'a no-edge frame advances rather than reinitializing one descriptor');
+  state.ordinaryPatternCursors[0] = 16;
+  step(false);
+  assert.equal(state.players[0].runtime.descriptorId, 11);
+  assert.equal(state.players[0].runtime.gun, 0);
+  assert.equal(state.players[0].runtime.frames, 0,
+    'ordinary patterns 5 and 16 restart despite sharing authentic gun 0');
 
-  const p1 = state.players[0];
-  assert.equal(p1.memory.u32(p1.layout.body + 0x06), p1.layout.parts);
-  assert.equal(p1.memory.u16(p1.layout.target + 0x02), 0x3c00);
-  assert.equal(p1.memory.u16(p1.layout.target + 0x04), 0x1900);
+  state.ordinaryPatternCursors[0] = 9;
+  step(false);
+  assert.equal(state.players[0].runtime.descriptorId, 4);
+  state.hyperPatternCursors[0] = 1;
+  step(true);
+  assert.equal(state.players[0].runtime.descriptorId, 16);
+  assert.equal(state.players[0].runtime.gun, 5);
+  assert.equal(state.players[0].runtime.frames, 0,
+    'ordinary pattern 9 and hyper pattern 1 restart despite sharing gun 5');
+  step(true);
+  assert.equal(state.players[0].runtime.frames, 1);
+
+  state.ordinaryPatternCursors.set([20, 19]);
+  state.hyperPatternCursors.set([4, 3]);
+  beginPlayableHibachiCreditedRun(state, game, {});
+  assert.deepEqual([...state.ordinaryPatternCursors], [5, 5]);
+  assert.deepEqual([...state.hyperPatternCursors], [1, 1]);
+  assert.equal(state.players[0].runtime.descriptorId, -1);
 });
 
 test('enemy-free aimed repertoire never falls back to native player targets', () => {
@@ -560,7 +689,8 @@ test('enemy-free aimed repertoire never falls back to native player targets', ()
   game.ram.setU16(rec, 0x8000);
   game.ram.setU16(rec + P.posY, 0x3000);
   game.ram.setU16(rec + P.posX, 0x1800);
-  game.ram.setU8(rec + P.dirByte, 0x10);
+  game.ram.setU8(rec + P.dirByte, 0);
+  game.ram.setU8(rec + P.btnByte, 0x40);
   game.ram.setU16(RAM.player2, 0x8000);
   game.ram.setU16(RAM.player2 + P.posY, 0x2000);
   game.ram.setU16(RAM.player2 + P.posX, 0x2800);
@@ -568,6 +698,7 @@ test('enemy-free aimed repertoire never falls back to native player targets', ()
   const ctx = { rom: game.rom, bulletSpawn: (site) => shots.push(site) };
 
   assert.equal(stepPlayableHibachiWeapon(state, game.ram, rec, 0, ctx), true);
+  game.ram.setU8(rec + P.btnByte, 0);
   state.players[0].memory.setU8(state.players[0].layout.gun + 0x02, 0);
   assert.equal(stepPlayableHibachiWeapon(state, game.ram, rec, 0, ctx), true);
 
@@ -603,6 +734,16 @@ test('Playable Hibachi claims, reflects, reuses, and retires spawned bullets', (
 
   clearPlayableHibachiBulletOnSpawn(state, { slot });
   assert.equal(playableHibachiBulletOwner(state, addr), 0);
+  const sourceSlot = slot + 1;
+  const sourceBullet = BUL.pool + sourceSlot * BUL.stride;
+  state.ownedBullets[sourceSlot] = 2;
+  clearPlayableHibachiBulletOnSpawn(state, { slot, sourceBullet });
+  assert.equal(playableHibachiBulletOwner(state, addr), 2,
+    'a descendant inherits an exact P2 source owner');
+  state.ownedBullets[sourceSlot] = 0;
+  clearPlayableHibachiBulletOnSpawn(state, { slot, sourceBullet });
+  assert.equal(playableHibachiBulletOwner(state, addr), 0,
+    'an ordinary hostile source cannot confer Playable ownership');
   state.ownedBullets[slot] = 2;
   retirePlayableHibachiBullet(state, { addr });
   assert.equal(state.ownedBullets[slot], 0);
@@ -703,6 +844,77 @@ test('private A1 retirement cannot clear a matching native scheduler slot', () =
   assert.equal(ram.u16(SCHED.a1Base), 0);
 });
 
+test('every finite descriptor retires privately without touching matching native slots', () => {
+  const finite = [
+    ...PLAYABLE_HIBACHI_ORDINARY_PATTERNS,
+    ...PLAYABLE_HIBACHI_HYPER_PATTERNS,
+  ].filter(({ finite: isFinite }) => isFinite);
+  for (const descriptor of finite) {
+    const { game, mods } = playableRetireBench();
+    const state = mods.playableHibachi;
+    const rec = RAM.player1;
+    game.ram.setU16(rec, 0x8000);
+    game.ram.setU16(rec + P.posY, 0x3000);
+    game.ram.setU16(rec + P.posX, 0x1800);
+    game.ram.setU8(rec + P.btnByte, 0);
+    game.ram.setU8(rec + P.dirByte, 0);
+    armDamageEnemy(game.ram, { y: 0x2400, x: 0x1700 });
+    if (descriptor.bank === 'ordinary') {
+      state.ordinaryPatternCursors[0] = descriptor.pattern;
+      game.ram.setU16(DMG.hyper1, 0);
+    } else {
+      state.hyperPatternCursors[0] = descriptor.pattern;
+      game.ram.setU16(DMG.hyper1, 1);
+    }
+    const native = 0x8000 | descriptor.gun;
+    game.ram.setU16(SCHED.a1Base, native);
+
+    let frames = 0;
+    while (!state.players[0].runtime.retired && frames < 5000) {
+      assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
+      frames++;
+    }
+    const label = `${descriptor.bank} pattern ${descriptor.pattern}`;
+    assert.equal(state.players[0].runtime.retired, true,
+      `${label} reaches its authentic finite retirement`);
+    assert.equal(game.ram.u16(SCHED.a1Base), native,
+      `${label} cannot clear the matching native scheduler slot`);
+  }
+});
+
+test('Gun B retires on freeze and normal tails while alternate gun 4 stays permanent', () => {
+  const freeze = playableRetireBench();
+  const freezeState = freeze.mods.playableHibachi;
+  const rec = RAM.player1;
+  freeze.game.ram.setU16(rec, 0x8000);
+  freeze.game.ram.setU16(rec + P.posY, 0x3000);
+  freeze.game.ram.setU16(rec + P.posX, 0x1800);
+  freezeState.ordinaryPatternCursors[0] = 15;
+  freeze.game.ram.setU16(SCHED.a1Base, 0x800b);
+  assert.equal(freeze.game.playerWeaponHook(freeze.game.ram, rec, 0, freeze.game), true);
+  freeze.game.ram.setU16(HIBACHI_A1.freeze, 1);
+  assert.equal(freeze.game.playerWeaponHook(freeze.game.ram, rec, 0, freeze.game), true);
+  assert.equal(freezeState.players[0].runtime.retired, true,
+    'Gun B freeze arm reaches the private retirement hook');
+  assert.equal(freeze.game.ram.u16(SCHED.a1Base), 0x800b);
+
+  const permanent = playableRetireBench();
+  const permanentState = permanent.mods.playableHibachi;
+  permanent.game.ram.setU16(rec, 0x8000);
+  permanent.game.ram.setU16(rec + P.posY, 0x3000);
+  permanent.game.ram.setU16(rec + P.posX, 0x1800);
+  permanentState.ordinaryPatternCursors[0] = 20;
+  permanent.game.ram.setU16(SCHED.a1Base, 0x8004);
+  for (let frame = 0; frame < 1024; frame++) {
+    assert.equal(permanent.game.playerWeaponHook(
+      permanent.game.ram, rec, 0, permanent.game), true);
+  }
+  assert.equal(permanentState.players[0].runtime.descriptorId, 15);
+  assert.equal(permanentState.players[0].runtime.retired, false,
+    'alternate gun 4 remains the sole permanent descriptor');
+  assert.equal(permanent.game.ram.u16(SCHED.a1Base), 0x8004);
+});
+
 test('owned bullets cannot graze, hit players, or convert to friendly shots', () => {
   const state = createPlayableHibachiState();
   const owned = BUL.pool + 3 * BUL.stride;
@@ -748,16 +960,10 @@ test('owned P1 and P2 bullets use native damage receipts and retire finitely', (
   }
 });
 
-test('all launch and second-form guns produce real damage and finite bullets', () => {
+test('all 20 selected patterns fire automatically and produce finite damaging bullets', () => {
   const attacks = [
-    { gun: 0, held: 0x00, hyper: 0, deadline: 34 },
-    { gun: 1, held: 0x10, hyper: 0, deadline: 34 },
-    { gun: 2, held: 0x50, hyper: 0, deadline: 34 },
-    { gun: 3, held: 0x40, hyper: 0, deadline: 34 },
-    { gun: 5, held: 0x00, hyper: 1, deadline: 34 },
-    { gun: 6, held: 0x10, hyper: 1, deadline: 34 },
-    { gun: 7, held: 0x50, hyper: 1, deadline: 98 },
-    { gun: 8, held: 0x40, hyper: 1, deadline: 98 },
+    ...PLAYABLE_HIBACHI_ORDINARY_PATTERNS,
+    ...PLAYABLE_HIBACHI_HYPER_PATTERNS,
   ];
 
   for (const attack of attacks) {
@@ -767,27 +973,37 @@ test('all launch and second-form guns produce real damage and finite bullets', (
     game.ram.setU16(rec, 0x8000);
     game.ram.setU16(rec + P.posY, 0x3000);
     game.ram.setU16(rec + P.posX, 0x1800);
-    game.ram.setU8(rec + P.dirByte, attack.held);
-    game.ram.setU16(DMG.hyper1, attack.hyper);
+    game.ram.setU8(rec + P.dirByte, 0);
+    game.ram.setU8(rec + P.btnByte, 0);
+    if (attack.bank === 'ordinary') {
+      state.ordinaryPatternCursors[0] = attack.pattern;
+      game.ram.setU16(DMG.hyper1, 0);
+    } else {
+      state.hyperPatternCursors[0] = attack.pattern;
+      game.ram.setU16(DMG.hyper1, 1);
+    }
+    const label = `${attack.bank} pattern ${attack.pattern}`;
     const enemy = armDamageEnemy(game.ram, { y: 0x2400, x: 0x1700 });
 
     let frames = 0;
-    while (frames < attack.deadline && !state.ownedBullets.some(Boolean)) {
+    const deadline = 512;
+    while (frames < deadline && !state.ownedBullets.some(Boolean)) {
       assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
       frames++;
     }
+    assert.equal(state.players[0].runtime.descriptorId, attack.id);
     assert.equal(state.selectedGuns[0], attack.gun);
     assert.ok(state.ownedBullets.some((owner) => owner === 1),
-      `gun ${attack.gun} must produce a P1 projectile by frame ${attack.deadline}`);
+      `${label} must produce a P1 projectile automatically by frame ${deadline}`);
     for (let slot = 0; slot < state.ownedBullets.length; slot++) {
       if (state.ownedBullets[slot] !== 1) continue;
       const bullet = BUL.pool + slot * BUL.stride;
       assert.equal(game.ram.u16(bullet + BULLET_REC.posA), 0x3000,
-        `gun ${attack.gun} projectile ${slot} starts at the visible body's Y`);
+        `${label} projectile ${slot} starts at the visible body's Y`);
       assert.equal(game.ram.u16(bullet + BULLET_REC.posB), 0x1800,
-        `gun ${attack.gun} projectile ${slot} starts at the visible body's X`);
+        `${label} projectile ${slot} starts at the visible body's X`);
     }
-    if (attack.gun === 0) {
+    if (attack.id === 0) {
       assert.equal(state.players[0].runtime.bodyInitialized, true,
         'the first form exists on the launch frame');
       assert.equal(state.players[0].memory.u16(state.players[0].layout.parts), 0x8000);
@@ -802,7 +1018,7 @@ test('all launch and second-form guns produce real damage and finite bullets', (
     game.ram.setU16(DMG.gate308c, 1);
 
     const hits = game.privateDamageTailHook(game);
-    assert.ok(hits >= 1, `gun ${attack.gun} must debit real enemy HP`);
+    assert.ok(hits >= 1, `${label} must debit real enemy HP`);
     assert.equal(game.ram.u16(enemy + 0x18),
       0x7fff - hits * PLAYABLE_HIBACHI_BULLET_POWER);
     assert.ok((game.ram.u16(enemy) & DMG.maskP1) !== 0);
@@ -814,9 +1030,70 @@ test('all launch and second-form guns produce real damage and finite bullets', (
     runMover(game);
     for (const slot of killed) {
       assert.equal(game.ram.u16(BUL.pool + slot * BUL.stride), 0,
-        `gun ${attack.gun} bullet ${slot} must free on the next mover pass`);
+        `${label} bullet ${slot} must free on the next mover pass`);
       assert.equal(state.ownedBullets[slot], 0);
     }
+  }
+});
+
+test('Gun A tracker bullets enter the delayed mover and propagate Playable ownership', () => {
+  const { game, mods } = playableRetireBench();
+  const state = mods.playableHibachi;
+  const rec = RAM.player1;
+  game.ram.setU16(rec, 0x8000);
+  game.ram.setU16(rec + P.posY, 0x3000);
+  game.ram.setU16(rec + P.posX, 0x1800);
+  state.ordinaryPatternCursors[0] = 14;
+  armDamageEnemy(game.ram, { y: 0x2400, x: 0x1700 });
+  for (let frame = 0; frame < 128 && !state.ownedBullets.some(Boolean); frame++) {
+    assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
+  }
+  const slot = state.ownedBullets.findIndex((owner) => owner === 1);
+  assert.ok(slot >= 0);
+  const bullet = BUL.pool + slot * BUL.stride;
+  assert.equal(game.ram.u16(bullet) & 0x003f, 28,
+    'Gun A emits the authentic tracker kind');
+  const parentSlots = [...state.ownedBullets].flatMap((owner, index) =>
+    owner === 1 && (game.ram.u16(BUL.pool + index * BUL.stride) & 0x003f) === 28
+      ? [index] : []);
+  assert.ok(parentSlots.length > 0);
+  const start = [
+    game.ram.u16(bullet + BULLET_REC.posA),
+    game.ram.u16(bullet + BULLET_REC.posB),
+  ];
+  let moved = false;
+  for (let frame = 0; frame < 20; frame++) {
+    runMover(game);
+    moved ||= game.ram.u16(bullet + BULLET_REC.posA) !== start[0]
+      || game.ram.u16(bullet + BULLET_REC.posB) !== start[1];
+  }
+  assert.equal(state.ownedBullets.findIndex((owner, index) =>
+    owner === 1 && !parentSlots.includes(index)
+      && (game.ram.u16(BUL.pool + index * BUL.stride) & 0x003f) === 22), -1,
+  'the splitter does not fire before its exact 20-frame delay');
+  runMover(game);
+
+  assert.equal(moved, true, 'the delayed native tracker mover advances the projectile');
+  for (const parentSlot of parentSlots) {
+    assert.equal(state.ownedBullets[parentSlot], 1,
+      'native delayed movement preserves every external P1 parent owner');
+  }
+  const parentPositions = new Set(parentSlots.map((parentSlot) =>
+    game.ram.u32(BUL.pool + parentSlot * BUL.stride + BULLET_REC.posA)));
+  const childSlots = [...state.ownedBullets].flatMap((owner, index) => {
+    const type = game.ram.u16(BUL.pool + index * BUL.stride);
+    return owner === 1 && !parentSlots.includes(index) && (type & 0x8000) !== 0
+      && (type & 0x003f) === 22 ? [index] : [];
+  });
+  assert.ok(childSlots.length > 0, 'the 20-frame splitters produce child projectiles');
+  for (const childSlot of childSlots) {
+    const child = BUL.pool + childSlot * BUL.stride;
+    assert.equal(playableHibachiBulletOwner(state, child), 1,
+      'each splitter child inherits its parent P1 owner');
+    assert.equal(playableHibachiAllowsBulletCollision(state, { bullet: child }), false,
+      'splitter children cannot become hostile to either player');
+    assert.equal(parentPositions.has(game.ram.u32(child + BULLET_REC.posA)), true,
+      'each child stays at its authentic parent split position');
   }
 });
 
@@ -855,7 +1132,8 @@ test('published bundle drives credited Playable Hibachi combat and art', async (
   game.cabinetRunStartHook(game.ram, { demo: false });
 
   assert.deepEqual(mods.playableHibachi.lifecycle, {
-    bound: true, pending: false, active: true, credited: true, generation: 1,
+    bound: true, pending: false, launchEligible: false,
+    active: true, credited: true, generation: 1,
   });
   const rec = RAM.player1;
   game.ram.setU16(rec, 0x8000);

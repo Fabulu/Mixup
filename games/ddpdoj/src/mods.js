@@ -15,6 +15,7 @@ import { DMG, bulletWindowSlots } from './damage.js';
 import { i16 } from './ram.js';
 import { RUNAHEAD_EXTERNAL_STATE } from './runahead-state.js';
 import {
+  armPlayableHibachiLaunchPresentation,
   beginPlayableHibachiCreditedRun, bindPlayableHibachiGame,
   capturePlayableHibachiLaunch, clearPlayableHibachiBulletOnSpawn,
   collectPlayableHibachiSpriteRequests,
@@ -429,7 +430,10 @@ export function prepareModCabinetBoot(state) {
   state.runtime.cabinetBoot = true;
   state.runtime.cabinetRunActive = false;
   resetRunRuntime(state);
-  if (state.playableHibachi) resetPlayableHibachiStateInPlace(state.playableHibachi);
+  if (state.playableHibachi) {
+    resetPlayableHibachiStateInPlace(state.playableHibachi);
+    armPlayableHibachiLaunchPresentation(state.playableHibachi);
+  }
   return state;
 }
 

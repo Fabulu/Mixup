@@ -219,7 +219,7 @@ export function runScreenClearWithResources(ctx, resources) {
     }, ctx);
     ctx.bulletRetireHook?.(ram, {
       addr: base, slot: s, reason: 'screen-clear', y: finalY, x: finalX,
-    }, ctx);
+    }, ctx.bulletRetireContext ?? ctx);
     hit++;
   }
   return hit;
@@ -235,8 +235,11 @@ export function runBulletDriver(ctx) {
 
 export function runBulletDriverWithResources(ctx, resources) {
   const { ram } = ctx;
-  const scoped = ctx.moverResources === resources.mover ? ctx
-    : { ...ctx, moverResources: resources.mover };
+  const scoped = ctx.moverResources === resources.mover ? ctx : {
+    ...ctx,
+    moverResources: resources.mover,
+    bulletRetireContext: ctx.bulletRetireContext ?? ctx,
+  };
   preflightMoverWithResources(scoped, resources.mover, {
     skipContinuations: ram.u16(resources.armWord) !== 0,
   });

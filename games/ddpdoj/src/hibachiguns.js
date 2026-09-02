@@ -944,7 +944,7 @@ export function altGun0Step2A93DC(ram, rom, ctx, a4, a5, a6) {
   if (i16(ram.u16(a6 + 0x1d8)) < 8) {
     ram.setU16(a6 + 0x1d8, u16(ram.u16(a6 + 0x1d8) + 2));
   }
-  a1Stop259B08(ram, 0);
+  a1Stop259B08(ram, 0, ctx);
 }
 
 // ===========================================================================
@@ -1070,7 +1070,7 @@ export function altGun1Step2A9874(ram, rom, ctx, a4, a5, a6) {
     ram.setU16(a6 + 0x1d0, u16(ram.u16(a6 + 0x1d0) + 1));
   }
   for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
-  a1Stop259B08(ram, 1);
+  a1Stop259B08(ram, 1, ctx);
 }
 
 // ===========================================================================
@@ -1204,7 +1204,7 @@ export function altGun2Step2A9B0E(ram, rom, ctx, a4, a5, a6) {
     ram.setU16(a6 + 0x1d4, u16(ram.u16(a6 + 0x1d4) + 1));
   }
   for (const part of GUN0_PARTS) ram.setU8(a6 + part + 0x1e, 0);
-  a1Stop259B08(ram, 2);
+  a1Stop259B08(ram, 2, ctx);
 }
 
 // ===========================================================================
@@ -1288,7 +1288,7 @@ export function altGun3Step2A9EB6(ram, rom, ctx, a4, a5, a6) {
   if (ram.u8(a6 + 0x1d7) < 0x10) {
     ram.setU8(a6 + 0x1d7, u8(ram.u8(a6 + 0x1d7) + 4));
   }
-  a1Stop259B08(ram, 3);
+  a1Stop259B08(ram, 3, ctx);
 }
 
 // ===========================================================================
@@ -2006,7 +2006,7 @@ export function gun9Step2A89F4(ram, rom, ctx, a4, a5, a6) {
   if (ram.u16(a6 + 0x1f8) < 2) {                       // $2A8AFA cmpi.w #$2 / bcc.s -- UNSIGNED
     ram.setU16(a6 + 0x1f8, u16(ram.u16(a6 + 0x1f8) + 1));      // $2A8B02 addq.w #$1
   }
-  a1Stop259B08(ram, 9);                                // $2A8B06 moveq #$9 / $2A8B08 jsr
+  a1Stop259B08(ram, 9, ctx);                           // $2A8B06 moveq #$9 / $2A8B08 jsr
 }
 
 // ===========================================================================
@@ -2189,7 +2189,7 @@ export function gunAStep2A8BC0(ram, rom, ctx, a4, a5, a6) {
   if (ram.u16(a6 + 0x1f4) < 3) {                       // $2A8C5A cmpi.w #$3 / bcc.s
     ram.setU16(a6 + 0x1f4, u16(ram.u16(a6 + 0x1f4) + 1));      // $2A8C62 addq.w #$1
   }
-  a1Stop259B08(ram, 0x0a);                             // $2A8C66 moveq #$A / $2A8C68 jsr
+  a1Stop259B08(ram, 0x0a, ctx);                        // $2A8C66 moveq #$A / $2A8C68 jsr
 }
 
 // ===========================================================================
@@ -2221,9 +2221,9 @@ export function gunBInit2A8C9A(ram, rom, a4) {
 
 /** `$2A8E84` -- gun `$B`'s retire tail, and the target of BOTH its `bcc.w`
  *  fall-through and its FREEZE arm.  Three instructions, in the ROM's order. */
-function gunBRetire2A8E84(ram, a5) {
+function gunBRetire2A8E84(ram, a5, ctx) {
   ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);         // $2A8E84 bchg #$0,($3,A5)
-  a1Stop259B08(ram, 0x0b);                             // $2A8E8A moveq #$B / $2A8E8C jsr
+  a1Stop259B08(ram, 0x0b, ctx);                        // $2A8E8A moveq #$B / $2A8E8C jsr
 }
 
 /**
@@ -2282,7 +2282,7 @@ function gunBRetire2A8E84(ram, a5) {
 export function gunBStep2A8CB2(ram, rom, ctx, a4, a5, a6) {
   if (ram.u16(HIBACHI_A1.freeze) !== 0) {              // $2A8CB2 tst.w $8130D4
     if (!mut('gunb-freeze-reseeds')) {                 // $2A8CB8 bne.w $2A8E84
-      gunBRetire2A8E84(ram, a5);
+      gunBRetire2A8E84(ram, a5, ctx);
     } else {
       gunBInit2A8C9A(ram, rom, a4);
     }
@@ -2337,7 +2337,7 @@ export function gunBStep2A8CB2(ram, rom, ctx, a4, a5, a6) {
   const n = ram.u8(a4 + 0x04);                         // $2A8E7C subq.b #$1,($4,A4)
   ram.setU8(a4 + 0x04, u8(n - 1));
   if (n !== 0) return;                                 // $2A8E80 bcc.w $2A8E92
-  gunBRetire2A8E84(ram, a5);                           // $2A8E84 -- and NO A6 ramp on the way out
+  gunBRetire2A8E84(ram, a5, ctx);                      // $2A8E84 -- and NO A6 ramp on the way out
 }
 
 /** The nine `jsr $2817C2` sites of each arm, read out of the image. */

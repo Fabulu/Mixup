@@ -287,7 +287,10 @@ export function spawnCore(ctx, regs, bank) {
   const speedTransform = ctx.bulletSpeedTransform ?? BULLET_SPEED_TRANSFORMS.get(ram);
   emitRecord(ctx, regs, bank, addr, entry, speedTransform);
   const spawnHook = ctx.bulletSpawnHook ?? BULLET_SPAWN_HOOKS.get(ram);
-  spawnHook?.(ram, { addr, slot, bank });
+  spawnHook?.(ram, {
+    addr, slot, bank,
+    ...(Number.isInteger(ctx.sourceBullet) ? { sourceBullet: ctx.sourceBullet } : {}),
+  });
   return { carry: false, slot, addr, declined: false };
 }
 

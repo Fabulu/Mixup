@@ -114,7 +114,8 @@ test('W477 Playable Hibachi central state binds before cabinet lifecycle callbac
   assert.strictEqual(bindModGame(state, game, { active: false }), state);
   assert.strictEqual(playableHibachiStateForGame(game), state.playableHibachi);
   assert.deepEqual(state.playableHibachi.lifecycle, {
-    bound: true, pending: true, active: false, credited: false, generation: 0,
+    bound: true, pending: true, launchEligible: true,
+    active: false, credited: false, generation: 0,
   });
 
   const options = modGameOptions(state);
@@ -158,6 +159,10 @@ test('W477 Playable Hibachi central state binds before cabinet lifecycle callbac
   assert.equal(state.playableHibachi.players[0].runtime.launchActive, false,
     'demo handoff clears a prearmed credited presentation');
   assert.equal(options.virtualSpriteRequestHook(game).length, 0);
+  assert.equal(state.playableHibachi.lifecycle.launchEligible, true);
+  assert.equal(options.playerSpriteFilter(game.ram, pendingLaunch), false,
+    'a demo handoff keeps the next credited selector descent eligible');
+  assert.equal(options.virtualSpriteRequestHook(game).length, 1);
 
   const seeded = stateOf('playable-hibachi');
   const seededGame = {

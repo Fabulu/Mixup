@@ -9,6 +9,7 @@ import { playerBox } from '../src/damage.js';
 import { Game } from '../src/main.js';
 import { P, RAM } from '../src/machine.js';
 import {
+  armPlayableHibachiLaunchPresentation,
   beginPlayableHibachiCreditedRun, bindPlayableHibachiGame,
   capturePlayableHibachiLaunch, collectPlayableHibachiSpriteRequests,
   createPlayableHibachiState,
@@ -124,6 +125,7 @@ test('selector descent presents Hibachi at every launch anchor without stock fig
   const game = new Game(null, TABLES, { palCatchUp: false });
   const state = createPlayableHibachiState();
   bindPlayableHibachiGame(state, game);
+  armPlayableHibachiLaunchPresentation(state);
   const a6 = SCREEN17.recs;
   const D = DRAW_25E4D0;
   game.ram.setU16(a6 + D.sideAt, 0);
@@ -161,7 +163,8 @@ test('selector descent presents Hibachi at every launch anchor without stock fig
     'the sphere stays centered on every descending native anchor');
     assert.equal(word(requests[0].bytes, 8), 0x0c38);
     assert.deepEqual(state.lifecycle, {
-      bound: true, pending: true, active: false, credited: false, generation: 0,
+      bound: true, pending: true, launchEligible: true,
+      active: false, credited: false, generation: 0,
     });
   }
   assert.deepEqual(launchEvents.map(({ phase, playerIdx, anchor, demo }) =>
