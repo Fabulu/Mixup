@@ -43,7 +43,7 @@ const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W588_TABLE = SKIP ? null : tableBeforeW589(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
-const LIVE_TABLE_HASH = '322e5598740b7a497313c8c80978869e6e2701275cd1899a7423e00b0ae8ed60';
+const LIVE_TABLE_HASH = '014d08807a70b5883b2574ac67d1a268f61e1943f23a3d42866997efef734980';
 const W588_TABLE_HASH = '5dd4830d8759db1fbfbeddef529225a76b264739a9c7375ba00f2be5ce47a837';
 const STORED_CHECKPOINT_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const FAMILY_HASH = '5ac350be51f40c6d0714f82ec621cb1288ea2dce91f8a8e8a17c974837d8ac9b';
@@ -262,7 +262,7 @@ test('W589 registry is exact, reconstructs W588 strictly, and stops at $291B3A',
         Number.parseInt(window.base.slice(1), 16), window.len,
       ])),
       canonicalHash(TABLE_JSON),
-    ], [1151, 77, 1151, 512851, 77, LIVE_TABLE_HASH]);
+    ], [1612, 77, 1612, 621626, 77, LIVE_TABLE_HASH]);
     assert.deepEqual([
       W588_TABLE.rom.windows.length,
       W588_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
@@ -468,7 +468,7 @@ test('W589 production route completes entries, terminates, hands to type $800F, 
           state.ramSha256, state.gameSha256,
         ], [156873, 167534, 2,
           '39fec6bd684f28cb9d226707e954455bccb63830753eb1b09bcc9ab2b73b4db1',
-          '83a3155641cf568654a1381350ac0e4d20aba1a56b9df6b5329ace21a728d46a']);
+          '40861007cfd8cde3ae4898ac195c9c2e7a88a4c714866a98a0cdbd59636320ce']);
       }
       if (attempted === 5244) {
         const state = checkpointDocument(resumed.game, assets, {
@@ -481,7 +481,7 @@ test('W589 production route completes entries, terminates, hands to type $800F, 
           state.ramSha256, state.gameSha256,
         ], [156875, 167536, 0x800f, 1, 2,
           '01fef155caf28fcdf4bc47b9f92814865d46c09ca65002f24168c3915260b662',
-          '14e18e0f907f35fa8186abd1475456f19ffa1688af5f784ca355e0b543940c48']);
+          '736fef04c3da5e958c7e82160e67df80801e354cba40376eb8ab732ca09a6d2d']);
       }
     }
 

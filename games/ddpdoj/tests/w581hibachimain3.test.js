@@ -42,7 +42,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '322e5598740b7a497313c8c80978869e6e2701275cd1899a7423e00b0ae8ed60';
+const LIVE_TABLE_HASH = '014d08807a70b5883b2574ac67d1a268f61e1943f23a3d42866997efef734980';
 const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const STORED_W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const REC = 0x810c00;
@@ -110,10 +110,10 @@ test('W581 pins the raw id-3 contract, registration, and unchanged table identit
     assert.equal(registered.filter((address) => address === HIBACHI_A0.s3Init).length, 1);
     assert.equal(registered.filter((address) => address === HIBACHI_A0.s3Step).length, 1);
 
-    assert.equal(ROM_WINDOW_COUNT, 1151);
+    assert.equal(ROM_WINDOW_COUNT, 1612);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 1151);
-    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 512851);
+    assert.equal(TABLE_JSON.rom.windows.length, 1612);
+    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 621626);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W581:')), []);
   });
@@ -281,6 +281,6 @@ test('W581 restores exact lf150131 and reaches the W587 $291040 frontier',
       SCHED.a1Base, SCHED.a1Slots, SCHED.a1Stride), Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      'ad4f9e47d97460e6c8441a58e5d32ed782bfceefccc13a7c58d0bc201c65d22c',
+      'eb2ca15e0a3c7d9aeacfac9d1e4639fc5da34986466a13f2b1079b78edae06e4',
     ]);
   });

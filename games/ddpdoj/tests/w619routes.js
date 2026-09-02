@@ -14,7 +14,7 @@ export const W619_ROUTES = Object.freeze([
       logicFrame: 165190,
       videoFrame: 175735,
       ramSha256: '67b497e86314cec9b4db6f41385e322e804f5bed4248811cab37c763c492ee19',
-      gameSha256: '0e9b3663a5541ba407fdeb457d0f2c8360c551c4565847df4e434134f2dad07d',
+      gameSha256: '247f1ebfc6a241ec392e56c95778a68024a4a484df55045c754eac8f5c8d2e66',
     }),
   }),
   Object.freeze({
@@ -30,7 +30,7 @@ export const W619_ROUTES = Object.freeze([
       logicFrame: 176015,
       videoFrame: 187162,
       ramSha256: 'ccd64d08614b5431666ff0285a5b00aceed15ac55735b545773e6055587a8f38',
-      gameSha256: '6a3570e73e3da9241ef25ed680dcbc26def784ce9f904653be912fd8a085cac9',
+      gameSha256: '1d2b4a122559ba1e3fb2c19ef2237afa19ef66f4a5db923ed2a36c64acb34de7',
     }),
   }),
   Object.freeze({
@@ -46,7 +46,7 @@ export const W619_ROUTES = Object.freeze([
       logicFrame: 168831,
       videoFrame: 179481,
       ramSha256: '0e3e0937cde8d53d5840508c966d9f3045d35f22c7a40b0438e57f4ee8a8184f',
-      gameSha256: '7f3bed6012a3039d3992b50750a31ef449e03e072da0505e8eacb52d381a3e78',
+      gameSha256: '47ec1b975a5b37bcbef771d0da47926bad6a83986262af8999ba6d2dd0597f65',
     }),
   }),
   Object.freeze({
@@ -62,7 +62,7 @@ export const W619_ROUTES = Object.freeze([
       logicFrame: 169015,
       videoFrame: 179801,
       ramSha256: '6f5c852d885e68fb2e2d644309dd5ef0a30c06f8c453ce5d5df4b9b4ad872b1d',
-      gameSha256: '356cf39eaac55d6eee160496ef3f834eaf8f2688388a6cff6a7c8aa186e6916c',
+      gameSha256: 'dcf7d09280eb304dddfb134870be15ea4896d603d11b03d1890f2dec1d816e8a',
     }),
   }),
 ]);

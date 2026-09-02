@@ -45,7 +45,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W584_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(W584_TABLE.rom);
 const MT = SKIP ? null : new MoveTables(W584_TABLE, ROM);
-const LIVE_TABLE_HASH = '322e5598740b7a497313c8c80978869e6e2701275cd1899a7423e00b0ae8ed60';
+const LIVE_TABLE_HASH = '014d08807a70b5883b2574ac67d1a268f61e1943f23a3d42866997efef734980';
 const TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const STORED_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const REC = 0x810c00;
@@ -131,10 +131,10 @@ test('W586 pins the raw id-8 row, code hashes, id-9 boundary, and registration',
 
 test('W586 adds no ROM window and W588 preserves the exact W584 table identity',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 1151);
+    assert.equal(ROM_WINDOW_COUNT, 1612);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 1151);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 512851);
+    assert.equal(TABLE_JSON.rom.windows.length, 1612);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 621626);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual([
       W584_TABLE.rom.windows.length,
@@ -363,6 +363,6 @@ test('W586 periodic checkpoints restore exactly and reach the next loud frontier
     Array(SCHED.a4Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      '96c9b993b3fb43e714ee8fca71588ea2e2e1259a2413089a0a09f0dbfd8f96cc',
+      '8630486d00d5484982b6443ceaf2f72b85d22a7794034cdc00127086d304791f',
     ]);
   });

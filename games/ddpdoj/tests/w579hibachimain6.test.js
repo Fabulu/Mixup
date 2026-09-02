@@ -42,7 +42,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '322e5598740b7a497313c8c80978869e6e2701275cd1899a7423e00b0ae8ed60';
+const LIVE_TABLE_HASH = '014d08807a70b5883b2574ac67d1a268f61e1943f23a3d42866997efef734980';
 const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const STORED_CHECKPOINT_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
 const REC = 0x810c00;
@@ -122,10 +122,10 @@ test('W579 pins the raw id-6 pair, all span hashes, id-7 boundary, and branch ta
 
 test('W579 adds no ROM window and preserves the exact table identity',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 1151);
+    assert.equal(ROM_WINDOW_COUNT, 1612);
     assert.equal(ROM_OVERLAP_PAIRS, 77);
-    assert.equal(TABLE_JSON.rom.windows.length, 1151);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 512851);
+    assert.equal(TABLE_JSON.rom.windows.length, 1612);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 621626);
     let overlaps = 0;
     for (let i = 0; i < TABLE_JSON.rom.windows.length; i++) {
       const a = TABLE_JSON.rom.windows[i];
@@ -334,6 +334,6 @@ test('W579 restores exact lf149131 and reaches the exact W587 $291040 frontier',
     Array(SCHED.a1Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      '3a56fc78ffbcddcbec5286035a4b5fbd0677337b5fca91351024b27d6776046f',
+      '6fc9cb010cb054394b8f38bd098c8b46a83e3156be8ab38192e818e4aff8e640',
     ]);
   });

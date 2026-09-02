@@ -52,7 +52,7 @@ const W572_TABLE = SKIP ? null : tableBeforeW573(TABLE_JSON);
 const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
-const LIVE_TABLE_HASH = '322e5598740b7a497313c8c80978869e6e2701275cd1899a7423e00b0ae8ed60';
+const LIVE_TABLE_HASH = '014d08807a70b5883b2574ac67d1a268f61e1943f23a3d42866997efef734980';
 const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
 const W572_HASH = '0f5e8c092c2d16abe958ba0edaa5ea681fd5b296a0b110e10f91d2c6aa1a6ba9';
@@ -157,9 +157,9 @@ const migrateToW587 = (document) => ({ ...document, tablesSha256: W587_TABLE_HAS
 
 test('W573 adds only the exact template and five-row pattern windows',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 1151);
-    assert.equal(TABLE_JSON.rom.windows.length, 1151);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 512851);
+    assert.equal(ROM_WINDOW_COUNT, 1612);
+    assert.equal(TABLE_JSON.rom.windows.length, 1612);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 621626);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(W575_TABLE.rom.windows.length, 848);
     assert.equal(W575_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452455);
@@ -708,7 +708,7 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
     ], [
       7667, 153797, 164459, 0x291040,
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      'b68ce097514518437deed8c58fbe069137af4fc5ab2e413f95424fd97e4c74c3',
+      'b809cf01be3acb39d37fba497b09ab1d0f7875052c73d9542dd5985de21e90d7',
     ]);
     assert.match(error?.message ?? '', /word at \$291040 is outside every ROM window/);
   });

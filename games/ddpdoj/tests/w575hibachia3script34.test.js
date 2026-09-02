@@ -44,7 +44,7 @@ const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '322e5598740b7a497313c8c80978869e6e2701275cd1899a7423e00b0ae8ed60';
+const LIVE_TABLE_HASH = '014d08807a70b5883b2574ac67d1a268f61e1943f23a3d42866997efef734980';
 const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
 const STORED_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
@@ -76,9 +76,9 @@ const bytes = (ram, base, length) =>
 
 test('W575 pins both raw A3 pairs, exclusive boundaries, registrations, and no ROM window',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 1151);
-    assert.equal(TABLE_JSON.rom.windows.length, 1151);
-    assert.equal(TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0), 512851);
+    assert.equal(ROM_WINDOW_COUNT, 1612);
+    assert.equal(TABLE_JSON.rom.windows.length, 1612);
+    assert.equal(TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0), 621626);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(canonicalHash(W575_TABLE), TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W575:')), []);
@@ -317,7 +317,7 @@ test('W575 exact progression crosses lf151631 and reaches the W587 $291040 front
     ], [
       0, 0x008a,
       'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      'b68ce097514518437deed8c58fbe069137af4fc5ab2e413f95424fd97e4c74c3',
+      'b809cf01be3acb39d37fba497b09ab1d0f7875052c73d9542dd5985de21e90d7',
     ]);
     assert.equal(frontier.frame.logic + 1500, 149131);
     assert.ok(resumed.game.logicFrame > frontier.frame.logic + 2500,

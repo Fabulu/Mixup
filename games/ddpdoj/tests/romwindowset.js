@@ -683,11 +683,14 @@
 // Ten more speed windows reuse the Version A movement closure byte-for-byte.
 // Measured: 1014 -> 1151 windows, 478,681 -> 512,851 bytes,
 // 77 -> 77 overlapping pairs.
+//
+// The White Stage 1 bullet closure adds 461 unique exact windows and 108,775
+// bytes: 1151 -> 1612 windows, 512,851 -> 621,626 bytes, while overlaps stay 77.
 
-export const ROM_WINDOW_COUNT = 1151;
+export const ROM_WINDOW_COUNT = 1612;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 512851;
+export const ROM_WINDOW_BYTES = 621626;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
