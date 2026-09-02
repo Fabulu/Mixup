@@ -349,7 +349,7 @@ test('the bullet driver no longer NOTES its own missing emission', () => {
   assert.ok(!/unportedLog\?\.note\(BULLET_DRIVER\.counterWrite/.test(s),
     'the $281DCE note said "this driver passes no sink". It passes one now, and '
     + 'a note that is no longer true is worse than no note at all');
-  assert.ok(/ctx\.spriteOut = \{ a4: a4start \}/.test(s),
+  assert.ok(/scoped\.spriteOut = \{ a4: a4start \}/.test(s),
     '$281D9E lea $809C4C,A4 is a real cursor now');
   // and the note's own counted address is gone from the port's ledger.
   const ram = new Ram(null);

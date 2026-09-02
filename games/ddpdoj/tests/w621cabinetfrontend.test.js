@@ -432,7 +432,8 @@ test('W621 cold-idle high-score palette animation keeps exact ROM provenance wit
       'a pending Playable Hibachi selection preserves identical provenance',
     );
     assert.deepEqual(pending.mods.playableHibachi.lifecycle, {
-      bound: true, pending: true, active: false, credited: false, generation: 0,
+      bound: true, pending: true, launchEligible: true,
+      active: false, credited: false, generation: 0,
     });
   });
 

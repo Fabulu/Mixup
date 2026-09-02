@@ -265,9 +265,6 @@ const OVERLAP_DECLARED = Object.freeze({
   0x24202c: 'aim.js is ported; same W24 spawn-position reason as $24200A',
   0x244074: 'bullets.js `fire` merely NAMES $244074 in its doc; midboss.js counts the bullet-'
     + 'cancel SCORE walk. Doc-convention false positive, kept declared so it stays looked at',
-  0x249bf8: 'player.js shotCadence249B2C: the `$249B2C..$249BF8` JSDoc span claims '
-    + 'the valid ship-2 table arm, which dispatches to spawnShotTypeBWithResources; '
-    + 'the `unreached` guards only selectors outside the cartridge set {0, 2}',
   // W445 DELETED THE $2878CC ROW, per this file's own rule two tests down: the two
   // stale deferrals were WIRED, so the address is no longer both ported and deferred
   // and leaving the row would be the same rot one level up. What replaced it is

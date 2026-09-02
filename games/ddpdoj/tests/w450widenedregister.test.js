@@ -161,10 +161,10 @@ test('SECTION 2: the shipped register is a STRICT SUBSET of the widened one -- n
   assert.ok(wide.length > narrow.length, 'the widened register is not wider');
 });
 
-// ...and the two places the two scans genuinely disagree about a SINGLE claim,
-// declared so that a third one has to be looked at rather than absorbed.
-// Neither is on either register -- both addresses are claimed once, not twice.
-test('SECTION 2b: the individual claims the two scans attribute differently are the two known ones',
+// ...and the one place the two scans genuinely disagree about a SINGLE claim,
+// declared so that a second one has to be looked at rather than absorbed.
+// It is not on either register -- the address is claimed once, not twice.
+test('SECTION 2b: the individual claim the two scans attribute differently is the known one',
   () => {
     const { idx } = headIndex();
     const diverged = [];
@@ -172,15 +172,14 @@ test('SECTION 2b: the individual claims the two scans attribute differently are 
       for (const k of keys) if (!idx.has(a) || !idx.get(a).has(k)) diverged.push(`${hex(a)} ${k}`);
     }
     assert.deepEqual(diverged.sort(), [
-      // Both are LONG prose JSDocs where the address is buried in the body of the
+      // This is a LONG prose JSDoc where the address is buried in the body of the
       // comment, not in its opening. The shipped regex scanned the WHOLE doc for
       // the first backtick-TERMINATED address, so it reached deep into the prose
       // -- which contradicts W444's own stated contract for it ("`Opens with` and
       // not `mentions`"). The span rule takes the first backtick span that holds
       // an address, which is what "opens with" was always meant to mean.
       '$278320 effects.js:231 remapBucket',
-      '$283BAF bullets.js:749 behaviourFor',
-    ], 'a THIRD claim is attributed differently by the two scans. Read both docs and decide '
+    ], 'a SECOND claim is attributed differently by the two scans. Read both docs and decide '
       + 'which reading is right before adding a row here');
   });
 

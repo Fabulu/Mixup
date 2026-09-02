@@ -313,6 +313,11 @@ test('packaged PLAY validates Playable state before replacing visible state',
     const source = makeMods();
     source.playableHibachi.ownedBullets[9] = 2;
     source.playableHibachi.selectedGuns.set([3, 8]);
+    source.playableHibachi.ordinaryPatternCursors.set([8, 12]);
+    Object.assign(source.playableHibachi.players[0].runtime,
+      { descriptorId: 3, gun: 3 });
+    Object.assign(source.playableHibachi.players[1].runtime,
+      { descriptorId: 7, gun: 8 });
     const good = asV2(source);
     const goodHost = makeHost(source, { marker: 'old' });
     Demo.prototype.playFrom.call(goodHost, good);

@@ -120,7 +120,7 @@ const SOURCE_GAPS = Object.freeze(EXTERNAL_CALLERS
 const SOURCE_CALL_COUNTS = Object.freeze([
   ['bee.js', 1], ['boss2.js', 2], ['boss2attacks.js', 2], ['boss3.js', 1],
   ['bossscripts.js', 2], ['effects.js', 1], ['hibachiend.js', 3], ['hibachiguns.js', 3],
-  ['initbody.js', 4], ['items.js', 2], ['spark.js', 2],
+  ['initbody.js', 4], ['items.js', 2], ['spark.js', 1],
 ]);
 
 function bytes(at, count) { return IMG.subarray(at, at + count); }
@@ -415,7 +415,7 @@ test('SECTION 5: one canonical source body serves all production calls with no c
     const declarations = allCode.match(/\bfunction\s+drawByte242E24\s*\(/g) ?? [];
     const calls = allCode.match(/\bdrawByte242E24\s*\(/g) ?? [];
     assert.equal(declarations.length, 1, 'rng.js owns the sole canonical declaration');
-    assert.equal(calls.length, 24, 'twenty-three production calls plus one declaration remain');
+    assert.equal(calls.length, 23, 'twenty-two production calls plus one declaration remain');
     assert.doesNotMatch(allCode, /\brankByte242E24\b/, 'the private duplicate cannot regrow');
     assert.equal('rankByte242E24' in initbodyModule, false,
       'the removed private name had no public compatibility identity to preserve');
@@ -425,7 +425,15 @@ test('SECTION 5: one canonical source body serves all production calls with no c
       assert.equal((code.match(/\bdrawByte242E24\s*\(/g) ?? []).length, count,
         `${file} canonical call count`);
     }
-    assert.equal(SOURCE_CALL_COUNTS.reduce((sum, [, count]) => sum + count, 0), 23);
+    assert.equal(SOURCE_CALL_COUNTS.reduce((sum, [, count]) => sum + count, 0), 22);
+
+    const spark = sourceMap.get('spark.js');
+    assert.match(spark,
+      /speedRng: Object\.freeze\(\{ table: 0x242e42, entries: 128 \}\)/,
+      'native Spark retains the exact $242E24 table geometry');
+    assert.match(spark,
+      /drawByteWithResources\(ram, rom, resources\.speedRng\)/,
+      '$28A3A2 remains the resource-bound $242E24 draw');
 
     const init = sourceMap.get('initbody.js');
     assert.match(init, /import \{[\s\S]*drawByte242E24[\s\S]*\} from '\.\/rng\.js';/,
