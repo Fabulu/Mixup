@@ -114,7 +114,10 @@ import { P, RAM, OPT } from './machine.js';
 import { i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { enqueueThroughStub } from './spritequeue.js';
-import { spawnBeamImpact289FC0, spawnBeamBody289F96 } from './spark.js';
+import {
+  NATIVE_SPARK_RESOURCES, spawnBeamImpactWithResources, spawnBeamBodyWithResources,
+  validateSparkResources,
+} from './spark.js';
 
 // --------------------------------------------------------------- ADDRESSES
 export const LASER = {
@@ -169,6 +172,79 @@ export const SEG = {
   headOffset: 0x510,        // $24CCD0 lea ($510,A1),A1 -- 27 slots
 };
 
+const freezeHandlerKinds = (rows) => Object.freeze(Object.fromEntries(rows));
+const freezeSounds = (rows) => Object.freeze(Object.fromEntries(rows));
+
+function isDeeplyFrozen(value, seen = new Set()) {
+  if (value == null || typeof value !== 'object') return true;
+  if (seen.has(value)) return true;
+  if (!Object.isFrozen(value)) return false;
+  seen.add(value);
+  return Object.values(value).every((child) => isDeeplyFrozen(child, seen));
+}
+
+export const NATIVE_LASER_EDITION_RESOURCES = Object.freeze({
+  ptrFamily1: LASER.ptrFamily1,
+  ptrFamily2a: LASER.ptrFamily2a,
+  ptrFamily2b: LASER.ptrFamily2b,
+  ptrSeg: LASER.ptrSeg,
+  ptrHead: LASER.ptrHead,
+  ptrHeadAlt: LASER.ptrHeadAlt,
+  ptrHeadBombLaser: LASER.ptrHeadBombLaser,
+  beamRequestTable: 0x24bb0a,
+  hitboxTable: 0x24a824,
+  emitStub: LASER.emitStub,
+  emitBucket: LASER.emitBucket,
+  sparkResources: NATIVE_SPARK_RESOURCES,
+  segmentHandlerKinds: freezeHandlerKinds([
+    [0x2547b2, 'step'], [0x2547c0, 'step'],
+    [0x2547e6, 'body'], [0x254800, 'body'],
+    [0x2548c4, 'script'], [0x2548f0, 'script'],
+    [0x2548da, 'script'], [0x254904, 'script'],
+    [0x254986, 'script-select'], [0x2549bc, 'script-select'],
+    [0x2549a8, 'script'], [0x2549de, 'script'],
+    [0x254a60, 'on-ship'], [0x254a68, 'on-ship'],
+    [0x254abe, 'on-pod'], [0x254acc, 'on-pod'],
+    [0x254b68, 'step'], [0x254b76, 'step'],
+    [0x254b9e, 'step'], [0x254bac, 'step'],
+  ]),
+  segmentSounds: freezeSounds([
+    [0x2548c4, 0x28c408], [0x2548f0, 0x28c422],
+    [0x2548da, 0x28c468], [0x254904, 0x28c482],
+    [0x2549a8, 0x28c4c8], [0x2549de, 0x28c4e2],
+  ]),
+  selectorSounds: Object.freeze([
+    Object.freeze([0x28c408, 0x28c468]),
+    Object.freeze([0x28c422, 0x28c482]),
+  ]),
+  wipeSounds: Object.freeze([
+    Object.freeze({ normal: Object.freeze([0x28c43c, 0x28c49c]), hyper: 0x28c4fc }),
+    Object.freeze({ normal: Object.freeze([0x28c452, 0x28c4b2]), hyper: 0x28c512 }),
+  ]),
+  soundRequestMap: freezeSounds([
+    [0x28c408, 0x28c408], [0x28c422, 0x28c422],
+    [0x28c468, 0x28c468], [0x28c482, 0x28c482],
+    [0x28c4c8, 0x28c4c8], [0x28c4e2, 0x28c4e2],
+    [0x28c43c, 0x28c43c], [0x28c49c, 0x28c49c],
+    [0x28c4fc, 0x28c4fc], [0x28c452, 0x28c452],
+    [0x28c4b2, 0x28c4b2], [0x28c512, 0x28c512],
+  ]),
+  expectedDispatch: Object.freeze([
+    Object.freeze([
+      0x2547b2, 0x2547e6, 0x2548c4, 0x254a60, 0x254abe,
+      0x2547b2, 0x2547e6, 0x2548da, 0x254a60, 0x254abe,
+      0x254b68, 0x2547e6, 0x254986, 0x254a60, 0x254abe,
+      0x254b9e, 0x2547e6, 0x2549a8, 0x254a60, 0x254abe,
+    ]),
+    Object.freeze([
+      0x2547c0, 0x254800, 0x2548f0, 0x254a68, 0x254acc,
+      0x2547c0, 0x254800, 0x254904, 0x254a68, 0x254acc,
+      0x254b76, 0x254800, 0x2549bc, 0x254a68, 0x254acc,
+      0x254bac, 0x254800, 0x2549de, 0x254a68, 0x254acc,
+    ]),
+  ]),
+});
+
 // **`d7` HERE IS NOT `$289FC0`'s D7, AND THE TWO ARE INVERTED.**  This one is
 // the SEGMENT RECORD's player word (`$24CC50 move.w D7,(A1)+`, `S.player`) and
 // it is **1 for P1**.  `$289FC0`/`$289FDA`'s D7 -- which picks the pool half at
@@ -177,22 +253,142 @@ export const SEG = {
 // beam P2's power word and P2's 30 pool slots, and neither the pool-half test
 // nor the record count would have shown it.  So the head is named PER ROW, by
 // address, rather than derived from a flag that means something else here.
-export const BEAM = [
-  { scope: 'native', ownerIndex: 0, d7: 1, segmentOwnerWord: 1,
+export const BEAM = Object.freeze([
+  Object.freeze({ scope: 'native', ownerIndex: 0, d7: 1, segmentOwnerWord: 1,
     slots: 32, stride: 0x30,
     pool: 0x8112f2, rec: 0x811ef2, blk: 0x811f32, pair: 0x811892,
     word: 0x812964, player: RAM.player1, opt: RAM.p1Options, impact: 0x289fc0,
     dispatch: LASER.dispatchP1, sound2: 0x81294c, sound1: 0x81294e,
     posHistory: 0x8127f4, imgHistory: 0x812874, drawBias: 0x180,
-    soundPolicy: 'native', effectPolicy: 'native', presentationSink: null },
-  { scope: 'native', ownerIndex: 1, d7: 0, segmentOwnerWord: 0,
+    soundPolicy: 'native', effectPolicy: 'native', presentationSink: null,
+    edition: NATIVE_LASER_EDITION_RESOURCES }),
+  Object.freeze({ scope: 'native', ownerIndex: 1, d7: 0, segmentOwnerWord: 0,
     slots: 32, stride: 0x30,
     pool: 0x8118f2, rec: 0x811f12, blk: 0x811f52, pair: 0x811e92,
     word: 0x812966, player: RAM.player2, opt: RAM.p2Options, impact: 0x289fda,
     dispatch: LASER.dispatchP2, sound2: 0x81294e, sound1: 0x81294c,
     posHistory: 0x812834, imgHistory: 0x8128b4, drawBias: 0,
-    soundPolicy: 'native', effectPolicy: 'native', presentationSink: null },
-];
+    soundPolicy: 'native', effectPolicy: 'native', presentationSink: null,
+    edition: NATIVE_LASER_EDITION_RESOURCES }),
+]);
+
+const LASER_EDITION_IDENTITIES = Object.freeze([
+  Object.freeze({
+    roots: Object.freeze([
+      0x24cfba, 0x24cfe2, 0x24d00a, 0x24d01e, 0x24d076, 0x24d0a6,
+      0x24d0d6, 0x24bb0a, 0x24a824, 0x23f508, 16,
+    ]),
+    dispatch: Object.freeze([LASER.dispatchP1, LASER.dispatchP2]),
+    impact: Object.freeze([0x289fc0, 0x289fda]),
+    sparkPtrTable: 0x28a786,
+    scope: 'native',
+  }),
+  Object.freeze({
+    roots: Object.freeze([
+      0x14c66e, 0x14c696, 0x14c6be, 0x14c6e6, 0x14c72a, 0x14c75a,
+      0x14c78a, 0x14b1be, 0x149ed8, 0x13f856, 16,
+    ]),
+    dispatch: Object.freeze([0x153cce, 0x153d1e]),
+    impact: Object.freeze([0x188afc, 0x188b16]),
+    sparkPtrTable: 0x1892c2,
+    scope: 'white',
+  }),
+]);
+
+export function validateLaserEditionResources(resources, beams) {
+  const addressKeys = [
+    'ptrFamily1', 'ptrFamily2a', 'ptrFamily2b', 'ptrSeg', 'ptrHead',
+    'ptrHeadAlt', 'ptrHeadBombLaser', 'beamRequestTable', 'hitboxTable',
+    'emitStub', 'emitBucket',
+  ];
+  if (!resources || !Object.isFrozen(resources) || !Object.isFrozen(resources.segmentHandlerKinds)
+      || !Object.isFrozen(resources.segmentSounds)
+      || !Object.isFrozen(resources.selectorSounds)
+      || !Object.isFrozen(resources.wipeSounds)
+      || !Object.isFrozen(resources.soundRequestMap)
+      || !Object.isFrozen(resources.expectedDispatch)
+      || (resources.cartridgeIdentity !== undefined
+        && !isDeeplyFrozen(resources.cartridgeIdentity))
+      || !resources.sparkResources || !Array.isArray(beams) || beams.length !== 2
+      || !Object.isFrozen(beams)) {
+    throw new TypeError('laser edition resources must be a deeply frozen edition graph');
+  }
+  const identity = LASER_EDITION_IDENTITIES.find(
+    (candidate) => resources.ptrFamily1 === candidate.roots[0],
+  );
+  if (!identity
+      || addressKeys.some((key, index) => resources[key] !== identity.roots[index])) {
+    throw new TypeError('laser edition roots do not match an exact cartridge edition');
+  }
+  validateSparkResources(resources.sparkResources);
+  if (resources.sparkResources.ptrTable !== identity.sparkPtrTable) {
+    throw new TypeError('laser edition carries a mixed shot-spark identity');
+  }
+  for (const ownerIndex of [0, 1]) {
+    const b = beams[ownerIndex];
+    const expected = Object.freeze({
+      pool: ownerIndex === 0 ? 0x8112f2 : 0x8118f2,
+      rec: ownerIndex === 0 ? 0x811ef2 : 0x811f12,
+      blk: ownerIndex === 0 ? 0x811f32 : 0x811f52,
+      pair: ownerIndex === 0 ? 0x811892 : 0x811e92,
+      word: ownerIndex === 0 ? 0x812964 : 0x812966,
+      player: ownerIndex === 0 ? RAM.player1 : RAM.player2,
+      opt: ownerIndex === 0 ? RAM.p1Options : RAM.p2Options,
+      sound2: ownerIndex === 0 ? 0x81294c : 0x81294e,
+      sound1: ownerIndex === 0 ? 0x81294e : 0x81294c,
+      posHistory: ownerIndex === 0 ? 0x8127f4 : 0x812834,
+      imgHistory: ownerIndex === 0 ? 0x812874 : 0x8128b4,
+      drawBias: ownerIndex === 0 ? 0x180 : 0,
+    });
+    if (!Object.isFrozen(b) || b.ownerIndex !== ownerIndex || b.edition !== resources
+        || b.scope !== identity.scope || b.slots !== SEG.slots || b.stride !== SEG.stride
+        || b.pool !== expected.pool || b.rec !== expected.rec || b.blk !== expected.blk
+        || b.pair !== expected.pair || b.word !== expected.word
+        || b.player !== expected.player || b.opt !== expected.opt
+        || b.sound2 !== expected.sound2 || b.sound1 !== expected.sound1
+        || b.posHistory !== expected.posHistory || b.imgHistory !== expected.imgHistory
+        || b.drawBias !== expected.drawBias
+        || b.segmentOwnerWord !== (ownerIndex === 0 ? 1 : 0)
+        || b.d7 !== (ownerIndex === 0 ? 1 : 0)
+        || b.dispatch !== identity.dispatch[ownerIndex]
+        || b.impact !== identity.impact[ownerIndex]
+        || b.soundPolicy !== 'native' || b.effectPolicy !== 'native'
+        || (b.presentationSink !== null && typeof b.presentationSink !== 'function')) {
+      throw new TypeError(`laser owner ${ownerIndex} has mixed or mutable geometry`);
+    }
+    const expectedDispatch = resources.expectedDispatch[ownerIndex];
+    if (!Object.isFrozen(expectedDispatch) || expectedDispatch.length !== 20
+        || expectedDispatch.some((address) => !Object.hasOwn(resources.segmentHandlerKinds, address))) {
+      throw new TypeError(`laser owner ${ownerIndex} has an incomplete segment dispatch`);
+    }
+  }
+  if (resources.selectorSounds.length !== 2
+      || resources.selectorSounds.some((row) => !Object.isFrozen(row) || row.length !== 2)) {
+    throw new TypeError('laser selector sounds must preserve both native owners');
+  }
+  if (resources.wipeSounds.length !== 2
+      || resources.wipeSounds.some((row) => !Object.isFrozen(row)
+        || !Object.isFrozen(row.normal) || row.normal.length !== 2
+        || !Number.isSafeInteger(row.hyper)
+        || row.normal.some((sound) => !Number.isSafeInteger(sound)))) {
+    throw new TypeError('laser wipe sounds must preserve both owners and all six aliases');
+  }
+  const sounds = [
+    ...Object.values(resources.segmentSounds),
+    ...resources.selectorSounds.flat(),
+    ...resources.wipeSounds.flatMap((row) => [...row.normal, row.hyper]),
+  ];
+  if (sounds.some((sound) => !Number.isSafeInteger(resources.soundRequestMap[sound]))) {
+    throw new TypeError('laser sound aliases must map to runtime requests');
+  }
+  return resources;
+}
+
+function editionOf(b) {
+  const resources = b?.edition;
+  if (!resources) throw new TypeError('beam owner has no edition resource');
+  return resources;
+}
 
 /** One $30-byte segment record.  Every offset below is cited on its use. */
 export const S = {
@@ -281,6 +477,9 @@ export function assertPrivateBeamCapabilities(b) {
   if (b.soundPolicy !== 'silent' || b.effectPolicy !== 'none') {
     throw new RangeError('private beam must use silent sound and no native effects');
   }
+  if (!b.edition || !Object.isFrozen(b.edition)) {
+    throw new TypeError('private beam must carry its exact frozen edition resource');
+  }
   if (typeof b.presentationSink !== 'function') {
     throw new TypeError('private beam presentation sink must be a function');
   }
@@ -366,7 +565,7 @@ export function seedSegmentFamily1(ram, ctx, b) {
   const a1 = beam.pool + 28 * SEG.stride;                    // $24CAAE / $24CAB8
   let d0 = ram.u16(player + P.shipSel) ? 0x14 : 0;          // $24CABE..$24CAC4
   d0 = u16(d0 + u16(ram.u16(player + 0x22) * 2));           // $24CAC6..$24CACC
-  const a0 = ctx.rom.u32(LASER.ptrFamily1 + i16(d0));       // $24CAD4 movea.l
+  const a0 = ctx.rom.u32(editionOf(beam).ptrFamily1 + i16(d0));
   copySeedRecord(ram, ctx, beam, a1, a0);
 }
 
@@ -442,7 +641,13 @@ function wipeSide(b) {
  * delegates here. Side comes from the four fixed address registers, not `d7`:
  * the option driver uses 1 for P1 while the bomb caller carried the inverse.
  */
-export function wipeSegmentPool(ram, ctx, b) {
+export function wipeSegmentPoolWithResources(
+  ram, ctx, b, suppliedResources, beams,
+) {
+  validateLaserEditionResources(suppliedResources, beams);
+  if (editionOf(b) !== suppliedResources) {
+    throw new TypeError('beam wipe owner has mixed edition resources');
+  }
   const side = wipeSide(b);
   const selector = ram.u16(side.weapon);                     // $252718/$252760 move.w
   if ((selector & 1) !== 0 || selector > 2) {
@@ -451,9 +656,11 @@ export function wipeSegmentPool(ram, ctx, b) {
       + `a LONG at $${side.table.toString(16).toUpperCase()} + selector*2; only `
       + 'the cartridge rows 0 and 2 stay inside this side\'s two-entry table');
   }
-  let snd = side.sounds[selector >>> 1];                      // $25271E..$252726 / mirror
-  if (ram.u16(side.hyper) !== 0) snd = side.hyperSound;       // $25272A..$252732 / mirror
-  ctx?.soundPost?.(snd);                                      // $252738 / $252780 jsr (A0)
+  const aliases = suppliedResources.wipeSounds[b.ownerIndex];
+  let sound = aliases.normal[selector >>> 1];                 // $25271E..$252726 / mirror
+  if (ram.u16(side.hyper) !== 0) sound = aliases.hyper;        // $25272A..$252732 / mirror
+  const request = suppliedResources.soundRequestMap[sound];
+  ctx?.soundPost?.(request);                                   // $252738 / $252780 jsr (A0)
 
   const { pool, rec, blk, opt } = side;
   ram.bclr8(opt + OPT.flags1, 7);                            // $25279A bclr #7,($1,A2)
@@ -463,6 +670,12 @@ export function wipeSegmentPool(ram, ctx, b) {
   for (let k = 0; k <= 0x1f; k++) {                          // $2527AA move.w #$1F,D7
     ram.setU16(pool + k * SEG.stride, 0);                    // $2527AE / $2527B0
   }
+}
+
+export function wipeSegmentPool(ram, ctx, b) {
+  return wipeSegmentPoolWithResources(
+    ram, ctx, b, NATIVE_LASER_EDITION_RESOURCES, BEAM,
+  );
 }
 
 /** Private release twin of `$25279A`, with no cartridge sound-table access. */
@@ -524,7 +737,7 @@ export function runLaserGate(ram, ctx, b) {
       // line on the board's own lf9100 rung with `$8103E7` bit 0 set on 99 of
       // 100 frames.  **THIS IS THE INSTRUCTION THAT MAKES THE BEAM THE HYPER
       // BEAM**, and `$24D00A` is the hyper's segment family (types 15..19).
-      seedSegmentFamily2(ram, ctx, b, 0x24d00a);            // $24C1E8/$24C1EE
+      seedSegmentFamily2(ram, ctx, b, editionOf(b).ptrFamily2b);
       return 'c33a';                                        // $24C1F2 bra
     }
     if (!ram.btst8(player + 0x5b, 2)) {                     // $24C1BA btst #2
@@ -535,7 +748,7 @@ export function runLaserGate(ram, ctx, b) {
     // sense that $24C1D8 re-loads it, and the `adda.w D0,A0` between them is
     // the whole of the second lea's purpose.  Translated as written.
     const d0 = ram.u16(player + P.shipSel) ? 0x14 : 0;      // $24C1D0..$24C1D6
-    seedSegmentFamily2(ram, ctx, b, 0x24cfe2 + d0);         // $24C1DE/$24C1E0
+    seedSegmentFamily2(ram, ctx, b, editionOf(b).ptrFamily2a + d0);
     return 'c33a';                                          // $24C1E4 bra
   }
 
@@ -622,13 +835,14 @@ export function buildBeam(ram, ctx, b) {
   if (toHead && layBeamHead(ram, ctx, b)) return 'tail';    // $24CCD0..$24CD58
 
   // ---- $24CBEA: ONE segment per frame, into the first free slot ----------
-  let a0 = ram.btst8(player + P.flags1, 0)                  // $24CBEC btst #0
-    ? 0x24d062                                              // $24CBF4 lea
-    : 0x24d04e;                                             // $24CBFC lea
+  const edition = editionOf(b);
+  let a0 = ram.btst8(player + P.flags1, 0)
+    ? edition.ptrFamily2b + 0x58
+    : edition.ptrFamily2b + 0x44;
   if (!ram.btst8(player + P.flags1, 0)
       && !ram.btst8(player + 0x5b, 2)) {                    // $24CC02 btst #2
     const d3 = u16(ram.u16(player + P.shipSel) * 2);        // $24CC0A/$24CC0E
-    a0 = ctx.rom.u32(LASER.ptrSeg + i16(d3));               // $24CC16 movea.l
+    a0 = ctx.rom.u32(edition.ptrSeg + i16(d3));
   }
   const d1i = u16(ram.u16(player + 0x22) * 2);              // $24CC1A/$24CC20
   a0 = ctx.rom.u32(a0 + i16(d1i));                          // $24CC22 movea.l
@@ -712,13 +926,14 @@ function layBeamHead(ram, ctx, b) {
   const { opt, player, segmentOwnerWord, pool, rec } = b;
   let a = pool + SEG.headOffset;                            // $24CCD2 lea ($510
   const d3 = u16(ram.u16(player + P.shipSel) * 2);          // $24CCD6/$24CCDA
-  let a0 = ram.btst8(player + 0x5b, 2)                      // $24CCE2 btst #2
-    ? LASER.ptrHeadAlt                                      // $24CCEA lea
-    : LASER.ptrHead;                                        // $24CCDC lea
+  const edition = editionOf(b);
+  let a0 = ram.btst8(player + 0x5b, 2)
+    ? edition.ptrHeadAlt
+    : edition.ptrHead;
   a0 = ctx.rom.u32(a0 + i16(d3));                           // $24CCF0 movea.l
   const d1i = u16(ram.u16(player + 0x22) * 2);              // $24CCF4/$24CCFA
   if (ram.btst8(player + P.flags1, 0)) {                    // $24CCFC btst #0
-    a0 = LASER.ptrHeadBombLaser;                            // $24CD04 lea
+    a0 = edition.ptrHeadBombLaser;
   }
   a0 = ctx.rom.u32(a0 + i16(d1i));                          // $24CD0A movea.l
 
@@ -757,15 +972,18 @@ function layBeamHead(ram, ctx, b) {
 /**
  * `$254680` -- THE SEGMENT DRIVER, type-5 call #10.
  *
- * 32 pool slots per player, `type & $1F` into a TWENTY-entry dispatch.  The
- * `and.w` runs to 31 and the tables are 20 long; that overrun is the ROM's and
- * is left in place (see the header).
+ * 32 pool slots per player, `type & $1F` into a TWENTY-entry dispatch. Any
+ * live index from 20 through 31 is malformed and rejects before driver state
+ * changes.
  */
-export function runSegmentDriver(ram, ctx) {
+export function runSegmentDriverWithResources(
+  ram, ctx, beams, suppliedResources,
+) {
+  preflightSegmentDispatch(ctx, beams, suppliedResources, ram);
   ram.setU16(0x81b6e6, 0);                                  // $254680 clr.w
   ram.setU16(0x81295e, 0);                                  // $254686 clr.w
   let ran = 0;
-  for (const b of BEAM) {
+  for (const b of beams) {
     // $25468E tst.w $8103E6 / bpl -- the player must EXIST (bit 15).
     if ((ram.u16(b.player) & 0x8000) === 0) continue;       // $25468E / $2546CE
     ram.setU16(0x81b6e6, ram.u16(b.d7 ? 0x81b63e : 0x81b640));   // $25469E
@@ -774,10 +992,109 @@ export function runSegmentDriver(ram, ctx) {
   return ran;
 }
 
+export function runSegmentDriver(ram, ctx) {
+  return runSegmentDriverWithResources(
+    ram, ctx, BEAM, NATIVE_LASER_EDITION_RESOURCES,
+  );
+}
+
+function preflightLiveSegment(ram, rom, b, resources, a6) {
+  const type = ram.u16(a6 + S.type);
+  if (type === 0) return;
+  const index = type & 0x1f;
+  const dispatchOwner = b.scope === 'private' ? 0 : b.ownerIndex;
+  const dispatch = resources.expectedDispatch[dispatchOwner];
+  if (index >= dispatch.length) {
+    throw new RangeError(`laser owner ${b.ownerIndex} segment type ${index} exceeds its dispatch`);
+  }
+  const address = dispatch[index];
+  const kind = resources.segmentHandlerKinds[address];
+  if (ram.u16(a6 + S.player) !== b.segmentOwnerWord) {
+    throw new RangeError(`laser owner ${b.ownerIndex} segment has mixed owner polarity`);
+  }
+  if (kind === 'body' || kind === 'on-ship') {
+    rom.u32(ram.u32(a6 + S.script) + i16(ram.u16(a6 + S.w24)));
+    return;
+  }
+  if (kind === 'script' || kind === 'script-select') {
+    const script = ram.u32(a6 + S.script);
+    const word = rom.u16(script);
+    if (word === 0xff80) return;
+    rom.u32(script + 2);
+    if ((word & 0x8000) !== 0) {
+      const beamRecord = ram.u32(a6 + S.w2c);
+      rom.u16(beamRecord);
+      rom.u32(beamRecord + 2);
+      rom.u16(beamRecord + 6);
+      rom.u32(beamRecord + 8);
+      rom.u16(beamRecord + 12);
+      const pair = ram.u32(a6 + S.w28);
+      for (const [offset, width] of [
+        [0, 2], [2, 4], [6, 4], [10, 4], [14, 2], [16, 2],
+        [18, 4], [22, 4], [26, 2], [28, 4], [32, 4], [36, 4],
+      ]) {
+        if (width === 2) rom.u16(pair + offset);
+        else rom.u32(pair + offset);
+      }
+    }
+    return;
+  }
+  if (kind === 'on-pod') {
+    const power = ram.u16(b.player + 0x22);
+    let animation = ram.u32(a6 + S.w2a);
+    if (power !== ram.u16(a6 + S.w28)) {
+      const row = rom.u32(ram.u32(a6 + S.script) + i16(u16(power * 2)));
+      animation = rom.u32(row);
+      rom.u32(row + 4);
+      rom.u16(row + 8);
+    }
+    rom.u32(animation + i16(ram.u16(a6 + S.w24)));
+  }
+}
+
+export function preflightSegmentDispatch(ctx, beams, resources, ram = undefined) {
+  validateLaserEditionResources(resources, beams);
+  if (!ctx?.rom || typeof ctx.rom.u16 !== 'function'
+      || typeof ctx.rom.u32 !== 'function') {
+    throw new TypeError('laser segment driver needs cartridge windows');
+  }
+  for (const b of beams) {
+    const expected = resources.expectedDispatch[b.ownerIndex];
+    for (let index = 0; index < expected.length; index++) {
+      const address = ctx.rom.u32(b.dispatch + index * 4);
+      if (address !== expected[index]
+          || !Object.hasOwn(resources.segmentHandlerKinds, address)) {
+        throw new RangeError(`laser owner ${b.ownerIndex} dispatch ${index} is not its edition entry`);
+      }
+    }
+    if (ram !== undefined && (ram.u16(b.player) & 0x8000) !== 0) {
+      for (let slot = 0; slot < b.slots; slot++) {
+        preflightLiveSegment(
+          ram, ctx.rom, b, resources, b.pool + slot * b.stride,
+        );
+      }
+    }
+  }
+}
+
 /** Host-only call-10 twin. It runs one exact pool without native counters. */
 export function runPrivateSegmentDriver(ram, ctx, b) {
   assertPrivateBeamCapabilities(b);
+  validateLaserEditionResources(b.edition, BEAM);
+  const expected = b.edition.expectedDispatch[0];
+  for (let index = 0; index < expected.length; index++) {
+    const address = ctx.rom.u32(b.dispatch + index * 4);
+    if (address !== expected[index]
+        || !Object.hasOwn(b.edition.segmentHandlerKinds, address)) {
+      throw new RangeError(`private laser dispatch ${index} is not its edition entry`);
+    }
+  }
   if ((ram.u16(b.player) & 0x8000) === 0) return 0;
+  for (let slot = 0; slot < b.slots; slot++) {
+    preflightLiveSegment(
+      ram, ctx.rom, b, b.edition, b.pool + slot * b.stride,
+    );
+  }
   return runOneSegmentOwner(ram, ctx, b, false);
 }
 
@@ -805,30 +1122,18 @@ function runOneSegmentOwner(ram, ctx, b, countNative) {
  *  ten are P2's mirrors; the ONLY difference between a pair is which player's
  *  words it reads, so each pair shares one implementation and the `b` block
  *  carries the choice -- exactly as `OPTION_BLOCKS` does for `$24C096`. */
-const SEGMENT_HANDLERS = new Map([
-  [0x2547b2, hStep], [0x2547c0, hStep],                     // types 0, 5
-  [0x2547e6, hBody], [0x254800, hBody],                     // types 1, 6, 11, 16
-  [0x2548c4, hScript], [0x2548f0, hScript],                 // type 2
-  [0x2548da, hScript], [0x254904, hScript],                 // type 7
-  [0x254986, hScriptSel], [0x2549bc, hScriptSel],           // type 12
-  [0x2549a8, hScript], [0x2549de, hScript],                 // type 17
-  [0x254a60, hOnShip], [0x254a68, hOnShip],                 // types 3, 8, 13, 18
-  [0x254abe, hOnPod], [0x254acc, hOnPod],                   // types 4, 9, 14, 19
-  [0x254b68, hStep], [0x254b76, hStep],                     // type 10
-  [0x254b9e, hStep], [0x254bac, hStep],                     // type 15
-]);
-
-/** The A3 sound entry each script handler jumps through, by handler address.
- *  All seven are `movem.l D0-D7/A0-A6,-(A7) / move.w #id,D0 / move.w #pan,D1 /
- *  move.w #chan,D2 / jsr ($28C074,PC)`. */
-const SEGMENT_SOUND = new Map([
-  [0x2548c4, 0x28c408], [0x2548f0, 0x28c422],
-  [0x2548da, 0x28c468], [0x254904, 0x28c482],
-  [0x2549a8, 0x28c4c8], [0x2549de, 0x28c4e2],
-]);
+const SEGMENT_IMPLEMENTATIONS = Object.freeze({
+  step: hStep,
+  body: hBody,
+  script: hScript,
+  'script-select': hScriptSel,
+  'on-ship': hOnShip,
+  'on-pod': hOnPod,
+});
 
 function runSegmentHandler(ram, ctx, b, a6, fn) {
-  const h = SEGMENT_HANDLERS.get(fn);
+  const kind = editionOf(b).segmentHandlerKinds[fn];
+  const h = SEGMENT_IMPLEMENTATIONS[kind];
   if (!h) {
     unreached(fn, `segment handler $${fn.toString(16).toUpperCase()}, `
       + `dispatched from $254680 for the segment at $${a6.toString(16)
@@ -848,7 +1153,12 @@ function beamSoundBlocked(ram, b) {
 }
 
 function postBeamSound(ctx, b, sound) {
-  if (b.soundPolicy === 'native') ctx.soundPost?.(sound);
+  if (b.soundPolicy !== 'native') return;
+  const request = editionOf(b).soundRequestMap[sound];
+  if (!Number.isSafeInteger(request)) {
+    throw new RangeError(`laser sound $${sound?.toString(16).toUpperCase()} has no runtime request`);
+  }
+  ctx.soundPost?.(request);
 }
 
 function beamEffectsAllowed(b) {
@@ -897,7 +1207,9 @@ function hBody(ram, ctx, b, a6) {
         // The private path keeps this authentic divider cadence but owns no
         // spark or effect record. Only allocation is capability-gated.
         if (beamEffectsAllowed(b)) {
-          spawnBeamBody289F96(ram, ctx.rom, ctx, a6);        // $25485E jsr $289F96
+          spawnBeamBodyWithResources(
+            ram, ctx.rom, ctx, a6, editionOf(b).sparkResources,
+          );                                                  // $25485E jsr $289F96
         }
       }
     }
@@ -926,7 +1238,7 @@ function hBody(ram, ctx, b, a6) {
  */
 function hScript(ram, ctx, b, a6, fn) {
   ram.setU32(a6 + S.posY, ram.u32(b.opt + OPT.posY));       // $2548C4/$254916
-  return scriptBody(ram, ctx, b, a6, SEGMENT_SOUND.get(fn), fn);
+  return scriptBody(ram, ctx, b, a6, editionOf(b).segmentSounds[fn], fn);
 }
 
 /** Type 12 -- the same body with the sound chosen by `$81043E`/`$8104A0`. */
@@ -935,9 +1247,7 @@ function hScriptSel(ram, ctx, b, a6, fn) {
   let snd = null;
   if (b.soundPolicy === 'native') {
     const sel = ram.u16(b.d7 ? 0x81043e : 0x8104a0) !== 0;  // $254998/$2549CE
-    snd = fn === 0x254986
-      ? (sel ? 0x28c468 : 0x28c408)                         // $2549A0 / $254992
-      : (sel ? 0x28c482 : 0x28c422);                        // $2549D6 / $2549C8
+    snd = editionOf(b).selectorSounds[b.ownerIndex][sel ? 1 : 0];
   }
   return scriptBody(ram, ctx, b, a6, snd, fn);
 }
@@ -1025,7 +1335,7 @@ function hPhaseEmit(ram, ctx, b, a6) {
 
 function emit(ram, ctx, b, a6) {
   if (b.presentationSink == null) {
-    return enqueueThroughStub(ram, ctx.rom, LASER.emitStub, a6);
+    return enqueueThroughStub(ram, ctx.rom, editionOf(b).emitStub, a6);
   }
   return b.presentationSink(ram, a6);
 }
@@ -1097,7 +1407,7 @@ function beamRequest(ram, ctx, b, a6, d1) {
   } else if (ram.u16(a5 + P.shipSel) !== 0) {               // $25501C tst.w
     d3 = u16(d3 + 0x28);                                    // $255022 addi.w
   }
-  const a1 = 0x24bb0a + i16(d3);                            // $255026/$25502C
+  const a1 = editionOf(b).beamRequestTable + i16(d3);
   const d0 = ctx.rom.u32(a1);                               // $25502E move.l
   ram.setU16(a0 + 0x10, d0 & 0xffff);                       // $255030 move.w
   ram.setU32(a0 + 0x12, ctx.rom.u32(a1 + 4));               // $255032 move.l
@@ -1152,7 +1462,7 @@ function startBeamRecords(ram, ctx, b, a6) {
     d2 = ram.u16(a5 + P.shipSel);                           // $254CA6 move.w
     if (d2 !== 0) d0 = u16(d0 + 0x1e);                      // $254CAA/$254CAC
   }
-  const hw = ctx.rom.u16(0x24a824 + i16(d0));               // $254CB0 move.w
+  const hw = ctx.rom.u16(editionOf(owner).hitboxTable + i16(d0));
   ram.setU16(a2 + 0x0e, hw);                                // $254CB4 move.w
   ram.setU16(a2 + 0x18, d2);                                // $254CB8 move.w
   ram.setU16(a2 + 0x1a, d3);                                // $254CBC move.w
@@ -1195,9 +1505,10 @@ function startBeamRecords(ram, ctx, b, a6) {
  * `$2550CC..$255154`, two `rts`.  `$25515A` is a different routine that
  * borrows the second `rts` as its own and is reached from neither.
  */
-export function runBeamDraw(ram, ctx) {
+export function runBeamDrawWithResources(ram, ctx, beams, suppliedResources) {
+  validateLaserEditionResources(suppliedResources, beams);
   let emitted = 0, impacts = 0;
-  for (const b of BEAM) {
+  for (const b of beams) {
     const result = runOneBeamDraw(ram, ctx, b);
     emitted += result.emitted;
     impacts += result.impacts;
@@ -1208,9 +1519,16 @@ export function runBeamDraw(ram, ctx) {
   return emitted;
 }
 
+export function runBeamDraw(ram, ctx) {
+  return runBeamDrawWithResources(
+    ram, ctx, BEAM, NATIVE_LASER_EDITION_RESOURCES,
+  );
+}
+
 /** Host-only call-11 twin, kept separate from the private call-10 driver. */
 export function runPrivateBeamDraw(ram, ctx, b) {
   assertPrivateBeamCapabilities(b);
+  validateLaserEditionResources(b.edition, BEAM);
   return runOneBeamDraw(ram, ctx, b).emitted;
 }
 
@@ -1225,23 +1543,32 @@ function runOneBeamDraw(ram, ctx, b) {
   // in eleven other places, so P1's block spawns the impact effect on the
   // frames it is NON-zero and P2's on the frames it is zero.
   const phase = ram.u16(0x80390c) !== 0;
-  if (beamEffectsAllowed(b) && (b.d7 ? phase : !phase)
-      && ram.u16(0x81308c) !== 0 && !beamSoundBlocked(ram, b)) {
-    spawnBeamImpact289FC0(ram, ctx.rom, ctx, a6, b.impact);  // $255066/$2550F0
-    impacts++;
-  }
+  const impactActive = beamEffectsAllowed(b) && (b.d7 ? phase : !phase)
+    && ram.u16(0x81308c) !== 0 && !beamSoundBlocked(ram, b);
+
   // $25506C..$255084 -- the top of the drawn beam, clamped to the pod.
   let d0 = u16(ram.u16(b.word) + b.drawBias);                // $255072 / $2550F6
   const d1 = u16(ram.u16(b.opt + OPT.posY) + 0x400);        // $25507C / $255102
   if (d0 < d1) d0 = d1;                                     // $255080 cmp.w/bcc
 
-  // $255086..$25509E -- five words built at ($2,A6) from the $24BB0A pair.
+  // Resolve all five descriptor words before the impact allocator or beam block
+  // can change RAM. A missing tail must leave both pools untouched.
   const src = ram.u32(a6 + 0x12) + i16(ram.u16(a6 + 0x10)); // $25508A/$25508E
+  const descriptor0 = ctx.rom.u32(src);                      // $25509A move.l
+  const descriptor1 = ctx.rom.u32(src + 4);                  // $25509C move.l
+  const descriptor2 = ctx.rom.u16(src + 8);                  // $25509E move.w
+
+  if (impactActive) {
+    spawnBeamImpactWithResources(
+      ram, ctx.rom, ctx, a6, b.impact, editionOf(b).sparkResources,
+    );                                                       // $255066/$2550F0
+    impacts++;
+  }
   ram.setU16(a6 + 0x02, d0);                                // $255092 move.w
   ram.setU16(a6 + 0x04, ram.u16(b.player + P.posX));        // $255094 move.w
-  ram.setU32(a6 + 0x06, ctx.rom.u32(src));                  // $25509A move.l
-  ram.setU32(a6 + 0x0a, ctx.rom.u32(src + 4));              // $25509C move.l
-  ram.setU16(a6 + 0x0e, ctx.rom.u16(src + 8));              // $25509E move.w
+  ram.setU32(a6 + 0x06, descriptor0);                       // $25509A move.l
+  ram.setU32(a6 + 0x0a, descriptor1);                       // $25509C move.l
+  ram.setU16(a6 + 0x0e, descriptor2);                       // $25509E move.w
 
   const nx = ram.u16(a6 + 0x10) - 0x0a;                     // $2550A0 subi.w
   ram.setU16(a6 + 0x10, nx < 0 ? ram.u16(a6 + 0x18) : u16(nx)); // $2550A6/$2550A8

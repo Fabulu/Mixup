@@ -165,8 +165,7 @@ import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { BUCKETS, ENQUEUE_MASK, NO_ZOOM_OR } from './spritequeue.js';
 import {
-  drawByte242E24, drawSigned242FFC, drawByte28ABE0,
-  drawNegative242EC2, drawByte28AB86, drawByte24311A,
+  drawSigned242FFC, drawByte28ABE0, drawByte24311A,
   drawSignedByteWithResources, drawByteWithResources,
 } from './rng.js';
 
@@ -224,6 +223,21 @@ export const NATIVE_SPARK_RESOURCES = Object.freeze({
   signedRng: Object.freeze({ table: 0x24301a, entries: 256 }),
   speedRng: Object.freeze({ table: 0x242e42, entries: 128 }),
   angleRng: Object.freeze({ table: 0x28abfa, entries: 64 }),
+  kind0NegativeRng: Object.freeze({ table: 0x242ede, entries: 256 }),
+  kind0AngleRng: Object.freeze({ table: 0x28aba0, entries: 64 }),
+  beamImpactTpl: SPARK.beamImpactTpl,
+  beamImpactList: SPARK.beamImpactList,
+  speedByPower: SPARK.speedByPower,
+  speedByPowerEntries: SPARK.speedByPowerEntries,
+  p1Power: SPARK.p1Power,
+  p2Power: SPARK.p2Power,
+  beamBodySite: 0x289f96,
+  beamImpactHeads: Object.freeze([
+    Object.freeze({ at: 0x289fc0, caller: 0x255066,
+      base: SPARK.p1Base, d7: 0, power: SPARK.p1Power }),
+    Object.freeze({ at: 0x289fda, caller: 0x2550f0,
+      base: SPARK.p2Base, d7: 1, power: SPARK.p2Power }),
+  ]),
   allocatorSite: 0x289f54,
   allocatorFailureSite: 0x289f4e,
   poolFullSite: 0x28a078,
@@ -233,35 +247,111 @@ export const NATIVE_SPARK_RESOURCES = Object.freeze({
   driverWalkSite: 0x28a0fa,
 });
 
-function validateSparkResources(resources) {
-  const exact = [
+const LEGACY_BUDGET_OVERRIDE = Symbol('legacy Black spark budget override');
+
+const SPARK_EDITION_IDENTITIES = Object.freeze([
+  Object.freeze({
+    ptrTable: 0x28a786,
+    values: Object.freeze({
+      budgetReload: 0xd0, emitTable: 0x28a140, ptrTable: 0x28a786,
+      fillTable: 0x28a232, beamImpactTpl: 0x28a506,
+      beamImpactList: 0x28a51c, speedByPower: 0x28a2d6,
+      p1Power: 0x810408, p2Power: 0x81046a, beamBodySite: 0x289f96,
+      allocatorSite: 0x289f54, allocatorFailureSite: 0x289f4e,
+      poolFullSite: 0x28a078, slotFillerSite: 0x28a1da,
+      shotFillTailSite: 0x28a39e, driverSite: 0x28a098,
+      driverWalkSite: 0x28a0fa,
+    }),
+    rng: Object.freeze({
+      signedRng: 0x24301a, speedRng: 0x242e42, angleRng: 0x28abfa,
+      kind0NegativeRng: 0x242ede, kind0AngleRng: 0x28aba0,
+    }),
+    heads: Object.freeze([
+      Object.freeze([0x289fc0, 0x255066, 0x81d394, 0, 0x810408]),
+      Object.freeze([0x289fda, 0x2550f0, 0x81d790, 1, 0x81046a]),
+    ]),
+  }),
+  Object.freeze({
+    ptrTable: 0x1892c2,
+    values: Object.freeze({
+      budgetReload: 0xd0, emitTable: 0x188c7c, ptrTable: 0x1892c2,
+      fillTable: 0x188d6e, beamImpactTpl: 0x189042,
+      beamImpactList: 0x189058, speedByPower: 0x188e12,
+      p1Power: 0x810408, p2Power: 0x81046a, beamBodySite: 0x188ad2,
+      allocatorSite: 0x188a90, allocatorFailureSite: 0x188a8a,
+      poolFullSite: 0x188bb4, slotFillerSite: 0x188d16,
+      shotFillTailSite: 0x188eda, driverSite: 0x188bd4,
+      driverWalkSite: 0x188c36,
+    }),
+    rng: Object.freeze({
+      signedRng: 0x14336a, speedRng: 0x143192, angleRng: 0x189736,
+      kind0NegativeRng: 0x14322e, kind0AngleRng: 0x1896dc,
+    }),
+    heads: Object.freeze([
+      Object.freeze([0x188afc, 0x154622, 0x81d394, 0, 0x810408]),
+      Object.freeze([0x188b16, 0x1546ac, 0x81d790, 1, 0x81046a]),
+    ]),
+  }),
+]);
+
+export function validateSparkResources(resources) {
+  const nested = [
+    resources?.signedRng, resources?.speedRng, resources?.angleRng,
+    resources?.kind0NegativeRng, resources?.kind0AngleRng,
+  ];
+  if (!Object.isFrozen(resources)
+      || nested.some((row) => !Object.isFrozen(row))
+      || !Object.isFrozen(resources?.beamImpactHeads)) {
+    throw new TypeError('shot spark resources must be deeply frozen');
+  }
+  const geometry = [
     ['p1Base', SPARK.p1Base], ['p2Base', SPARK.p2Base],
     ['stride', SPARK.stride], ['perPlayer', SPARK.perPlayer],
     ['perPlayerNarrow', SPARK.perPlayerNarrow], ['slots', SPARK.slots],
     ['count', SPARK.count], ['budget', SPARK.budget],
-    ['budgetReload', SPARK.budgetReload], ['clearWords', SPARK.clearWords],
+    ['clearWords', SPARK.clearWords],
     ['gateAlloc', SPARK.gateAlloc], ['gateWidth', SPARK.gateWidth],
     ['bucket', SPARK.bucket], ['kindSpark', SPARK.kindSpark],
     ['cullY', SPARK.cullY], ['posShift', SPARK.posShift],
-    ['p1PlayerRec', SPARK.p1PlayerRec],
+    ['p1PlayerRec', SPARK.p1PlayerRec], ['speedByPowerEntries', 5],
   ];
-  if (!resources || exact.some(([key, value]) => resources[key] !== value)) {
-    throw new TypeError('shot spark resources must preserve the native pool geometry');
+  const identity = SPARK_EDITION_IDENTITIES.find(
+    (candidate) => resources?.ptrTable === candidate.ptrTable,
+  );
+  if (!resources || !identity
+      || geometry.some(([key, value]) => resources[key] !== value)) {
+    throw new TypeError('shot spark resources must preserve an exact edition geometry');
   }
-  for (const key of ['emitTable', 'ptrTable', 'fillTable', 'allocatorSite',
-    'allocatorFailureSite', 'poolFullSite', 'slotFillerSite', 'shotFillTailSite',
-    'driverSite', 'driverWalkSite']) {
-    if (!Number.isSafeInteger(resources[key])) {
-      throw new TypeError(`shot spark resource ${key} must be a cartridge address`);
+  const budgetOverride = resources[LEGACY_BUDGET_OVERRIDE] === true;
+  if (!Number.isSafeInteger(resources.budgetReload)
+      || resources.budgetReload < 0 || resources.budgetReload > 0xffff
+      || (!budgetOverride && resources.budgetReload !== identity.values.budgetReload)
+      || (budgetOverride && identity.ptrTable !== NATIVE_SPARK_RESOURCES.ptrTable)) {
+    throw new RangeError('shot spark budget reload is outside its edition authority');
+  }
+  for (const [key, value] of Object.entries(identity.values)) {
+    if (key !== 'budgetReload' && resources[key] !== value) {
+      throw new TypeError(`shot spark resource ${key} does not match its edition`);
     }
   }
-  if (!Number.isSafeInteger(resources.signedRng?.table)
-      || resources.signedRng.entries !== 256
-      || !Number.isSafeInteger(resources.speedRng?.table)
-      || resources.speedRng.entries !== 128
-      || !Number.isSafeInteger(resources.angleRng?.table)
-      || resources.angleRng.entries !== 64) {
-    throw new TypeError('shot spark resources require exact signed, speed, and angle RNG tables');
+  const rngEntries = Object.freeze({
+    signedRng: 256, speedRng: 128, angleRng: 64,
+    kind0NegativeRng: 256, kind0AngleRng: 64,
+  });
+  for (const [key, table] of Object.entries(identity.rng)) {
+    if (resources[key]?.table !== table || resources[key]?.entries !== rngEntries[key]) {
+      throw new TypeError(`shot spark RNG resource ${key} does not match its edition`);
+    }
+  }
+  if (!Array.isArray(resources.beamImpactHeads)
+      || resources.beamImpactHeads.length !== identity.heads.length
+      || resources.beamImpactHeads.some((row, ownerIndex) => {
+        const expected = identity.heads[ownerIndex];
+        return !Object.isFrozen(row) || row.at !== expected[0]
+          || row.caller !== expected[1] || row.base !== expected[2]
+          || row.d7 !== expected[3] || row.power !== expected[4];
+      })) {
+    throw new TypeError('shot spark resources require exact edition beam-impact heads');
   }
   return resources;
 }
@@ -374,7 +464,9 @@ function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0, d7 = 0,
   // W53 transcribed entry 5 ($14, the shot spark); **W65 adds entry 0**, which
   // is the one and only kind `$289FF4` passes ($28A012 moveq #$0,D0) and so the
   // one the LASER BOMB reaches.  The remaining six still throw by address.
-  if (d0 === 0) return fillTail28A252(ram, rom, ctx, slot, d7);   // $28A232[0]
+  if (d0 === 0) {
+    return fillTail28A252(ram, rom, ctx, slot, d7, resources);
+  }
   if (d0 !== resources.kindSpark) {
     unreached(resources.fillTable + d0,
       `$28A22C jmp (A2) -- pool E's fill tail for kind $${d0.toString(16)
@@ -438,9 +530,13 @@ function fillSlot(ram, rom, ctx, slot, tpl, spawner, d0, d7 = 0,
  *        `$81046A`/`$810408` arm are transcribed and THROW.
  * @returns {number} A0 after the tail, i.e. the next slot's base.
  */
-function fillTail28A252(ram, rom, ctx, slot, d7) {
+function fillTail28A252(ram, rom, ctx, slot, d7,
+  suppliedResources = NATIVE_SPARK_RESOURCES) {
+  const resources = validateSparkResources(suppliedResources);
   let d3 = 0x18;                                   // $28A256 moveq #$18,D3
-  const negative = drawNegative242EC2(ram, rom);   // $28A258 jsr $242EC2
+  const negative = drawSignedByteWithResources(
+    ram, rom, resources.kind0NegativeRng,
+  ) < 0;
   // DOCKET D48, AND THIS SITE IS INSIDE W411's OWN UNIT SO IT IS FIXED HERE.
   // `$28A25E 6a 02` is `bpl`, and the last instruction in `$242EC2` to touch N
   // is `$242ED6 move.b (A0,D0.w),D0` -- `$242EDA movea.l` and `$242EDC rts`
@@ -451,9 +547,9 @@ function fillTail28A252(ram, rom, ctx, slot, d7) {
   // $18 to $28. W416 moved this read onto `src/rng.js drawNegative242EC2`, which
   // returns the N flag itself, and closed the other FIFTEEN sites.
   if (negative) d3 = 0x28;                         // $28A25E bpl / $28A260
-  let d1 = drawByte28AB86(ram, rom);               // $28A262 bsr $28AB86
+  let d1 = drawByteWithResources(ram, rom, resources.kind0AngleRng); // $28A262
   d1 = ((d1 + d3) & 0xff) & 0x3f;                  // $28A266 add.b / $28A268 andi.b
-  let d0 = (drawByte242E24(ram, rom) + 4) & 0xff;  // $28A26C jsr / $28A272 addq.b
+  let d0 = (drawByteWithResources(ram, rom, resources.speedRng) + 4) & 0xff;
   const v = ctx.tables.vector(d0, d1);             // $28A276 jsr $241812
   ram.setU16(slot + E.vel, u16(v.dy));             // $28A27C move.w D2,(A0)+
   ram.setU16(slot + E.vel + 2, u16(v.dx));         // $28A27E move.w D3,(A0)+
@@ -473,8 +569,9 @@ function fillTail28A252(ram, rom, ctx, slot, d7) {
     // that would read $28A2E0 -- `addq.w #$6,A0`, fill dispatch entry 1, CODE
     // -- as a speed.  That is a LOUD NAMED THROW here and not a clamp: the
     // cartridge would take the wrong number and this port says so instead.
-    const d1p = ram.u16(d7 === 0 ? SPARK.p1Power : SPARK.p2Power); // $28A28E/$28A296
-    if ((d1p & 1) !== 0 || d1p > (SPARK.speedByPowerEntries - 1) * 2) {
+    const powerAddress = d7 === 0 ? resources.p1Power : resources.p2Power;
+    const d1p = ram.u16(powerAddress); // $28A28E/$28A296
+    if ((d1p & 1) !== 0 || d1p > (resources.speedByPowerEntries - 1) * 2) {
       unreached(0x28a29c, `$28A2A2 adda.w D1,A2 -- the laser POWER word `
         + `$${(d7 === 0 ? SPARK.p1Power : SPARK.p2Power).toString(16)
           .toUpperCase()} reads $${d1p.toString(16).toUpperCase()}, and it is a `
@@ -484,7 +581,7 @@ function fillTail28A252(ram, rom, ctx, slot, d7) {
         + `entry 1, \`addq.w #$6,A0 / rts\`, i.e. CODE, and the board would `
         + `take an instruction as a speed`);
     }
-    d0 = rom.u16(SPARK.speedByPower + d1p);        // $28A2A4 move.w (A2),D0
+    d0 = rom.u16(resources.speedByPower + d1p);        // $28A2A4 move.w (A2),D0
     // $28A2A6 bra $28A2C0 -- and it JUMPS $28A2A8..$28A2BC, so the impact
     // spark never gets the bomb's `move.b D3,(-$11,A0)` partial overwrite of
     // rec+$0F.  Its attribute word stays exactly what $28A210 wrote.
@@ -591,18 +688,34 @@ export function spawnBeamBombSpark289FF4(ram, rom, ctx, spawner) {
  *        address it is standing at.
  * @returns {boolean} false on the "no free slot" failure return.
  */
-export function spawnBeamImpact289FC0(ram, rom, ctx, spawner, at) {
-  const head = BEAM_IMPACT.find((h) => h.at === at);
-  if (!head) {
-    unreached(at, `the laser impact effect was entered at $${(at >>> 0)
-      .toString(16).toUpperCase()}, and the cartridge has exactly TWO heads here: `
-      + `$289FC0 (D7 = 0, P1's $81D394 and $810408) and $289FDA (D7 = 1, P2's `
-      + `$81D790 and $81046A). The THIRD head into this template, $289F96, has its `
-      + `own entry point -- \`spawnBeamBody289F96\` -- because it picks its half `
-      + `from ($1A,A6) rather than being fixed per player`);
+export function spawnBeamImpactWithResources(
+  ram, rom, ctx, spawner, at, suppliedResources,
+) {
+  const resources = validateSparkResources(suppliedResources);
+  let head;
+  if (resources.ptrTable === NATIVE_SPARK_RESOURCES.ptrTable) {
+    head = resources.beamImpactHeads.find((candidate) => candidate.at === at);
+    if (!head) {
+      unreached(at, `the laser impact effect was entered at $${(at >>> 0)
+        .toString(16).toUpperCase()}, and the cartridge has exactly TWO heads here: `
+        + `$289FC0 (D7 = 0, P1's $81D394 and $810408) and $289FDA (D7 = 1, P2's `
+        + `$81D790 and $81046A). The THIRD head into this template, $289F96, has its `
+        + `own entry point -- \`spawnBeamBody289F96\` -- because it picks its half `
+        + `from ($1A,A6) rather than being fixed per player`);
+    }
+  } else {
+    ({ head } = preflightBeamImpactWithResources(
+      ram, rom, ctx, spawner, at, resources,
+    ));
   }
-  return poolETail(ram, rom, ctx, head.base, SPARK.beamImpactTpl, spawner,
-    0, head.d7, head.at);                         // $289FCC moveq #$0,D0
+  return poolETail(ram, rom, ctx, head.base, resources.beamImpactTpl, spawner,
+    0, head.d7, head.at, 0, resources);             // $289FCC moveq #$0,D0
+}
+
+export function spawnBeamImpact289FC0(ram, rom, ctx, spawner, at) {
+  return spawnBeamImpactWithResources(
+    ram, rom, ctx, spawner, at, NATIVE_SPARK_RESOURCES,
+  );
 }
 
 /**
@@ -640,16 +753,26 @@ export function spawnBeamImpact289FC0(ram, rom, ctx, spawner, at) {
  *        `($1A,A6)` is read from, so the caller passes one address and not two.
  * @returns {boolean} false on the "no free slot" failure return.
  */
-export function spawnBeamBody289F96(ram, rom, ctx, spawner) {
-  // $289FAC tst.w ($1A,A6) / $289FB0 bne $28A060 -- non-zero KEEPS P1's pair.
+export function spawnBeamBodyWithResources(
+  ram, rom, ctx, spawner, suppliedResources,
+) {
+  const resources = validateSparkResources(suppliedResources);
+  // $289FAC tst.w ($1A,A6) / $289FB0 bne $28A060: nonzero keeps P1's pair.
   const p1 = ram.u16(spawner + 0x1a) !== 0;
   return poolETail(ram, rom, ctx,
-    p1 ? SPARK.p1Base : SPARK.p2Base,             // $289FA4 / $289FB4
-    SPARK.beamImpactTpl, spawner,
-    0,                                            // $289FA2 moveq #$0,D0
-    p1 ? 0 : 1,                                   // $289FAA / $289FBA moveq D7
-    0x289f96,
-    1);                                           // $289F9A moveq #$1,D1 -- TWO records
+    p1 ? resources.p1Base : resources.p2Base,
+    resources.beamImpactTpl, spawner,
+    0,
+    p1 ? 0 : 1,
+    resources.beamBodySite,
+    1,
+    resources);
+}
+
+export function spawnBeamBody289F96(ram, rom, ctx, spawner) {
+  return spawnBeamBodyWithResources(
+    ram, rom, ctx, spawner, NATIVE_SPARK_RESOURCES,
+  );
 }
 
 /**
@@ -758,6 +881,12 @@ export function spawnSpark(ram, rom, ctx, spawner, player, d0 = SPARK.kindSpark)
 function poolETail(ram, rom, ctx, base, tpl, spawner, d0, d7, site, d1In = 0,
   suppliedResources = NATIVE_SPARK_RESOURCES) {
   const resources = validateSparkResources(suppliedResources);
+  if (resources.ptrTable !== NATIVE_SPARK_RESOURCES.ptrTable) {
+    const template = sparkTemplateIdentity(rom, resources, tpl);
+    if (tpl === resources.beamImpactTpl && template.list !== resources.beamImpactList) {
+      throw new RangeError('spark beam-impact template has the wrong nested list');
+    }
+  }
   let a0 = base;
   let d2 = ram.u16(resources.gateWidth) !== 0              // $28A062/$28A068
     ? resources.perPlayer - 1 : resources.perPlayerNarrow - 1; // $28A060/$28A06A moveq
@@ -828,8 +957,139 @@ export const EMIT_ENTRY = Object.freeze({
  * @returns {{records:number, live:number, freed:number}} telemetry; the ROM
  *          returns nothing.  Nothing in the port's own path reads it.
  */
+function sparkTemplateIdentity(rom, resources, tpl) {
+  const selector = rom.u16(tpl);
+  const offsetLong = rom.u16(tpl + 0x02);
+  const offsetShort = rom.u16(tpl + 0x04);
+  const size = rom.u16(tpl + 0x06);
+  const attr = rom.u16(tpl + 0x08);
+  const delayA = rom.u32(tpl + 0x0c);
+  const cursor = rom.u16(tpl + 0x0e);
+  const list = rom.u32(tpl + 0x10);
+  const delayB = rom.u16(tpl + 0x14);
+  if (!(selector in EMIT_ENTRY) || (cursor & 3) !== 0) {
+    throw new RangeError(`spark template $${tpl.toString(16)} has an invalid selector or cursor`);
+  }
+  if (cursor >= 4) rom.u32(list + i16(cursor));
+  return Object.freeze({
+    tpl, selector, offsetLong, offsetShort, size, attr, delayA, cursor, list, delayB,
+  });
+}
+
+function sparkTemplateLedger(rom, resources) {
+  const ledger = new Map();
+  for (let index = 0; index < 256; index++) {
+    const tpl = rom.u32(resources.ptrTable + index * 4);
+    if (!ledger.has(tpl)) ledger.set(tpl, sparkTemplateIdentity(rom, resources, tpl));
+  }
+  if (!ledger.has(resources.beamImpactTpl)) {
+    ledger.set(
+      resources.beamImpactTpl,
+      sparkTemplateIdentity(rom, resources, resources.beamImpactTpl),
+    );
+  }
+  const impact = ledger.get(resources.beamImpactTpl);
+  if (impact.list !== resources.beamImpactList) {
+    throw new RangeError('spark beam-impact template has the wrong nested list');
+  }
+  return ledger;
+}
+
+export function preflightSparkDriverWithResources(ram, rom, suppliedResources) {
+  const resources = validateSparkResources(suppliedResources);
+  const ledger = sparkTemplateLedger(rom, resources);
+  const lists = new Map();
+  for (const entry of ledger.values()) {
+    lists.set(entry.list, Math.max(lists.get(entry.list) ?? 0, entry.cursor));
+  }
+  let live = 0;
+  for (let index = 0; index < resources.slots; index++) {
+    const record = resources.p1Base + index * resources.stride;
+    if (ram.u16(record + E.status) === 0) continue;
+    live++;
+    const selector = ram.u16(record + E.selector);
+    const cursor = ram.u16(record + E.cursor);
+    const list = ram.u32(record + E.list);
+    const maximum = lists.get(list);
+    if (!(selector in EMIT_ENTRY) || (cursor & 3) !== 0
+        || maximum === undefined || cursor > maximum) {
+      throw new RangeError(`spark record ${index} has a malformed animation identity`);
+    }
+    if (cursor >= 4) rom.u32(list + i16(cursor));
+  }
+  if (live !== ram.u16(resources.count)) {
+    throw new RangeError(`spark count ${ram.u16(resources.count)} does not match ${live} live records`);
+  }
+  return Object.freeze({ live, ledger });
+}
+
+export function preflightSparkAllocationWithResources(
+  ram, rom, ctx, spawner, player, suppliedResources,
+) {
+  const resources = validateSparkResources(suppliedResources);
+  if (ram.u16(resources.gateAlloc) !== 0) return Object.freeze({ gated: true });
+  if (player !== resources.p1PlayerRec && player !== 0x810448) {
+    throw new RangeError('shot spark allocator received an unknown native player record');
+  }
+  const state = ram.u16(0x803916);
+  if (state > 0xff) {
+    throw new RangeError('shot spark allocation RNG escaped its 256-entry pointer table');
+  }
+  const ledger = sparkTemplateLedger(rom, resources);
+  const counter = ram.u8(0x803917);
+  const allocationState = (counter + 1) & 0xff;
+  const tpl = rom.u32(resources.ptrTable + allocationState * 4);
+  if (!ledger.has(tpl)) throw new RangeError('shot spark allocation selected an unknown template');
+  rom.u8(resources.signedRng.table + ((counter + 2) & 0xff));
+  const speedByte = rom.u8(resources.speedRng.table + ((counter + 3) & 0x7f));
+  const angleByte = rom.u8(resources.angleRng.table + ((counter + 4) & 0x3f));
+  const speed = Math.min((speedByte + 8) & 0xff, 0x24);
+  if (typeof ctx?.tables?.shotVector !== 'function') {
+    throw new TypeError('shot spark allocation needs an exact shot-vector table');
+  }
+  ctx.tables.shotVector(speed, (angleByte + ram.u8(spawner + 0x1b)) & 0xff);
+  return Object.freeze({ gated: false, tpl });
+}
+
+export function preflightBeamImpactWithResources(
+  ram, rom, ctx, spawner, at, suppliedResources,
+) {
+  const resources = validateSparkResources(suppliedResources);
+  const head = resources.beamImpactHeads.find((candidate) => candidate.at === at);
+  if (!head || spawner !== (head.d7 === 0 ? 0x811f32 : 0x811f52)) {
+    throw new RangeError('beam impact owner head does not match its spawner');
+  }
+  const impact = sparkTemplateIdentity(rom, resources, resources.beamImpactTpl);
+  if (impact.list !== resources.beamImpactList) {
+    throw new RangeError('beam impact template is outside the edition ledger');
+  }
+  const power = ram.u16(head.power);
+  if ((power & 1) !== 0 || power > (resources.speedByPowerEntries - 1) * 2) {
+    throw new RangeError('beam impact power is outside its five-word speed table');
+  }
+  const state = ram.u16(0x803916);
+  if (state > 0xff) throw new RangeError('beam impact RNG escaped its edition tables');
+  const counter = ram.u8(0x803917);
+  rom.u8(resources.signedRng.table + ((counter + 1) & 0xff));
+  const negative = rom.u8(
+    resources.kind0NegativeRng.table + ((counter + 2) & 0xff),
+  ) >= 0x80;
+  const angleByte = rom.u8(resources.kind0AngleRng.table + ((counter + 3) & 0x3f));
+  const angle = (angleByte + (negative ? 0x28 : 0x18)) & 0x3f;
+  const speed = (rom.u8(resources.speedRng.table + ((counter + 4) & 0x7f)) + 4) & 0xff;
+  if (typeof ctx?.tables?.vector !== 'function') {
+    throw new TypeError('beam impact needs an exact profile vector table');
+  }
+  ctx.tables.vector(speed, angle);
+  ctx.tables.vector(rom.u16(resources.speedByPower + power), angle);
+  return Object.freeze({ head, power });
+}
+
 export function runSparkDriverWithResources(ram, rom, ctx, suppliedResources) {
   const resources = validateSparkResources(suppliedResources);
+  if (resources.ptrTable !== NATIVE_SPARK_RESOURCES.ptrTable) {
+    preflightSparkDriverWithResources(ram, rom, resources);
+  }
   const bucket = BUCKETS[resources.bucket];
   const d0zero = 0;                                       // $28A098 moveq #$0,D0
   // $28A09A..$28A0AE.  With D0 = 0 the `sub.w` never borrows, so `$28A0AA
@@ -969,7 +1229,11 @@ export function runSparkDriverWithResources(ram, rom, ctx, suppliedResources) {
 export function runSparkDriver(ram, rom, ctx) {
   const resources = SPARK.budgetReload === NATIVE_SPARK_RESOURCES.budgetReload
     ? NATIVE_SPARK_RESOURCES
-    : { ...NATIVE_SPARK_RESOURCES, budgetReload: SPARK.budgetReload };
+    : Object.freeze({
+      ...NATIVE_SPARK_RESOURCES,
+      budgetReload: SPARK.budgetReload,
+      [LEGACY_BUDGET_OVERRIDE]: true,
+    });
   return runSparkDriverWithResources(ram, rom, ctx, resources);
 }
 

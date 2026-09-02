@@ -76,7 +76,8 @@ import { loadSubProto } from '../src/enemyproto.js';
 import { runInitBodyAddr } from '../src/initbody.js';
 import {
   OVERLAP_PAIRS_BEFORE_W428, ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT,
-  W428_OVERLAP_PAIRS, W497_OVERLAP_PAIR, W518_OVERLAP_PAIR, overlappingPairs,
+  W428_OVERLAP_PAIRS, W497_OVERLAP_PAIR, W518_OVERLAP_PAIR,
+  WHITE_OPTION_OVERLAP_PAIRS, overlappingPairs,
 } from './romwindowset.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -339,7 +340,7 @@ test('tests/romwindowset.js states the window count and the overlap count the '
     'ROM_OVERLAP_PAIRS must be what tools/export-tables.py emits');
 });
 
-test('W428 still contributes exactly four overlaps after W497 and W518',
+test('W428 still contributes exactly four overlaps after later forced pairs',
   { skip: SKIP }, () => {
   const ws = tables.rom.windows.map(
     (w) => [parseInt(String(w.base).replace('$', ''), 16), w.len]);
@@ -351,12 +352,15 @@ test('W428 still contributes exactly four overlaps after W497 and W518',
   }
 
   // W428 contributed four pairs to the historical 71. W497 and W518 later
-  // contributed one each, so removing only W428's four now leaves 73.
+  // contributed one each, and task #238's White option closure contributed two.
+  // Removing only W428's four now leaves 75.
+  assert.equal(WHITE_OPTION_OVERLAP_PAIRS.length, 2, 'two White option pairs');
+  const laterPairs = 2 + WHITE_OPTION_OVERLAP_PAIRS.length;
   const without = ws.filter(([a]) => !mine.has(a));
   assert.equal(without.length, ROM_WINDOW_COUNT - 4, 'four windows removed');
-  assert.equal(overlappingPairs(without), OVERLAP_PAIRS_BEFORE_W428 + 2,
-    'drop W428\'s four and the W497/W518 forced pairs remain above 71');
-  assert.equal(ROM_OVERLAP_PAIRS - (OVERLAP_PAIRS_BEFORE_W428 + 2), 4,
+  assert.equal(overlappingPairs(without), OVERLAP_PAIRS_BEFORE_W428 + laterPairs,
+    'drop W428 and every exact later forced pair remains above 71');
+  assert.equal(ROM_OVERLAP_PAIRS - (OVERLAP_PAIRS_BEFORE_W428 + laterPairs), 4,
     'W428 still contributes one overlapping pair per cue-script window');
 
   const [glyphs, priorInit] = W518_OVERLAP_PAIR;

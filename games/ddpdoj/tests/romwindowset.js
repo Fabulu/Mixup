@@ -686,11 +686,21 @@
 //
 // The White Stage 1 bullet closure adds 461 unique exact windows and 108,775
 // bytes: 1151 -> 1612 windows, 512,851 -> 621,626 bytes, while overlaps stay 77.
+//
+// ---------------------------------------------------------------------------
+// TASK #238 WHITE OPTIONS ADDED TWENTY-FOUR UNIQUE WINDOWS AND TWO OVERLAPS.
+// ---------------------------------------------------------------------------
+// The option manifest carries 26 exact descriptors. `$143192 + $80` and
+// `$14322E + $100` reuse existing shot windows byte-for-byte, leaving 24 unique
+// additions and 18,166 added bytes. The exact `$14EAB4 + $C00` Type-A option-shot
+// closure intersects the existing `$14EA86 + $DC` normal-presentation table and
+// `$14EB62 + $136` hit-presentation table. Measured: 1612 -> 1636 windows,
+// 621,626 -> 639,792 bytes, and 77 -> 79 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1612;
+export const ROM_WINDOW_COUNT = 1636;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 621626;
+export const ROM_WINDOW_BYTES = 639792;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -708,8 +718,16 @@ export const W429_ABUTTING_PAIR = Object.freeze([0x28b08e, 0x28ac72]);
  *  `tests/w435resultchain.test.js` asserts the abutment is exact. */
 export const W435_ABUTTING_PAIR = Object.freeze([0x28d864, 0x28d862]);
 
+/** Task #238's two exact `[prior presentation table, Type-A option-shot
+ * closure]` overlaps. The closure begins inside the normal table and contains
+ * the hit table. */
+export const WHITE_OPTION_OVERLAP_PAIRS = Object.freeze([
+  Object.freeze([0x14ea86, 0x14eab4]),
+  Object.freeze([0x14eb62, 0x14eab4]),
+]);
+
 /** The number of overlapping PAIRS over the whole window set. MEASURED. */
-export const ROM_OVERLAP_PAIRS = 77;
+export const ROM_OVERLAP_PAIRS = 79;
 
 /** The four pairs W428 added, `[cue script, the prototype window it straddles]`. */
 export const W428_OVERLAP_PAIRS = Object.freeze([
@@ -729,8 +747,8 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 663;
-const WHITE_LABEL_WINDOW_BYTES = 164117;
+const WHITE_LABEL_WINDOW_COUNT = 687;
+const WHITE_LABEL_WINDOW_BYTES = 182283;
 
 /** Remove the later embedded Version A window family before reconstructing any
  *  earlier Black Label ledger. The edition manifest is the identity list, so a
@@ -744,6 +762,7 @@ export function tableBeforeWhiteLabel(tables) {
     ...(edition?.shotProducerWindows ?? []),
     ...(edition?.shotRuntimeWindows ?? []),
     ...(edition?.shotSpeedWindows ?? []),
+    ...(edition?.optionRuntimeWindows ?? []),
     ...(edition?.bulletRuntimeWindows ?? []),
     ...(edition?.bulletSpeedWindows ?? []),
   ];
@@ -1381,4 +1400,7 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "hyper option-shot and pod-template windows and added three disjoint rotation "
   + "and template windows, adding 908 bytes and no overlap pair. W630 added five "
   + "disjoint name-entry presentation windows totalling 346 bytes and no overlap pair. "
+  + "Task #238 added 24 unique White option windows and 18,166 bytes. Its exact "
+  + "$14EAB4+$C00 Type-A option-shot closure overlaps the prior $14EA86+$DC "
+  + "normal and $14EB62+$136 hit tables, adding the 78th and 79th pairs. "
   + "See tests/romwindowset.js.";

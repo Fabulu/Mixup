@@ -148,9 +148,9 @@ function validateDriverResources(resources) {
   return resources;
 }
 
-function driveShotPool(ram, rom, handlers, ctx, resources, scroll) {
-  const handlerCtx = resources.presentationSink == null
-    ? ctx : deriveProfileContext(ctx, { shotPresentationSink: resources.presentationSink });
+export const SHOT_RECORD_PREFLIGHT = Symbol('shot-record-preflight');
+
+function driveNativeShotPool(ram, rom, handlers, ctx, resources, scroll, handlerCtx) {
   let processed = 0;
   for (let i = 0; i < resources.slots; i++) {
     const rec = resources.pool + i * resources.stride;
@@ -178,6 +178,50 @@ function driveShotPool(ram, rom, handlers, ctx, resources, scroll) {
     processed++;
   }
   return processed;
+}
+
+function drivePreflightedShotPool(ram, rom, handlers, ctx, resources, scroll, handlerCtx) {
+  const work = [];
+  for (let i = 0; i < resources.slots; i++) {
+    const rec = resources.pool + i * resources.stride;
+    const t = ram.u16(rec);
+    if (t === 0) continue;
+    const h = resources.dispatchEntries[t & 0xf];
+    const fn = handlers?.get(h);
+    if (!fn) {
+      unreached(h, `player-shot handler $${h.toString(16).toUpperCase()} `
+        + `(dispatch entry [${t & 0xf}] of the 16 at $${resources.dispatchTable
+          .toString(16).toUpperCase()}), for the record `
+        + `at $${rec.toString(16).toUpperCase()} with type word `
+        + `$${t.toString(16).toUpperCase()}. The caller supplied no audited `
+        + `handler for this cartridge dispatch entry`);
+    }
+    fn[SHOT_RECORD_PREFLIGHT]?.(ram, rom, rec, handlerCtx, resources.player, t);
+    work.push(Object.freeze({ i, rec, t, fn }));
+  }
+  for (const { i, rec, t, fn } of work) {
+    if (resources.liveCounter != null) {
+      ram.setU16(resources.liveCounter, u16(ram.u16(resources.liveCounter) + 1));
+    }
+    ram.setU16(rec + 4, u16(i16(ram.u16(rec + 4)) - scroll));
+    const q0 = resources.requestTelemetry ? ram.u16(0x80afd6) : 0;
+    fn(ram, rom, rec, handlerCtx, resources.player, t & 0xff);
+    if (resources.requestTelemetry) {
+      ctx?.shotRequests?.(resources.ownerIndex, i, q0, ram.u16(0x80afd6));
+    }
+  }
+  return work.length;
+}
+
+function driveShotPool(ram, rom, handlers, ctx, resources, scroll) {
+  const handlerCtx = resources.presentationSink == null
+    ? ctx : deriveProfileContext(ctx, { shotPresentationSink: resources.presentationSink });
+  if (resources.dispatchTable === SHOT.dispatch) {
+    return driveNativeShotPool(ram, rom, handlers, ctx, resources, scroll, handlerCtx);
+  }
+  return drivePreflightedShotPool(
+    ram, rom, handlers, ctx, resources, scroll, handlerCtx,
+  );
 }
 
 /** Drive one explicitly bound ordinary-shot pool. */

@@ -30,6 +30,11 @@ const SHOT_SPEEDS = Object.freeze([
 ]);
 const SHOT_SPEED_SET = new Set(SHOT_SPEEDS);
 
+const WHITE_GENERIC_SPEED_SET = new Set([
+  ...Array.from({ length: 64 }, (_, index) => index + 4),
+  96, 128, 176,
+]);
+
 export const WHITE_SHOT = Object.freeze({
   type5: 0x18a0e4,
   recurring: 0x18a11c,
@@ -122,6 +127,25 @@ export const WHITE_SPARK_RESOURCES = Object.freeze({
   signedRng: Object.freeze({ table: 0x14336a, entries: 256 }),
   speedRng: Object.freeze({ table: 0x143192, entries: 128 }),
   angleRng: Object.freeze({ table: 0x189736, entries: 64 }),
+  kind0NegativeRng: Object.freeze({ table: 0x14322e, entries: 256 }),
+  kind0AngleRng: Object.freeze({ table: 0x1896dc, entries: 64 }),
+  beamImpactTpl: 0x189042,
+  beamImpactList: 0x189058,
+  speedByPower: 0x188e12,
+  speedByPowerEntries: 5,
+  p1Power: 0x810408,
+  p2Power: 0x81046a,
+  beamBodySite: 0x188ad2,
+  beamImpactHeads: Object.freeze([
+    Object.freeze({
+      at: 0x188afc, caller: 0x154622,
+      base: 0x81d394, d7: 0, power: 0x810408,
+    }),
+    Object.freeze({
+      at: 0x188b16, caller: 0x1546ac,
+      base: 0x81d790, d7: 1, power: 0x81046a,
+    }),
+  ]),
   allocatorSite: 0x188a90,
   allocatorFailureSite: 0x188a8a,
   poolFullSite: 0x188bb4,
@@ -140,8 +164,12 @@ export const WHITE_SHOT_LIFECYCLE_RESOURCES = Object.freeze({
   families: Object.freeze({
     0: Object.freeze({ normal: 0x14d48a, hit: 0x14d566 }),
     1: Object.freeze({ normal: 0x14dbc6, hit: 0x14dca2 }),
+    2: Object.freeze({ normal: 0x14f342, hit: 0x14f800 }),
+    3: Object.freeze({ normal: 0x14ffe0, hit: 0x15049e }),
     4: Object.freeze({ normal: 0x14e326, hit: 0x14e402 }),
     5: Object.freeze({ normal: 0x14ea86, hit: 0x14eb62 }),
+    6: Object.freeze({ normal: 0x150bda, hit: 0x151094 }),
+    7: Object.freeze({ normal: 0x1517d0, hit: 0x151c8a }),
   }),
 });
 
@@ -190,6 +218,32 @@ function requireWhiteShots(profileRequest, operation) {
 export function createWhiteShotTables(rom) {
   assertRom(rom);
   return Object.freeze({
+    vector(speedIndex, angleByte) {
+      if (!WHITE_GENERIC_SPEED_SET.has(speedIndex)) {
+        unreached(0x141b60,
+          `Version A generic speed ${speedIndex} is outside the exact spark closure`);
+      }
+      const pointerAddress = WHITE_SHOT.speedPointers + speedIndex * 4;
+      const pointer = rom.u32(pointerAddress);
+      const expected = WHITE_SHOT.speedBase + speedIndex * WHITE_SHOT.speedStride;
+      if (pointer !== expected) {
+        unreached(0x141b5a,
+          `Version A generic speed ${speedIndex} points to $${pointer.toString(16).toUpperCase()}`);
+      }
+      const angle = angleByte & 0x3f;
+      const folded = rom.u16(0x141bee + angle * 8);
+      if ((folded & 7) !== 0 || folded > (WHITE_SHOT.speedEntries - 1) * 8) {
+        unreached(0x141b6a,
+          `Version A generic fold offset $${folded.toString(16).toUpperCase()} escaped its quadrant`);
+      }
+      let dy = asr(rom.u32(pointer + folded), 4);
+      let dx = asr(rom.u32(pointer + folded + 4), 4);
+      const quadrant = angle & 0x30;
+      if (quadrant === 0x10) dy = -dy;
+      else if (quadrant === 0x20) { dy = -dy; dx = -dx; }
+      else if (quadrant === 0x30) dx = -dx;
+      return { dy: i16(dy), dx: i16(dx) };
+    },
     shotVector(speedIndex, angleByte) {
       if (!SHOT_SPEED_SET.has(speedIndex)) {
         unreached(0x141d48,

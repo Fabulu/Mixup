@@ -1272,22 +1272,59 @@ function nativeOutgoingShotPass(ram, ctx, ownerIndex) {
   return result;
 }
 
-/** `$18A1AC`: native P1/P2 selection followed by outgoing shot damage only. */
-export function runNativeOutgoingShotCollision(ram, ctx) {
+function selectedNativeOutgoingOwner(ram) {
   const gate = ram.u16(DMG.gate308c);
   const mirror = ram.u16(DMG.mirror2);
   if (gate !== 0) {
-    if (ram.u16(DMG.p1rec) !== 0) {
-      return mirror === 0
-        ? nativeOutgoingShotPass(ram, ctx, 0)
-        : { ran: false, ownerIndex: null, mask: 0, anyShot: false, hitsA: 0, hitsB: 0 };
-    }
-    if (ram.u16(DMG.p2rec) !== 0 && mirror !== 0) {
-      return nativeOutgoingShotPass(ram, ctx, 1);
-    }
+    if (ram.u16(DMG.p1rec) !== 0) return mirror === 0 ? 0 : null;
+    if (ram.u16(DMG.p2rec) !== 0 && mirror !== 0) return 1;
+    return null;
+  }
+  return mirror === 0 ? 0 : 1;
+}
+
+/** `$18A1AC`: native P1/P2 selection followed by outgoing shot damage only. */
+export function runNativeOutgoingShotCollision(ram, ctx) {
+  const ownerIndex = selectedNativeOutgoingOwner(ram);
+  if (ownerIndex === null) {
     return { ran: false, ownerIndex: null, mask: 0, anyShot: false, hitsA: 0, hitsB: 0 };
   }
-  return nativeOutgoingShotPass(ram, ctx, mirror === 0 ? 0 : 1);
+  return nativeOutgoingShotPass(ram, ctx, ownerIndex);
+}
+
+/**
+ * Native outgoing shots, slot 27, slot 30, and ordinary beam damage through the
+ * return immediately before the bomb-laser transfer. Player collision, items,
+ * impacts, ramming, and bomb damage remain outside this composition seam.
+ */
+export function runNativeOutgoingCombatBeforeBombDamage(ram, ctx) {
+  const ownerIndex = selectedNativeOutgoingOwner(ram);
+  if (ownerIndex === null) {
+    return {
+      ran: false, ownerIndex: null, mask: 0, anyShot: false,
+      hitsA: 0, hitsB: 0, weapon: null,
+    };
+  }
+  const result = nativeOutgoingShotPass(ram, ctx, ownerIndex);
+  const p1 = ownerIndex === 0;
+  const player = p1 ? DMG.p1rec : DMG.p2rec;
+  const playerWord = ram.u16(player);
+  if ((playerWord & 0x8000) === 0 || (playerWord & 0x0080) !== 0
+      || ram.u8(player + DMG.laserByte) === 0) {
+    return { ...result, weapon: null };
+  }
+  const slot27 = p1 ? DMG.laserSlot27 : DMG.laserSlot27P2;
+  const slot30 = p1 ? DMG.laserSlot30 : DMG.laserSlot30P2;
+  const beam = p1 ? DMG.beamRecP1 : DMG.beamRecP2;
+  const d6 = 0x2800;
+  return {
+    ...result,
+    weapon: {
+      hits27: weaponObjectPass(ram, slot27, d6, { block: 7 }, ctx),
+      hits30: weaponObjectPass(ram, slot30, d6, { block: 8 }, ctx),
+      beam: laserDamagePass(ram, beam, d6, ctx),
+    },
+  };
 }
 
 /**

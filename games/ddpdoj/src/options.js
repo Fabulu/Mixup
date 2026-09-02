@@ -49,9 +49,18 @@ import {
 } from './spritequeue.js';
 import { groundPlane, SHIP_MUTATE } from './shipsprite.js';
 import {
-  BEAM, assertPrivateBeamCapabilities, runLaserGate,
-  buildBeam, wipeSegmentPool, wipePrivateSegmentPool, rampDown,
+  BEAM, NATIVE_LASER_EDITION_RESOURCES, assertPrivateBeamCapabilities,
+  runLaserGate, buildBeam, validateLaserEditionResources,
+  wipeSegmentPoolWithResources, wipePrivateSegmentPool, rampDown,
 } from './laser.js';
+
+function isDeeplyFrozen(value, seen = new Set()) {
+  if (value == null || typeof value !== 'object') return true;
+  if (seen.has(value)) return true;
+  if (!Object.isFrozen(value)) return false;
+  seen.add(value);
+  return Object.values(value).every((child) => isDeeplyFrozen(child, seen));
+}
 
 /** Explicit cartridge and pool capabilities for native pod-shot production. */
 export const NATIVE_OPTION_SHOT_RESOURCES = Object.freeze([
@@ -71,19 +80,33 @@ export const NATIVE_OPTION_SHOT_RESOURCES = Object.freeze([
   }),
 ]);
 
+export const NATIVE_OPTION_EDITION_RESOURCES = Object.freeze({
+  templates: 0x24bbaa,
+  rotate: 0x24bec6,
+  deployTargets: 0x24c928,
+  knockSettle: 0x24d282,
+  knockRamp: 0x24d28e,
+  laser: NATIVE_LASER_EDITION_RESOURCES,
+  beams: BEAM,
+});
+
 /** The two players' blocks, in the ROM's own order: P1 first, P2 second. */
 export const OPTION_BLOCKS = Object.freeze([
   Object.freeze({
     ownerIndex: 0, d7: 1, opt: RAM.p1Options, player: RAM.player1,
     laser: 0x811f32, beam: BEAM[0], rampGuard: 0x811f72,
     allowLaser: true, allowShots: true, virtualRequests: null,
+    excludedInputMask: 0,
     shotResources: NATIVE_OPTION_SHOT_RESOURCES[0],
+    edition: NATIVE_OPTION_EDITION_RESOURCES,
   }),                                                        // $24C096
   Object.freeze({
     ownerIndex: 1, d7: 0, opt: RAM.p2Options, player: RAM.player2,
     laser: 0x811f52, beam: BEAM[1], rampGuard: 0x811f72,
     allowLaser: true, allowShots: true, virtualRequests: null,
+    excludedInputMask: 0,
     shotResources: NATIVE_OPTION_SHOT_RESOURCES[1],
+    edition: NATIVE_OPTION_EDITION_RESOURCES,
   }),                                                        // $24C0B0
 ]);
 
@@ -162,14 +185,89 @@ export const POD_SHADOW_COLOUR = 0x18;
  * @param ram
  * @param ctx  the Game context (`ctx.rom`, `ctx.prot`, `ctx.unportedLog`)
  */
-export function runOptionObject(ram, ctx) {
-  for (const b of OPTION_BLOCKS) {
+const OPTION_EDITION_IDENTITIES = Object.freeze([
+  Object.freeze({
+    roots: Object.freeze([0x24bbaa, 0x24bec6, 0x24c928, 0x24d282, 0x24d28e]),
+    shotRoots: Object.freeze([0x24d2fc, 0x24d35c, 0x24d3bc, 0x24d41c, 0x24d47c]),
+    laserRoot: 0x24cfba,
+    excludedInputMask: 0,
+  }),
+  Object.freeze({
+    roots: Object.freeze([0x14b25e, 0x14b57a, 0x14bfdc, 0x14c936, 0x14c942]),
+    shotRoots: Object.freeze([0x14c9b0, 0x14ca10, 0x14ca70, 0x14cad0, 0x14cb30]),
+    laserRoot: 0x14c66e,
+    excludedInputMask: 0,
+  }),
+]);
+
+export function validateOptionEditionResources(resources, blocks) {
+  const addresses = ['templates', 'rotate', 'deployTargets', 'knockSettle', 'knockRamp'];
+  if (!resources || !Object.isFrozen(resources)
+      || (resources.cartridgeIdentity !== undefined
+        && !isDeeplyFrozen(resources.cartridgeIdentity))
+      || !Object.isFrozen(blocks) || blocks.length !== 2) {
+    throw new TypeError('option edition resources must be a deeply frozen two-owner graph');
+  }
+  const identity = OPTION_EDITION_IDENTITIES.find(
+    (candidate) => resources.templates === candidate.roots[0],
+  );
+  if (!identity || addresses.some((key, index) => resources[key] !== identity.roots[index])) {
+    throw new TypeError('option edition roots do not match an exact cartridge edition');
+  }
+  const beams = resources.beams;
+  if (resources.laser?.ptrFamily1 !== identity.laserRoot) {
+    throw new TypeError('option edition carries a mixed laser identity');
+  }
+  if (!Object.isFrozen(beams) || beams.length !== 2) {
+    throw new TypeError('option edition must carry its exact frozen beam owners');
+  }
+  validateLaserEditionResources(resources.laser, beams);
+  for (const ownerIndex of [0, 1]) {
+    const block = blocks[ownerIndex];
+    const expectedPlayer = ownerIndex === 0 ? RAM.player1 : RAM.player2;
+    const expectedOpt = ownerIndex === 0 ? RAM.p1Options : RAM.p2Options;
+    const expectedLaser = ownerIndex === 0 ? 0x811f32 : 0x811f52;
+    if (!Object.isFrozen(block) || block.ownerIndex !== ownerIndex
+        || block.edition !== resources || block.beam !== beams[ownerIndex]
+        || block.player !== expectedPlayer || block.opt !== expectedOpt
+        || block.laser !== expectedLaser || block.rampGuard !== 0x811f72
+        || block.d7 !== (ownerIndex === 0 ? 1 : 0)
+        || block.allowLaser !== true || block.allowShots !== true
+        || block.virtualRequests !== null
+        || block.excludedInputMask !== identity.excludedInputMask) {
+      throw new TypeError(`option owner ${ownerIndex} has mixed or mutable resources`);
+    }
+    const shot = optionShotResources(block);
+    if (shot.pool !== (ownerIndex === 0 ? 0x810572 : 0x810c32)
+        || shot.countPointer !== (ownerIndex === 0 ? 0x8127e8 : 0x8127f0)
+        || shot.gate308c !== 0x81308c
+        || shot.formation2PrimaryTable !== identity.shotRoots[0]
+        || shot.formation2SecondaryTable !== identity.shotRoots[1]
+        || shot.formation4Table !== identity.shotRoots[2]
+        || shot.formation6Table !== identity.shotRoots[3]
+        || shot.hyperCounts !== identity.shotRoots[4]
+        || shot.presentationSink !== null) {
+      throw new TypeError(`pod-shot owner ${ownerIndex} does not match its edition`);
+    }
+  }
+  return resources;
+}
+
+export function runOptionObjectWithResources(ram, ctx, blocks, suppliedResources) {
+  validateOptionEditionResources(suppliedResources, blocks);
+  for (const block of blocks) assertOptionOwnerInputAllowed(ram, block);
+  for (const b of blocks) {
     // $24C0AA / $24C0C2 `tst.w (A6) / bmi $24C0C8` -- bit 15 of the block's
-    // first word.  Both players are tested with the SAME two instructions and
-    // P1's failure falls straight into P2's setup.
+    // first word. Both players are tested with the same two instructions.
     if ((ram.u16(b.opt + OPT.state) & 0x8000) === 0) continue;
     runOneBlock(ram, ctx, b);
   }
+}
+
+export function runOptionObject(ram, ctx) {
+  return runOptionObjectWithResources(
+    ram, ctx, OPTION_BLOCKS, NATIVE_OPTION_EDITION_RESOURCES,
+  );
 }
 
 /** Refuse malformed private capabilities before option-side state can change. */
@@ -186,17 +284,27 @@ export function assertOptionOwnerInputAllowed(ram, b) {
         || b.opt !== base + 0x0200 || b.rampGuard !== base + 0x1600) {
       throw new RangeError('private option owner must supply exact sidecar-relative player, option, and bomb guard');
     }
-    const excludedInput = ram.u8(b.player + P.dirByte)
-      | ram.u8(b.player + P.btnByte);
-    if ((excludedInput & 0xa0) !== 0) {
-      throw new RangeError('private option owner received excluded B2 or Start input');
+  }
+  let excludedInputMask = b.excludedInputMask;
+  if (!Number.isSafeInteger(excludedInputMask)) {
+    if (b.ownerIndex === 2 && b.excludedInputMask === undefined) {
+      excludedInputMask = 0xa0;
+    } else {
+      throw new TypeError('option owner must supply an explicit excluded-input mask');
     }
+  }
+  const excludedInput = ram.u8(b.player + P.dirByte)
+    | ram.u8(b.player + P.btnByte);
+  if ((excludedInput & excludedInputMask) !== 0) {
+    const label = b.ownerIndex === 2 ? ' received excluded B2 or Start input' : ' received excluded input';
+    throw new RangeError(`option owner ${b.ownerIndex}${label}`);
   }
 }
 
 function optionShotResources(b) {
   const resources = b?.shotResources;
-  if (!resources || resources.ownerIndex !== b.ownerIndex
+  if (!resources || !Object.isFrozen(resources)
+      || resources.ownerIndex !== b.ownerIndex
       || !Number.isSafeInteger(resources.pool)
       || !Number.isSafeInteger(resources.countPointer)
       || !Number.isSafeInteger(resources.gate308c)
@@ -344,7 +452,9 @@ function noLaser(ram, ctx, b) {
   }
   const beam = beamOf(b);
   if (b.ownerIndex === 2) wipePrivateSegmentPool(ram, beam);
-  else wipeSegmentPool(ram, ctx, beam);                     // $24C2DE / $24C2E4
+  else wipeSegmentPoolWithResources(
+    ram, ctx, beam, b.edition.laser, b.edition.beams,
+  );                                                        // $24C2DE / $24C2E4
   ram.setU8(opt + 0x4a, 8);                                // $24C2E8 move.b #8
   ram.setU8(opt + OPT.reloadCount, 4);                     // $24C2EE move.b #4
   // `andi.w #$DFDB,(A6)` clears bit 5 of BOTH bytes and bit 2 of the low one:
@@ -507,7 +617,7 @@ function podsDeploy24C934(ram, ctx, b) {
   ram.setU8(opt + OPT.speedIdx, (ram.u8(opt + OPT.speedIdx) + 8) & 0xff);  // $24C934
   const sel = ram.u16(player + P.shipSel) !== 0 ? 6 : 0;   // $24C938/$24C93E
   const idx = u16(u16(ram.u16(player + P.optFormation) - 2) + sel);  // $24C940..
-  const target = ctx.rom.u16(0x24c928 + i16(idx));         // $24C94E (A0,D0.w)
+  const target = ctx.rom.u16(b.edition.deployTargets + i16(idx)); // $24C94E (A0,D0.w)
   if ((target & 0xff) === ram.u8(opt + OPT.speedIdx)) {     // $24C952 cmp.b
     ram.setU8(opt + OPT.flags1, 3);                        // $24C958 move.b #$3
   }
@@ -720,8 +830,8 @@ function rotatePod24C7F8(ram, ctx, b, pod, d1, a2, a3) {
   const d6 = ctx.rom.u32(a3 + idx);                        // $24C82A move.l (A3,D5.w),D6
   // $24C832 movem.w (A3,D5.w),D0/D5 -- TWO words, register order D0 then D5, and
   // `movem.w` to registers SIGN-EXTENDS both.
-  const d0 = ctx.rom.i16(OPT_ROTATE + idx);
-  let d5v = ctx.rom.i16(OPT_ROTATE + idx + 2);
+  const d0 = ctx.rom.i16(b.edition.rotate + idx);
+  let d5v = ctx.rom.i16(b.edition.rotate + idx + 2);
   if (ram.btst8(player + P.flags1, 0)) {                   // $24C838 btst #$0,($1,A4)
     // $24C840..$24C844 -- the SAME 5/4 stretch $24D152 applies, and the same
     // `asr.w` that rounds toward -infinity.
@@ -1385,7 +1495,7 @@ export function podKnockback24D188(ram, ctx, b, pod) {
     // first frame's push is `$24D28E[19]` = 256 and the second is [18] = 512 --
     // it gets BIGGER before it tails off, which a reader who assumed a decay
     // would smooth away.
-    const push = rom.u16(POD_KNOCK.ramp + i16(d0));        // $24D194 (A0,D0.w)
+    const push = rom.u16(b.edition.knockRamp + i16(d0));     // $24D194 (A0,D0.w)
     ram.setU16(pod + OPT.posY, u16(ram.u16(pod + OPT.posY) - push));  // $24D198
     ram.setU16(pod + 0x38, u16(d0 - 2));                   // $24D19C subq.w #$2
   } else {
@@ -1394,8 +1504,8 @@ export function podKnockback24D188(ram, ctx, b, pod) {
     d0 = ram.u16(pod + 0x56);                              // $24D200 move.w
     const n = u16(d0 - 4);                                 // $24D204 subq.w #$4
     ram.setU16(pod + 0x56, (n & 0x8000) ? 8 : n);          // $24D208 bpl/$24D20A
-    const spd = rom.u16(POD_KNOCK.settle + i16(d0));       // $24D216 movem.w
-    const ang = rom.u16(POD_KNOCK.settle + i16(d0) + 2);
+    const spd = rom.u16(b.edition.knockSettle + i16(d0));    // $24D216 movem.w
+    const ang = rom.u16(b.edition.knockSettle + i16(d0) + 2);
     // $2417D4 tst.w $8130D2 / beq $2417F2 -- and its OTHER arm is
     // `moveq #$0,D2 / moveq #$0,D3 / rts`, i.e. NO MOVE AT ALL.  Transcribed
     // as the two arms it is; `$8130D2` is 0 on this tree.
@@ -1449,7 +1559,7 @@ export function podKnockback24D188(ram, ctx, b, pod) {
 function copyTemplate(ram, ctx, b) {
   const { opt, player, laser } = b;
   const form = ram.u16(player + P.optFormation);           // $24C0D6
-  const tmpl = ctx.rom.u32(OPT_TEMPLATES + u16(form - 2) * 2);   // $24C0E0
+  const tmpl = ctx.rom.u32(b.edition.templates + u16(form - 2) * 2); // $24C0E0
   let src = tmpl, dst = opt + 0x06;                        // $24C0E4 lea ($6,A6)
   for (let k = 0; k < 7; k++) {                            // $24C0E8 x7
     ram.setU32(dst, ctx.rom.u32(src)); src += 4; dst += 4;

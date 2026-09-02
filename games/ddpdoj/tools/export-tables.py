@@ -10626,6 +10626,18 @@ def verify(t: dict) -> list[str]:
     # WAVE 8: the ROM windows must cover every template the spawn walk found,
     # or the port would throw on its first shot on someone else's machine.
     wins = [(int(w["base"].lstrip("$"), 16), w["len"]) for w in t["rom"]["windows"]]
+
+    def covered(a: int, n: int) -> bool:
+        cursor = a
+        for base, length in sorted(wins):
+            if base > cursor:
+                break
+            if base + length > cursor:
+                cursor = base + length
+                if cursor >= a + n:
+                    return True
+        return False
+
     white = t.get("editions", {}).get("whiteLabel", {})
     if white.get("profileId") != "ddpdoj/white-label/a" or white.get("build") != "A":
         bad.append("embedded Version A table manifest identity is missing")
@@ -10652,6 +10664,56 @@ def verify(t: dict) -> list[str]:
             bad.append(f"embedded Version A {field} drifted from the exported ROM window list")
     if white.get("shotSpeedLevels") != list(WHITE_SHOT_SPEEDS):
         bad.append("embedded Version A shot speed closure drifted from its manifest")
+    declared_options = {(int(w["base"].lstrip("$"), 16), w["len"])
+                        for w in white.get("optionRuntimeWindows", [])}
+    expected_options = {(address, length)
+                        for address, length, _ in WHITE_OPTION_RUNTIME_WINDOWS}
+    if declared_options != expected_options \
+            or any(not covered(address, length) for address, length in expected_options):
+        bad.append("embedded Version A optionRuntimeWindows drifted from exported coverage")
+    expected_option_manifest = {
+        "templateTable": "$14B25E",
+        "ordinaryCombat": {
+            "entry": "$18A0E4", "recurring": "$18A11C",
+            "collisionEntry": "$18A1AC",
+            "calls": [{"site": f"${site:06X}", "target": f"${target:06X}"}
+                      for site, target in WHITE_OPTION_COMBAT_CALLS],
+        },
+        "templatePointers": [f"${address:06X}"
+                             for address in WHITE_OPTION_TEMPLATE_POINTERS],
+        "shotRoots": {
+            f"${base:06X}": [f"${target:06X}" for target in targets]
+            for base, targets in WHITE_OPTION_SHOT_ROOTS.items()
+        },
+        "rotatingShotRoots": {
+            f"${template:06X}": f"${root:06X}"
+            for template, root in WHITE_OPTION_ROTATING_SHOT_ROOTS.items()
+        },
+        "rotationTargetOffsets": {
+            f"${root:06X}": list(offsets)
+            for root, offsets in WHITE_OPTION_ROTATION_TARGET_OFFSETS.items()
+        },
+        "laserDispatch": [[f"${address:06X}" for address in row]
+                          for row in WHITE_LASER_DISPATCH],
+        "laserPointerFamilies": {
+            f"${base:06X}": [f"${target:06X}" for target in targets]
+            for base, targets in WHITE_LASER_POINTER_FAMILIES.items()
+        },
+        "laserRequestTargets": [f"${address:06X}"
+                                for address in WHITE_LASER_REQUEST_TARGETS],
+        "laserWipeAliases": [[f"${address:06X}" for address in row]
+                             for row in WHITE_LASER_WIPE_ALIASES],
+        "laserRuntimeRequests": [
+            {"white": f"${source:06X}", "black": f"${target:06X}"}
+            for source, target in WHITE_LASER_RUNTIME_REQUESTS
+        ],
+        "resetEntries": {
+            "hyper": ["$151DC0", "$151E08"],
+            "laserBomb": ["$151DC8", "$151E10"],
+        },
+    }
+    if white.get("options") != expected_option_manifest:
+        bad.append("embedded Version A option and laser identity manifest drifted")
     for field, expected_rows in (
             ("bulletRuntimeWindows", WHITE_BULLET_RUNTIME_WINDOWS),
             ("bulletSpeedWindows", WHITE_BULLET_SPEED_WINDOWS)):
@@ -10696,14 +10758,15 @@ def verify(t: dict) -> list[str]:
     if any(address < 0 or address + length > 0x200000
            for address, length, _ in all_white_shot_windows):
         bad.append("embedded Version A shot authority escaped the Build A cartridge region")
+    all_white_option_windows = tuple(WHITE_OPTION_RUNTIME_WINDOWS)
+    if any(address < 0 or address + length > 0x200000
+           for address, length, _ in all_white_option_windows):
+        bad.append("embedded Version A option authority escaped the Build A cartridge region")
     all_white_bullet_windows = (*WHITE_BULLET_RUNTIME_WINDOWS,
                                 *WHITE_BULLET_SPEED_WINDOWS)
     if any(address < 0 or address + length > 0x200000
            for address, length, _ in all_white_bullet_windows):
         bad.append("embedded Version A enemy-bullet authority escaped the Build A cartridge region")
-
-    def covered(a: int, n: int) -> bool:
-        return any(b <= a and a + n <= b + ln for b, ln in wins)
 
     for k, v in t["shot"]["templates"].items():
         a = int(k.lstrip("$"), 16)
@@ -11391,6 +11454,119 @@ WHITE_SHOT_RUNTIME_WINDOWS = [
     (0x14EB62, 0x0136, "White A family 5 hit shot presentation table"),
 ]
 
+# Build A option pods and ordinary laser reuse the audited Build B algorithms,
+# but every cartridge read remains edition-local and below $200000. The two
+# broad option windows are the exact instruction-proven authorities requested
+# by the runtime. Hyper boundaries remain pinned separately.
+WHITE_OPTION_RUNTIME_WINDOWS = [
+    (0x143192, 0x0080, "White A beam-impact speed RNG byte table"),
+    (0x14322E, 0x0100, "White A beam-impact unmasked animation RNG table"),
+    (0x149ED8, 0x10DC, "White A ordinary-beam hitboxes through the first closed data boundary"),
+    (0x14AFB4, 0x02AA, "White A ordinary-beam scripts, templates, animation rows, and request table"),
+    (0x14B25E, 0x04D2, "White A complete option root, animation, shadow, orbit, script, and template authority"),
+    (0x14BFDC, 0x000C, "White A six-word option deployment target table"),
+    (0x14C66E, 0x0174, "White A ordinary-beam pointer families and pointed rows"),
+    (0x14C936, 0x003C, "White A option knockback settle and ramp tables"),
+    (0x14C9B0, 0x0180, "White A complete ordinary option-shot roots and power rows"),
+    (0x14CB30, 0x0004, "White A option hyper count words, retained only as a pinned boundary"),
+    (0x14EAB4, 0x0C00, "White A option-shot Type-A normal and hit closure"),
+    (0x14F6B4, 0x0F40, "White A ordinary Type-A and Type-B option-shot closure"),
+    (0x1505F4, 0x01C0, "White A option-shot hyper spawn and animation tables"),
+    (0x1507B4, 0x0300, "White A option-shot hyper template closure"),
+    (0x150BDA, 0x00BE, "White A option hyper-shot 0 normal presentation closure"),
+    (0x150FC8, 0x00CC, "White A formation-4 hyper-shot 0 rotation closure"),
+    (0x151094, 0x0136, "White A option hyper-shot 0 hit presentation closure"),
+    (0x1511EA, 0x03E2, "White A Type-B option hyper spawn and animation closure"),
+    (0x151654, 0x004C, "White A Type-B formation-6 hyper template boundary"),
+    (0x1517D0, 0x00BE, "White A option hyper-shot 1 normal presentation closure"),
+    (0x151BBE, 0x00CC, "White A formation-4 hyper-shot 1 rotation closure"),
+    (0x151C8A, 0x0136, "White A option hyper-shot 1 hit presentation closure"),
+    (0x153CCC, 0x00C0, "White A exact P1 then P2 segment dispatch authority"),
+    (0x188E12, 0x000A, "White A ordinary-beam impact speed-by-power words"),
+    (0x189042, 0x00A6, "White A ordinary-beam impact template and descriptor list"),
+    (0x1896DC, 0x0040, "White A ordinary-beam kind-0 angle RNG table"),
+]
+
+WHITE_OPTION_COMBAT_CALLS = (
+    (0x18A134, 0x17E9DE), (0x18A146, 0x155394),
+    (0x18A14C, 0x15302C), (0x18A152, 0x14B74A),
+    (0x18A158, 0x153C3C), (0x18A15E, 0x1545FE),
+    (0x18A164, 0x188BD4), (0x18A194, 0x180D3A),
+    (0x18A19A, 0x152B5A), (0x18A1A0, 0x151FDE),
+    (0x18A1A6, 0x152106),
+)
+WHITE_OPTION_TEMPLATE_POINTERS = (0x14B622, 0x14B67C, 0x14B6D6)
+WHITE_OPTION_SHOT_ROOTS = {
+    0x14C9B0: (0x14C9C0, 0x14C9E8, 0x14C9D4, 0x14C9FC),
+    0x14CA10: (0x14CA20, 0x14CA48, 0x14CA34, 0x14CA5C),
+    0x14CA70: (0x14CA80, 0x14CAA8, 0x14CA94, 0x14CABC),
+    0x14CAD0: (0x14CAE0, 0x14CB08, 0x14CAF4, 0x14CB1C),
+}
+WHITE_OPTION_ROTATING_SHOT_ROOTS = {
+    0x14F11C: 0x14F400, 0x14F13E: 0x14F4D0,
+    0x14F160: 0x14F59C, 0x14F182: 0x14F668,
+    0x14F1A4: 0x14F734, 0x14FDBA: 0x15009E,
+    0x14FDDC: 0x15016E, 0x14FDFE: 0x15023A,
+    0x14FE20: 0x150306, 0x14FE42: 0x1503D2,
+}
+_WHITE_OPTION_ROTATION_SPECIAL = (
+    0x44, 0x4E, 0x56, 0x5E, 0x66, 0x6E, 0x76, 0x7E, 0x86,
+    0x8E, 0x96, 0x9E, 0xA6, 0xAE, 0xB8, 0xC0, 0xC8,
+)
+_WHITE_OPTION_ROTATION_STANDARD = tuple(range(0x44, 0xC5, 8))
+WHITE_OPTION_ROTATION_TARGET_OFFSETS = {
+    root: (_WHITE_OPTION_ROTATION_SPECIAL
+           if root in (0x14F400, 0x15009E)
+           else _WHITE_OPTION_ROTATION_STANDARD)
+    for root in WHITE_OPTION_ROTATING_SHOT_ROOTS.values()
+}
+WHITE_LASER_DISPATCH = (
+    (0x153D6E, 0x153DA2, 0x153E80, 0x15401C, 0x15407A,
+     0x153D6E, 0x153DA2, 0x153E96, 0x15401C, 0x15407A,
+     0x154124, 0x153DA2, 0x153F42, 0x15401C, 0x15407A,
+     0x15415A, 0x153DA2, 0x153F64, 0x15401C, 0x15407A),
+    (0x153D7C, 0x153DBC, 0x153EAC, 0x154024, 0x154088,
+     0x153D7C, 0x153DBC, 0x153EC0, 0x154024, 0x154088,
+     0x154132, 0x153DBC, 0x153F78, 0x154024, 0x154088,
+     0x154168, 0x153DBC, 0x153F9A, 0x154024, 0x154088),
+)
+WHITE_LASER_POINTER_FAMILIES = {
+    0x14C66E: (0x149FE6, 0x14A00C, 0x14A032, 0x14A058, 0x14A07E,
+               0x14A0A4, 0x14A0CA, 0x14A0F0, 0x14A116, 0x14A13C),
+    0x14C696: (0x14A162, 0x14A188, 0x14A1AE, 0x14A1D4, 0x14A1FA,
+               0x14A220, 0x14A246, 0x14A26C, 0x14A292, 0x14A2B8),
+    0x14C6BE: (0x14A2DE, 0x14A304, 0x14A32A, 0x14A350, 0x14A376),
+    0x14C6E6: (0x14A646, 0x14A654),
+    0x14C6EE: (0x14A662, 0x14A670, 0x14A67E, 0x14A68C, 0x14A69A),
+    0x14C702: (0x14A6A8, 0x14A6B6, 0x14A6C4, 0x14A6D2, 0x14A6E0),
+    0x14C716: (0x14A6EE, 0x14A6EE, 0x14A6EE, 0x14A6EE, 0x14A6EE),
+    0x14C72A: (0x14C732, 0x14C746),
+    0x14C732: (0x14A754, 0x14A774, 0x14A794, 0x14A7B4, 0x14A7D4),
+    0x14C746: (0x14A7F4, 0x14A814, 0x14A834, 0x14A854, 0x14A874),
+    0x14C75A: (0x14C762, 0x14C776),
+    0x14C762: (0x14A894, 0x14A8B4, 0x14A8D4, 0x14A8F4, 0x14A914),
+    0x14C776: (0x14A934, 0x14A954, 0x14A974, 0x14A994, 0x14A9B4),
+    0x14C78A: (0x14A9D4, 0x14A9F4, 0x14AA14, 0x14AA34, 0x14AA54),
+}
+WHITE_LASER_REQUEST_TARGETS = (
+    0x14AE9E, 0x14AEC6, 0x14AEEE, 0x14AF16, 0x14AF3E,
+    0x14AF66, 0x14AF8E, 0x14AFB6, 0x14AFDE, 0x14B006,
+    0x14B02E, 0x14B056, 0x14B07E, 0x14B0A6, 0x14B0CE,
+    0x14B196, 0x14B196, 0x14B196, 0x14B196, 0x14B196,
+)
+WHITE_LASER_WIPE_ALIASES = (
+    (0x18AF62, 0x18AFC2, 0x18B022),
+    (0x18AF78, 0x18AFD8, 0x18B038),
+)
+WHITE_LASER_RUNTIME_REQUESTS = (
+    (0x18AF2E, 0x28C408), (0x18AF48, 0x28C422),
+    (0x18AF8E, 0x28C468), (0x18AFA8, 0x28C482),
+    (0x18AFEE, 0x28C4C8), (0x18B008, 0x28C4E2),
+    (0x18AF62, 0x28C43C), (0x18AFC2, 0x28C49C),
+    (0x18B022, 0x28C4FC), (0x18AF78, 0x28C452),
+    (0x18AFD8, 0x28C4B2), (0x18B038, 0x28C512),
+)
+
 # Build A enemy bullets reuse the Black algorithms but retain cartridge-authentic
 # dispatch and continuation identities. Only bytes read as data are authorized.
 _WHITE_BULLET_KINDS = (3, 4, 5, 7, 12, 13, 19)
@@ -11464,9 +11640,15 @@ WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS = [
 ]
 SHOT_WINDOWS.extend(WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS)
 _white_shot_window_keys = {(address, length) for address, length, _ in SHOT_WINDOWS}
+WHITE_OPTION_EXCLUSIVE_RUNTIME_WINDOWS = [
+    row for row in WHITE_OPTION_RUNTIME_WINDOWS
+    if (row[0], row[1]) not in _white_shot_window_keys
+]
+SHOT_WINDOWS.extend(WHITE_OPTION_EXCLUSIVE_RUNTIME_WINDOWS)
+_white_option_window_keys = {(address, length) for address, length, _ in SHOT_WINDOWS}
 WHITE_BULLET_EXCLUSIVE_RUNTIME_WINDOWS = [
     row for row in WHITE_BULLET_RUNTIME_WINDOWS
-    if (row[0], row[1]) not in _white_shot_window_keys
+    if (row[0], row[1]) not in _white_option_window_keys
 ]
 SHOT_WINDOWS.extend(WHITE_BULLET_EXCLUSIVE_RUNTIME_WINDOWS)
 _white_bullet_runtime_window_keys = {
@@ -11545,6 +11727,49 @@ def white_label_tables(d: bytes) -> dict:
         "shotSpeedWindows": [{"base": f"${address:06X}", "len": length}
                              for address, length, _ in WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS],
         "shotSpeedLevels": list(WHITE_SHOT_SPEEDS),
+        "optionRuntimeWindows": [{"base": f"${address:06X}", "len": length}
+                                 for address, length, _ in WHITE_OPTION_RUNTIME_WINDOWS],
+        "options": {
+            "templateTable": "$14B25E",
+            "ordinaryCombat": {
+                "entry": "$18A0E4", "recurring": "$18A11C",
+                "collisionEntry": "$18A1AC",
+                "calls": [{"site": f"${site:06X}", "target": f"${target:06X}"}
+                          for site, target in WHITE_OPTION_COMBAT_CALLS],
+            },
+            "templatePointers": [f"${address:06X}"
+                                 for address in WHITE_OPTION_TEMPLATE_POINTERS],
+            "shotRoots": {
+                f"${base:06X}": [f"${target:06X}" for target in targets]
+                for base, targets in WHITE_OPTION_SHOT_ROOTS.items()
+            },
+            "rotatingShotRoots": {
+                f"${template:06X}": f"${root:06X}"
+                for template, root in WHITE_OPTION_ROTATING_SHOT_ROOTS.items()
+            },
+            "rotationTargetOffsets": {
+                f"${root:06X}": list(offsets)
+                for root, offsets in WHITE_OPTION_ROTATION_TARGET_OFFSETS.items()
+            },
+            "laserDispatch": [[f"${address:06X}" for address in row]
+                              for row in WHITE_LASER_DISPATCH],
+            "laserPointerFamilies": {
+                f"${base:06X}": [f"${target:06X}" for target in targets]
+                for base, targets in WHITE_LASER_POINTER_FAMILIES.items()
+            },
+            "laserRequestTargets": [f"${address:06X}"
+                                    for address in WHITE_LASER_REQUEST_TARGETS],
+            "laserWipeAliases": [[f"${address:06X}" for address in row]
+                                 for row in WHITE_LASER_WIPE_ALIASES],
+            "laserRuntimeRequests": [
+                {"white": f"${white:06X}", "black": f"${black:06X}"}
+                for white, black in WHITE_LASER_RUNTIME_REQUESTS
+            ],
+            "resetEntries": {
+                "hyper": ["$151DC0", "$151E08"],
+                "laserBomb": ["$151DC8", "$151E10"],
+            },
+        },
         "enemyBullets": {
             "screenClear": "$180C76", "clearTimer": "$152B5A",
             "driver": "$180D3A", "mover": "$180D7E",
@@ -11580,6 +11805,12 @@ def check_white_label_frontend_windows(d: bytes) -> None:
     if hashlib.sha256(d).hexdigest() != WHITE_LABEL_IMAGE_SHA256:
         raise SystemExit("embedded Version A tables require the validated ddpdojblk cartridge image")
 
+    for site, target in WHITE_OPTION_COMBAT_CALLS:
+        if u16(d, site) != 0x4EB9 or u32(d, site + 2) != target:
+            raise SystemExit(f"White A ordinary-combat call changed at ${site:06X}")
+    if d[0x18A1AC:0x18A1B2] != bytes.fromhex("4a790081308c"):
+        raise SystemExit("White A ordinary-combat collision entry changed at $18A1AC")
+
     for i, (handler, priority) in enumerate(WHITE_LABEL_DISPATCH):
         address = 0x141294 + i * 8
         if (u32(d, address), u16(d, address + 4), u16(d, address + 6)) \
@@ -11587,6 +11818,50 @@ def check_white_label_frontend_windows(d: bytes) -> None:
             raise SystemExit(f"White A dispatch entry {i} changed at ${address:06X}")
     if u16(d, 0x14133C) != 0x3639:
         raise SystemExit("White A dispatch no longer ends after exactly 21 records")
+
+    if tuple(u32(d, 0x14B25E + i * 4)
+             for i in range(len(WHITE_OPTION_TEMPLATE_POINTERS))) \
+            != WHITE_OPTION_TEMPLATE_POINTERS:
+        raise SystemExit("White A option template pointer table changed")
+    for base, targets in WHITE_OPTION_SHOT_ROOTS.items():
+        actual = tuple(u32(d, base + i * 4) for i in range(len(targets)))
+        if actual != targets:
+            raise SystemExit(f"White A option-shot root changed at ${base:06X}")
+    for template, root in WHITE_OPTION_ROTATING_SHOT_ROOTS.items():
+        if u32(d, template + 2) != root:
+            raise SystemExit(f"White A rotating option-shot root changed at ${template:06X}")
+        offsets = WHITE_OPTION_ROTATION_TARGET_OFFSETS[root]
+        targets = tuple(u32(d, root + i * 4) for i in range(len(offsets)))
+        if targets != tuple(root + offset for offset in offsets):
+            raise SystemExit(f"White A rotating option-shot row changed at ${root:06X}")
+    for owner_index, expected in enumerate(WHITE_LASER_DISPATCH):
+        base = 0x153CCE + owner_index * 0x50
+        actual = tuple(u32(d, base + i * 4) for i in range(len(expected)))
+        if actual != expected:
+            raise SystemExit(f"White A laser dispatch owner {owner_index} changed")
+    for base, targets in WHITE_LASER_POINTER_FAMILIES.items():
+        actual = tuple(u32(d, base + i * 4) for i in range(len(targets)))
+        if actual != targets:
+            raise SystemExit(f"White A laser pointer family changed at ${base:06X}")
+    for index, target in enumerate(WHITE_LASER_REQUEST_TARGETS):
+        entry = 0x14B1BE + index * 8
+        if (u32(d, entry), u32(d, entry + 4)) != (0x1E, target):
+            raise SystemExit(f"White A laser request target {index} changed")
+    if tuple(u32(d, 0x151E72 + i * 4) for i in range(2)) \
+            != WHITE_LASER_WIPE_ALIASES[0][:2] \
+            or tuple(u32(d, 0x151E7A + i * 4) for i in range(2)) \
+            != WHITE_LASER_WIPE_ALIASES[1][:2] \
+            or u32(d, 0x151DE8) != WHITE_LASER_WIPE_ALIASES[0][2] \
+            or u32(d, 0x151E30) != WHITE_LASER_WIPE_ALIASES[1][2]:
+        raise SystemExit("White A option reset sound aliases changed")
+    wipe_wrappers = {address for row in WHITE_LASER_WIPE_ALIASES for address in row}
+    for white_wrapper, black_wrapper in WHITE_LASER_RUNTIME_REQUESTS:
+        length = 0x16 if white_wrapper in wipe_wrappers else 0x1A
+        if d[white_wrapper:white_wrapper + length] \
+                != d[black_wrapper:black_wrapper + length]:
+            raise SystemExit(
+                f"White A sound wrapper ${white_wrapper:06X} diverged from "
+                f"Black B ${black_wrapper:06X}")
 
     request_targets = [u32(d, 0x15F2C0 + i * 4) for i in range(10)]
     if request_targets != [0, 0x15F316, 0x15F3C4, 0x15F47C, 0x15F562,

@@ -15,10 +15,11 @@ import {
   createThreePilotRenderState, renderThreePilotRequests,
 } from './formationrender.js';
 import {
-  assertOptionOwnerInputAllowed, runOptionBlock,
+  NATIVE_OPTION_EDITION_RESOURCES, assertOptionOwnerInputAllowed, runOptionBlock,
 } from './options.js';
 import {
-  LASER, PRIVATE_BEAM_GEOMETRY, assertPrivateBeamCapabilities,
+  LASER, NATIVE_LASER_EDITION_RESOURCES, PRIVATE_BEAM_GEOMETRY,
+  assertPrivateBeamCapabilities,
   runPrivateBeamDraw, runPrivateSegmentDriver,
 } from './laser.js';
 import { runOrdinaryShotPath2497AA } from './player.js';
@@ -737,6 +738,7 @@ function bindP3BeamResources(state) {
     effectPolicy: 'none',
     presentationSink,
     presentationBucket: LASER.emitBucket,
+    edition: NATIVE_LASER_EDITION_RESOURCES,
   });
   assertPrivateBeamCapabilities(state.beam.resources);
 }
@@ -775,8 +777,10 @@ function p3OptionBlock(state) {
     rampGuard: state.binding.bomb,
     allowLaser: true,
     allowShots: true,
+    excludedInputMask: 0xa0,
     virtualRequests: state.weapons.requests,
     shotResources: state.shots.resources.options,
+    edition: NATIVE_OPTION_EDITION_RESOURCES,
   };
 }
 

@@ -605,6 +605,13 @@ const WHITE_PROFILE_INPUT = {
     playerDead: 0x1497d4,
     optionObject: 0x14b74a,
     optionHandler: 0x18a11c,
+    optionCombatEntry: 0x18a0e4,
+    optionButton2Call: 0x18a146,
+    optionShotDriverCall: 0x18a14c,
+    optionSegmentDriverCall: 0x18a158,
+    optionBeamDrawCall: 0x18a15e,
+    optionSparkDriverCall: 0x18a164,
+    optionCollisionEntry: 0x18a1ac,
   },
   ramLayout: SHARED_RAM_LAYOUT,
   bootProfile: {
