@@ -10652,12 +10652,55 @@ def verify(t: dict) -> list[str]:
             bad.append(f"embedded Version A {field} drifted from the exported ROM window list")
     if white.get("shotSpeedLevels") != list(WHITE_SHOT_SPEEDS):
         bad.append("embedded Version A shot speed closure drifted from its manifest")
+    for field, expected_rows in (
+            ("bulletRuntimeWindows", WHITE_BULLET_RUNTIME_WINDOWS),
+            ("bulletSpeedWindows", WHITE_BULLET_SPEED_WINDOWS)):
+        declared = {(int(w["base"].lstrip("$"), 16), w["len"])
+                    for w in white.get(field, [])}
+        expected = {(address, length) for address, length, _ in expected_rows}
+        if declared != expected or not expected.issubset(set(wins)):
+            bad.append(f"embedded Version A {field} drifted from the exported ROM window list")
+    if white.get("bulletSpeedLevels") != list(WHITE_BULLET_SPEED_LEVELS):
+        bad.append("embedded Version A enemy-bullet speed closure drifted from its manifest")
+    expected_bullet_manifest = {
+        "screenClear": "$180C76", "clearTimer": "$152B5A",
+        "driver": "$180D3A", "mover": "$180D7E",
+        "rngTable": "$14322E", "vectorPointers": "$100920",
+        "vectorFoldTable": "$141E2E", "presentationStub": "$13EEEE",
+        "collectionWrapper": "$18B10A", "collectionLiveTarget": "$28C5E4",
+        "bulletPool": "$817F8C", "behaviourTable": "$180FD0",
+        "templatePointers": "$18093E", "muzzleTable": "$1829AA",
+        "directionTable": "$1828AA", "spriteEmitter": "$182EE4",
+        "type5PresentationCalls": ["$151FDE", "$152106"],
+        "stage1Kinds": list(_WHITE_BULLET_KINDS),
+    }
+    bullet_manifest = white.get("enemyBullets", {})
+    if any(bullet_manifest.get(key) != value
+           for key, value in expected_bullet_manifest.items()):
+        bad.append("embedded Version A enemy-bullet identity manifest drifted")
+    expected_pool_a_manifest = {
+        "allocator": "$17E9AA", "driver": "$17E9DE",
+        "dispatch": "$17EA22", "fill": "$17FBC2",
+        "layerTable": "$17FC3A", "fillHookTable": "$17FC52",
+        "fillData": ["$17FCA2", "$17FCB2", "$17FCC2", "$17FCD2"],
+        "templates": "$17FECE", "conversionOffsets": [0x20, 0x2C, 0x30, 0x3C],
+        "conversionBodies": ["$17F2D6", "$17F626", "$17F742", "$17FA92"],
+    }
+    if bullet_manifest.get("poolA") != expected_pool_a_manifest \
+            or bullet_manifest.get("aim256") != [
+                "$1425D0", "$1425DC", "$14264C", "$14268C", "$14269C"]:
+        bad.append("embedded Version A enemy-bullet dependency manifest drifted")
     all_white_shot_windows = (*WHITE_SHOT_PRODUCER_WINDOWS,
                               *WHITE_SHOT_RUNTIME_WINDOWS,
                               *WHITE_SHOT_SPEED_WINDOWS)
     if any(address < 0 or address + length > 0x200000
            for address, length, _ in all_white_shot_windows):
         bad.append("embedded Version A shot authority escaped the Build A cartridge region")
+    all_white_bullet_windows = (*WHITE_BULLET_RUNTIME_WINDOWS,
+                                *WHITE_BULLET_SPEED_WINDOWS)
+    if any(address < 0 or address + length > 0x200000
+           for address, length, _ in all_white_bullet_windows):
+        bad.append("embedded Version A enemy-bullet authority escaped the Build A cartridge region")
 
     def covered(a: int, n: int) -> bool:
         return any(b <= a and a + n <= b + ln for b, ln in wins)
@@ -10918,6 +10961,90 @@ def verify(t: dict) -> list[str]:
     if spark_speeds != set(range(8, 37)) \
             or producer_speeds | spark_speeds != set(WHITE_SHOT_SPEEDS):
         bad.append("Version A spark and producer speed domains do not close exactly")
+
+    # White Label Build A Pool-A and enemy bullets. This is an independent
+    # authority projection even where a byte-identical vector row is also used
+    # by player shots.
+    white_bullet_windows = [(address, length)
+                            for address, length, _ in all_white_bullet_windows]
+
+    def bullet_has(a: int, n: int) -> bool:
+        return any(base <= a and a + n <= base + length
+                   for base, length in white_bullet_windows)
+
+    ordered_bullets = sorted(white_bullet_windows)
+    for (base, length), (next_base, _) in zip(ordered_bullets, ordered_bullets[1:]):
+        if next_base < base + length:
+            bad.append(f"Version A enemy-bullet windows overlap at ${next_base:06X}")
+            break
+
+    white_pool_dispatch = (
+        0x17EAB4, 0x17EB50, 0x17EE92, 0x17EF56, 0x17EAB4,
+        0x17F01E, 0x17F106, 0x17F1EE, 0x17F2D6, 0x17F3EE,
+        0x17F50A, 0x17F626, 0x17F742, 0x17F85A, 0x17F976,
+        0x17FA92, 0x17EB50, 0x17F01E, 0x17F106, 0x17F1EE,
+    )
+    if tuple(w32(0x17EA22 + i * 4) for i in range(20)) != white_pool_dispatch:
+        bad.append("Version A Pool-A dispatch is not the exact 20-entry Build A table")
+    expected_layers = (0x13DAB0, 0x13DAB0, 0x13DAEC, 0x13DB28, 0x13DB64, 0x13DBA0)
+    if tuple(w32(0x17FC3A + i * 4) for i in range(6)) != expected_layers:
+        bad.append("Version A Pool-A layer emitter table drifted")
+    expected_templates = {
+        0x00: 0x17FF1E, 0x20: 0x17FF1E, 0x2C: 0x17FFA2,
+        0x30: 0x17FF1E, 0x3C: 0x17FFA2,
+    }
+    expected_hooks = {
+        0x00: 0x17FCE2, 0x20: 0x17FDFA, 0x2C: 0x17FE0C,
+        0x30: 0x17FDC2, 0x3C: 0x17FDEC,
+    }
+    for kind in expected_templates:
+        if w32(0x17FECE + kind) != expected_templates[kind]:
+            bad.append(f"Version A Pool-A kind ${kind:02X} template pointer drifted")
+        if w32(0x17FC52 + kind) != expected_hooks[kind]:
+            bad.append(f"Version A Pool-A kind ${kind:02X} fill-hook pointer drifted")
+    if not all(bullet_has(address, 0x10)
+               for address in (0x17FCA2, 0x17FCB2, 0x17FCC2, 0x17FCD2)):
+        bad.append("Version A Pool-A fill data is not independently exported")
+    for template in set(expected_templates.values()):
+        if not bullet_has(template, 0x16):
+            bad.append(f"Version A Pool-A template ${template:06X} is not exported")
+    if win(0x13EEEE, 0x0E) != bytes.fromhex(
+            "41f900808014d0f90080afca0679"):
+        bad.append("Version A Pool-A presentation stub convention drifted")
+
+    expected_behaviours = {
+        3: 0x181380, 4: 0x18143C, 5: 0x1814F8, 7: 0x181670,
+        12: 0x18189C, 13: 0x1818F6, 19: 0x181AC4,
+    }
+    expected_bullet_templates = {
+        3: 0x180A0C, 4: 0x180A20, 5: 0x180A34, 7: 0x180A5C,
+        12: 0x180AC0, 13: 0x180AD4, 19: 0x180B24,
+    }
+    expected_run_init = {3: 1, 4: 1, 5: 1, 7: 1, 12: 0, 13: 0, 19: 1}
+    for kind in _WHITE_BULLET_KINDS:
+        if w32(0x180FD0 + kind * 4) != expected_behaviours[kind]:
+            bad.append(f"Version A enemy-bullet kind {kind} behaviour pointer drifted")
+        template = w32(0x18093E + kind * 4)
+        if template != expected_bullet_templates[kind]:
+            bad.append(f"Version A enemy-bullet kind {kind} template pointer drifted")
+        elif w16(template + 0x10) != expected_run_init[kind]:
+            bad.append(f"Version A enemy-bullet kind {kind} run-init word drifted")
+    aim_ops = tuple(w16(0x14264C + i * 8) for i in range(8))
+    if aim_ops != (0xD240, 0x9240, 0x9240, 0xD240,
+                   0x9240, 0xD240, 0xD240, 0x9240):
+        bad.append("Version A Aim256 octant operation family drifted")
+    if not all(bullet_has(address, length) for address, length in (
+            (0x14268C, 0x10), (0x14269C, 0x41), (0x151FD0, 0x0C),
+            (0x14322E, 0x100), (0x14336A, 0x100), (0x14359E, 0x40),
+            (0x1828AA, 0x40), (0x1829AA, 0x180), (0x1816A8, 0x24))):
+        bad.append("Version A enemy-bullet bounded data closure is incomplete")
+    for speed in WHITE_BULLET_SPEED_LEVELS:
+        pointer_at = 0x100920 + speed * 4
+        expected = 0x100D20 + speed * 0x208
+        if not bullet_has(pointer_at, 4) or w32(pointer_at) != expected:
+            bad.append(f"Version A enemy-bullet speed {speed} pointer is missing or not ${expected:06X}")
+        if not bullet_has(expected, 0x208):
+            bad.append(f"Version A enemy-bullet speed {speed} quadrant is not projected")
 
     tps = [w32(0x281956 + 4 * k) for k in range(39)]
     if any(p is None for p in tps):
@@ -11264,6 +11391,68 @@ WHITE_SHOT_RUNTIME_WINDOWS = [
     (0x14EB62, 0x0136, "White A family 5 hit shot presentation table"),
 ]
 
+# Build A enemy bullets reuse the Black algorithms but retain cartridge-authentic
+# dispatch and continuation identities. Only bytes read as data are authorized.
+_WHITE_BULLET_KINDS = (3, 4, 5, 7, 12, 13, 19)
+_WHITE_BULLET_TEMPLATE_RUN_INIT = {
+    3: 0x180A1C, 4: 0x180A30, 5: 0x180A44, 7: 0x180A6C,
+    12: 0x180AD0, 13: 0x180AE4, 19: 0x180B34,
+}
+WHITE_BULLET_RUNTIME_WINDOWS = [
+    (0x141E2E, 0x0200, "White A enemy-bullet 256-word movement fold table"),
+    (0x17EA22, 0x0050, "White A complete 20-entry Pool-A body dispatch"),
+    (0x17FC3A, 0x0018, "White A six-entry Pool-A layer emitter table"),
+    (0x17FC52, 0x0050, "White A complete 20-entry Pool-A fill-hook table"),
+    (0x17FCA2, 0x0010, "White A Pool-A animation-offset block 0"),
+    (0x17FCB2, 0x0010, "White A Pool-A animation-offset block 1"),
+    (0x17FCC2, 0x0010, "White A Pool-A animation-offset block 2"),
+    (0x17FCD2, 0x0010, "White A Pool-A animation-offset block 3"),
+    (0x17FECE, 0x0004, "White A Pool-A kind-0 template pointer"),
+    (0x17FEEE, 0x0004, "White A Pool-A kind-8 template pointer"),
+    (0x17FEFA, 0x0008, "White A Pool-A kind-11 and kind-12 template pointers"),
+    (0x17FF0A, 0x0004, "White A Pool-A kind-15 template pointer"),
+    (0x17FF1E, 0x0016, "White A Pool-A small-star template"),
+    (0x17FFA2, 0x0016, "White A Pool-A large-star template"),
+    (0x14322E, 0x0100, "White A Pool-A unmasked animation RNG table"),
+    (0x14336A, 0x0100, "White A Pool-A signed spread RNG table"),
+    (0x14359E, 0x0040, "White A Pool-A masked speed and angle RNG table"),
+    (0x14268C, 0x0010, "White A Aim256 eight-word octant bases"),
+    (0x14269C, 0x0041, "White A Aim256 65-byte ratio LUT"),
+    (0x13EEEE, 0x003C, "White A Pool-A record-convention presentation stub"),
+    (0x151FD0, 0x000C, "White A type-5 bonus-follower frame table"),
+    (0x1829AA, 0x0180, "White A 32-entry enemy-bullet muzzle table"),
+    (0x1828AA, 0x0040, "White A 32-word enemy-bullet direction fold table"),
+    (0x1816A8, 0x0024, "White A kind-7 nine-entry direction sprite table"),
+]
+WHITE_BULLET_RUNTIME_WINDOWS.extend(
+    (0x14264C + i * 8, 0x0002, f"White A Aim256 octant {i} operation word")
+    for i in range(8)
+)
+WHITE_BULLET_RUNTIME_WINDOWS.extend(
+    (0x180FD0 + kind * 4, 0x0004,
+     f"White A enemy-bullet kind {kind} behaviour pointer")
+    for kind in _WHITE_BULLET_KINDS
+)
+WHITE_BULLET_RUNTIME_WINDOWS.extend(
+    (0x18093E + kind * 4, 0x0004,
+     f"White A enemy-bullet kind {kind} template pointer")
+    for kind in _WHITE_BULLET_KINDS
+)
+WHITE_BULLET_RUNTIME_WINDOWS.extend(
+    (address, 0x0002, f"White A enemy-bullet kind {kind} template run-init word")
+    for kind, address in _WHITE_BULLET_TEMPLATE_RUN_INIT.items()
+)
+
+WHITE_BULLET_SPEED_LEVELS = tuple(range(256))
+WHITE_BULLET_SPEED_WINDOWS = []
+for _speed in WHITE_BULLET_SPEED_LEVELS:
+    WHITE_BULLET_SPEED_WINDOWS.extend([
+        (0x100920 + _speed * 4, 0x0004,
+         f"White A enemy-bullet speed {_speed} pointer"),
+        (0x100D20 + _speed * 0x208, 0x0208,
+         f"White A enemy-bullet speed {_speed} 65-vector quadrant"),
+    ])
+
 SHOT_WINDOWS.extend(WHITE_LABEL_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_PLAYER_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_SHOT_PRODUCER_WINDOWS)
@@ -11274,6 +11463,20 @@ WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS = [
     if (row[0], row[1]) not in _white_player_window_keys
 ]
 SHOT_WINDOWS.extend(WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS)
+_white_shot_window_keys = {(address, length) for address, length, _ in SHOT_WINDOWS}
+WHITE_BULLET_EXCLUSIVE_RUNTIME_WINDOWS = [
+    row for row in WHITE_BULLET_RUNTIME_WINDOWS
+    if (row[0], row[1]) not in _white_shot_window_keys
+]
+SHOT_WINDOWS.extend(WHITE_BULLET_EXCLUSIVE_RUNTIME_WINDOWS)
+_white_bullet_runtime_window_keys = {
+    (address, length) for address, length, _ in SHOT_WINDOWS
+}
+WHITE_BULLET_EXCLUSIVE_SPEED_WINDOWS = [
+    row for row in WHITE_BULLET_SPEED_WINDOWS
+    if (row[0], row[1]) not in _white_bullet_runtime_window_keys
+]
+SHOT_WINDOWS.extend(WHITE_BULLET_EXCLUSIVE_SPEED_WINDOWS)
 
 
 def _white_initial_script(d: bytes, address: int) -> list[tuple[int, ...]]:
@@ -11342,6 +11545,34 @@ def white_label_tables(d: bytes) -> dict:
         "shotSpeedWindows": [{"base": f"${address:06X}", "len": length}
                              for address, length, _ in WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS],
         "shotSpeedLevels": list(WHITE_SHOT_SPEEDS),
+        "enemyBullets": {
+            "screenClear": "$180C76", "clearTimer": "$152B5A",
+            "driver": "$180D3A", "mover": "$180D7E",
+            "poolA": {
+                "allocator": "$17E9AA", "driver": "$17E9DE",
+                "dispatch": "$17EA22", "fill": "$17FBC2",
+                "layerTable": "$17FC3A", "fillHookTable": "$17FC52",
+                "fillData": ["$17FCA2", "$17FCB2", "$17FCC2", "$17FCD2"],
+                "templates": "$17FECE",
+                "conversionOffsets": [0x20, 0x2C, 0x30, 0x3C],
+                "conversionBodies": ["$17F2D6", "$17F626", "$17F742", "$17FA92"],
+            },
+            "rngTable": "$14322E",
+            "aim256": ["$1425D0", "$1425DC", "$14264C", "$14268C", "$14269C"],
+            "vectorPointers": "$100920", "vectorFoldTable": "$141E2E",
+            "presentationStub": "$13EEEE",
+            "collectionWrapper": "$18B10A", "collectionLiveTarget": "$28C5E4",
+            "bulletPool": "$817F8C", "behaviourTable": "$180FD0",
+            "templatePointers": "$18093E", "muzzleTable": "$1829AA",
+            "directionTable": "$1828AA", "spriteEmitter": "$182EE4",
+            "type5PresentationCalls": ["$151FDE", "$152106"],
+            "stage1Kinds": list(_WHITE_BULLET_KINDS),
+        },
+        "bulletRuntimeWindows": [{"base": f"${address:06X}", "len": length}
+                                 for address, length, _ in WHITE_BULLET_RUNTIME_WINDOWS],
+        "bulletSpeedWindows": [{"base": f"${address:06X}", "len": length}
+                               for address, length, _ in WHITE_BULLET_SPEED_WINDOWS],
+        "bulletSpeedLevels": list(WHITE_BULLET_SPEED_LEVELS),
     }
 
 

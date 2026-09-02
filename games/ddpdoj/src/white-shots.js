@@ -13,6 +13,12 @@ import {
   clearPoolWithResources, runSparkDriverWithResources,
 } from './spark.js';
 import { runNativeOutgoingShotCollision } from './damage.js';
+import {
+  drawBonusFollowersWithResources, drawHyperStockAnimations252A52,
+} from './hyper.js';
+import {
+  runWhiteBulletDriver, runWhiteClearTimer, runWhitePoolADriver,
+} from './white-bullets.js';
 import { enqueueShotSprite, enqueueZoomedRequest } from './spritequeue.js';
 import { unreached } from './unported.js';
 
@@ -86,6 +92,11 @@ export const WHITE_SHOT_PRODUCER_RESOURCES = Object.freeze([
   freezeProducer(0, WHITE_SHOT.p1Pool, 0x8127e4, WHITE_SHOT.p1Player),
   freezeProducer(1, WHITE_SHOT.p2Pool, 0x8127ec, WHITE_SHOT.p2Player),
 ]);
+
+export const WHITE_TYPE5_PRESENTATION_RESOURCES = Object.freeze({
+  bonusFollowers: Object.freeze({ entry: 0x151fde, frameTable: 0x151fd0 }),
+  hyperStockAnimations: Object.freeze({ entry: 0x152106 }),
+});
 
 export const WHITE_SPARK_RESOURCES = Object.freeze({
   p1Base: 0x81d394,
@@ -230,7 +241,9 @@ export function spawnWhitePlayerShot(ram, rom, prec, ctx, ownerIndex, profileReq
     `the White Label shot ship selector ${ship} is outside {0, 2}`);
 }
 
-function tickWhiteShotIsland(ram, rom, slot, ctx, tables, handlers) {
+function tickWhiteShotIsland(
+  ram, rom, slot, ctx, tables, handlers, profileRequest,
+) {
   if (ram.u8(slot + 2) === 0) {
     clearPoolWithResources(ram, WHITE_SPARK_RESOURCES);
     ram.setU8(slot + 2, 1);
@@ -238,19 +251,57 @@ function tickWhiteShotIsland(ram, rom, slot, ctx, tables, handlers) {
   }
 
   const shotCtx = deriveProfileContext(ctx ?? {}, { tables });
+  const bulletCtx = { ...shotCtx, ram, rom };
+  const trace = (call, target) => ctx?.whiteType5SubsystemHook?.(
+    Object.freeze({ call, target }), ctx,
+  );
+
+  // `$18A11C` recurring type-5 order: Pool-A, player shots, sparks,
+  // enemy bullets, clear timer, the two player-presentation calls, collision.
+  const poolAFrame = runWhitePoolADriver(
+    ram, rom, bulletCtx, profileRequest,
+  );
+  trace(0x18a134, 0x17e9de);
   ram.setU16(WHITE_SHOT.liveCount, 0);
   let shotsProcessed = 0;
   for (const resources of WHITE_SHOT_DRIVER_RESOURCES) {
     shotsProcessed += runShotPool(ram, rom, handlers, shotCtx, resources);
   }
+  trace(0x18a14c, 0x15302c);
   const sparkFrame = runSparkDriverWithResources(ram, rom, shotCtx, WHITE_SPARK_RESOURCES);
+  trace(0x18a164, 0x188bd4);
+  const bulletFrame = runWhiteBulletDriver(bulletCtx, profileRequest);
+  trace(0x18a194, 0x180d3a);
+  const clearTimerExpired = runWhiteClearTimer(ram, profileRequest);
+  trace(0x18a19a, 0x152b5a);
+  const bonusFollowers = drawBonusFollowersWithResources(
+    ram, rom, WHITE_TYPE5_PRESENTATION_RESOURCES.bonusFollowers,
+  );
+  trace(0x18a1a0, 0x151fde);
+  bulletCtx.whiteType5PresentationHook?.(
+    ram, { address: 0x151fde, emitted: bonusFollowers }, bulletCtx,
+  );
+  const hyperStockAnimations = drawHyperStockAnimations252A52(ram);
+  trace(0x18a1a6, 0x152106);
+  bulletCtx.whiteType5PresentationHook?.(
+    ram, { address: 0x152106, emitted: hyperStockAnimations }, bulletCtx,
+  );
   const collision = runNativeOutgoingShotCollision(ram, shotCtx);
+  trace(0x18a1ac, 0x18a1ac);
   if (ctx != null) {
+    ctx.poolAFrame = poolAFrame;
     ctx.shotsProcessed = shotsProcessed;
     ctx.sparkFrame = sparkFrame;
+    ctx.bulletFrame = bulletFrame;
+    ctx.clearTimerExpired = clearTimerExpired;
+    ctx.bonusFollowers = bonusFollowers;
+    ctx.hyperStockAnimations = hyperStockAnimations;
     ctx.whiteShotCollision = collision;
   }
-  return Object.freeze({ phase: 'recurring', shotsProcessed, sparkFrame, collision });
+  return Object.freeze({
+    phase: 'recurring', poolAFrame, shotsProcessed, sparkFrame,
+    bulletFrame, clearTimerExpired, bonusFollowers, hyperStockAnimations, collision,
+  });
 }
 
 /** `$18A0E4`: only the audited shot, spark, and outgoing-collision island. */
@@ -261,7 +312,9 @@ export function whiteType5ShotTick18A0E4(ram, rom, slot, ctx, profileRequest) {
   const handlers = shotHandlersWithResources(
     WHITE_SHOT.dispatchEntries, WHITE_SHOT_LIFECYCLE_RESOURCES,
   );
-  return tickWhiteShotIsland(ram, rom, slot, ctx, tables, handlers);
+  return tickWhiteShotIsland(
+    ram, rom, slot, ctx, tables, handlers, profileRequest,
+  );
 }
 
 /** Build the independently gated White Stage 1 type-5 handler map. */
@@ -274,6 +327,8 @@ export function createWhiteStage1ShotHandlers(rom, profileRequest) {
   );
   return new Map([
     [0x05, (ram, slot, _slotIndex, ctx) =>
-      tickWhiteShotIsland(ram, rom, slot, ctx, tables, handlers)],
+      tickWhiteShotIsland(
+        ram, rom, slot, ctx, tables, handlers, profileRequest,
+      )],
   ]);
 }

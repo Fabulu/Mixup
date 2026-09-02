@@ -746,14 +746,31 @@ export function poolPark(ram) {
  * pure spawn-time aliases.  **There are 39 kind indices and 37 distinct
  * bullets.**
  */
-export function behaviourFor(rom, typeWord) {
-  const k = typeWord & TYPEBIT.kindMask;
-  if (k >= BUL.kinds) {
-    unreached(BUL.behaviourPtrs + 4 * k, `the mover dispatched type word `
-      + `$${typeWord.toString(16).toUpperCase()} -> $282030[${k}], past the `
-      + `${BUL.kinds}-entry table`);
+export const BLACK_BULLET_BEHAVIOUR_RESOURCES = Object.freeze({
+  table: BUL.behaviourPtrs,
+  kinds: BUL.kinds,
+  entry: BUL.behaviourPtrs,
+  supportedKinds: null,
+});
+
+/** Edition-bound behaviour-pointer lookup. The pointer remains authentic here. */
+export function behaviourForWithResources(rom, typeWord, resources) {
+  if (!resources || !Number.isSafeInteger(resources.table)
+      || !Number.isSafeInteger(resources.kinds) || resources.kinds <= 0) {
+    throw new TypeError('bullet behaviour lookup needs a bounded pointer table');
   }
-  return rom.u32(BUL.behaviourPtrs + 4 * k);
+  const k = typeWord & TYPEBIT.kindMask;
+  const supported = resources.supportedKinds;
+  if (k >= resources.kinds || (supported != null && !supported.includes(k))) {
+    unreached(resources.entry ?? (resources.table + 4 * k), `the mover dispatched type word `
+      + `$${typeWord.toString(16).toUpperCase()} -> behaviour[${k}], outside this `
+      + 'edition capability');
+  }
+  return rom.u32(resources.table + 4 * k);
+}
+
+export function behaviourFor(rom, typeWord) {
+  return behaviourForWithResources(rom, typeWord, BLACK_BULLET_BEHAVIOUR_RESOURCES);
 }
 
 export function runBehaviour(rom, typeWord) {

@@ -54,9 +54,12 @@
 // to this -- verified: every stage-1 continuation's net A6 delta is +$40.
 
 import { AimTables, aim256, targetSelectByA6_2A } from './aim.js';
-import { BUL, REC, TYPEBIT, WriteLog, behaviourFor, fire } from './bullets.js';
-import { velocity } from './bulletmath.js';
-import { allocPoolA27F8F0 } from './bee.js';
+import {
+  BLACK_BULLET_BEHAVIOUR_RESOURCES, BUL, REC, TYPEBIT, WriteLog,
+  behaviourForWithResources, fire,
+} from './bullets.js';
+import { BLACK_VECTOR_RESOURCES, velocityWithResources } from './bulletmath.js';
+import { allocPoolA27F8F0, allocPoolAWithResources } from './bee.js';
 import { unreached } from './unported.js';
 import { i16, u16 } from './ram.js';
 
@@ -101,16 +104,116 @@ const BOUNDS = { posAkill: 0x9000, posBkill: 0xC800 };  // $281E88/$281E90 addi.
  *        into bucket 23's staging buffer `$809C4C`, advanced in place. Absent
  *        for the position gate, which compares no sprite field.
  */
-export function runMover(ctx) {
-  const { ram } = ctx;
-  const d6 = ram.u16(MOVER.scrollComp);             // $281DE4 (word; sub.w is bitwise)
-  let slots = moverIterCount(ram);                   // $281DEA..$281E1E
-  if (ctx.mut === 'window-constant') slots = MOVER.iterCounts[4] + 1;  // RED: cap=210
+export const BLACK_MOVER_RESOURCES = Object.freeze({
+  entry: MOVER.entry,
+  driver: MOVER.driver,
+  scrollComp: MOVER.scrollComp,
+  liveCount: MOVER.liveCount,
+  cadence: MOVER.cadence,
+  window: Object.freeze([...MOVER.window]),
+  iterCounts: Object.freeze([...MOVER.iterCounts]),
+  freezeC: MOVER.freezeC,
+  stageKill: MOVER.stageKill,
+  pool: BUL.pool,
+  slots: BUL.slots,
+  stride: BUL.stride,
+  templatePtrs: BUL.templatePtrs,
+  muzzleTable: MOVER.muzzleTable,
+  directionTable: 0x283c4c,
+  directionSpriteTables: null,
+  spriteEmit: MOVER.spriteEmit,
+  behaviour: BLACK_BULLET_BEHAVIOUR_RESOURCES,
+  vectors: BLACK_VECTOR_RESOURCES,
+  initializerDispatch: null,
+  continuationDispatch: null,
+  continuationStore: null,
+  poolA: null,
+});
 
-  for (let s = 0; s < slots; s++) {
-    const base = BUL.pool + s * BUL.stride;
-    driveSlot(ctx, base, d6);
+const moverResources = (ctx) => ctx.moverResources ?? BLACK_MOVER_RESOURCES;
+
+function assertMoverResources(resources) {
+  if (!resources || !resources.behaviour || !resources.vectors
+      || !Number.isSafeInteger(resources.pool) || resources.stride !== 0x40) {
+    throw new TypeError('enemy-bullet mover needs a complete edition resource graph');
   }
+}
+
+function preflightBehaviourPointers(rom, resources) {
+  const behaviour = resources.behaviour;
+  if (!behaviour.expected || !Array.isArray(behaviour.supportedKinds)) return;
+  for (const kind of behaviour.supportedKinds) {
+    const cell = behaviour.table + kind * 4;
+    const authentic = behaviourForWithResources(rom, kind, behaviour);
+    const expected = behaviour.expected[kind];
+    if (authentic !== expected) {
+      unreached(cell, `behaviour pointer is $${authentic.toString(16).toUpperCase()}, expected `
+        + `$${expected.toString(16).toUpperCase()}`);
+    }
+  }
+}
+
+function continuationRunsForType(typeWord) {
+  const mask = typeWord & TYPEBIT.moverMask;
+  if (mask === 0) return true;
+  if ((typeWord & TYPEBIT.kill) !== 0) return false;
+  return (typeWord & TYPEBIT.path281F3E) !== 0
+    && (typeWord & TYPEBIT.dispatch) === 0
+    && (typeWord & 0x0040) === 0;
+}
+
+function resolveContinuation(ctx, base) {
+  const authentic = ctx.ram.u32(base + REC.continuation);
+  const dispatch = moverResources(ctx).continuationDispatch;
+  let addr = authentic;
+  if (dispatch) {
+    if (!Object.hasOwn(dispatch, authentic)) {
+      unreached(authentic, `the per-bullet CONTINUATION at record +$22 = `
+        + `$${authentic.toString(16).toUpperCase()} is not authentic for this edition`);
+    }
+    addr = dispatch[authentic];
+  }
+  const fn = CONTINUATIONS.get(addr);
+  if (!fn) {
+    unreached(authentic, `the per-bullet CONTINUATION at record +$22 = `
+      + `$${authentic.toString(16).toUpperCase()} is not in this edition dispatch graph`);
+  }
+  return fn;
+}
+
+/** Validate edition pointers for the whole active mover pass before any write. */
+export function preflightMoverWithResources(ctx, resources, { skipContinuations = false } = {}) {
+  assertMoverResources(resources);
+  const scoped = ctx.moverResources === resources ? ctx : { ...ctx, moverResources: resources };
+  preflightBehaviourPointers(scoped.rom, resources);
+  if (skipContinuations || !resources.continuationDispatch) return;
+  const slots = moverIterCountWithResources(scoped.ram, resources);
+  for (let slot = 0; slot < slots; slot++) {
+    const base = resources.pool + slot * resources.stride;
+    const typeWord = scoped.ram.u16(base);
+    if ((typeWord & TYPEBIT.alive) !== 0 && continuationRunsForType(typeWord)) {
+      resolveContinuation(scoped, base);
+    }
+  }
+}
+
+/** Edition-bound mover entry. */
+export function runMoverWithResources(ctx, resources) {
+  assertMoverResources(resources);
+  const scoped = ctx.moverResources === resources ? ctx : { ...ctx, moverResources: resources };
+  preflightMoverWithResources(scoped, resources);
+  const { ram } = scoped;
+  const d6 = ram.u16(resources.scrollComp);
+  let slots = moverIterCountWithResources(ram, resources);
+  if (scoped.mut === 'window-constant') slots = resources.iterCounts[4] + 1;
+  for (let s = 0; s < slots; s++) {
+    driveSlot(scoped, resources.pool + s * resources.stride, d6);
+  }
+}
+
+/** Black compatibility entry. */
+export function runMover(ctx) {
+  return runMoverWithResources(ctx, BLACK_MOVER_RESOURCES);
 }
 
 /** `$281DEA..$281E1E` -- the cascade.  D7+1 slots walked.
@@ -121,14 +224,17 @@ export function runMover(ctx) {
  *  copies of this in the port would be two things that agree with each other
  *  whatever they hold -- the shape `docs/knowledge/03` calls a check that cannot
  *  fail, applied to production code. */
-export function moverIterCount(ram) {
-  // D7 starts $45; each NON-zero window word in order advances it one step.
+export function moverIterCountWithResources(ram, resources) {
   let step = 0;
   for (let i = 0; i < 4; i++) {
-    if (ram.u16(MOVER.window[i]) === 0) break;       // beq -> use current D7
+    if (ram.u16(resources.window[i]) === 0) break;
     step = i + 1;
   }
-  return MOVER.iterCounts[step] + 1;                 // dbra: D7+1 iterations
+  return resources.iterCounts[step] + 1;
+}
+
+export function moverIterCount(ram) {
+  return moverIterCountWithResources(ram, BLACK_MOVER_RESOURCES);
 }
 
 // ----------------------------------------------------------- the per-slot dispatch
@@ -136,15 +242,15 @@ function driveSlot(ctx, base, d6) {
   const { ram } = ctx;
   const typeWord = ram.u16(base);                    // $281E54 move.w (A6),D2
   if ((typeWord & TYPEBIT.alive) === 0) return;      // $281E56 bpl -> dead, advance
-  ram.setU16(MOVER.liveCount, u16(ram.u16(MOVER.liveCount) + 1));  // $281E58 addq
+  const resources = moverResources(ctx);
+  ram.setU16(resources.liveCount, u16(ram.u16(resources.liveCount) + 1));
 
   // ---- the GLOBAL KILL gate ($281E5E..$281E6A bmi $281E20) -----------------
-  const gate = u16(ram.u16(MOVER.freezeC) | ram.u16(MOVER.stageKill));
-  if (gate & 0x8000) {                               // bmi -> $281E20
-    // $281E20: survive only if $811F72 bit0 set AND $8130F8 bit15 clear.
-    const fc = ram.u16(MOVER.freezeC);
+  const gate = u16(ram.u16(resources.freezeC) | ram.u16(resources.stageKill));
+  if (gate & 0x8000) {
+    const fc = ram.u16(resources.freezeC);
     if (fc !== 0 && (fc & 1) !== 0
-        && (ram.u16(MOVER.stageKill) & 0x8000) === 0) {
+        && (ram.u16(resources.stageKill) & 0x8000) === 0) {
       // $281E34 bpl -> resume normal processing at $281E6C
     } else {
       freeSlot(ctx, base);                           // $281E36..$281E4E kill path
@@ -209,15 +315,16 @@ function dispatchPath(ctx, base, d6) {
   const dir = ram.u8(base + REC.dir);                // $281EFA move.b $1b(A6),D1
   const v = ctx.mut === 'velocity-stored-not-recomputed'
     ? { dA: ram.u16(base + REC.velA), dB: ram.u16(base + REC.velB) }  // RED: don't recompute
-    : velocity(rom, speed, dir);                     // $281EFE bsr $284190
+    : velocityWithResources(rom, speed, dir, moverResources(ctx).vectors);
   ram.setU16(base + REC.velA, u16(v.dA));            // $281F02 movem.w D2-D3,$1e(A6)
   ram.setU16(base + REC.velB, u16(v.dB));
   // $281F08..$281F1A run the behaviour INITIALISER (clears bit8, installs +$22).
   runInitialiser(ctx, base);
   // $281F1C addi.w #$34,$81B40E / cmpi.w #$9c / bne / clr -- the sprite cadence.
-  let cad = u16(ram.u16(MOVER.cadence) + 0x34);
+  const resources = moverResources(ctx);
+  let cad = u16(ram.u16(resources.cadence) + 0x34);
   if (cad === 0x9c) cad = 0;
-  ram.setU16(MOVER.cadence, cad);
+  ram.setU16(resources.cadence, cad);
   // $281F34 lea $40(A6),A6 / dbra -- advance inline (no move, no jmp this frame).
 }
 
@@ -236,7 +343,7 @@ function bit7Path(ctx, base, d6) {
   const dir = ram.u8(base + REC.dir);
   const v = ctx.mut === 'velocity-stored-not-recomputed'
     ? { dA: ram.u16(base + REC.velA), dB: ram.u16(base + REC.velB) }  // RED
-    : velocity(rom, speed, dir);
+    : velocityWithResources(rom, speed, dir, moverResources(ctx).vectors);
   // NOTE: bit-7 does NOT store to +$1E ($281F6A add.w D2,$2 / add.w D3,$4 only).
   ram.setU16(base + REC.posA, u16(ram.u16(base + REC.posA) + u16(v.dA)));
   ram.setU16(base + REC.posB, u16(ram.u16(base + REC.posB) + u16(v.dB)));
@@ -280,7 +387,7 @@ function bit5Transform(ctx, base) {
     // $281FBA move.l #$1C1658,$a(A6)
     ram.setU32(base + 0x0a, 0x1c1658);
     const k = ram.u16(base) & TYPEBIT.kindMask;      // $281FC2 (A6) & $3F
-    const tpl = ctx.rom.u32(BUL.templatePtrs + 4 * k);
+    const tpl = ctx.rom.u32(moverResources(ctx).templatePtrs + 4 * k);
     if (ctx.rom.u16(tpl + TPL_OFF.runInit) === 1) {  // $281FD4 cmpi.w #$1,-$2(A1)
       ram.setU32(base + 0x0a, 0x1c1418);             // $281FDC
     }
@@ -381,7 +488,12 @@ function freeSlot(ctx, base) {
   // own scan counter; the port's D7 is `fillGeneralImpact280B3E`'s parameter and
   // the mover's slot index is a JS local, so the save is structural.
   if (W437_MUTATE.value !== 'no-death-effect') {
-    allocPoolA27F8F0(ram, ctx.rom, ctx, 0, 0, 0, base);
+    const resources = moverResources(ctx);
+    if (resources.poolA) {
+      allocPoolAWithResources(ram, ctx.rom, ctx, 0, 0, 0, base, resources.poolA);
+    } else {
+      allocPoolA27F8F0(ram, ctx.rom, ctx, 0, 0, 0, base);
+    }
   }
   // $281E40 move.w (A7)+,D7 ; $281E42 clr.w (A6) ; $281E44 move.w #$ffff,$2(A6)
   freeSlotNoEffect(ctx, base);
@@ -390,9 +502,10 @@ function freeSlot(ctx, base) {
 /** `clr.w (A6); move.w #$ffff,$2(A6)` -- the slot free itself, no effect call. */
 function freeSlotNoEffect(ctx, base) {
   const { ram } = ctx;
+  const resources = moverResources(ctx);
   ctx.bulletRetireHook?.(ram, {
     addr: base,
-    slot: (base - BUL.pool) / BUL.stride,
+    slot: (base - resources.pool) / resources.stride,
     reason: 'mover',
     y: ram.u16(base + REC.posA),
     x: ram.u16(base + REC.posB),
@@ -470,31 +583,26 @@ const TPL_OFF = { runInit: 0x10 };   // bullets.js TPL.runInit -- duplicated to 
 
 function runInitialiser(ctx, base) {
   const typeWord = ctx.ram.u16(base);
-  const addr = behaviourFor(ctx.rom, typeWord);      // $282030[kind] (kind = type&$3f)
-  // WAVE 33 coverage hook, behaviour-neutral: `$281F0E jsr (A1)` is the only
-  // instant a behaviour body executes, so this is where "kind K ran" is true.
-  // Nothing reads it back and no arm depends on it.
-  ctx.bulletKind?.(typeWord & 0x3f, addr);
+  const resources = moverResources(ctx);
+  const authentic = behaviourForWithResources(ctx.rom, typeWord, resources.behaviour);
+  const expected = resources.behaviour.expected?.[typeWord & TYPEBIT.kindMask];
+  if (expected !== undefined && authentic !== expected) {
+    unreached(resources.behaviour.table + 4 * (typeWord & TYPEBIT.kindMask),
+      `behaviour pointer is $${authentic.toString(16).toUpperCase()}, expected `
+      + `$${expected.toString(16).toUpperCase()}`);
+  }
+  const addr = resources.initializerDispatch?.[authentic] ?? authentic;
+  ctx.bulletKind?.(typeWord & 0x3f, authentic);
   const fn = INIT_BODIES.get(addr);
   if (!fn) {
-    unreached(addr, `the behaviour INITIALISER $282030[${typeWord & 0x3f}] = `
-      + `$${addr.toString(16).toUpperCase()} is NOT PORTED. Wave 26 hand-translated `
-      + `the seven stage-1 kinds (3/4/5/7/12/13/19); the other 32 (the full 39-`
-      + `behaviour family, $282104..$283BAF) are W27. Every initialiser clears `
-      + `type-word bit 8 and installs a continuation at record +$22`);
+    unreached(authentic, `the behaviour INITIALISER for kind ${typeWord & 0x3f} = `
+      + `$${authentic.toString(16).toUpperCase()} is not in this edition dispatch graph`);
   }
   fn(ctx, base);
 }
 
 function runContinuation(ctx, base) {
-  const addr = ctx.ram.u32(base + REC.continuation);  // $281EBC movea.l $22(A6),A0
-  const fn = CONTINUATIONS.get(addr);
-  if (!fn) {
-    unreached(addr, `the per-bullet CONTINUATION at record +$22 = `
-      + `$${addr.toString(16).toUpperCase()} is NOT PORTED. Wave 26 hand-translated `
-      + `the seven stage-1 kinds' continuations; the rest are W27`);
-  }
-  fn(ctx, base);
+  resolveContinuation(ctx, base)(ctx, base);
 }
 
 // ------------------------------------------------- shared helpers the bodies use
@@ -505,12 +613,13 @@ function runContinuation(ctx, base) {
  *  sprite-only but transcribed verbatim. */
 function muzzleAndSprite(ctx, base) {
   const { ram, rom } = ctx;
-  const d1 = ram.u16(MOVER.cadence);                 // caller's D1 = $81B40E
+  const resources = moverResources(ctx);
+  const d1 = ram.u16(resources.cadence);
   // $2820CC index = (dir+4)&$F8; A1 += d0 + d0/2 = d0*3/2 into the 32-entry table.
   const dir = ram.u8(base + REC.dir);                // $2820CC move.b $1b(A6),D0
   const d0 = (dir + 4) & 0xf8;                        // $2820D0 addq.b #4 ; andi.w #$f8
   const idx = d0 + (d0 >> 1);                         // $2820D6-D0E lsr ; add
-  const entry = MOVER.muzzleTable + idx;
+  const entry = resources.muzzleTable + idx;
   // $2820E2 move.l (A1)+,D0 -> T = the position-offset longword {hi, lo}.
   const T = rom.u32(entry);
   // $2820E4 asr.w #1,D0 -> the LOW word, ARITHMETIC (signed). Then it is added to
@@ -575,7 +684,8 @@ function tick19(ram, base) {
  *  `asr.w #shift` (kinds 29's half-velocity wall bounce).  dA->+$1E, dB->+$20. */
 function velRecomputeStore(ctx, base, shift = 0) {
   const { rom, ram } = ctx;
-  const v = velocity(rom, ram.u8(base + REC.speed), ram.u8(base + REC.dir));
+  const v = velocityWithResources(rom, ram.u8(base + REC.speed),
+    ram.u8(base + REC.dir), moverResources(ctx).vectors);
   let dA = v.dA, dB = v.dB;
   if (shift) { dA = i16(dA) >> shift; dB = i16(dB) >> shift; }   // asr.w #shift
   ram.setU16(base + REC.velA, u16(dA));
@@ -669,6 +779,11 @@ function trailEmit(ctx, base) {
 const INIT_BODIES = new Map();
 const CONTINUATIONS = new Map();
 
+function storeContinuation(ctx, base, blackAddress) {
+  const authentic = moverResources(ctx).continuationStore?.[blackAddress] ?? blackAddress;
+  ctx.ram.setU32(base + REC.continuation, authentic);
+}
+
 // ----- kind 3  ($2823EC init / $282420 cont) -- target-tracker, D4=0 in stage 1
 INIT_BODIES.set(0x2823EC, (ctx, base) => {
   const { ram } = ctx;
@@ -681,7 +796,7 @@ INIT_BODIES.set(0x2823EC, (ctx, base) => {
   ram.setU32(base + REC.velA, 0);
   ram.setU32(base + REC.velA, ram.u32(base + 0x30));
   ram.setU32(base + 0x0a, 0x1bfef4);                 // $28240E renderOffs (overwrites)
-  ram.setU32(base + REC.continuation, 0x282420);     // $282416
+  storeContinuation(ctx, base, 0x282420);             // $282416
 });
 CONTINUATIONS.set(0x282420, (ctx, base) => {
   const { ram } = ctx;
@@ -704,7 +819,7 @@ INIT_BODIES.set(0x2824A8, (ctx, base) => {
   ram.setU32(base + REC.velA, 0);
   ram.setU32(base + REC.velA, ram.u32(base + 0x30));
   ram.setU32(base + 0x0a, 0x1bff84);
-  ram.setU32(base + REC.continuation, 0x2824dc);
+  storeContinuation(ctx, base, 0x2824dc);
 });
 CONTINUATIONS.set(0x2824dc, (ctx, base) => {
   const { ram } = ctx;
@@ -724,7 +839,7 @@ INIT_BODIES.set(0x282564, (ctx, base) => {
   ram.setU32(base + REC.velA, 0);
   ram.setU32(base + REC.velA, ram.u32(base + 0x30));
   ram.setU32(base + 0x0a, 0x1c0014);
-  ram.setU32(base + REC.continuation, 0x282598);
+  storeContinuation(ctx, base, 0x282598);
 });
 CONTINUATIONS.set(0x282598, (ctx, base) => {
   const { ram } = ctx;
@@ -765,7 +880,7 @@ INIT_BODIES.set(0x2826DC, (ctx, base) => {
   ram.setU8(base + 0x1d, 0x1a);                      // $2826EE
   ram.setU32(base + 0x14, 0x6c);                     // $2826F4
   ram.setU16(base + 0x18, 0x0101);                   // $2826FC  (so +$19 = $01)
-  ram.setU32(base + REC.continuation, 0x282738);     // $282702
+  storeContinuation(ctx, base, 0x282738);             // $282702
   // $28270A lea $282714(PC),A0 ; $282710 bra $283C0E.  The epilogue clears bit 8
   // (flow-relevant) THEN does direction-sprite setup (sprite-only).  The sprite
   // setup reads per-kind sprite tables and is run only when a sprite sink is
@@ -824,7 +939,7 @@ INIT_BODIES.set(0x282908, (ctx, base) => {
   ram.setU32(base + 0x06, 0xfe00fe00);               // descriptor
   ram.setU16(base + 0x0e, 0x0210);                   // graphic
   ram.setU32(base + 0x0a, 0x1c0ca4);                 // renderOffs
-  ram.setU32(base + REC.continuation, 0x282944);
+  storeContinuation(ctx, base, 0x282944);
 });
 CONTINUATIONS.set(0x282944, (ctx, base) => {
   // $282944 addi.l #$14,-(A1) ; wrap at $1C0CF4 -> $1C0CA4 ; advance. No pos effect.
@@ -841,7 +956,7 @@ INIT_BODIES.set(0x282962, (ctx, base) => {
   ram.setU32(base + 0x06, 0xfe00fe00);
   ram.setU16(base + 0x0e, 0x0210);
   ram.setU32(base + 0x0a, 0x1c0d1c);
-  ram.setU32(base + REC.continuation, 0x28299e);
+  storeContinuation(ctx, base, 0x28299e);
 });
 CONTINUATIONS.set(0x28299e, (ctx, base) => {
   animateRenderOffsWrap(ctx, base, 0x1c0d1c, +0x14, 0x1c0d94);
@@ -859,7 +974,7 @@ INIT_BODIES.set(0x282B30, (ctx, base) => {
   // $282B50 move.l $1e,$30 ; $282B56 clr.l $1e -- SAVE velocity, then CLEAR it.
   ram.setU32(base + 0x30, ram.u32(base + REC.velA));
   ram.setU32(base + REC.velA, 0);
-  ram.setU32(base + REC.continuation, 0x282b64);
+  storeContinuation(ctx, base, 0x282b64);
 });
 CONTINUATIONS.set(0x282b64, (ctx, base) => {
   const { ram } = ctx;
@@ -951,8 +1066,10 @@ function epilogueSprite283C0E(ctx, base, tableA0) {
   // $283C20 dir ; $283C28 (dir+4)>>2 ; andi #$3e -> index into $283C4C offsets
   const dir = ram.u8(base + REC.dir);
   const d1 = ((dir + 4) >> 2) & 0x3e;
-  const off = rom.u16(0x283c4c + d1);                // $283C38 move.w (A1),D1
-  const a0 = (tableA0 + off) >>> 0;                  // $283C3A adda.w D1,A0
+  const resources = moverResources(ctx);
+  const authenticTable = resources.directionSpriteTables?.[tableA0] ?? tableA0;
+  const off = rom.u16(resources.directionTable + d1);
+  const a0 = (authenticTable + off) >>> 0;             // $283C3A adda.w D1,A0
   const spr = rom.u32(a0);                           // $283C3C move.l (A0),D0
   ram.setU32(base + 0x0a, spr);                      // $283C3E renderOffs
   ram.setU32(base + 0x10, (spr + ram.u32(base + 0x14)) >>> 0);  // $283C42 +$14
@@ -1677,7 +1794,7 @@ function launcherInit(ctx, base, cont) {
   // OFFSET direction `dir - +$37`, not along the bullet's own heading.
   const speed = ram.u8(base + REC.speed);              // $28347A move.b $1a(A6),D0
   const dir = (ram.u8(base + REC.dir) - ram.u8(base + 0x37)) & 0xff;  // $283484 sub.b
-  const v = velocity(rom, speed, dir);                 // $283488 bsr $284190
+  const v = velocityWithResources(rom, speed, dir, moverResources(ctx).vectors);
   ram.setU16(base + 0x30, u16(i16(v.dA) >> 3));        // $28348C asr.w #3 ; $283490
   ram.setU16(base + 0x32, u16(i16(v.dB) >> 3));        // $28348E asr.w #3 ; $283494
 }

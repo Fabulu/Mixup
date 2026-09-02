@@ -110,7 +110,12 @@ export function updateBulletSpeedBias252BD0(ram, rom) {
   return bias;
 }
 
-function drawBonusFollowerSide(ram, rom, h, p2) {
+export const BLACK_BONUS_FOLLOWER_RESOURCES = Object.freeze({
+  entry: 0x25292a,
+  frameTable: 0x25291c,
+});
+
+function drawBonusFollowerSide(ram, rom, h, p2, resources) {
   const state = ram.u16(h.player);
   if (i16(state) >= 0 || (state & 0x4000) !== 0 || ram.u16(h.bonus) === 0) return 0;
 
@@ -119,7 +124,7 @@ function drawBonusFollowerSide(ram, rom, h, p2) {
   ram.setU16(h.bonusTick, tick);
   if (tick === 0xffff) ram.setU16(h.bonusTick, ram.u16(h.bonusReload));
   if (ram.u16(HYPER.phase) !== 0) {
-    frame = rom.u32(0x25291c + i16(ram.u16(h.bonusFrame)));
+    frame = rom.u32(resources.frameTable + i16(ram.u16(h.bonusFrame)));
   }
 
   let pos = ram.u32(h.bonusPos);
@@ -137,9 +142,16 @@ function drawBonusFollowerSide(ram, rom, h, p2) {
 
 /** `$25292A`, the mirrored player bonus followers in sprite bucket 28. */
 export function drawBonusFollowers25292A(ram, rom) {
+  return drawBonusFollowersWithResources(ram, rom, BLACK_BONUS_FOLLOWER_RESOURCES);
+}
+
+export function drawBonusFollowersWithResources(ram, rom, resources) {
+  if (!resources || !Number.isInteger(resources.frameTable)) {
+    throw new TypeError('bonus followers need an edition frame table');
+  }
   if (ram.u16(HYPER.pause) !== 0) return 0;
-  return drawBonusFollowerSide(ram, rom, HYPER.p1, false)
-    + drawBonusFollowerSide(ram, rom, HYPER.p2, true);
+  return drawBonusFollowerSide(ram, rom, HYPER.p1, false, resources)
+    + drawBonusFollowerSide(ram, rom, HYPER.p2, true, resources);
 }
 
 function drawHyperStockAnimationSide(ram, h, p2) {

@@ -8,9 +8,11 @@ import { BLACK_LABEL_PROFILE, WHITE_LABEL_PROFILE } from '../src/profiles.js';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { E } from '../src/spark.js';
+import { HYPER } from '../src/hyper.js';
 import { SOUND, SoundState, postWrapper } from '../src/sound.js';
 import { S } from '../src/shots.js';
 import { WHITE_PLAYER } from '../src/white-player.js';
+import { WHITE_BULLET_DRIVER_RESOURCES } from '../src/white-bullets.js';
 import {
   WHITE_SHOT, WHITE_SHOT_LIFECYCLE_RESOURCES, WHITE_SHOT_PRODUCER_RESOURCES,
   WHITE_SPARK_RESOURCES, createWhiteStage1ShotHandlers, spawnWhitePlayerShot,
@@ -45,6 +47,8 @@ function manifestRanges() {
     ...white.shotProducerWindows,
     ...white.shotRuntimeWindows,
     ...white.shotSpeedWindows,
+    ...white.bulletRuntimeWindows,
+    ...white.bulletSpeedWindows,
   ].map(({ base, len }) => ({ base: parseInt(base.slice(1), 16), len }));
 }
 
@@ -259,6 +263,65 @@ test('type 5 first frame resets only spark state and both 36-record shot pools r
     'the live count observes both native 36-record pools before their cull');
   assert.equal(ram.u16(WHITE_SHOT.p1Pool), 0);
   assert.equal(ram.u16(WHITE_SHOT.p2Pool), 0);
+});
+
+test('recurring type 5 runs each subsystem once in exact Build A order', () => {
+  const calls = [];
+  const modes = [];
+  const ctx = {
+    whiteType5SubsystemHook(call) {
+      calls.push([call.call, call.target]);
+      modes.push(ram.u16(WHITE_BULLET_DRIVER_RESOURCES.modeWord));
+    },
+  };
+  const ram = new Ram();
+  const slot = 0x812000;
+  const { guarded, reads } = guardedRom();
+  const tick = createWhiteStage1ShotHandlers(guarded).get(0x05);
+
+  tick(ram, slot, 0, ctx);
+  assert.deepEqual(calls, [], 'the first-frame guard branches before recurring work');
+
+  const bullet = WHITE_BULLET_DRIVER_RESOURCES.pool;
+  ram.setU16(bullet, 0x8003);
+  ram.setU16(bullet + 0x02, 0x2000);
+  ram.setU16(bullet + 0x04, 0x2000);
+  ram.setU16(WHITE_BULLET_DRIVER_RESOURCES.armWord, 1);
+  ram.setU16(WHITE_BULLET_DRIVER_RESOURCES.modeWord, 0x8000);
+
+  ram.setU16(HYPER.p1.player, 0x8000);
+  ram.setU16(HYPER.p1.bonus, 1);
+  ram.setU16(HYPER.p1.stock, 1);
+  ram.setU16(HYPER.phase, 1);
+  ram.setU16(HYPER.p1.bonusFrame, 0);
+  ram.setU32(HYPER.p1.bonusPos, 0x001c4410);
+  ram.setU16(HYPER.stockDrawGateP1, 1);
+  ram.setU32(HYPER.p1.stockAnimPos, 0x001c3f14);
+
+  const frame = tick(ram, slot, 0, ctx);
+  assert.deepEqual(calls, [
+    [0x18a134, 0x17e9de],
+    [0x18a14c, 0x15302c],
+    [0x18a164, 0x188bd4],
+    [0x18a194, 0x180d3a],
+    [0x18a19a, 0x152b5a],
+    [0x18a1a0, 0x151fde],
+    [0x18a1a6, 0x152106],
+    [0x18a1ac, 0x18a1ac],
+  ]);
+  assert.deepEqual(modes.slice(0, 4), [0x8000, 0x8000, 0x8000, 0x8000]);
+  assert.deepEqual(modes.slice(4), [0, 0, 0, 0],
+    'the clear timer expires before both presentation calls and collision');
+  assert.equal(frame.bulletFrame.cleared, 1);
+  assert.equal(ram.u16(bullet) & 0x4000, 0x4000,
+    'the bullet driver sees the armed transform before the timer clears its mode');
+  assert.equal(frame.bonusFollowers, 1);
+  assert.equal(frame.hyperStockAnimations, 1);
+  assert.equal(reads.includes(0x151fd0), true,
+    'the authentic White bonus-follower frame table is read');
+  assert.ok(reads.every((address) => address < 0x200000));
+  assert.ok(reads.every((address) => covered(manifestRanges(), address)),
+    'every recurring type-5 read belongs to an exact White cartridge window');
 });
 
 test('driver, collision, hit response, impact spark, and finite drains keep native order', () => {

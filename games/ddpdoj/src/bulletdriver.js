@@ -128,11 +128,15 @@
 // NOTHING in `$25354C..$253562` branches to it -- the three conditional branches
 // all target `$253562`, the rts.  So this is complete, not a prefix.
 
-import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
 import { BUL } from './bullets.js';
-import { runMover, moverIterCount, MOVER } from './mover.js';
-import { allocPoolA27F8F0 } from './bee.js';
+import {
+  BLACK_MOVER_RESOURCES, moverIterCountWithResources, preflightMoverWithResources,
+  runMoverWithResources,
+} from './mover.js';
+import {
+  BLACK_POOL_A_RESOURCES, allocPoolAWithResources,
+} from './bee.js';
 
 export const BULLET_DRIVER = {
   entry: 0x281d9a,          // type-5 call #20, `$28B658 jsr $281D9A`
@@ -152,6 +156,26 @@ export const BULLET_DRIVER = {
   counterWrite: 0x281dce,   // `$281DCE move.w D0,$80AFE0`
 };
 
+export const BLACK_BULLET_DRIVER_RESOURCES = Object.freeze({
+  entry: BULLET_DRIVER.entry,
+  screenClear: BULLET_DRIVER.screenClear,
+  timer: BULLET_DRIVER.timer,
+  armWord: BULLET_DRIVER.armWord,
+  modeWord: BULLET_DRIVER.modeWord,
+  liveCount: BULLET_DRIVER.liveCount,
+  trailCursor: BULLET_DRIVER.trailCursor,
+  buf22: BULLET_DRIVER.buf22,
+  ctr22: BULLET_DRIVER.ctr22,
+  buf23: BULLET_DRIVER.buf23,
+  ctr23: BULLET_DRIVER.ctr23,
+  pool: BUL.pool,
+  stride: BUL.stride,
+  // Lazy access keeps the mover, bullet-driver, and Pool-A module cycle from
+  // reading either resource graph during ESM initialization.
+  get mover() { return BLACK_MOVER_RESOURCES; },
+  get poolA() { return BLACK_POOL_A_RESOURCES; },
+});
+
 // The two record offsets the clear writes.  `posA` is the `move.w #$FFFF,$2(A6)`
 // that follows the `jsr $27F8F8` on the FREE arm -- kept because the ROM has it,
 // unused in the port because the throw is in front of it.  If `$27F8F8` is ever
@@ -163,52 +187,33 @@ const CLR = { posA: 0x02, transformFlag: 0x3c };
  * is 0 on every ordinary frame.
  */
 export function runScreenClear(ctx) {
+  return runScreenClearWithResources(ctx, BLACK_BULLET_DRIVER_RESOURCES);
+}
+
+export function runScreenClearWithResources(ctx, resources) {
   const { ram } = ctx;
-  if (ram.u16(BULLET_DRIVER.armWord) === 0) return 0;   // $281CD6 tst.w / beq $281D98
-  const mode = ram.u16(BULLET_DRIVER.modeWord);         // $281CE0
-  const slots = moverIterCount(ram);                    // $281CEE..$281D1E (== $281D50..$281D80)
+  if (ram.u16(resources.armWord) === 0) return 0;
+  const mode = ram.u16(resources.modeWord);
+  const slots = moverIterCountWithResources(ram, resources.mover);
   let hit = 0;
-  if ((mode & 0x8000) !== 0) {                          // $281CE6 bmi $281D48
-    for (let s = 0; s < slots; s++) {                   // $281D84 / $281D94 dbra
-      const base = BUL.pool + s * BUL.stride;
-      if ((ram.u8(base) & 0x80) === 0) continue;        // $281D84 tst.b (A6) / bpl
-      ram.setU8(base, ram.u8(base) | 0x40);             // $281D88 or.b D2,(A6)  (D2=$40)
-      ram.setU16(base + CLR.transformFlag, 0xffff);     // $281D8A move.w #$FFFF,$3C(A6)
+  if ((mode & 0x8000) !== 0) {
+    for (let s = 0; s < slots; s++) {
+      const base = resources.pool + s * resources.stride;
+      if ((ram.u8(base) & 0x80) === 0) continue;
+      ram.setU8(base, ram.u8(base) | 0x40);
+      ram.setU16(base + CLR.transformFlag, 0xffff);
       hit++;
     }
     return hit;
   }
-  for (let s = 0; s < slots; s++) {                     // $281D22 / $281D42 dbra
-    const base = BUL.pool + s * BUL.stride;
-    if ((ram.u8(base) & 0x80) === 0) continue;          // $281D22 tst.b (A6) / bpl
-    // $281D28 move.w $81B412,D0 ; $281D2E jsr $27F8F8 -- the impact/effect pool
-    // ($8171BE, 70 slots of $2C, driven by type-5 call #4 $27F95A, unported).
-    // COUNTED, never allocated -- see this file's header for both reasons.
-    // W242 CORRECTS THIS NOTE. It used to say the pool's "only driver is $27F95A,
-    // type-5 call #4, UNPORTED" and that allocating without a driver would be W33's
-    // leak. Both halves stopped being true in W111: `runPoolADriver` IS $27F95A and
-    // `allocPoolA27F8F0` IS this allocator's sibling entry ($27F8F0 computes D2 from
-    // the layer and falls into the same $8171BE scan that $27F8F8 enters with
-    // D1 = D2 = 0).
-    //
-    // What actually blocks it is narrower and is worth naming precisely: the fill
-    // $280B3E is TABLE-DRIVEN -- `lea ($280E4A,PC),A3 / movea.l (A3,D0.w),A3` with
-    // D0 the kind as a byte offset -- and $280E4A is in no exported window, because
-    // W111 hand-transcribed the four kinds it measured into `IMPACT_KIND` instead.
-    // The screen clear's kind is $81B412, which is $0 here, and kind $0 is not one
-    // of those four. So porting this needs the $280E4A window plus a measured spec
-    // for kind $0 -- not a driver.
-    // W264 (DOCKET D3) WIRES IT. `$27F8F8` is the sibling entry that enters the same
-    // $8171BE scan with D1 = D2 = 0, so it is `allocPoolA27F8F0` with offset 0 and
-    // layer 0, and A6 is the BULLET's own record. What blocked it was never a driver:
-    // it was that $280B3E's template came from a hand-transcribed map instead of from
-    // $280E4A, so kind $0 -- the screen clear's own kind -- had no entry. The template
-    // and the animation hooks now come out of the cartridge for all twenty kinds.
+  for (let s = 0; s < slots; s++) {
+    const base = resources.pool + s * resources.stride;
+    if ((ram.u8(base) & 0x80) === 0) continue;
     const finalY = ram.u16(base + CLR.posA);
     const finalX = ram.u16(base + 0x04);
-    allocPoolA27F8F0(ram, ctx.rom, ctx, mode, 0, 0, base);  // $281D2E jsr $27F8F8
-    ram.setU16(base, 0);                                // $281D36 clr.w (A6)
-    ram.setU16(base + CLR.posA, 0xffff);                // $281D38 move.w #$FFFF
+    allocPoolAWithResources(ram, ctx.rom, ctx, mode, 0, 0, base, resources.poolA);
+    ram.setU16(base, 0);
+    ram.setU16(base + CLR.posA, 0xffff);
     ctx.friendlyBulletConvertHook?.(ram, {
       bullet: base, y: finalY, x: finalX, mode,
     }, ctx);
@@ -225,40 +230,29 @@ export function runScreenClear(ctx) {
  * @returns {{cleared:number, live:number}}
  */
 export function runBulletDriver(ctx) {
+  return runBulletDriverWithResources(ctx, BLACK_BULLET_DRIVER_RESOURCES);
+}
+
+export function runBulletDriverWithResources(ctx, resources) {
   const { ram } = ctx;
-  const cleared = runScreenClear(ctx);                       // $281D9A bsr.w $281CD6
-  const a4start = BULLET_DRIVER.buf23;                       // $281D9E / $281DA4
-  ram.setU16(BULLET_DRIVER.liveCount, 0);                    // $281DA6 clr.w $81B40C
-  // $281DB2 `adda.w $80AFE0,A0`.  ADDA.W SIGN-EXTENDS its source to 32 bits --
-  // it is not an unsigned add.  A bucket-22 length is a byte count and has never
-  // been measured at or above $8000, so the two readings agree today; the ROM
-  // decides which one the port implements, not the range the data happens to
-  // have taken.
-  const a0 = i16(ram.u16(BULLET_DRIVER.ctr22));
-  ram.setU32(BULLET_DRIVER.trailCursor, BULLET_DRIVER.buf22 + a0);  // $281DB8
-
-  // WAVE 52 -- **A4 IS A REAL ADDRESS NOW.**  `$281D9E lea $809C4C,A4` is the
-  // mover's emit cursor, and giving it to `runMover` is the whole of "the enemy
-  // bullets are visible": `spriteEmit` writes twelve bytes at (A4)+ and the two
-  // counters below stop being differences of cursors that never moved.
-  //
-  // A caller with no `spriteOut` -- `tools/w26movergate.mjs` and
-  // `tests/mover.test.js`, which compare bullet STATE against the board -- gets
-  // exactly what it got before, because the emit has no bullet-pool side effect.
-  ctx.spriteOut = { a4: a4start };                           // $281D9E / $281DA4
-
-  runMover(ctx);                                             // $281DBE bsr.b $281DDE
-
-  // $281DC0..$281DD6.  Both counters come from a POINTER DIFFERENCE, and both
-  // pointers have now actually moved.  Bucket 22's is `$81B41C`, which the trail
-  // block advances; bucket 23's is A4 itself, which every `spriteEmit` advances
-  // and the trail block REWINDS (the entry moves from 23 to 22 -- see
-  // `mover.js trailEmit`).
-  const d0 = (ram.u32(BULLET_DRIVER.trailCursor) - BULLET_DRIVER.buf22) | 0;
-  ram.setU16(BULLET_DRIVER.ctr22, u16(d0));                  // $281DCE
-  const a4 = ctx.spriteOut.a4;                               // $281DD4 suba.l (A7)+,A4
-  ram.setU16(BULLET_DRIVER.ctr23, u16(a4 - a4start));        // $281DD6
-  return { cleared, live: ram.u16(MOVER.liveCount),
+  const scoped = ctx.moverResources === resources.mover ? ctx
+    : { ...ctx, moverResources: resources.mover };
+  preflightMoverWithResources(scoped, resources.mover, {
+    skipContinuations: ram.u16(resources.armWord) !== 0,
+  });
+  const cleared = runScreenClearWithResources(scoped, resources);
+  const a4start = resources.buf23;
+  ram.setU16(resources.liveCount, 0);
+  const a0 = i16(ram.u16(resources.ctr22));
+  ram.setU32(resources.trailCursor, resources.buf22 + a0);
+  scoped.spriteOut = { a4: a4start };
+  runMoverWithResources(scoped, resources.mover);
+  const d0 = (ram.u32(resources.trailCursor) - resources.buf22) | 0;
+  ram.setU16(resources.ctr22, u16(d0));
+  const a4 = scoped.spriteOut.a4;
+  ram.setU16(resources.ctr23, u16(a4 - a4start));
+  if (scoped !== ctx) ctx.spriteOut = scoped.spriteOut;
+  return { cleared, live: ram.u16(resources.liveCount),
     emitted: (a4 - a4start) / 12, trail: (d0 - a0) / 12 };
 }
 
@@ -268,10 +262,14 @@ export function runBulletDriver(ctx) {
  * @returns {boolean} whether the timer expired THIS frame
  */
 export function runClearTimer(ram) {
-  if (ram.u16(BULLET_DRIVER.armWord) === 0) return false;    // $25354C tst.w / beq
-  const n = u16(ram.u16(BULLET_DRIVER.armWord) - 1);         // $253554 subq.w #$1
-  ram.setU16(BULLET_DRIVER.armWord, n);
-  if (n !== 0) return false;                                 // $25355A bne $253562
-  ram.setU16(BULLET_DRIVER.modeWord, 0);                     // $25355C clr.w $81B412
+  return runClearTimerWithResources(ram, BLACK_BULLET_DRIVER_RESOURCES);
+}
+
+export function runClearTimerWithResources(ram, resources) {
+  if (ram.u16(resources.armWord) === 0) return false;
+  const n = u16(ram.u16(resources.armWord) - 1);
+  ram.setU16(resources.armWord, n);
+  if (n !== 0) return false;
+  ram.setU16(resources.modeWord, 0);
   return true;
 }

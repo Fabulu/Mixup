@@ -281,10 +281,8 @@ export function profileRomSpec(profile, tables) {
           throw new TypeError(`${field} has an invalid embedded ROM window descriptor`);
         }
         const key = `${descriptor.base}:${descriptor.len}`;
-        if (excluded.has(key)) {
-          throw new TypeError(`${key} is duplicated in the embedded edition manifests`);
-        }
-        excluded.set(key, 0);
+        // Capability manifests may project the same physical edition window.
+        if (!excluded.has(key)) excluded.set(key, 0);
       }
     }
   }

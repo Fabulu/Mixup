@@ -98,11 +98,15 @@ import { enqueueThroughStub, enqueueZoomedThroughStub, enqueueRegisters } from '
 import { scoreByMask } from './score.js';
 import { bcd242AC6 } from './items.js';
 import { grantHyper287682 } from './hyper.js';
-import { drawByte242B3C, drawByte2431F4, drawByte242E24, drawSigned242FDE,
-  drawWord242EC2 } from './rng.js';
+import {
+  drawByte242B3C, drawByte2431F4, drawByte242E24, drawSigned242FDE,
+  drawWord242EC2, drawByteWithResources, drawSignedByteWithResources,
+  drawUnmaskedByteWithResources,
+} from './rng.js';
 // W417: kinds 8..15 call `$242296`, which is `$242290`'s SECOND HALF -- aim256 with
 // A0 already supplied -- so the entry is `aim256` itself and not `aim256AtTarget`.
-import { AimTables, aim256 } from './aim.js';
+import { Aim256Tables, AimTables, BLACK_AIM256_RESOURCES, aim256 } from './aim.js';
+import { velocityWithResources } from './bulletmath.js';
 
 // ============================== THE GEOMETRY ================================
 
@@ -589,6 +593,21 @@ const IMPACT_FINISH = Object.freeze({
 const IMPACT_FINISH_DISPATCH = 0x280bce;
 
 export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) {
+  return allocPoolAWithResources(
+    ram, rom, ctx, kind, offset, layer, carrierA6, BLACK_POOL_A_RESOURCES,
+  );
+}
+
+export function allocPoolAWithResources(
+  ram, rom, ctx, kind, offset, layer, carrierA6, resources,
+) {
+  if (resources === BLACK_POOL_A_RESOURCES) {
+    return allocPoolABlack(ram, rom, ctx, kind, offset, layer, carrierA6);
+  }
+  return allocPoolAEdition(ram, rom, ctx, kind, offset, layer, carrierA6, resources);
+}
+
+function allocPoolABlack(ram, rom, ctx, kind, offset, layer, carrierA6) {
   const finish = IMPACT_FINISH[kind];
   if (!finish) {
     // The message must NOT read the ROM: $280BCE is code and in no window, so building
@@ -641,6 +660,117 @@ export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) 
   }
   note(ctx, 0x27f8f0, '$27F8F0 general Pool-A allocation dropped: all 70 slots full');
   return null;
+}
+
+function assertEditionPointer(actual, expected, at, what) {
+  if (actual !== expected) {
+    unreached(at, `${what} is $${actual.toString(16).toUpperCase()}, expected `
+      + `$${expected.toString(16).toUpperCase()}`);
+  }
+}
+
+function preflightPoolADispatch(rom, resources) {
+  if (!resources.validateDispatch) return;
+  for (let index = 0; index < resources.dispatchEntries.length; index++) {
+    const cell = resources.dispatch + index * 4;
+    assertEditionPointer(rom.u32(cell), resources.dispatchEntries[index], cell,
+      'Pool-A body pointer');
+  }
+}
+
+function allocPoolAEdition(ram, rom, ctx, kind, offset, layer, carrierA6, resources) {
+  if (!resources || !resources.supportedKinds?.includes(kind)
+      || resources.stride !== 0x2c || resources.generalSlots !== 70
+      || resources.dispatchEntries?.length !== 20) {
+    unreached(resources?.alloc ?? 0, `Pool-A kind offset $${kind.toString(16)
+      .toUpperCase()} is outside this edition capability`);
+  }
+  preflightPoolADispatch(rom, resources);
+  const layerIndex = layer & 0xff;
+  if (layerIndex >= resources.layerEntries) {
+    unreached(resources.alloc, `Pool-A layer ${layerIndex} escaped its table`);
+  }
+  const templateCell = resources.templateTable + kind;
+  const template = rom.u32(templateCell);
+  assertEditionPointer(template, resources.templatePointers[kind], templateCell,
+    'Pool-A template pointer');
+  const hookCell = resources.fillHookTable + kind;
+  const hook = rom.u32(hookCell);
+  assertEditionPointer(hook, resources.fillHooks[kind], hookCell, 'Pool-A fill hook');
+  const layerCell = resources.layerTable + layerIndex * 4;
+  const emitter = rom.u32(layerCell);
+  assertEditionPointer(emitter, resources.layerEmitters[layerIndex], layerCell,
+    'Pool-A layer emitter');
+
+  for (let i = 0; i < resources.generalSlots; i++) {
+    const slot = resources.base + i * resources.stride;
+    if (ram.u16(slot) !== 0) continue;
+    const d7 = resources.generalSlots - 1 - i;
+    return fillPoolAEdition(ram, rom, slot, kind, offset, carrierA6, emitter,
+      template, hook, d7, resources);
+  }
+  note(ctx, resources.alloc, `Pool-A allocation dropped: all ${resources.generalSlots} slots full`);
+  return null;
+}
+
+function fillPoolAEdition(
+  ram, rom, slot, kind, offset, carrierA6, emitter, template, hook, d7, resources,
+) {
+  ram.setU16(resources.liveCount, u16(ram.u16(resources.liveCount) + 1));
+  ram.setU16(slot + B.status, kind | 0x8000);
+  let pos = (ram.u32(carrierA6 + B.pos) + (offset >>> 0)) >>> 0;
+  pos = ((pos & 0xffff0000)
+    | u16((pos & 0xffff) + ram.u16(resources.scrollShort))) >>> 0;
+  ram.setU32(slot + B.pos, pos);
+  let short = u16((pos & 0xffff) + 0x0e00);
+  short = u16(short + ram.u16(0x813172));
+  short = u16(short + 0xac00);
+  let long = u16((pos >>> 16) + 0x0800);
+  long = u16(long + 0x6000);
+  if (short < 0xac00 || long < 0x6000) {
+    ram.setU16(resources.liveCount, u16(ram.u16(resources.liveCount) - 1));
+    ram.setU16(slot + B.status, 0);
+    return null;
+  }
+
+  ram.setU32(slot + B.spriteOff, rom.u32(template));
+  ram.setU32(slot + B.sprite, rom.u32(template + 4));
+  ram.setU16(slot + B.size, rom.u16(template + 8));
+  ram.setU32(slot + B.hitLongA, rom.u32(template + 10));
+  ram.setU32(slot + B.hitShortA, rom.u32(template + 14));
+  ram.setU16(slot + B.blinkTimer, rom.u16(template + 18));
+  ram.setU16(slot + B.tpl1C, rom.u16(template + 20));
+  ram.setU32(slot + B.layerEmitter, emitter);
+
+  const hookKind = resources.fillHookDispatch[hook];
+  if (hookKind === 'hyper') {
+    ram.setU32(slot + resources.ownerAt, resources.ownerByKind[kind]);
+    ram.setU8(slot + B.speed, d7 & 0x0f);
+    ram.setU8(slot + B.hitCount, 0);
+    const phase = (drawUnmaskedByteWithResources(ram, rom, resources.rng.phase) & 0x0e) >> 1;
+    const hooks = resources.hookData[kind];
+    ram.setU32(slot + B.sprite,
+      (ram.u32(slot + B.sprite) + rom.u16(hooks + phase * 2)) >>> 0);
+    return slot;
+  }
+  if (hookKind !== 'kind0') {
+    unreached(hook, `Pool-A fill hook $${hook.toString(16).toUpperCase()} has no dispatch`);
+  }
+
+  ram.setU16(slot + B.speed, 0x0420);
+  const phase = (drawUnmaskedByteWithResources(ram, rom, resources.rng.phase) & 0x0e) >> 1;
+  ram.setU32(slot + B.sprite,
+    (ram.u32(slot + B.sprite) + rom.u16(resources.hookData[kind] + phase * 2)) >>> 0);
+  ram.setU8(slot + B.speed, ram.u8(slot + B.speed)
+    + (drawByteWithResources(ram, rom, resources.rng.speed) >> 1));
+  const spread = drawSignedByteWithResources(ram, rom, resources.rng.spread) + 1;
+  ram.setU8(slot + B.angle,
+    ram.u8(slot + B.angle) + drawByteWithResources(ram, rom, resources.rng.speed) - spread);
+  const vector = velocityWithResources(rom, ram.u8(slot + B.speed),
+    (ram.u8(slot + B.angle) & 0x3f) << 2, resources.vectors);
+  ram.setU16(slot + B.waypoint, u16(vector.dA));
+  ram.setU16(slot + B.waypoint + 2, u16(vector.dB));
+  return slot;
 }
 
 function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
@@ -938,70 +1068,68 @@ function runFillHook(ram, kind, slot) {
  *  @returns telemetry; the ROM returns none.
  */
 export function runPoolADriver(ram, rom, ctx) {
-  let d7 = ram.u16(POOL_A.liveCount);                     // $27F95A
+  return runPoolADriverWithResources(ram, rom, ctx, BLACK_POOL_A_RESOURCES);
+}
+
+export function runPoolADriverWithResources(ram, rom, ctx, resources) {
+  if (!resources || resources.stride !== 0x2c || resources.totalSlots !== 80
+      || resources.dispatchEntries.length !== 20) {
+    throw new TypeError('Pool-A driver needs its complete 20-entry edition dispatch graph');
+  }
+  preflightPoolADispatch(rom, resources);
+  const scoped = ctx?.poolAResources === resources ? ctx : { ...(ctx ?? {}), poolAResources: resources };
+  let d7 = ram.u16(resources.liveCount);
   const t = { live: 0, emitted: 0, freed: 0, collected: 0, walked: 0, scrolled: 0 };
-  if (d7 === 0) return t;                                 // $27F960 beq
-  d7--;                                                   // $27F962 subq.w #1 (dbra)
-  const d6 = ram.u16(POOL_A.scrollShort);                 // $27F96A move.w $813176
+  if (d7 === 0) return t;
+  d7--;
+  const d6 = ram.u16(resources.scrollShort);
   let slot = 0;
-  for (let n = 0; n <= d7; n++) {                         // $27F998 dbra D7
-    // $27F976 move.w (A6),D1 / beq advance: scan forward over empty slots
+  for (let n = 0; n <= d7; n++) {
     let a6 = -1;
-    for (; slot < POOL_A.totalSlots; slot++) {            // $27F972 lea ($2C,A6),A6
-      const r = POOL_A.base + slot * POOL_A.stride;
-      if (ram.u16(r) !== 0) { a6 = r; break; }            // $27F976 move.w (A6),D1 / beq
+    for (; slot < resources.totalSlots; slot++) {
+      const record = resources.base + slot * resources.stride;
+      if (ram.u16(record) !== 0) { a6 = record; break; }
     }
     if (a6 < 0) {
-      unreached(0x27f976, `$27F95A's walk ran out of slots: $817F7E = $${
-        ram.u16(POOL_A.liveCount).toString(16).toUpperCase()} but only $${
-        t.live} live record(s) found in the ${POOL_A.totalSlots}-slot pool. `
-        + `The count and the slots have disagreed`);
+      unreached(resources.driver, `Pool-A walk ran out of slots: live count $${
+        ram.u16(resources.liveCount).toString(16).toUpperCase()} exceeds records found`);
     }
     slot++;
     t.live++; t.walked++;
-    const d1 = ram.u16(a6 + B.status);                    // $27F976
-    // Optional host policy seam. It runs only for allocated, uncollected bee kinds,
-    // before scroll, dispatch, emission, and the later authentic collision pass.
-    // With no callback this branch performs no read or write beyond the driver's
-    // existing status load above.
+    const d1 = ram.u16(a6 + B.status);
     const kind = d1 & 0x7c;
     if ((d1 & 0x8001) === 0x8000
         && (kind === KIND.bee || kind === KIND.beeFlying)) {
-      ctx?.beeRecordHook?.(ram, a6, d1);
+      scoped.beeRecordHook?.(ram, a6, d1);
     }
-    // $27F97A sub.w D6,($4,A6): scroll the SHORT axis (X).
-    ram.setU16(a6 + B.posX, u16(ram.u16(a6 + B.posX) - d6)); // $27F97A
+    ram.setU16(a6 + B.posX, u16(ram.u16(a6 + B.posX) - d6));
     t.scrolled++;
-    // $27F97E/$27F980: 5-bit kind index = status & $7C (a byte offset into
-    // the stride-4 table at $27F99E, NOT a plain index).
-    const d0 = kind;                                        // $27F97E/$27F980
-    // $27F982 tst.b D1 / bmi $2810CA: bit 7 selects the collected animation.
-    // Type A3's kinds 18/19 set it through `$280FDC` on their collision frame.
     if ((d1 & 0x80) !== 0) {
-      const r = collectedImpact2810CA(ram, rom, a6);
-      if (r?.emitted) t.emitted++;
-      if (r?.freed) t.freed++;
-      if (r?.collected) t.collected++;
+      if (!resources.collectedImpact) {
+        unreached(resources.driver, 'this edition capability has no collected Pool-A arm');
+      }
+      const result = collectedImpact2810CA(ram, rom, a6);
+      if (result?.emitted) t.emitted++;
+      if (result?.freed) t.freed++;
+      if (result?.collected) t.collected++;
       continue;
     }
-    // Range-check the dispatch table to 20 entries.  $27F99E has 20 longs;
-    // indices 20..31 (status & $7C = $A0..$FC) run off the end into code.
-    const idx = d0 >> 2;
-    if (idx >= POOL_A.dispatchEntries) {
-      unreached(POOL_A.dispatch, `$27F988 lea ($27F99E,PC),A0 / adda.w D0,A0 `
-        + `-- a live pool-A record carries status $${
-          d1.toString(16).toUpperCase()}, whose masked kind $${
-          d0.toString(16).toUpperCase()} is index ${idx} of a `
-        + `${POOL_A.dispatchEntries}-entry table. Indices 20..31 run off the `
-        + `end into code at $27F9EE. Record at $${
-          a6.toString(16).toUpperCase()}`);
+    const idx = kind >> 2;
+    if (idx >= resources.dispatchEntries.length) {
+      unreached(resources.dispatch, `Pool-A status $${d1.toString(16).toUpperCase()} `
+        + `indexes past ${resources.dispatchEntries.length} dispatch entries`);
     }
-    // $27F988..$27F992: lea table / adda D0 / movea.l (A0),A0 / jsr (A0).
-    const body = DISPATCH[idx];                           // $27F990 movea.l (A0),A0
-    const r = runBody(ram, rom, ctx, a6, d1, body, d7 - n); // $27F992 jsr (A0)
-    if (r?.emitted) t.emitted++;
-    if (r?.freed) t.freed++;
-    if (r?.collected) t.collected++;
+    const cell = resources.dispatch + kind;
+    const expected = resources.dispatchEntries[idx];
+    const authentic = resources.validateDispatch ? rom.u32(cell) : expected;
+    if (authentic !== expected) {
+      assertEditionPointer(authentic, expected, cell, 'Pool-A body pointer');
+    }
+    const body = resources.bodyDispatch?.[authentic] ?? authentic;
+    const result = runBody(ram, rom, scoped, a6, d1, body, d7 - n, authentic);
+    if (result?.emitted) t.emitted++;
+    if (result?.freed) t.freed++;
+    if (result?.collected) t.collected++;
   }
   return t;
 }
@@ -1048,12 +1176,16 @@ function due8(ram, addr) {
  * dbra counter, which is why the driver threads it through.
  */
 function poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining) {
+  const resources = ctx.poolAResources ?? BLACK_POOL_A_RESOURCES;
   // W411 CORRECTS W265. `$27FA34` is `66 b8` -- `bne` with an $B8 = -$48
   // displacement off $27FA36, i.e. **$27F9EE, BACKWARD**, the collect arm that sits
   // between the dispatch table and this body. W265 read it as "bits 11 or 12 set and
   // it does NOTHING at all" and its test pinned that, so a star the player touched
   // was never collected, never scored and never counted -- half of docket D44.
-  if ((d1 & 0x1800) !== 0) {                              // $27FA30/$27FA34 bne $27F9EE
+  if ((d1 & 0x1800) !== 0) {
+    if (!resources.kind0Collect) {
+      unreached(resources.kind0Body, 'this edition capability does not expose kind-0 collection');
+    }
     return poolACollectArm(ram, rom, ctx, a6, d1, COLLECT_ARMS.star27F9EE);
   }
   if (due8(ram, a6 + 0x18)) {                             // $27FA36 subq.b/bcc
@@ -1065,10 +1197,21 @@ function poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining) {
     if (ram.u16(POOL_A.freeze) === 0) {                   // $27FA62 tst.w/bne
       ram.setU8(a6 + B.speed, (ram.u8(a6 + B.speed) + 1) & 0xff);  // $27FA6A addq.b
     }
-    const v = ctx.tables.vector(ram.u8(a6 + B.speed),     // $27FA7A jsr $241812
-      ram.u8(a6 + B.angle) & 0x3f);                       // $27FA76 and.b #$3F
-    ram.setU16(a6 + 0x20, v.dy);                          // $27FA80
-    ram.setU16(a6 + 0x22, v.dx);                          // $27FA84
+    let dy;
+    let dx;
+    if (resources.vectors) {
+      const vector = velocityWithResources(rom, ram.u8(a6 + B.speed),
+        (ram.u8(a6 + B.angle) & 0x3f) << 2, resources.vectors);
+      dy = vector.dA;
+      dx = vector.dB;
+    } else {
+      const vector = ctx.tables.vector(ram.u8(a6 + B.speed),
+        ram.u8(a6 + B.angle) & 0x3f);
+      dy = vector.dy;
+      dx = vector.dx;
+    }
+    ram.setU16(a6 + 0x20, dy);                              // $27FA80
+    ram.setU16(a6 + 0x22, dx);                              // $27FA84
   }
   // $27FA88..$27FA92 -- D2 is the cached pair: its LOW half moves the short axis and
   // its HIGH half, after the swap, the long one.
@@ -1078,11 +1221,11 @@ function poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining) {
     return freePoolA(ram, a6);                            // $27FABC..$27FAC4
   }
   // $27FA98 -- busy pool: draw on alternating walk positions instead of dropping.
-  if (ram.u16(POOL_A.liveCount) >= 0x3c
-    && (remaining & 1) === ram.u16(0x80390c)) {
+  if (ram.u16(resources.liveCount) >= resources.kind0Threshold
+    && (remaining & 1) === ram.u16(POOL_A.collisionPhase)) {
     return undefined;                                     // $27FABA rts
   }
-  enqueueThroughStub(ram, rom, 0x23eba0, a6);             // $27FAB2 jmp $23EBA0
+  enqueueThroughStub(ram, rom, resources.presentationStub, a6);
   return undefined;
 }
 
@@ -1426,29 +1569,80 @@ const HYPER_STAR = Object.freeze({
 const HYPER_STAR_BY_BODY = new Map(
   Object.values(HYPER_STAR).map((s) => [s.site, s]));
 
+export const BLACK_POOL_A_RESOURCES = Object.freeze({
+  alloc: 0x27f8f0,
+  driver: POOL_A.driver,
+  dispatch: POOL_A.dispatch,
+  dispatchEntries: DISPATCH,
+  validateDispatch: false,
+  bodyDispatch: null,
+  base: POOL_A.base,
+  liveCount: POOL_A.liveCount,
+  stride: POOL_A.stride,
+  generalSlots: POOL_A.generalSlots,
+  totalSlots: POOL_A.totalSlots,
+  scrollShort: POOL_A.scrollShort,
+  ownerAt: POOL_A.ownerAt,
+  collectedImpact: true,
+  kind0Collect: true,
+  kind0Body: 0x27fa30,
+  kind0Threshold: 0x3c,
+  hyperThreshold: 0x28,
+  ownerDistance: 0x600,
+  presentationStub: 0x23eba0,
+  aim: BLACK_AIM256_RESOURCES,
+  hyperByBody: null,
+  soundRequestMap: null,
+});
+
 const AIM_TABLES = new WeakMap();
+const EDITION_AIM_TABLES = new WeakMap();
 function aimTables(rom) {
   let t = AIM_TABLES.get(rom);
   if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
   return t;
 }
 
+function aim256TablesFor(rom, resources) {
+  if (!resources?.aim || resources.aim === BLACK_AIM256_RESOURCES) return aimTables(rom);
+  let byResource = EDITION_AIM_TABLES.get(rom);
+  if (!byResource) { byResource = new Map(); EDITION_AIM_TABLES.set(rom, byResource); }
+  let tables = byResource.get(resources.aim);
+  if (!tables) {
+    tables = new Aim256Tables(rom, resources.aim);
+    byResource.set(resources.aim, tables);
+  }
+  return tables;
+}
+
 /** `$242296` -- `aim256` entered PAST its target select, A0 from the CALLER. */
-function aim256FromA0242296(rom, ram, a6, tgtY, tgtX) {
-  return aim256(aimTables(rom), ram.u16(a6 + B.pos), ram.u16(a6 + B.posX),
-    tgtY, tgtX);                                          // $242296/$24229C/$2422A2
+function aim256FromA0242296(rom, ram, a6, tgtY, tgtX, resources) {
+  return aim256(aim256TablesFor(rom, resources), ram.u16(a6 + B.pos), ram.u16(a6 + B.posX),
+    tgtY, tgtX);
 }
 
 /** `$2802A0..$2802B0` and `$2802E8..$2802F8` -- store the heading and cache the
  *  `$241D34` pair at the fixed speed index `$40`. */
 function hyperStarAim(ram, rom, ctx, a6, dir) {
   ram.setU8(a6 + B.angle, dir & 0xff);                    // move.b D1,($1B,A6)
-  const v = ctx.tables.shotVector(0x40, dir & 0xff);      // moveq #$40,D0 / jsr $241D34
-  ram.setU16(a6 + B.waypoint, u16(v.dy));                 // movem.w D2/D3,($20,A6)
-  ram.setU16(a6 + B.waypoint + 2, u16(v.dx));
+  const resources = ctx.poolAResources ?? BLACK_POOL_A_RESOURCES;
+  let dy;
+  let dx;
+  if (resources.vectors) {
+    const vector = velocityWithResources(rom, 0x40, dir & 0xff, resources.vectors);
+    dy = vector.dA;
+    dx = vector.dB;
+  } else {
+    const vector = ctx.tables.shotVector(0x40, dir & 0xff); // moveq #$40 / jsr $241D34
+    dy = vector.dy;
+    dx = vector.dx;
+  }
+  ram.setU16(a6 + B.waypoint, u16(dy));                    // movem.w D2/D3,($20,A6)
+  ram.setU16(a6 + B.waypoint + 2, u16(dx));
 }
 
 function hyperStarBody280252(ram, rom, ctx, a6, d1, spec, remaining) {
+  const resources = ctx.poolAResources ?? BLACK_POOL_A_RESOURCES;
   // $280252 btst #$C,D1 (kinds 8..11) or #$B (12..15).  ONE bit, not `andi #$1800`:
   // a kind-8 record P2 flies into is NOT collected, it just keeps stepping.
   if ((d1 & spec.bit) !== 0) {
@@ -1461,14 +1655,14 @@ function hyperStarBody280252(ram, rom, ctx, a6, d1, spec, remaining) {
     // needed by kinds 9 and 13 -- only by kind 5, which is still unported.
     ram.setU32(a6 + B.hitLongA, spec.selector);
     scoreByMask(ram, spec.score, ram.u8(a6 + B.status)); // $280274/$280276/$280278
-    ctx.soundPost?.(spec.sound);                          // $28027E jsr $28C5E4
+    ctx.soundPost?.(resources.soundRequestMap?.[spec.sound] ?? spec.sound);
     return { ...offscreenFree27FC7C(ram, a6), collected: true };  // $280284..$280292
   }
 
   // $280294 tst.b ($1E,A6) / bne -- the fill hook cleared it, so this runs once.
   if (ram.u8(a6 + B.hitCount) === 0) {
     hyperStarAim(ram, rom, ctx, a6,                       // $28029A jsr $242296
-      aim256FromA0242296(rom, ram, a6, spec.aimY, spec.aimX));
+      aim256FromA0242296(rom, ram, a6, spec.aimY, spec.aimX, ctx.poolAResources));
     ram.setU8(a6 + B.hitCount, 0x01);                     // $2802B2 move.b #$1,($1E,A6)
   }
 
@@ -1480,8 +1674,8 @@ function hyperStarBody280252(ram, rom, ctx, a6, d1, spec, remaining) {
     if ((ram.u16(owner) & 0x8000) === 0) {                // $2802C8 tst.w (A0) / bmi
       return offscreenFree27FC7C(ram, a6);                // $2802CC..$2802DA
     }
-    const dir = aim256FromA0242296(rom, ram, a6,          // $2802DC jsr $242296
-      ram.u16(owner + 0x02), ram.u16(owner + 0x04));
+    const dir = aim256FromA0242296(rom, ram, a6,
+      ram.u16(owner + 0x02), ram.u16(owner + 0x04), ctx.poolAResources);
     // $2802E2 cmp.b ($1B,A6),D1 / beq -- an unchanged heading keeps the cached pair.
     if ((dir & 0xff) !== ram.u8(a6 + B.angle)) hyperStarAim(ram, rom, ctx, a6, dir);
   }
@@ -1497,22 +1691,22 @@ function hyperStarBody280252(ram, rom, ctx, a6, d1, spec, remaining) {
   }
 
   // $28032C cmpi.w #$28,$817F7E / bcs $280360.  Kind 0's twin uses $3C.
-  if (ram.u16(POOL_A.liveCount) >= 0x28) {
+  if (ram.u16(resources.liveCount) >= resources.hyperThreshold) {
     // $280338..$28034E -- and the exemption kind 0 does NOT have: a record within
     // $600 of its owner on the SHORT axis always draws, however busy the pool is.
     const owner = ram.u32(a6 + POOL_A.ownerAt);           // $280338 movea.l ($24,A6),A0
     let d0 = u16(ram.u16(a6 + B.posX) - ram.u16(owner + 0x04)); // $280340/$280344 sub.w
     if ((d0 & 0x8000) !== 0) d0 = u16(-d0);               // $280346 bpl / $280348 neg.w
-    if (d0 >= 0x0600                                      // $28034A cmpi.w / $28034E bcs
+    if (d0 >= resources.ownerDistance
       && (remaining & 1) === ram.u16(POOL_A.collisionPhase)) {
       return undefined;                                   // $28035C beq $280368 (rts)
     }
   }
-  enqueueThroughStub(ram, rom, 0x23eba0, a6);             // $280360 jmp $23EBA0
+  enqueueThroughStub(ram, rom, resources.presentationStub, a6);
   return { emitted: true };
 }
 
-function runBody(ram, rom, ctx, a6, d1, body, remaining) {
+function runBody(ram, rom, ctx, a6, d1, body, remaining, authentic = body) {
   if (body === POOL_A.body) return beeBody27FACC(ram, rom, ctx, a6, d1);
   // Kinds 0 and 4 share $27FA30 -- DISPATCH[0] and DISPATCH[4] are the same address.
   if (body === 0x27fa30)
@@ -1527,7 +1721,8 @@ function runBody(ram, rom, ctx, a6, d1, body, remaining) {
     return poolAKind5Body27FF9A(ram, rom, ctx, a6, d1, remaining);
   // W417: $27F99E's indices 8..15 are ONE routine over seven constants -- the
   // hyper-bank cancel stars, and the throw that stopped every full boot here.
-  const hyper = HYPER_STAR_BY_BODY.get(body);
+  const resources = ctx.poolAResources ?? BLACK_POOL_A_RESOURCES;
+  const hyper = resources.hyperByBody?.[authentic] ?? HYPER_STAR_BY_BODY.get(body);
   if (hyper) return hyperStarBody280252(ram, rom, ctx, a6, d1, hyper, remaining);
   if (body === 0x280082)
     return stage4ImpactBody(ram, rom, ctx, a6, d1,

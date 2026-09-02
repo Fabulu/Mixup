@@ -74,6 +74,14 @@ export function drawWordWithResources(ram, rom, suppliedResources) {
   return value >= 0x8000 ? value - 0x10000 : value;
 }
 
+/** Resource-bound unmasked unsigned-byte member used by Pool-A fill hooks. */
+export function drawUnmaskedByteWithResources(ram, rom, suppliedResources) {
+  const resources = validateBoundedDraw(suppliedResources, 256);
+  const state = advanceSharedCounter(ram);
+  const index = state >= 0x8000 ? state - 0x10000 : state;
+  return rom.u8(resources.table + index);
+}
+
 /** Resource-bound unmasked signed-byte member used by the spark slot filler. */
 export function drawSignedByteWithResources(ram, rom, suppliedResources) {
   const resources = validateBoundedDraw(suppliedResources, 256);

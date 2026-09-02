@@ -188,14 +188,16 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
     ...tables.editions.whiteLabel.shotProducerWindows,
     ...tables.editions.whiteLabel.shotRuntimeWindows,
     ...tables.editions.whiteLabel.shotSpeedWindows,
+    ...tables.editions.whiteLabel.bulletRuntimeWindows,
+    ...tables.editions.whiteLabel.bulletSpeedWindows,
   ];
   const excluded = new Set(descriptors.map(({ base, len }) =>
     `${Number.parseInt(base.slice(1), 16)}:${len}`));
   const g = game();
   const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
 
-  assert.equal(excluded.size, 202);
-  assert.equal(tables.rom.windows.length, 1151,
+  assert.equal(excluded.size, 663);
+  assert.equal(tables.rom.windows.length, 1612,
     'runtime projection does not mutate the complete exported table');
   assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [949, 457509]);
   for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);

@@ -73,6 +73,45 @@ export const AIM = {
   selP2: 0x810448,           // $242710 lea $810448,A1   -- P2's record
 };
 
+export const BLACK_AIM256_RESOURCES = Object.freeze({
+  entry: AIM.core256,
+  lut: AIM.lut256,
+  lutEntries: 65,
+  base: AIM.base256,
+  baseEntries: 8,
+  ops: AIM.ops256,
+  opStride: 8,
+  opEntries: 8,
+});
+
+/** The aim256-only cartridge graph used by narrow edition capabilities. */
+export class Aim256Tables {
+  constructor(rom, resources = BLACK_AIM256_RESOURCES) {
+    if (!resources || resources.lutEntries !== 65 || resources.baseEntries !== 8
+        || resources.opEntries !== 8 || resources.opStride !== 8
+        || !Number.isSafeInteger(resources.lut)
+        || !Number.isSafeInteger(resources.base)
+        || !Number.isSafeInteger(resources.ops)) {
+      throw new TypeError('aim256 needs its 65-byte LUT and eight octant stubs');
+    }
+    this.lut256 = Uint8Array.from(rom.bytes(resources.lut, resources.lutEntries));
+    this.base256 = [];
+    this.sub256 = [];
+    for (let i = 0; i < resources.opEntries; i++) {
+      this.base256.push(rom.u16(resources.base + 2 * i));
+      const op = rom.u16(resources.ops + resources.opStride * i);
+      if (op !== 0x9240 && op !== 0xd240) {
+        unreached(resources.ops + resources.opStride * i, `the aim256 octant stub [${i}] `
+          + `opens $${op.toString(16).toUpperCase()}, not $9240 or $D240`);
+      }
+      this.sub256.push(op === 0x9240);
+    }
+    Object.freeze(this.base256);
+    Object.freeze(this.sub256);
+    Object.freeze(this);
+  }
+}
+
 /** The reference counts `tools/recon20/aimref.py` measured over the whole 6 MB
  *  decrypted image (absolute-long AND PC-relative AND every longword in any
  *  pointer table).  A zero here is the strongest absence claim this project can

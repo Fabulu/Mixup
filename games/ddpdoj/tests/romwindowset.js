@@ -726,8 +726,8 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 202;
-const WHITE_LABEL_WINDOW_BYTES = 55342;
+const WHITE_LABEL_WINDOW_COUNT = 663;
+const WHITE_LABEL_WINDOW_BYTES = 164117;
 
 /** Remove the later embedded Version A window family before reconstructing any
  *  earlier Black Label ledger. The edition manifest is the identity list, so a
@@ -741,6 +741,8 @@ export function tableBeforeWhiteLabel(tables) {
     ...(edition?.shotProducerWindows ?? []),
     ...(edition?.shotRuntimeWindows ?? []),
     ...(edition?.shotSpeedWindows ?? []),
+    ...(edition?.bulletRuntimeWindows ?? []),
+    ...(edition?.bulletSpeedWindows ?? []),
   ];
   const descriptors = [...new Map(descriptorRows.map((descriptor) =>
     [`${descriptor.base}:${descriptor.len}`, descriptor])).values()];

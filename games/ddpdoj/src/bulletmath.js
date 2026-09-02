@@ -90,25 +90,50 @@ const low16 = (v) => (v << 16) >> 16;
  * @returns {{dA:number, dB:number}} signed words.  dA goes to +$1E (axis A,
  *          the record's +$02 coordinate); dB to +$20 (axis B, +$04).
  */
-export function velocity(rom, speed, dir) {
-  if (!(speed >= 0 && speed < 256) || !(dir >= 0 && dir < 256)) {
+export const BLACK_VECTOR_RESOURCES = Object.freeze({
+  entry: VEC.entry,
+  speedPtrs: VEC.speedPtrs,
+  speedLevels: VEC.speedLevels,
+  quadEntries: VEC.quadEntries,
+  quadStride: VEC.quadStride,
+  fold: VEC.fold,
+  foldEntries: VEC.foldEntries,
+});
+
+/** Edition-bound form of `$284190`; callers supply only the cartridge tables. */
+export function velocityWithResources(rom, speed, dir, resources) {
+  if (!resources || !Number.isSafeInteger(resources.entry)
+      || !Number.isSafeInteger(resources.speedPtrs)
+      || !Number.isSafeInteger(resources.fold)
+      || resources.speedLevels !== 256 || resources.foldEntries !== 256
+      || resources.quadEntries !== 65 || resources.quadStride !== 0x208) {
+    throw new TypeError('bullet vectors need a complete 256-speed, 256-direction resource graph');
+  }
+  if (!(speed >= 0 && speed < resources.speedLevels)
+      || !(dir >= 0 && dir < resources.foldEntries)) {
     // Not defensive padding: both come from `moveq #0,Dn / move.b`, so the
     // 68000 CANNOT present anything else, and a caller that does has invented
     // a state the board has no encoding for.
-    unreached(VEC.entry, `$284190 was called with speed=${speed} dir=${dir}; `
-      + `both are BYTES on the board ($281EF6 moveq #0,D0 / move.b ($1a,A6),D0) `
-      + `and 0..255 is the whole domain`);
+    unreached(resources.entry, `the vector routine was called with speed=${speed} dir=${dir}; `
+      + 'both are BYTES on the board and 0..255 is the whole domain');
   }
-  const table = rom.u32(VEC.speedPtrs + 4 * speed);   // $28419A movea.l (A3,D0.w)
-  const foldBytes = rom.u16(VEC.fold + 2 * dir);      // $2841A8 adda.w (A2),A3
-  let d2 = asrl4(rom.i32(table + foldBytes));         // $2841AA / $2841AE
-  let d3 = asrl4(rom.i32(table + foldBytes + 4));
-  const quad = dir & 0xc0;                            // $2841B2 andi.w #$C0,D1
-  // $2841BE jmp (A3) into the four-entry table at $2841C2, stride $40.
-  if (quad === 0x40) { d2 = negw(d2); }                       // $284202
-  else if (quad === 0x80) { d2 = negw(d2); d3 = negw(d3); }   // $284242
-  else if (quad === 0xc0) { d3 = negw(d3); }                  // $284282
+  const table = rom.u32(resources.speedPtrs + 4 * speed);
+  const foldBytes = rom.u16(resources.fold + 2 * dir);
+  if ((foldBytes & 7) !== 0 || foldBytes > (resources.quadEntries - 1) * 8) {
+    unreached(resources.fold + 2 * dir, `vector fold offset $${foldBytes.toString(16)
+      .toUpperCase()} escaped its ${resources.quadEntries}-record quadrant`);
+  }
+  let d2 = asrl4(rom.u32(table + foldBytes) | 0);
+  let d3 = asrl4(rom.u32(table + foldBytes + 4) | 0);
+  const quad = dir & 0xc0;
+  if (quad === 0x40) { d2 = negw(d2); }
+  else if (quad === 0x80) { d2 = negw(d2); d3 = negw(d3); }
+  else if (quad === 0xc0) { d3 = negw(d3); }
   return { dA: low16(d2), dB: low16(d3) };
+}
+
+export function velocity(rom, speed, dir) {
+  return velocityWithResources(rom, speed, dir, BLACK_VECTOR_RESOURCES);
 }
 
 /**
