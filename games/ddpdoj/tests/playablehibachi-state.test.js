@@ -84,14 +84,49 @@ test('Playable Hibachi binds once and activates only on credited non-demo handof
   assert.equal(state.privatePaletteWords[0], 0x3839);
   assert.equal(state.privatePaletteWords[32], 0x7879);
 
+  Object.assign(state.players[0].runtime, {
+    presentationFrames: 7,
+    presentationStarted: true,
+    launchActive: true,
+    launchY: 0x3600,
+    launchX: 0x14c0,
+  });
   assert.equal(beginPlayableHibachiCreditedRun(state, game, { demo: true }), false);
   assert.deepEqual(state.lifecycle, {
     bound: true, pending: true, active: false, credited: false, generation: 0,
+  });
+  assert.deepEqual({
+    presentationFrames: state.players[0].runtime.presentationFrames,
+    presentationStarted: state.players[0].runtime.presentationStarted,
+    launchActive: state.players[0].runtime.launchActive,
+    launchY: state.players[0].runtime.launchY,
+    launchX: state.players[0].runtime.launchX,
+  }, {
+    presentationFrames: 0, presentationStarted: false, launchActive: false,
+    launchY: 0, launchX: 0,
+  }, 'demo handoff clears provisional presentation');
+
+  Object.assign(state.players[0].runtime, {
+    presentationFrames: 9,
+    presentationStarted: true,
+    launchActive: true,
+    launchY: 0x2e00,
+    launchX: 0x14c0,
   });
   assert.equal(beginPlayableHibachiCreditedRun(state, game, { demo: false }), true);
   assert.deepEqual(state.lifecycle, {
     bound: true, pending: false, active: true, credited: true, generation: 1,
   });
+  assert.deepEqual({
+    presentationFrames: state.players[0].runtime.presentationFrames,
+    presentationStarted: state.players[0].runtime.presentationStarted,
+    launchActive: state.players[0].runtime.launchActive,
+    launchY: state.players[0].runtime.launchY,
+    launchX: state.players[0].runtime.launchX,
+  }, {
+    presentationFrames: 9, presentationStarted: true, launchActive: true,
+    launchY: 0x2e00, launchX: 0x14c0,
+  }, 'credited handoff preserves provisional presentation');
 
   state.sidecars[0].setU32(PLAYABLE_HIBACHI_BASES[0], 0x12345678);
   state.ownedBullets[7] = 1;
@@ -103,6 +138,16 @@ test('Playable Hibachi binds once and activates only on credited non-demo handof
   assert.equal(state.ownedBullets[7], 0);
   assert.deepEqual([...state.selectedGuns], [-1, -1]);
   assert.equal(state.players[0].runtime.initialized, false);
+  assert.deepEqual({
+    presentationFrames: state.players[0].runtime.presentationFrames,
+    presentationStarted: state.players[0].runtime.presentationStarted,
+    launchActive: state.players[0].runtime.launchActive,
+    launchY: state.players[0].runtime.launchY,
+    launchX: state.players[0].runtime.launchX,
+  }, {
+    presentationFrames: 0, presentationStarted: false, launchActive: false,
+    launchY: 0, launchX: 0,
+  });
   assert.equal(state.virtualRequests.length, 0);
 
   assert.strictEqual(state.players, owners.players);

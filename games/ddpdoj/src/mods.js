@@ -917,15 +917,12 @@ export function modGameOptions(state) {
       (!option || option(ram, ctx) !== false) && !active();
     const sprite = options.playerSpriteFilter;
     options.playerSpriteFilter = (ram, event, ctx) => {
-      if (active()) capturePlayableHibachiLaunch(playable, event);
-      return (!sprite || sprite(ram, event, ctx) !== false) && !active();
+      const captured = capturePlayableHibachiLaunch(playable, event);
+      return (!sprite || sprite(ram, event, ctx) !== false) && !active() && !captured;
     };
     const virtual = options.virtualSpriteRequestHook;
     options.virtualSpriteRequestHook = (game) => {
-      if (!active()) playable.virtualRequests.length = 0;
-      const own = active()
-        ? collectPlayableHibachiSpriteRequests(playable, game)
-        : playable.virtualRequests;
+      const own = collectPlayableHibachiSpriteRequests(playable, game);
       if (!virtual) return own;
       const prior = virtual(game) ?? [];
       return prior.length === 0 ? own : [...prior, ...own];

@@ -104,7 +104,10 @@ test('W477 Playable Hibachi central state binds before cabinet lifecycle callbac
   const state = stateOf('playable-hibachi');
   const game = {
     ram: new Ram(),
-    rom: { bytes: (_address, length) => new Uint8Array(length) },
+    rom: {
+      bytes: (_address, length) => new Uint8Array(length),
+      u32: () => 0x00117c10,
+    },
     tables: {},
   };
   prepareModCabinetBoot(state);
@@ -115,18 +118,29 @@ test('W477 Playable Hibachi central state binds before cabinet lifecycle callbac
   });
 
   const options = modGameOptions(state);
-  options.cabinetRunStartHook(game.ram, { demo: true });
-  assert.equal(state.playableHibachi.lifecycle.active, false);
-  options.cabinetRunStartHook(game.ram, { demo: false });
-  assert.equal(state.playableHibachi.lifecycle.active, true);
-  assert.equal(state.playableHibachi.lifecycle.generation, 1);
-  const launch = { playerIdx: 0, phase: 'launch', anchor: 0x360014c0 };
-  assert.equal(options.playerSpriteFilter(game.ram, launch), false);
+  const pendingLaunch = {
+    playerIdx: 0, phase: 'launch', anchor: 0x360014c0, demo: false,
+  };
+  assert.equal(options.playerSpriteFilter(game.ram, pendingLaunch), false,
+    'the first non-demo launch frame suppresses the stock fighter while pending');
+  assert.equal(state.playableHibachi.lifecycle.active, false,
+    'provisional presentation does not activate combat callbacks');
   assert.deepEqual({
     active: state.playableHibachi.players[0].runtime.launchActive,
     y: state.playableHibachi.players[0].runtime.launchY,
     x: state.playableHibachi.players[0].runtime.launchX,
   }, { active: true, y: 0x3600, x: 0x14c0 });
+  assert.equal(options.virtualSpriteRequestHook(game).length, 1,
+    'pending launch exposes one virtual small sphere');
+  const presentationFrames = state.playableHibachi.players[0].runtime.presentationFrames;
+
+  options.cabinetRunStartHook(game.ram, { demo: false });
+  assert.equal(state.playableHibachi.lifecycle.active, true);
+  assert.equal(state.playableHibachi.lifecycle.generation, 1);
+  assert.equal(state.playableHibachi.players[0].runtime.launchActive, true);
+  assert.equal(state.playableHibachi.players[0].runtime.presentationFrames, presentationFrames,
+    'credited handoff preserves pending presentation');
+  assert.equal(options.playerSpriteFilter(game.ram, pendingLaunch), false);
   assert.equal(options.playerSpriteFilter(game.ram, { player: RAM.player1 }), false);
   assert.equal(typeof options.virtualSpriteRequestHook, 'function');
   options.cabinetRunEndHook(game.ram);
@@ -134,10 +148,24 @@ test('W477 Playable Hibachi central state binds before cabinet lifecycle callbac
   assert.equal(state.playableHibachi.lifecycle.active, false);
   assert.equal(state.playableHibachi.lifecycle.pending, true);
 
+  assert.equal(options.playerSpriteFilter(game.ram, pendingLaunch), false,
+    'the next credited launch can arm provisional presentation');
+  assert.equal(options.playerSpriteFilter(game.ram, {
+    ...pendingLaunch, demo: true,
+  }), true, 'demo launch remains native');
+  options.cabinetRunStartHook(game.ram, { demo: true });
+  assert.equal(state.playableHibachi.lifecycle.active, false);
+  assert.equal(state.playableHibachi.players[0].runtime.launchActive, false,
+    'demo handoff clears a prearmed credited presentation');
+  assert.equal(options.virtualSpriteRequestHook(game).length, 0);
+
   const seeded = stateOf('playable-hibachi');
   const seededGame = {
     ram: new Ram(),
-    rom: { bytes: (_address, length) => new Uint8Array(length) },
+    rom: {
+      bytes: (_address, length) => new Uint8Array(length),
+      u32: () => 0x00117c10,
+    },
     tables: {},
   };
   bindModGame(seeded, seededGame, { active: true });

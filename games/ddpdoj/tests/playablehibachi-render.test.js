@@ -120,11 +120,10 @@ test('Playable Hibachi uses only the authentic small sphere from the first live 
     'P2 owns the identical centered upside-down sphere');
 });
 
-test('selector descent presents Hibachi at the launch anchor without stock fighter emits', () => {
+test('selector descent presents Hibachi at every launch anchor without stock fighter emits', () => {
   const game = new Game(null, TABLES, { palCatchUp: false });
   const state = createPlayableHibachiState();
   bindPlayableHibachiGame(state, game);
-  beginPlayableHibachiCreditedRun(state, game, {});
   const a6 = SCREEN17.recs;
   const D = DRAW_25E4D0;
   game.ram.setU16(a6 + D.sideAt, 0);
@@ -133,34 +132,67 @@ test('selector descent presents Hibachi at the launch anchor without stock fight
   const ctx = {
     playerSpriteFilter: (_ram, event) => {
       launchEvents.push(event);
-      capturePlayableHibachiLaunch(state, event);
-      return false;
+      return !capturePlayableHibachiLaunch(state, event);
     },
   };
+  const travel = [0];
+  let speed = 0;
+  while (travel.at(-1) < 0x1800) {
+    speed++;
+    travel.push(travel.at(-1) + speed);
+  }
+  while (speed > 0) {
+    travel.push(travel.at(-1) + speed);
+    speed = Math.max(0, speed - 2);
+  }
 
-  draw25E4D0(game.ram, game.rom, ctx, a6, 1);
-  assert.equal(game.ram.u32(a6 + D.channelAt), 0x360014c0,
-    'native selector channel still receives the first launch anchor');
-  assert.ok(Object.values(BUCKETS).every((bucket) => game.ram.u16(bucket.counter) === 0),
-    'all three stock selected-fighter records are suppressed');
+  for (const z of travel) {
+    game.ram.setU16(a6 + D.zAt, z);
+    draw25E4D0(game.ram, game.rom, ctx, a6, 1);
+    const anchor = packD1(u16(0x3600 - z), 0x14c0);
+    assert.equal(game.ram.u32(a6 + D.channelAt), anchor,
+      'native selector channel still receives each launch anchor');
+    assert.ok(Object.values(BUCKETS).every((bucket) => game.ram.u16(bucket.counter) === 0),
+      'all three stock selected-fighter records stay suppressed');
+    const requests = collectPlayableHibachiSpriteRequests(state, game);
+    assert.equal(requests.length, 1, 'each pending descent frame has one small sphere');
+    assert.deepEqual(requests[0].bytes, encodeRegisterRequest(
+      packD1(u16(0x2a00 - z), 0x0dc0), long(requests[0].bytes, 4), 0x0c38, 0x6017),
+    'the sphere stays centered on every descending native anchor');
+    assert.equal(word(requests[0].bytes, 8), 0x0c38);
+    assert.deepEqual(state.lifecycle, {
+      bound: true, pending: true, active: false, credited: false, generation: 0,
+    });
+  }
+  assert.deepEqual(launchEvents.map(({ phase, playerIdx, anchor, demo }) =>
+    ({ phase, playerIdx, anchor, demo })), travel.map((z) => ({
+    phase: 'launch', playerIdx: 0,
+    anchor: packD1(u16(0x3600 - z), 0x14c0), demo: false,
+  })));
+
+  const beforeHandoff = { ...state.players[0].runtime };
+  assert.equal(beginPlayableHibachiCreditedRun(state, game, { demo: false }), true);
+  assert.equal(state.lifecycle.pending, false);
+  assert.equal(state.lifecycle.active, true);
+  assert.deepEqual({
+    presentationFrames: state.players[0].runtime.presentationFrames,
+    presentationStarted: state.players[0].runtime.presentationStarted,
+    launchActive: state.players[0].runtime.launchActive,
+    launchY: state.players[0].runtime.launchY,
+    launchX: state.players[0].runtime.launchX,
+  }, {
+    presentationFrames: beforeHandoff.presentationFrames,
+    presentationStarted: beforeHandoff.presentationStarted,
+    launchActive: beforeHandoff.launchActive,
+    launchY: beforeHandoff.launchY,
+    launchX: beforeHandoff.launchX,
+  }, 'credited handoff preserves launch position and animation continuity');
   let requests = collectPlayableHibachiSpriteRequests(state, game);
-  assert.equal(requests.length, 1);
   assert.deepEqual(requests[0].bytes, encodeRegisterRequest(
-    packD1(0x2a00, 0x0dc0), long(requests[0].bytes, 4), 0x0c38, 0x6017),
-    'the visible sphere is centered on the selector launch body');
-
-  game.ram.setU16(a6 + D.zAt, 0x0800);
-  draw25E4D0(game.ram, game.rom, ctx, a6, 1);
-  assert.equal(game.ram.u32(a6 + D.channelAt), 0x2e0014c0);
-  requests = collectPlayableHibachiSpriteRequests(state, game);
-  assert.deepEqual(requests[0].bytes, encodeRegisterRequest(
-    packD1(0x2200, 0x0dc0), long(requests[0].bytes, 4), 0x0c38, 0x6017),
-    'the sphere follows the descending native anchor frame by frame');
-  assert.deepEqual(launchEvents.map(({ phase, playerIdx, anchor }) =>
-    ({ phase, playerIdx, anchor })), [
-    { phase: 'launch', playerIdx: 0, anchor: 0x360014c0 },
-    { phase: 'launch', playerIdx: 0, anchor: 0x2e0014c0 },
-  ]);
+    packD1(u16(beforeHandoff.launchY - 0x0c00), u16(beforeHandoff.launchX - 0x0700)),
+    long(requests[0].bytes, 4), 0x0c38, 0x6017));
+  assert.equal(state.players[0].runtime.presentationFrames,
+    beforeHandoff.presentationFrames + 1);
 
   game.ram.setU16(RAM.player1, 0x8000);
   game.ram.setU16(RAM.player1 + P.posY, 0x1179);

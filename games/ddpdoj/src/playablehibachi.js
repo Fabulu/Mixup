@@ -276,11 +276,34 @@ function clearNativePlayerOrdnance(ram) {
   }
 }
 
+function restoreLaunchPresentation(player, saved) {
+  Object.assign(player.runtime, saved);
+}
+
+function saveLaunchPresentation(player) {
+  const runtime = player.runtime;
+  return {
+    presentationFrames: runtime.presentationFrames,
+    presentationStarted: runtime.presentationStarted,
+    launchActive: runtime.launchActive,
+    launchY: runtime.launchY,
+    launchX: runtime.launchX,
+  };
+}
+
 /** Ignore demo handoffs and activate only a credited ordinary run. */
 export function beginPlayableHibachiCreditedRun(state, game, event = {}) {
   assertBoundGame(state, game);
-  resetPlayableHibachiStateInPlace(state);
   const credited = event.demo !== true;
+  const presentation = credited
+    ? state.players.map(saveLaunchPresentation)
+    : null;
+  resetPlayableHibachiStateInPlace(state);
+  if (presentation) {
+    for (let i = 0; i < state.players.length; i++) {
+      restoreLaunchPresentation(state.players[i], presentation[i]);
+    }
+  }
   state.lifecycle.pending = !credited;
   state.lifecycle.credited = credited;
   state.lifecycle.active = credited;
@@ -616,7 +639,8 @@ function privatePaletteIndex(nativeBank) {
 
 export function capturePlayableHibachiLaunch(state, event) {
   assertState(state);
-  if (!state.lifecycle.active || event?.phase !== 'launch') return false;
+  if (event?.phase !== 'launch' || event.demo !== false
+      || (!state.lifecycle.pending && !state.lifecycle.active)) return false;
   const playerIdx = event.playerIdx;
   if (!Number.isInteger(playerIdx) || playerIdx < 0 || playerIdx > 1
       || !Number.isInteger(event.anchor)) return false;
@@ -963,11 +987,14 @@ export function importPlayableHibachiReplayState(state, external) {
 export function collectPlayableHibachiSpriteRequests(state, game) {
   assertBoundGame(state, game);
   state.virtualRequests.length = 0;
-  if (!state.lifecycle.active) return state.virtualRequests;
+  if (!state.lifecycle.active
+      && !state.players.some((player) => player.runtime.launchActive)) {
+    return state.virtualRequests;
+  }
   for (let playerIdx = 0; playerIdx < 2; playerIdx++) {
     const rec = playerIdx === 0 ? RAM.player1 : RAM.player2;
     const runtime = state.players[playerIdx].runtime;
-    if ((game.ram.u16(rec) & TYPEBIT_ALIVE) !== 0) {
+    if (state.lifecycle.active && (game.ram.u16(rec) & TYPEBIT_ALIVE) !== 0) {
       runtime.launchActive = false;
       collectPlayerSmallForm(state, state.players[playerIdx], game,
         game.ram.u16(rec + P.posY), game.ram.u16(rec + P.posX));

@@ -2311,6 +2311,7 @@ function half25E4D0(ram, rom, ctx, a6, h, playerIdx) {
     playerIdx,
     phase: 'launch',
     anchor,
+    demo: ram.u16(SEED9.dualGate) !== 0,
   }, ctx) === false) return;
 
   [hi, lo] = [lo, hi];                                       // $25E4F8 / $25E5D2 swap
