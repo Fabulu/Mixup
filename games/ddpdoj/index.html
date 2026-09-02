@@ -159,7 +159,23 @@
      above that. Rotation happens in the pixel buffer, not with CSS. */
   #stage { grid-area: stage; display: flex; align-items: flex-start; justify-content: center;
            min-height: 0; min-width: 0; overflow: hidden; position: relative; }
+  #game-frame { position: relative; flex: 0 0 auto; }
   canvas { image-rendering: pixelated; display: block; background: #000; }
+  #hibachi-hud {
+    position: absolute; z-index: 4; inset: 4px 4px auto;
+    display: flex; justify-content: space-between; align-items: flex-start;
+    pointer-events: none; container-type: inline-size;
+  }
+  #hibachi-hud[hidden] { display: none; }
+  .hibachi-chip {
+    min-width: 5.2em; padding: 2px 4px; border: 1px solid currentColor;
+    border-radius: 3px; background: rgba(3, 7, 12, .72); color: #70d9ff;
+    font: 700 clamp(7px, 3.6cqi, 11px)/1.15 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    text-shadow: 0 1px #000; white-space: nowrap;
+  }
+  .hibachi-chip:last-child { text-align: right; }
+  .hibachi-chip[data-bank="H"] { color: #ffbd4a; background: rgba(24, 7, 16, .76); }
+  .hibachi-player { color: #eef7ff; }
 
   /* WAVE 109 -- the floating-stick movement zone (left half of the stage).
      Invisible until the picker selects FLOAT; then a coarse pointer landing
@@ -369,7 +385,7 @@
 </div>
 <button id="show-ui" type="button" aria-label="Show the game menu">SHOW UI</button>
 
-<div id="stage"><canvas id="screen" width="224" height="448"></canvas><div id="stickzone"><i id="stick-origin" aria-hidden="true"></i><i id="stick-knob" aria-hidden="true"></i></div></div>
+<div id="stage"><div id="game-frame"><canvas id="screen" width="224" height="448"></canvas><div id="hibachi-hud" role="status" aria-live="polite" aria-label="Playable Hibachi weapon status" hidden><div id="hibachi-p1" class="hibachi-chip" data-bank="N"><span class="hibachi-player">P1</span> <span data-hibachi-bank>N</span><span data-hibachi-pattern>05</span> P<span data-hibachi-power>0</span></div><div id="hibachi-p2" class="hibachi-chip" data-bank="N"><span class="hibachi-player">P2</span> <span data-hibachi-bank>N</span><span data-hibachi-pattern>05</span> P<span data-hibachi-power>0</span></div></div></div><div id="stickzone"><i id="stick-origin" aria-hidden="true"></i><i id="stick-knob" aria-hidden="true"></i></div></div>
 
 <!--
   The pad's LAYOUT is here; the BITS are CONTROLS in src/web/input.js, looked up
@@ -665,6 +681,11 @@ import {
 
 const canvas = document.getElementById('screen');
 const stage = document.getElementById('stage');
+const hibachiHud = document.getElementById('hibachi-hud');
+const hibachiChips = [
+  document.getElementById('hibachi-p1'),
+  document.getElementById('hibachi-p2'),
+];
 const statsEl = document.getElementById('stats');
 const modsActiveEl = document.getElementById('mods-active');
 const formationActiveEl = document.getElementById('formation-active');
@@ -1516,9 +1537,31 @@ try {
     + `. It considered and REJECTED ${rep.length - rep.filter((r) => r.verdict === 'ACCEPT').length}`
     + ' other classes; run tools/attachreport.mjs to see them with their scores.';
 
+  const paintHibachiHud = (telemetry) => {
+    hibachiHud.hidden = !telemetry?.active;
+    if (!telemetry?.active) return;
+    for (let index = 0; index < hibachiChips.length; index++) {
+      const chip = hibachiChips[index];
+      const player = index === 0 ? telemetry.p1 : telemetry.p2;
+      const pattern = String(player.pattern).padStart(2, '0');
+      const power = String(player.powerRung);
+      const label = `Player ${index + 1}, ${player.bank === 'H' ? 'hyper' : 'normal'} bank, `
+        + `pattern ${player.pattern}, power rung ${player.powerRung}`;
+      if (chip.dataset.bank !== player.bank) chip.dataset.bank = player.bank;
+      const bankNode = chip.querySelector('[data-hibachi-bank]');
+      const patternNode = chip.querySelector('[data-hibachi-pattern]');
+      const powerNode = chip.querySelector('[data-hibachi-power]');
+      if (bankNode.textContent !== player.bank) bankNode.textContent = player.bank;
+      if (patternNode.textContent !== pattern) patternNode.textContent = pattern;
+      if (powerNode.textContent !== power) powerNode.textContent = power;
+      if (chip.getAttribute('aria-label') !== label) chip.setAttribute('aria-label', label);
+    }
+  };
+
   setInterval(() => {
     latchP2Joined(app.game.ram.u16(RAM.playerCountM1) === 1);
     const s = app.stats();
+    paintHibachiHud(s.playableHibachi);
     paintSound();
     statsEl.innerHTML = [
       `lf ${s.logicFrame}`,

@@ -19,7 +19,9 @@ import {
   assertFormationReplayCompatible, beginFormationCreditedRun, createFormationState,
   prepareFormationFrame, resolveFormationAuthenticSelection,
 } from '../../games/ddpdoj/src/formation.js';
-import { PLAYABLE_HIBACHI_CONFLICT } from '../../games/ddpdoj/src/playablehibachi.js';
+import {
+  PLAYABLE_HIBACHI_CONFLICT, projectPlayableHibachiTelemetry,
+} from '../../games/ddpdoj/src/playablehibachi.js';
 import { loadRegions } from '../../games/ddpdoj/src/render/regions.js';
 import {
   Renderer, paletteRgb, resolveRgb, rotateCCW, rgbToRgba, SCREEN_W, SCREEN_H,
@@ -292,6 +294,7 @@ export class LocalDdpdojRuntime {
     this.onError = options.onError ?? null;
     this.onP2Joined = options.onP2Joined ?? null;
     this.onReplayUpdate = options.onReplayUpdate ?? null;
+    this.onTelemetry = options.onTelemetry ?? null;
     this.audio = options.audio ?? null;
     this.soundAssets = options.soundAssets ?? null;
     this.modState = options.modState ?? null;
@@ -668,6 +671,9 @@ export class LocalDdpdojRuntime {
       tx,
       regs,
       palette,
+      playableHibachi: projectPlayableHibachiTelemetry(
+        this.modState?.playableHibachi, game.ram,
+      ),
       ...hold,
     };
   }
@@ -747,6 +753,20 @@ export class LocalDdpdojRuntime {
     return inPlayback ? null : rawWord;
   }
 
+  /** Detached read-only presentation telemetry for the local shell. */
+  stats() {
+    return {
+      logicFrame: this.game.logicFrame,
+      displayLogicFrame: this.runaheadView?.logicFrame ?? this.game.logicFrame,
+      runaheadActive: this.runaheadView?.depth ?? 0,
+      playableHibachi: this.runaheadView
+        ? this.runaheadView.playableHibachi
+        : projectPlayableHibachiTelemetry(
+          this.modState?.playableHibachi, this.game.ram,
+        ),
+    };
+  }
+
   frame(time) {
     if (!this.running) return;
     try {
@@ -776,6 +796,7 @@ export class LocalDdpdojRuntime {
       }
       this.pollPlayback();
       this.draw();
+      this.onTelemetry?.(this.stats().playableHibachi);
       this.audio?.pump();
       this.request = requestAnimationFrame((next) => this.frame(next));
     } catch (error) {

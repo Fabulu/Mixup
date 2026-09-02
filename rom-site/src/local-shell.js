@@ -257,6 +257,11 @@ class LocalShell {
     this.stage = document.querySelector('#local-stage');
     this.viewport = document.querySelector('#local-viewport');
     this.canvas = document.querySelector('#game-canvas');
+    this.hibachiHud = document.querySelector('#local-hibachi-hud');
+    this.hibachiChips = [
+      document.querySelector('#local-hibachi-p1'),
+      document.querySelector('#local-hibachi-p2'),
+    ];
     this.hint = document.querySelector('#local-control-hint');
     this.dpad = document.querySelector('#local-dpad');
     this.padButtons = document.querySelector('#local-pad-buttons');
@@ -847,6 +852,9 @@ class LocalShell {
         onReplayUpdate: (state) => {
           if (generation === this.generation) this.updateReplayStatus(state);
         },
+        onTelemetry: (telemetry) => {
+          if (generation === this.generation) this.paintHibachiTelemetry(telemetry);
+        },
         onError: (error) => this.runtimeError(error, generation),
       });
       if (generation !== this.generation || this.gameScreen.hidden) {
@@ -899,6 +907,7 @@ class LocalShell {
       GradiusInput.detachInput?.();
       this.clearInput();
       DdpInput.selectTouchOwner('P1');
+      this.paintHibachiTelemetry(null);
       this.p2Joined = false;
       this.replayRecording = false;
       this.replayBusy = false;
@@ -1053,6 +1062,28 @@ class LocalShell {
     this.stickKnob.style.top = `${origin.y + dy * ratio}px`;
     this.stickOrigin.setAttribute('aria-hidden', 'false');
     this.stickKnob.setAttribute('aria-hidden', 'false');
+  }
+
+  paintHibachiTelemetry(telemetry) {
+    if (!this.hibachiHud || this.hibachiChips.some((chip) => !chip)) return;
+    this.hibachiHud.hidden = !telemetry?.active || this.gameId !== 'ddpdoj';
+    if (this.hibachiHud.hidden) return;
+    for (let index = 0; index < this.hibachiChips.length; index++) {
+      const chip = this.hibachiChips[index];
+      const player = index === 0 ? telemetry.p1 : telemetry.p2;
+      const pattern = String(player.pattern).padStart(2, '0');
+      const power = String(player.powerRung);
+      const label = `Player ${index + 1}, ${player.bank === 'H' ? 'hyper' : 'normal'} bank, `
+        + `pattern ${player.pattern}, power rung ${player.powerRung}`;
+      if (chip.dataset.bank !== player.bank) chip.dataset.bank = player.bank;
+      const bankNode = chip.querySelector('[data-hibachi-bank]');
+      const patternNode = chip.querySelector('[data-hibachi-pattern]');
+      const powerNode = chip.querySelector('[data-hibachi-power]');
+      if (bankNode.textContent !== player.bank) bankNode.textContent = player.bank;
+      if (patternNode.textContent !== pattern) patternNode.textContent = pattern;
+      if (powerNode.textContent !== power) powerNode.textContent = power;
+      if (chip.getAttribute('aria-label') !== label) chip.setAttribute('aria-label', label);
+    }
   }
 
   updateP2Joined(joined) {

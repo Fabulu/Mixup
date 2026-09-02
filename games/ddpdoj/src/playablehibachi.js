@@ -1,9 +1,10 @@
 // Stable external state for the Playable Hibachi mod.
 
 import { BUL, REC as BULLET_REC } from './bullets.js';
+import { applyOrdinaryShotDamageReceipt, DMG } from './damage.js';
 import {
-  applyOrdinaryShotDamageReceipt, DMG, ordinaryShotPointOverlapsEnemy,
-} from './damage.js';
+  hibachiScript1RandomBurstAt, hibachiScript1TerminalEffectsAt,
+} from './hibachiend.js';
 import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { BEAM, SEG } from './laser.js';
 import {
@@ -30,54 +31,66 @@ import { i16, u16 } from './ram.js';
 import { StrictSidecarMemory } from './sidecarmemory.js';
 import { encodeRegisterRequest, BUCKETS, NAMED_BUCKETS } from './spritequeue.js';
 import { SHOT } from './weapons.js';
+import { PS } from './shots.js';
 
 export const PLAYABLE_HIBACHI_CONFLICT = 'Formation cannot be combined with Playable Hibachi';
-export const PLAYABLE_HIBACHI_EXTERNAL_KIND = 'ddpdoj.playable-hibachi/v2';
+export const PLAYABLE_HIBACHI_EXTERNAL_KIND = 'ddpdoj.playable-hibachi/v3';
 export const PLAYABLE_HIBACHI_SIDECAR_BYTES = 0x276;
 export const PLAYABLE_HIBACHI_BULLET_SLOTS = 210;
-/** Over three times the strongest measured stock projectile, but not a boss erase. */
+/** Baseline rung retained as the public minimum-damage constant. */
 export const PLAYABLE_HIBACHI_BULLET_POWER = 0x0100;
+export const PLAYABLE_HIBACHI_DEATH_FRAMES = 192;
+export const PLAYABLE_HIBACHI_POWER_POLICY = Object.freeze([
+  Object.freeze({ power: 0, rung: 0, damage: 0x0100, speedDelta: 0, halfExtent: 0x0180 }),
+  Object.freeze({ power: 2, rung: 1, damage: 0x010f, speedDelta: 8, halfExtent: 0x0280 }),
+  Object.freeze({ power: 4, rung: 2, damage: 0x0119, speedDelta: 16, halfExtent: 0x02c0 }),
+  Object.freeze({ power: 6, rung: 3, damage: 0x0131, speedDelta: 24, halfExtent: 0x0300 }),
+  Object.freeze({ power: 8, rung: 4, damage: 0x0140, speedDelta: 48, halfExtent: 0x0400 }),
+]);
 export const PLAYABLE_HIBACHI_GUN_IDS = Object.freeze([
   0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0a, 0x0b,
 ]);
 
 function gunDescriptor(id, bank, pattern, family, gun, init, step, finite = true) {
+  if (id !== pattern - 1) {
+    throw new Error(`Playable Hibachi descriptor ${id} must equal pattern ${pattern} minus one`);
+  }
   return Object.freeze({
     id, bank, pattern, family, gun, init, step, finite,
     signature: `${id}:${bank}:${pattern}:${family}:${gun}:${init.name}:${step.name}:${finite ? 'f' : 'p'}`,
   });
 }
 
+export const PLAYABLE_HIBACHI_HYPER_PATTERNS = Object.freeze([
+  gunDescriptor(0, 'hyper', 1, 'shared', 5, gun5Init2A81BC, gun5Step2A8206),
+  gunDescriptor(1, 'hyper', 2, 'shared', 6, gun6Init2A8370, gun6Step2A8396),
+  gunDescriptor(2, 'hyper', 3, 'shared', 7, gun7Init2A8516, gun7Step2A8538),
+  gunDescriptor(3, 'hyper', 4, 'shared', 8, gun8Init2A8800, gun8Step2A883A),
+]);
+
 export const PLAYABLE_HIBACHI_ORDINARY_PATTERNS = Object.freeze([
-  gunDescriptor(0, 'ordinary', 5, 'main', 0, gun0Init2A738A, gun0Step2A7400),
-  gunDescriptor(1, 'ordinary', 6, 'main', 1, gun1Init2A7850, gun1Step2A78D0),
-  gunDescriptor(2, 'ordinary', 7, 'main', 2, gun2Init2A7AB2, gun2Step2A7B20),
-  gunDescriptor(3, 'ordinary', 8, 'main', 3, gun3Init2A7E64, gun3Step2A7E96),
-  gunDescriptor(4, 'ordinary', 9, 'shared', 5, gun5Init2A81BC, gun5Step2A8206),
-  gunDescriptor(5, 'ordinary', 10, 'shared', 6, gun6Init2A8370, gun6Step2A8396),
-  gunDescriptor(6, 'ordinary', 11, 'shared', 7, gun7Init2A8516, gun7Step2A8538),
-  gunDescriptor(7, 'ordinary', 12, 'shared', 8, gun8Init2A8800, gun8Step2A883A),
-  gunDescriptor(8, 'ordinary', 13, 'shared', 9, gun9Init2A89BA, gun9Step2A89F4),
-  gunDescriptor(9, 'ordinary', 14, 'shared', 0x0a, gunAInit2A8B7C, gunAStep2A8BC0),
-  gunDescriptor(10, 'ordinary', 15, 'shared', 0x0b, gunBInit2A8C9A, gunBStep2A8CB2),
-  gunDescriptor(11, 'ordinary', 16, 'alternate', 0, altGun0Init2A9366, altGun0Step2A93DC),
-  gunDescriptor(12, 'ordinary', 17, 'alternate', 1, altGun1Init2A97F4, altGun1Step2A9874),
-  gunDescriptor(13, 'ordinary', 18, 'alternate', 2, altGun2Init2A9AA0, altGun2Step2A9B0E),
-  gunDescriptor(14, 'ordinary', 19, 'alternate', 3, altGun3Init2A9E84, altGun3Step2A9EB6),
-  gunDescriptor(15, 'ordinary', 20, 'alternate', 4, altGun4Init2AA072, altGun4Step2AA084,
+  gunDescriptor(4, 'ordinary', 5, 'main', 0, gun0Init2A738A, gun0Step2A7400),
+  gunDescriptor(5, 'ordinary', 6, 'main', 1, gun1Init2A7850, gun1Step2A78D0),
+  gunDescriptor(6, 'ordinary', 7, 'main', 2, gun2Init2A7AB2, gun2Step2A7B20),
+  gunDescriptor(7, 'ordinary', 8, 'main', 3, gun3Init2A7E64, gun3Step2A7E96),
+  gunDescriptor(8, 'ordinary', 9, 'shared', 5, gun5Init2A81BC, gun5Step2A8206),
+  gunDescriptor(9, 'ordinary', 10, 'shared', 6, gun6Init2A8370, gun6Step2A8396),
+  gunDescriptor(10, 'ordinary', 11, 'shared', 7, gun7Init2A8516, gun7Step2A8538),
+  gunDescriptor(11, 'ordinary', 12, 'shared', 8, gun8Init2A8800, gun8Step2A883A),
+  gunDescriptor(12, 'ordinary', 13, 'shared', 9, gun9Init2A89BA, gun9Step2A89F4),
+  gunDescriptor(13, 'ordinary', 14, 'shared', 0x0a, gunAInit2A8B7C, gunAStep2A8BC0),
+  gunDescriptor(14, 'ordinary', 15, 'shared', 0x0b, gunBInit2A8C9A, gunBStep2A8CB2),
+  gunDescriptor(15, 'ordinary', 16, 'alternate', 0, altGun0Init2A9366, altGun0Step2A93DC),
+  gunDescriptor(16, 'ordinary', 17, 'alternate', 1, altGun1Init2A97F4, altGun1Step2A9874),
+  gunDescriptor(17, 'ordinary', 18, 'alternate', 2, altGun2Init2A9AA0, altGun2Step2A9B0E),
+  gunDescriptor(18, 'ordinary', 19, 'alternate', 3, altGun3Init2A9E84, altGun3Step2A9EB6),
+  gunDescriptor(19, 'ordinary', 20, 'alternate', 4, altGun4Init2AA072, altGun4Step2AA084,
     false),
 ]);
 
-export const PLAYABLE_HIBACHI_HYPER_PATTERNS = Object.freeze([
-  gunDescriptor(16, 'hyper', 1, 'shared', 5, gun5Init2A81BC, gun5Step2A8206),
-  gunDescriptor(17, 'hyper', 2, 'shared', 6, gun6Init2A8370, gun6Step2A8396),
-  gunDescriptor(18, 'hyper', 3, 'shared', 7, gun7Init2A8516, gun7Step2A8538),
-  gunDescriptor(19, 'hyper', 4, 'shared', 8, gun8Init2A8800, gun8Step2A883A),
-]);
-
 const PLAYABLE_HIBACHI_DESCRIPTORS = Object.freeze([
-  ...PLAYABLE_HIBACHI_ORDINARY_PATTERNS,
   ...PLAYABLE_HIBACHI_HYPER_PATTERNS,
+  ...PLAYABLE_HIBACHI_ORDINARY_PATTERNS,
 ]);
 export const PLAYABLE_HIBACHI_PALETTE_BANKS = Object.freeze([
   0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x0f,
@@ -101,6 +114,39 @@ function layoutFor(base) {
 export const PLAYABLE_HIBACHI_LAYOUTS = Object.freeze(
   PLAYABLE_HIBACHI_BASES.map(layoutFor),
 );
+
+function powerPolicy(power, label = 'Playable Hibachi player power') {
+  const policy = PLAYABLE_HIBACHI_POWER_POLICY.find((entry) => entry.power === power);
+  if (!policy) throw new RangeError(`${label} must be exactly 0, 2, 4, 6, or 8`);
+  return policy;
+}
+
+function createDeathPresentation(playerIdx) {
+  return {
+    playerIdx,
+    active: false,
+    frames: 0,
+    countdown: 3,
+    reload: 3,
+    y: 0,
+    x: 0,
+    randomBursts: 0,
+    terminal: false,
+  };
+}
+
+function resetDeathPresentation(presentation) {
+  Object.assign(presentation, {
+    active: false,
+    frames: 0,
+    countdown: 3,
+    reload: 3,
+    y: 0,
+    x: 0,
+    randomBursts: 0,
+    terminal: false,
+  });
+}
 
 function virtualRanges(layout, player) {
   return Object.freeze([
@@ -175,6 +221,11 @@ function fingerprintObject() {
     sidecarBytes: PLAYABLE_HIBACHI_SIDECAR_BYTES,
     bulletSlots: PLAYABLE_HIBACHI_BULLET_SLOTS,
     bulletPower: PLAYABLE_HIBACHI_BULLET_POWER,
+    ownedRecordFormat: 'owned-record/full-0x40/v1',
+    powerPolicy: PLAYABLE_HIBACHI_POWER_POLICY
+      .map(({ power, rung, damage, speedDelta, halfExtent }) =>
+        `${power}:${rung}:${damage}:${speedDelta}:${halfExtent}`).join('|'),
+    deathCadence: `${PLAYABLE_HIBACHI_DEATH_FRAMES}:3:3:4-188/4:9+11+11`,
     gunIds: PLAYABLE_HIBACHI_GUN_IDS.join(','),
     descriptors: PLAYABLE_HIBACHI_DESCRIPTORS
       .map((descriptor) => descriptor.signature).join('|'),
@@ -198,9 +249,12 @@ export function createPlayableHibachiState() {
     sidecars: null,
     sidecarBytes: null,
     ownedBullets: new Uint8Array(PLAYABLE_HIBACHI_BULLET_SLOTS),
+    bulletPowers: new Uint8Array(PLAYABLE_HIBACHI_BULLET_SLOTS),
+    bulletHalfExtents: new Uint16Array(PLAYABLE_HIBACHI_BULLET_SLOTS),
     selectedGuns: new Int8Array([-1, -1]),
     ordinaryPatternCursors: Uint8Array.of(5, 5),
     hyperPatternCursors: Uint8Array.of(1, 1),
+    deathPresentations: [createDeathPresentation(0), createDeathPresentation(1)],
     privatePaletteWords: new Uint16Array(PLAYABLE_HIBACHI_PALETTE_BANKS.length * 32),
     paletteReady: false,
     paletteLeases: [],
@@ -223,7 +277,9 @@ export function createPlayableHibachiState() {
 
 function assertState(state) {
   if (!state || state.kind !== PLAYABLE_HIBACHI_EXTERNAL_KIND
-      || !Array.isArray(state.players) || state.players.length !== 2) {
+      || !Array.isArray(state.players) || state.players.length !== 2
+      || !Array.isArray(state.deathPresentations)
+      || state.deathPresentations.length !== 2) {
     throw new TypeError('Playable Hibachi state is invalid');
   }
   return state;
@@ -301,10 +357,13 @@ function resetPlayer(player, lifeIdentity = 0) {
 export function resetPlayableHibachiStateInPlace(state) {
   assertState(state);
   state.ownedBullets.fill(0);
+  state.bulletPowers.fill(0);
+  state.bulletHalfExtents.fill(0);
   state.selectedGuns.fill(-1);
   state.ordinaryPatternCursors.set([5, 5]);
   state.hyperPatternCursors.set([1, 1]);
   for (const player of state.players) resetPlayer(player);
+  for (const presentation of state.deathPresentations) resetDeathPresentation(presentation);
   clearRequestArray(state.virtualRequests);
   state.paletteLeases.length = 0;
   state.lifecycle.launchEligible = false;
@@ -430,24 +489,59 @@ function bulletSlot(address) {
   return delta >= 0 && delta % BUL.stride === 0 ? delta / BUL.stride : -1;
 }
 
-export function clearPlayableHibachiBulletOnSpawn(state, event) {
+function clearBulletMetadata(state, slot) {
+  state.ownedBullets[slot] = 0;
+  state.bulletPowers[slot] = 0;
+  state.bulletHalfExtents[slot] = 0;
+}
+
+function claimBulletWithPowerPolicy(state, ram, slot, owner, capturedPower, label) {
+  if (state.ramBinding.current !== ram) {
+    throw new Error('Playable Hibachi bullet claim received a different RAM owner');
+  }
+  const policy = powerPolicy(capturedPower, label);
+  const bullet = BUL.pool + slot * BUL.stride;
+  state.ownedBullets[slot] = owner;
+  state.bulletPowers[slot] = capturedPower;
+  state.bulletHalfExtents[slot] = policy.halfExtent;
+  ram.setU8(bullet + BULLET_REC.speed,
+    Math.min(0xff, ram.u8(bullet + BULLET_REC.speed) + policy.speedDelta));
+  ram.setU8(bullet + BULLET_REC.origSpeed,
+    Math.min(0xff, ram.u8(bullet + BULLET_REC.origSpeed) + policy.speedDelta));
+}
+
+export function clearPlayableHibachiBulletOnSpawn(state, ram, event) {
   assertState(state);
   if (!Number.isInteger(event?.slot)
       || event.slot < 0 || event.slot >= state.ownedBullets.length) return;
   const sourceSlot = bulletSlot(event.sourceBullet);
   const sourceOwner = sourceSlot >= 0 && sourceSlot < state.ownedBullets.length
     ? state.ownedBullets[sourceSlot] : 0;
-  state.ownedBullets[event.slot] = sourceOwner === 1 || sourceOwner === 2 ? sourceOwner : 0;
+  if (sourceOwner !== 1 && sourceOwner !== 2) {
+    clearBulletMetadata(state, event.slot);
+    return;
+  }
+  const capturedPower = state.bulletPowers[sourceSlot];
+  const policy = powerPolicy(capturedPower, 'Playable Hibachi continuation power');
+  if (state.bulletHalfExtents[sourceSlot] !== policy.halfExtent) {
+    throw new Error('Playable Hibachi continuation extent does not match captured power');
+  }
+  claimBulletWithPowerPolicy(
+    state, ram, event.slot, sourceOwner, capturedPower,
+    'Playable Hibachi continuation power',
+  );
 }
 
 export function retirePlayableHibachiBullet(state, event) {
   assertState(state);
   if (event?.all === true) {
     state.ownedBullets.fill(0);
+    state.bulletPowers.fill(0);
+    state.bulletHalfExtents.fill(0);
     return;
   }
   const slot = Number.isInteger(event?.slot) ? event.slot : bulletSlot(event?.addr);
-  if (slot >= 0 && slot < state.ownedBullets.length) state.ownedBullets[slot] = 0;
+  if (slot >= 0 && slot < state.ownedBullets.length) clearBulletMetadata(state, slot);
 }
 
 export function playableHibachiBulletOwner(state, address) {
@@ -474,7 +568,7 @@ export function resetPlayableHibachiPlayerLife(state, ram, playerIdx) {
   for (let slot = 0; slot < state.ownedBullets.length; slot++) {
     if (state.ownedBullets[slot] !== player.owner) continue;
     const bullet = BUL.pool + slot * BUL.stride;
-    state.ownedBullets[slot] = 0;
+    clearBulletMetadata(state, slot);
     ram.setU16(bullet, 0);
     ram.setU16(bullet + BULLET_REC.posA, 0xffff);
     retired++;
@@ -499,8 +593,79 @@ export function playableHibachiAllowsFriendlyConversion(state, event) {
   return playableHibachiBulletOwner(state, event?.bullet) === 0;
 }
 
+/** Start or restart one side's coordinate-local 192-frame death sequence. */
+export function capturePlayableHibachiDeath(state, ram, playerIdx, y, x) {
+  assertState(state);
+  if (state.ramBinding.current !== ram) {
+    throw new Error('Playable Hibachi death capture received a different RAM owner');
+  }
+  if (!Number.isInteger(playerIdx) || playerIdx < 0 || playerIdx > 1) {
+    throw new RangeError('Playable Hibachi death player index is outside 0 through 1');
+  }
+  if (!state.lifecycle.active) return false;
+  const presentation = state.deathPresentations[playerIdx];
+  Object.assign(presentation, {
+    active: true,
+    frames: 0,
+    countdown: 3,
+    reload: 3,
+    y: u16(y),
+    x: u16(x),
+    randomBursts: 0,
+    terminal: false,
+  });
+  return true;
+}
+
+/** Shared Playable-only target class for damage and reflected aiming. */
+export function playableHibachiAcceptsTarget(ram, enemy) {
+  const type = ram.u16(enemy);
+  return (type & TYPEBIT_ALIVE) !== 0
+    && ((type & 0x2000) !== 0 || (type & 0x0100) !== 0)
+    && i16(ram.u16(enemy + 0x18)) >= 0;
+}
+
+/** Symmetric captured bullet AABB against the enemy's four native half-extents. */
+export function playableHibachiBulletOverlapsEnemy(
+    ram, enemy, y, x, halfExtent, variant) {
+  const enemyY = ram.u16(enemy + 0x02);
+  const enemyX = ram.u16(enemy + 0x04);
+  const dy = i16(y - enemyY);
+  const dx = i16(x - enemyX);
+  if (dy > ram.u16(enemy + 0x10) + halfExtent
+      || dy < -(ram.u16(enemy + 0x12) + halfExtent)
+      || dx > ram.u16(enemy + 0x14) + halfExtent
+      || dx < -(ram.u16(enemy + 0x16) + halfExtent)) return false;
+  const minY = u16(enemyY - ram.u16(enemy + 0x12));
+  const offLimit = variant === 'A' ? 0x9700 : 0x8800;
+  return u16(minY + 0x2800) < offLimit;
+}
+
+function stepDeathPresentation(state, game, ctx, playerIdx) {
+  const presentation = state.deathPresentations[playerIdx];
+  if (!presentation.active) return false;
+  presentation.frames++;
+  if (presentation.frames === PLAYABLE_HIBACHI_DEATH_FRAMES) {
+    hibachiScript1TerminalEffectsAt(
+      game.ram, ctx, presentation.y, presentation.x,
+    );
+    presentation.active = false;
+    presentation.terminal = true;
+    return true;
+  }
+  const countdown = presentation.countdown;
+  presentation.countdown = (countdown - 1) & 0xff;
+  if (countdown !== 0) return false;
+  presentation.countdown = presentation.reload;
+  hibachiScript1RandomBurstAt(
+    game.ram, game.rom, ctx, presentation.y, presentation.x,
+  );
+  presentation.randomBursts++;
+  return true;
+}
+
 /** Apply one shared ordinary-shot receipt to each colliding friendly bullet. */
-export function runPlayableHibachiDamage(state, game) {
+export function runPlayableHibachiDamage(state, game, ctx = null) {
   assertBoundGame(state, game);
   if (!state.lifecycle.active) return 0;
   const ram = game.ram;
@@ -509,23 +674,36 @@ export function runPlayableHibachiDamage(state, game) {
   for (let slot = 0; slot < state.ownedBullets.length; slot++) {
     const owner = state.ownedBullets[slot];
     if (owner === 0) continue;
+    const policy = powerPolicy(
+      state.bulletPowers[slot], `Playable Hibachi bullet ${slot} power`,
+    );
+    const halfExtent = state.bulletHalfExtents[slot];
+    if (halfExtent !== policy.halfExtent) {
+      throw new Error(`Playable Hibachi bullet ${slot} extent does not match captured power`);
+    }
     const bullet = BUL.pool + slot * BUL.stride;
     if ((ram.u16(bullet) & 0x9000) !== TYPEBIT_ALIVE) continue;
     const y = ram.u16(bullet + BULLET_REC.posA);
     const x = ram.u16(bullet + BULLET_REC.posB);
     for (let enemySlot = 0; enemySlot < 150; enemySlot++) {
       const enemy = DMG.poolA + enemySlot * DMG.enemyStride;
-      const type = ram.u16(enemy);
       const variant = enemySlot < 100 ? 'A' : 'B';
-      if ((type & 0xa000) !== 0xa000 || i16(ram.u16(enemy + 0x18)) < 0
-          || !ordinaryShotPointOverlapsEnemy(ram, enemy, y, x, variant)) continue;
+      if (!playableHibachiAcceptsTarget(ram, enemy)
+          || !playableHibachiBulletOverlapsEnemy(
+            ram, enemy, y, x, halfExtent, variant)) continue;
       const mask = owner === 1 ? DMG.maskP1 : DMG.maskP2;
       applyOrdinaryShotDamageReceipt(
-        ram, enemy, PLAYABLE_HIBACHI_BULLET_POWER, mask, gate308c, game);
+        ram, enemy, policy.damage, mask, gate308c, game);
       ram.setU16(bullet, u16(ram.u16(bullet) | 0x1000));
       hits++;
       break;
     }
+  }
+  for (let playerIdx = 0; playerIdx < 2; playerIdx++) {
+    if (state.deathPresentations[playerIdx].active && !ctx) {
+      throw new Error('Playable Hibachi death presentation requires the private damage context');
+    }
+    stepDeathPresentation(state, game, ctx, playerIdx);
   }
   return hits;
 }
@@ -548,7 +726,11 @@ function claimSpawnedBullets(state, player, ram, rec, result) {
         || !Number.isInteger(entry.addr) || entry.slot < 0
         || entry.slot >= state.ownedBullets.length
         || entry.addr !== BUL.pool + entry.slot * BUL.stride) return;
-    state.ownedBullets[entry.slot] = player.owner;
+    const capturedPower = ram.u16(rec + PS.power);
+    claimBulletWithPowerPolicy(
+      state, ram, entry.slot, player.owner, capturedPower,
+      `Playable Hibachi P${player.owner} power`,
+    );
     ram.setU8(entry.addr + BULLET_REC.dir,
       (ram.u8(entry.addr + BULLET_REC.dir) + 0x80) & 0xff);
     ram.setU8(entry.addr + BULLET_REC.origDir,
@@ -576,6 +758,28 @@ function selectedDescriptor(state, ram, rec, playerIdx) {
       ? last : cursors[playerIdx] - 1;
   }
   return descriptors[cursors[playerIdx] - first];
+}
+
+/** Detached primitive-only view for browser HUD rendering. */
+export function projectPlayableHibachiTelemetry(state, ram) {
+  if (!state) return null;
+  assertState(state);
+  if (!state.lifecycle.active) return null;
+  const players = [RAM.player1, RAM.player2].map((rec, playerIdx) => {
+    const hyper = ram.u16(HYPER_ACTIVE[playerIdx]) !== 0;
+    const policy = powerPolicy(
+      ram.u16(rec + PS.power), `Playable Hibachi P${playerIdx + 1} HUD power`,
+    );
+    return Object.freeze({
+      player: playerIdx + 1,
+      bank: hyper ? 'H' : 'N',
+      pattern: hyper
+        ? state.hyperPatternCursors[playerIdx]
+        : state.ordinaryPatternCursors[playerIdx],
+      powerRung: policy.rung,
+    });
+  });
+  return Object.freeze({ active: true, p1: players[0], p2: players[1] });
 }
 
 function initializePrivateBody(player, rom) {
@@ -621,8 +825,7 @@ function updateReflectedTarget(player, ram, rec) {
   let best = null;
   for (let slot = 0; slot < 150; slot++) {
     const enemy = DMG.poolA + slot * DMG.enemyStride;
-    const type = ram.u16(enemy);
-    if ((type & 0xa000) !== 0xa000 || i16(ram.u16(enemy + 0x18)) < 0) continue;
+    if (!playableHibachiAcceptsTarget(ram, enemy)) continue;
     const dy = i16(ram.u16(enemy + 0x02) - ownerY);
     const dx = i16(ram.u16(enemy + 0x04) - ownerX);
     const distance = dy * dy + dx * dx;
@@ -793,6 +996,13 @@ export function savePlayableHibachiRunaheadState(state) {
     sidecarBytes: state.sidecars.map((memory) => memory.snapshotBytes()),
     ownedBulletsOwner: state.ownedBullets,
     ownedBullets: new Uint8Array(state.ownedBullets),
+    bulletPowersOwner: state.bulletPowers,
+    bulletPowers: new Uint8Array(state.bulletPowers),
+    bulletHalfExtentsOwner: state.bulletHalfExtents,
+    bulletHalfExtents: new Uint16Array(state.bulletHalfExtents),
+    deathPresentationsOwner: state.deathPresentations,
+    deathPresentationOwners: [...state.deathPresentations],
+    deathPresentations: state.deathPresentations.map((presentation) => ({ ...presentation })),
     selectedGunsOwner: state.selectedGuns,
     selectedGuns: new Int8Array(state.selectedGuns),
     ordinaryPatternCursorsOwner: state.ordinaryPatternCursors,
@@ -829,6 +1039,10 @@ export function restorePlayableHibachiRunaheadState(state, token) {
       || state.sidecars.length !== saved.sidecarOwners.length
       || state.sidecarBytes.length !== saved.byteOwners.length
       || state.ownedBullets !== saved.ownedBulletsOwner
+      || state.bulletPowers !== saved.bulletPowersOwner
+      || state.bulletHalfExtents !== saved.bulletHalfExtentsOwner
+      || state.deathPresentations !== saved.deathPresentationsOwner
+      || state.deathPresentations.length !== saved.deathPresentationOwners.length
       || state.selectedGuns !== saved.selectedGunsOwner
       || state.ordinaryPatternCursors !== saved.ordinaryPatternCursorsOwner
       || state.hyperPatternCursors !== saved.hyperPatternCursorsOwner
@@ -849,6 +1063,11 @@ export function restorePlayableHibachiRunaheadState(state, token) {
       throw new Error(`Playable Hibachi P${i + 1} owner identity changed during runahead`);
     }
   }
+  for (let i = 0; i < saved.deathPresentationOwners.length; i++) {
+    if (state.deathPresentations[i] !== saved.deathPresentationOwners[i]) {
+      throw new Error(`Playable Hibachi P${i + 1} death owner identity changed during runahead`);
+    }
+  }
   for (let i = 0; i < saved.virtualRequests.length; i++) {
     const request = saved.virtualRequests[i];
     if (request.owner.bytes !== request.bytesOwner
@@ -862,6 +1081,11 @@ export function restorePlayableHibachiRunaheadState(state, token) {
     Object.assign(state.players[i].runtime, saved.playerRuntime[i]);
   }
   state.ownedBullets.set(saved.ownedBullets);
+  state.bulletPowers.set(saved.bulletPowers);
+  state.bulletHalfExtents.set(saved.bulletHalfExtents);
+  for (let i = 0; i < saved.deathPresentations.length; i++) {
+    Object.assign(state.deathPresentations[i], saved.deathPresentations[i]);
+  }
   state.selectedGuns.set(saved.selectedGuns);
   state.ordinaryPatternCursors.set(saved.ordinaryPatternCursors);
   state.hyperPatternCursors.set(saved.hyperPatternCursors);
@@ -891,6 +1115,86 @@ function decodeB64(value, label) {
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
   return out;
+}
+
+function nativeBulletRecordBytes(ram, slot) {
+  const bullet = BUL.pool + slot * BUL.stride;
+  return Uint8Array.from({ length: BUL.stride }, (_, offset) => ram.u8(bullet + offset));
+}
+
+function snapshotOwnedBulletRecords(state) {
+  const ram = state.ramBinding.current;
+  const records = [];
+  for (let slot = 0; slot < state.ownedBullets.length; slot++) {
+    if (state.ownedBullets[slot] === 0) continue;
+    if (!ram) throw new Error('Playable Hibachi replay export requires bound native RAM');
+    const bytes = nativeBulletRecordBytes(ram, slot);
+    const type = (bytes[0] << 8) | bytes[1];
+    if ((type & TYPEBIT_ALIVE) === 0) {
+      throw new Error(`Playable Hibachi owned bullet ${slot} is not live in native RAM`);
+    }
+    records.push({ slot, recordB64: encodeB64(bytes) });
+  }
+  return records;
+}
+
+function validateOwnedBulletRecords(state, external, owners) {
+  const records = external.ownedBulletRecords;
+  if (!Array.isArray(records)) {
+    throw new Error('Playable Hibachi owned bullet records are missing');
+  }
+  const ram = state.ramBinding.current;
+  const expectedSlots = [];
+  for (let slot = 0; slot < owners.length; slot++) {
+    if (owners[slot] !== 0) expectedSlots.push(slot);
+  }
+  if (expectedSlots.length !== 0 && !ram) {
+    throw new Error('Playable Hibachi replay import requires bound native RAM');
+  }
+  let previous = -1;
+  const slots = [];
+  for (let index = 0; index < records.length; index++) {
+    const entry = records[index];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+        || Object.keys(entry).length !== 2
+        || !Object.hasOwn(entry, 'slot') || !Object.hasOwn(entry, 'recordB64')) {
+      throw new Error(`Playable Hibachi owned bullet record ${index} has invalid shape`);
+    }
+    const slot = entry.slot;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= owners.length) {
+      throw new Error(`Playable Hibachi owned bullet record ${index} has invalid slot`);
+    }
+    if (slot <= previous) {
+      throw new Error('Playable Hibachi owned bullet records are not unique and ascending');
+    }
+    if (owners[slot] === 0) {
+      throw new Error(`Playable Hibachi owned bullet record ${slot} has no owner`);
+    }
+    previous = slot;
+    slots.push(slot);
+    const bytes = decodeB64(
+      entry.recordB64, `Playable Hibachi owned bullet record ${slot}`,
+    );
+    if (bytes.length !== BUL.stride) {
+      throw new Error(`Playable Hibachi owned bullet record ${slot} has ${bytes.length} bytes`);
+    }
+    const type = (bytes[0] << 8) | bytes[1];
+    if ((type & TYPEBIT_ALIVE) === 0) {
+      throw new Error(`Playable Hibachi owned bullet record ${slot} is not live`);
+    }
+    const bullet = BUL.pool + slot * BUL.stride;
+    for (let offset = 0; offset < BUL.stride; offset++) {
+      if (bytes[offset] !== ram.u8(bullet + offset)) {
+        throw new Error(
+          `Playable Hibachi owned bullet record ${slot} does not match restored native RAM`,
+        );
+      }
+    }
+  }
+  if (slots.length !== expectedSlots.length
+      || slots.some((slot, index) => slot !== expectedSlots[index])) {
+    throw new Error('Playable Hibachi owned bullet records do not cover every owner');
+  }
 }
 
 function wordsToBytes(words) {
@@ -938,10 +1242,15 @@ function validateSelectedGuns(values) {
 /** Detached browser/Node-safe replay seed for the private external owner. */
 export function exportPlayableHibachiReplayState(state) {
   assertState(state);
+  const ownedBulletRecords = snapshotOwnedBulletRecords(state);
   return {
     kind: PLAYABLE_HIBACHI_EXTERNAL_KIND,
     lifecycle: { ...state.lifecycle },
     ownedBulletsB64: encodeB64(state.ownedBullets),
+    bulletPowersB64: encodeB64(state.bulletPowers),
+    bulletHalfExtentsB64: encodeB64(wordsToBytes(state.bulletHalfExtents)),
+    ownedBulletRecords,
+    deathPresentations: state.deathPresentations.map((presentation) => ({ ...presentation })),
     sidecars: state.sidecars.map((memory, index) => ({
       player: index + 1,
       b64: encodeB64(memory.snapshotBytes()),
@@ -1052,6 +1361,67 @@ function validateDescriptorTelemetry(runtime, selectedGuns,
   }
 }
 
+function validateDeathPresentation(value, index) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+      || value.playerIdx !== index
+      || typeof value.active !== 'boolean'
+      || typeof value.terminal !== 'boolean') {
+    throw new Error(`Playable Hibachi P${index + 1} death presentation is invalid`);
+  }
+  for (const key of ['frames', 'countdown', 'reload', 'y', 'x', 'randomBursts']) {
+    if (!Number.isInteger(value[key])) {
+      throw new Error(`Playable Hibachi P${index + 1} death ${key} is invalid`);
+    }
+  }
+  if (value.frames < 0 || value.frames > PLAYABLE_HIBACHI_DEATH_FRAMES
+      || value.countdown < 0 || value.countdown > 3 || value.reload !== 3
+      || value.y < 0 || value.y > 0xffff || value.x < 0 || value.x > 0xffff
+      || value.randomBursts < 0 || value.randomBursts > 47) {
+    throw new Error(`Playable Hibachi P${index + 1} death presentation is outside policy`);
+  }
+  const initial = !value.active && !value.terminal && value.frames === 0
+    && value.countdown === 3 && value.randomBursts === 0;
+  const running = value.active && !value.terminal
+    && value.frames < PLAYABLE_HIBACHI_DEATH_FRAMES
+    && value.countdown === 3 - (value.frames % 4)
+    && value.randomBursts === Math.floor(value.frames / 4);
+  const complete = !value.active && value.terminal
+    && value.frames === PLAYABLE_HIBACHI_DEATH_FRAMES
+    && value.countdown === 0 && value.randomBursts === 47;
+  if (!initial && !running && !complete) {
+    throw new Error(`Playable Hibachi P${index + 1} death cadence is invalid`);
+  }
+  return {
+    playerIdx: index,
+    active: value.active,
+    frames: value.frames,
+    countdown: value.countdown,
+    reload: 3,
+    y: value.y,
+    x: value.x,
+    randomBursts: value.randomBursts,
+    terminal: value.terminal,
+  };
+}
+
+function validateBulletMetadata(owners, powers, halfExtents) {
+  for (let slot = 0; slot < owners.length; slot++) {
+    const owner = owners[slot];
+    const power = powers[slot];
+    const halfExtent = halfExtents[slot];
+    if (owner === 0) {
+      if (power !== 0 || halfExtent !== 0) {
+        throw new Error(`Playable Hibachi free bullet ${slot} retains captured metadata`);
+      }
+      continue;
+    }
+    const policy = powerPolicy(power, `Playable Hibachi replay bullet ${slot} power`);
+    if (halfExtent !== policy.halfExtent) {
+      throw new Error(`Playable Hibachi replay bullet ${slot} extent does not match power`);
+    }
+  }
+}
+
 /** Validate fully before mutating a candidate state's visible Game owner. */
 export function importPlayableHibachiReplayState(state, external) {
   assertState(state);
@@ -1080,6 +1450,26 @@ export function importPlayableHibachiReplayState(state, external) {
   if (ownedBullets.some((owner) => owner > 2)) {
     throw new Error('Playable Hibachi bullet owner is outside 0 through 2');
   }
+  const bulletPowers = decodeB64(
+    external.bulletPowersB64, 'Playable Hibachi captured bullet powers',
+  );
+  if (bulletPowers.length !== PLAYABLE_HIBACHI_BULLET_SLOTS) {
+    throw new Error(`Playable Hibachi captured bullet powers have ${bulletPowers.length} bytes`);
+  }
+  const extentBytes = decodeB64(
+    external.bulletHalfExtentsB64, 'Playable Hibachi captured bullet extents',
+  );
+  if (extentBytes.length !== PLAYABLE_HIBACHI_BULLET_SLOTS * 2) {
+    throw new Error(`Playable Hibachi captured bullet extents have ${extentBytes.length} bytes`);
+  }
+  const bulletHalfExtents = bytesToWords(extentBytes);
+  validateBulletMetadata(ownedBullets, bulletPowers, bulletHalfExtents);
+  validateOwnedBulletRecords(state, external, ownedBullets);
+  if (!Array.isArray(external.deathPresentations)
+      || external.deathPresentations.length !== 2) {
+    throw new Error('Playable Hibachi replay must contain two death presentations');
+  }
+  const deathPresentations = external.deathPresentations.map(validateDeathPresentation);
   const selectedGuns = validateSelectedGuns(external.selectedGuns);
   const ordinaryPatternCursors = validatePatternCursors(
     external.ordinaryPatternCursors, 'ordinary', 5, 20,
@@ -1105,6 +1495,11 @@ export function importPlayableHibachiReplayState(state, external) {
     Object.assign(state.players[i].runtime, runtime[i]);
   }
   state.ownedBullets.set(ownedBullets);
+  state.bulletPowers.set(bulletPowers);
+  state.bulletHalfExtents.set(bulletHalfExtents);
+  for (let i = 0; i < deathPresentations.length; i++) {
+    Object.assign(state.deathPresentations[i], deathPresentations[i]);
+  }
   state.selectedGuns.set(selectedGuns);
   state.ordinaryPatternCursors.set(ordinaryPatternCursors);
   state.hyperPatternCursors.set(hyperPatternCursors);

@@ -5,17 +5,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { buildDisplayList } from '../src/displaylist.js';
-import { playerBox } from '../src/damage.js';
+import { DMG, playerBox } from '../src/damage.js';
 import { Game } from '../src/main.js';
-import { P, RAM } from '../src/machine.js';
+import { MACHINE, P, RAM } from '../src/machine.js';
+import { resolveLoadout } from '../src/mods.js';
 import {
   armPlayableHibachiLaunchPresentation,
   beginPlayableHibachiCreditedRun, bindPlayableHibachiGame,
   capturePlayableHibachiLaunch, collectPlayableHibachiSpriteRequests,
-  createPlayableHibachiState,
+  createPlayableHibachiState, projectPlayableHibachiTelemetry,
   PLAYABLE_HIBACHI_SMALL_FORM,
 } from '../src/playablehibachi.js';
 import { SCREEN17 } from '../src/objslot17.js';
+import { PS } from '../src/shots.js';
 import { DRAW_25E4D0, draw25E4D0 } from '../src/objslot9.js';
 import { Ram } from '../src/ram.js';
 import { Renderer, FILL_PEN } from '../src/render/igs023.js';
@@ -23,12 +25,29 @@ import { BUFFER_STRIDE, RAM_STRIDE } from '../src/render/spritelist.js';
 import { drawShip, drawShipAlt, drawShipShadow } from '../src/shipsprite.js';
 import { loadBundle } from '../src/web/assets.js';
 import {
-  PRIVATE_SPRITE_PALETTE_BASE, portSpriteList, romToPackedMap,
+  Demo, PRIVATE_SPRITE_PALETTE_BASE, portSpriteList, romToPackedMap,
 } from '../src/web/app.js';
 import { BUCKETS, encodeRegisterRequest, enqueueRegisters } from '../src/spritequeue.js';
 
 const TABLES = JSON.parse(readFileSync(
   new URL('../rip/port/player.tables.json', import.meta.url), 'utf8'));
+let exactBundlePromise;
+function exactBundle() {
+  exactBundlePromise ??= loadBundle(async (name) => new Uint8Array(readFileSync(
+    new URL(`../assets/${name}`, import.meta.url),
+  )));
+  return exactBundlePromise;
+}
+
+function fakeCanvas() {
+  const context = {
+    createImageData(width, height) {
+      return { data: new Uint8ClampedArray(width * height * 4), width, height };
+    },
+    putImageData() {},
+  };
+  return { width: 0, height: 0, getContext: () => context };
+}
 
 function word(bytes, offset) {
   return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
@@ -50,6 +69,105 @@ function request(offs, privatePaletteBank) {
     privatePaletteBank,
   };
 }
+
+test('HUD telemetry is frozen, detached, read-only, and bank-specific', () => {
+  const game = new Game(null, TABLES, { palCatchUp: false });
+  const state = createPlayableHibachiState();
+  assert.equal(projectPlayableHibachiTelemetry(null, game.ram), null);
+  bindPlayableHibachiGame(state, game);
+  assert.equal(projectPlayableHibachiTelemetry(state, game.ram), null,
+    'an inactive Playable state is never visible to the HUD');
+  beginPlayableHibachiCreditedRun(state, game, {});
+  state.ordinaryPatternCursors.set([20, 19]);
+  state.hyperPatternCursors.set([3, 4]);
+  game.ram.setU16(DMG.hyper1, 0);
+  game.ram.setU16(DMG.hyper2, 1);
+  game.ram.setU16(RAM.player1 + PS.power, 8);
+  game.ram.setU16(RAM.player2 + PS.power, 2);
+  const ramBefore = new Uint8Array(game.ram.b);
+  const ordinaryBefore = new Uint8Array(state.ordinaryPatternCursors);
+  const hyperBefore = new Uint8Array(state.hyperPatternCursors);
+
+  const telemetry = projectPlayableHibachiTelemetry(state, game.ram);
+
+  assert.deepEqual(telemetry, {
+    active: true,
+    p1: { player: 1, bank: 'N', pattern: 20, powerRung: 4 },
+    p2: { player: 2, bank: 'H', pattern: 4, powerRung: 1 },
+  });
+  assert.equal(Object.isFrozen(telemetry), true);
+  assert.equal(Object.isFrozen(telemetry.p1), true);
+  assert.equal(Object.isFrozen(telemetry.p2), true);
+  for (const player of [telemetry.p1, telemetry.p2]) {
+    assert.ok(Object.values(player).every((value) =>
+      value === null || ['string', 'number', 'boolean'].includes(typeof value)));
+  }
+  assert.throws(() => { telemetry.p1.pattern = 1; }, TypeError);
+  assert.deepEqual(game.ram.b, ramBefore, 'projection never writes cartridge RAM');
+  assert.deepEqual(state.ordinaryPatternCursors, ordinaryBefore);
+  assert.deepEqual(state.hyperPatternCursors, hyperBefore);
+
+  game.ram.setU16(RAM.player1 + PS.power, 1);
+  assert.throws(() => projectPlayableHibachiTelemetry(state, game.ram),
+    /HUD power must be exactly 0, 2, 4, 6, or 8/);
+});
+
+test('packaged stats retain projected Hibachi telemetry before live restoration', async () => {
+  const demo = new Demo(fakeCanvas(), await exactBundle(), MACHINE.refreshHz,
+    undefined, null, null, resolveLoadout(['playable-hibachi', 'runahead-2']));
+  const state = demo.mods.playableHibachi;
+  beginPlayableHibachiCreditedRun(state, demo.game, {});
+  state.ordinaryPatternCursors.set([18, 19]);
+  state.hyperPatternCursors.set([3, 2]);
+  demo.game.ram.setU16(DMG.hyper1, 1);
+  demo.game.ram.setU16(DMG.hyper2, 0);
+  demo.game.ram.setU16(RAM.player1 + PS.power, 4);
+  demo.game.ram.setU16(RAM.player2 + PS.power, 8);
+
+  const projected = demo._captureRunaheadView(10, 2, {});
+  assert.deepEqual(projected.playableHibachi, {
+    active: true,
+    p1: { player: 1, bank: 'H', pattern: 3, powerRung: 2 },
+    p2: { player: 2, bank: 'N', pattern: 19, powerRung: 4 },
+  });
+
+  state.hyperPatternCursors[0] = 1;
+  state.ordinaryPatternCursors[1] = 5;
+  demo.game.ram.setU16(DMG.hyper1, 0);
+  demo.game.ram.setU16(RAM.player1 + PS.power, 0);
+  demo.game.ram.setU16(RAM.player2 + PS.power, 2);
+  demo.runaheadView = projected;
+  assert.strictEqual(demo.stats().playableHibachi, projected.playableHibachi,
+    'stats use the detached projected view instead of restored live state');
+  assert.deepEqual(projected.playableHibachi.p1,
+    { player: 1, bank: 'H', pattern: 3, powerRung: 2 });
+
+  demo.runaheadView = { ...projected, playableHibachi: null };
+  assert.equal(demo.stats().playableHibachi, null,
+    'an inactive projected frame remains hidden after live state restoration');
+
+  demo.runaheadView = null;
+  assert.deepEqual(demo.stats().playableHibachi, {
+    active: true,
+    p1: { player: 1, bank: 'N', pattern: 18, powerRung: 0 },
+    p2: { player: 2, bank: 'N', pattern: 5, powerRung: 1 },
+  });
+});
+
+test('packaged HUD stays inside the game frame with accessible static bank chips', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html,
+    /id="game-frame"><canvas[^>]+><\/canvas><div id="hibachi-hud"[^>]+hidden>/);
+  assert.match(html, /id="hibachi-hud" role="status" aria-live="polite"/);
+  assert.match(html, /aria-label="Playable Hibachi weapon status"/);
+  assert.match(html, /#hibachi-hud \{[^}]*position: absolute;[^}]*justify-content: space-between;/s);
+  assert.match(html, /\.hibachi-chip \{[^}]*color: #70d9ff;/s);
+  assert.match(html, /\.hibachi-chip\[data-bank="H"\] \{[^}]*color: #ffbd4a;/s);
+  assert.doesNotMatch(html, /(?:#hibachi-hud|\.hibachi-chip)[^{]*\{[^}]*animation\s*:/s);
+  assert.match(html, /paintHibachiHud\(s\.playableHibachi\)/);
+  assert.match(html, /String\(player\.pattern\)\.padStart\(2, '0'\)/);
+  assert.match(html, /power rung \$\{player\.powerRung\}/);
+});
 
 test('Playable Hibachi uses only the authentic small sphere from the first live frame', () => {
   const game = new Game(null, TABLES, { palCatchUp: false });
@@ -211,9 +329,7 @@ test('selector descent presents Hibachi at every launch anchor without stock fig
 });
 
 test('every native hitbox pixel stays inside opaque small-form art', async () => {
-  const bundle = await loadBundle(async (name) => new Uint8Array(readFileSync(
-    new URL(`../assets/${name}`, import.meta.url),
-  )));
+  const bundle = await exactBundle();
   const game = new Game(null, bundle.tables, { palCatchUp: false });
   const state = createPlayableHibachiState();
   bindPlayableHibachiGame(state, game);

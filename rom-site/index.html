@@ -193,7 +193,13 @@
       </header>
       <div id="local-stage" class="local-stage">
         <div id="local-viewport" class="local-viewport">
-          <canvas id="game-canvas" tabindex="0" aria-label="Local game screen"></canvas>
+          <div id="local-game-frame" class="local-game-frame">
+            <canvas id="game-canvas" tabindex="0" aria-label="Local game screen"></canvas>
+            <div id="local-hibachi-hud" class="local-hibachi-hud" role="status" aria-live="polite" aria-label="Playable Hibachi weapon status" hidden>
+              <div id="local-hibachi-p1" class="local-hibachi-chip" data-bank="N"><span class="local-hibachi-player">P1</span> <span data-hibachi-bank>N</span><span data-hibachi-pattern>05</span> P<span data-hibachi-power>0</span></div>
+              <div id="local-hibachi-p2" class="local-hibachi-chip" data-bank="N"><span class="local-hibachi-player">P2</span> <span data-hibachi-bank>N</span><span data-hibachi-pattern>05</span> P<span data-hibachi-power>0</span></div>
+            </div>
+          </div>
           <div id="local-stick-zone" class="local-stick-zone" aria-label="Floating movement stick" hidden>
             <i id="local-stick-origin" aria-hidden="true"></i>
             <i id="local-stick-knob" aria-hidden="true"></i>

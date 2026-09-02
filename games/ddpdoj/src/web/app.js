@@ -238,7 +238,9 @@ import {
   resolveFormationAuthenticSelection,
 } from '../formation.js';
 import { threePilotFoundationForGame } from '../formationactors.js';
-import { PLAYABLE_HIBACHI_CONFLICT } from '../playablehibachi.js';
+import {
+  PLAYABLE_HIBACHI_CONFLICT, projectPlayableHibachiTelemetry,
+} from '../playablehibachi.js';
 
 // --------------------------------------------------------------- PRESENTATION
 //
@@ -1237,6 +1239,9 @@ export class Demo {
       tx,
       video,
       palette,
+      playableHibachi: projectPlayableHibachiTelemetry(
+        this.mods?.playableHibachi, g.ram,
+      ),
       ...hold,
     };
   }
@@ -1885,6 +1890,9 @@ export class Demo {
       runaheadConfigured: this.runaheadFrames,
       runaheadActive: this.runaheadView?.depth ?? 0,
       displayLogicFrame: this.runaheadView?.logicFrame ?? g.logicFrame,
+      playableHibachi: this.runaheadView
+        ? this.runaheadView.playableHibachi
+        : projectPlayableHibachiTelemetry(this.mods?.playableHibachi, g.ram),
       formationId: this.formation?.mode.id ?? null,
       formationName: this.formation?.mode.name ?? null,
       formationControl: this.formation

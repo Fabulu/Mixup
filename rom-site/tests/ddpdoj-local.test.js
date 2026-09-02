@@ -6,10 +6,14 @@ import {
   assertReplayCompatible, bindModGame, createModState, exportModReplaySeed,
   resolveLoadout,
 } from '../../games/ddpdoj/src/mods.js';
+import { BUL } from '../../games/ddpdoj/src/bullets.js';
+import { DMG } from '../../games/ddpdoj/src/damage.js';
 import { Game, MACHINE, RAM } from '../../games/ddpdoj/src/main.js';
+import { beginPlayableHibachiCreditedRun } from '../../games/ddpdoj/src/playablehibachi.js';
 import { BLACK_LABEL_PROFILE } from '../../games/ddpdoj/src/profiles.js';
 import { BLACK_RUNTIME_BINDING } from '../../games/ddpdoj/src/runtime-profile.js';
 import { Ram } from '../../games/ddpdoj/src/ram.js';
+import { PS } from '../../games/ddpdoj/src/shots.js';
 import { adoptCurrentWindows } from '../../games/ddpdoj/src/rom.js';
 import {
   clearCoin, clearTouch, currentCoinWord, currentPortWord, setCoinKey,
@@ -202,7 +206,7 @@ test('Mixup REC records matched player and coin words with Playable state', asyn
 
   const armed = await runtime.armRecording();
   assert.deepEqual(armed.seed.mods.ids, ['playable-hibachi']);
-  assert.equal(armed.seed.mods.playableHibachi.kind, 'ddpdoj.playable-hibachi/v1');
+  assert.equal(armed.seed.mods.playableHibachi.kind, 'ddpdoj.playable-hibachi/v3');
 
   const captured = [];
   let feeds = 0;
@@ -256,6 +260,11 @@ async function localPlayableReplay(t) {
   obj.seed.tablesB64 = b64(new TextEncoder().encode(JSON.stringify(replayTables)));
   const ram = unb64(obj.seed.ramB64);
   ram[RAM.semaphore - MACHINE.ramBase] = 1;
+  const ownedBulletSlot = 13;
+  const ownedBulletAddress = BUL.pool + ownedBulletSlot * BUL.stride;
+  const ownedBulletOffset = ownedBulletAddress - MACHINE.ramBase;
+  ram.fill(0, ownedBulletOffset, ownedBulletOffset + BUL.stride);
+  ram[ownedBulletOffset] = 0x90;
   obj.seed.ramB64 = b64(ram);
   obj.seed.arm = 1;
   obj.format = FORMAT_V2;
@@ -266,13 +275,23 @@ async function localPlayableReplay(t) {
   };
 
   const recorded = createModState(resolveLoadout(['playable-hibachi']));
+  const recordedRam = new Ram();
+  recordedRam.setU16(ownedBulletAddress, 0x9000);
   bindModGame(recorded, {
-    ram: new Ram(),
+    ram: recordedRam,
     rom: { bytes: (_address, length) => new Uint8Array(length).fill(0x5a) },
     tables: {},
   });
-  recorded.playableHibachi.ownedBullets[13] = 2;
+  recorded.playableHibachi.ownedBullets[ownedBulletSlot] = 2;
+  recorded.playableHibachi.bulletPowers[ownedBulletSlot] = 6;
+  recorded.playableHibachi.bulletHalfExtents[ownedBulletSlot] = 0x0300;
   recorded.playableHibachi.selectedGuns.set([3, 8]);
+  recorded.playableHibachi.ordinaryPatternCursors[0] = 8;
+  recorded.playableHibachi.hyperPatternCursors[1] = 4;
+  recorded.playableHibachi.players[0].runtime.descriptorId = 7;
+  recorded.playableHibachi.players[0].runtime.gun = 3;
+  recorded.playableHibachi.players[1].runtime.descriptorId = 3;
+  recorded.playableHibachi.players[1].runtime.gun = 8;
   obj.seed.mods = exportModReplaySeed(recorded);
   return { obj, tables, recorded };
 }
@@ -331,6 +350,8 @@ test('Mixup PLAY validates Playable state before swapping and feeds recorded coi
   assert.notStrictEqual(runtime.modState, selected,
     'a valid replay swaps in a detached mod candidate');
   assert.equal(runtime.modState.playableHibachi.ownedBullets[13], 2);
+  assert.equal(runtime.modState.playableHibachi.bulletPowers[13], 6);
+  assert.equal(runtime.modState.playableHibachi.bulletHalfExtents[13], 0x0300);
   assert.deepEqual([...runtime.modState.playableHibachi.selectedGuns], [3, 8]);
   assert.deepEqual([...runtime.playback.coinWords.slice(0, 2)], [0xfffe, 0xffff]);
 
@@ -343,6 +364,90 @@ test('Mixup PLAY validates Playable state before swapping and feeds recorded coi
   runtime.step({ project: false });
   assert.equal(seen[1], 0xfffe,
     'PLAY assigns the recorded coin word before advancing the replacement Game');
+});
+
+test('Mixup local stats preserve detached projected Hibachi telemetry', () => {
+  const mods = createModState(resolveLoadout(['playable-hibachi', 'runahead-2']));
+  const game = {
+    ram: new Ram(),
+    rom: { bytes: (_address, length) => new Uint8Array(length) },
+    tables: {},
+    logicFrame: 40,
+    vram: { w: new Uint16Array(8) },
+    txvram: { w: new Uint16Array(8) },
+    video: {
+      bg_scale: 1, bg_yscroll: 2, bg_xscroll: 3,
+      tx_yscroll: 4, tx_xscroll: 5, ctrl: 6,
+    },
+    palette: { words: new Uint16Array(16) },
+  };
+  bindModGame(mods, game);
+  beginPlayableHibachiCreditedRun(mods.playableHibachi, game, {});
+  mods.playableHibachi.ordinaryPatternCursors.set([20, 18]);
+  mods.playableHibachi.hyperPatternCursors.set([2, 3]);
+  game.ram.setU16(DMG.hyper1, 0);
+  game.ram.setU16(DMG.hyper2, 1);
+  game.ram.setU16(RAM.player1 + PS.power, 2);
+  game.ram.setU16(RAM.player2 + PS.power, 8);
+  const runtime = Object.assign(Object.create(LocalDdpdojRuntime.prototype), {
+    game,
+    modState: mods,
+    runaheadView: null,
+  });
+
+  assert.deepEqual(runtime.stats().playableHibachi, {
+    active: true,
+    p1: { player: 1, bank: 'N', pattern: 20, powerRung: 1 },
+    p2: { player: 2, bank: 'H', pattern: 3, powerRung: 4 },
+  });
+  const projected = runtime._captureRunaheadView(40, 2, {});
+  assert.equal(Object.isFrozen(projected.playableHibachi), true);
+
+  mods.playableHibachi.ordinaryPatternCursors[0] = 5;
+  mods.playableHibachi.hyperPatternCursors[1] = 1;
+  game.ram.setU16(RAM.player1 + PS.power, 0);
+  game.ram.setU16(RAM.player2 + PS.power, 4);
+  runtime.runaheadView = projected;
+  assert.strictEqual(runtime.stats().playableHibachi, projected.playableHibachi);
+  assert.deepEqual(runtime.stats().playableHibachi, {
+    active: true,
+    p1: { player: 1, bank: 'N', pattern: 20, powerRung: 1 },
+    p2: { player: 2, bank: 'H', pattern: 3, powerRung: 4 },
+  });
+  runtime.runaheadView = { ...projected, playableHibachi: null };
+  assert.equal(runtime.stats().playableHibachi, null,
+    'an inactive projected frame remains hidden after live state restoration');
+  runtime.runaheadView = null;
+  assert.deepEqual(runtime.stats().playableHibachi, {
+    active: true,
+    p1: { player: 1, bank: 'N', pattern: 5, powerRung: 0 },
+    p2: { player: 2, bank: 'H', pattern: 1, powerRung: 2 },
+  });
+});
+
+test('Mixup local HUD is responsive, accessible, static, and telemetry-only', async () => {
+  const [html, css, shell, runtime] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../styles.css', import.meta.url), 'utf8'),
+    readFile(new URL('../src/local-shell.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/ddpdoj-local.js', import.meta.url), 'utf8'),
+  ]);
+  assert.match(html,
+    /id="local-game-frame"[^>]*>[\s\S]*?<canvas id="game-canvas"[\s\S]*?<div id="local-hibachi-hud"[^>]+hidden>/);
+  assert.match(html, /id="local-hibachi-hud"[^>]*role="status" aria-live="polite"/);
+  assert.match(html, /aria-label="Playable Hibachi weapon status"/);
+  assert.match(css, /\.local-game-frame \{[^}]*position: relative;/s);
+  assert.match(css,
+    /\.local-hibachi-hud \{[^}]*position: absolute;[^}]*justify-content: space-between;/s);
+  assert.match(css, /\.local-hibachi-chip \{[^}]*color: #70d9ff;/s);
+  assert.match(css, /\.local-hibachi-chip\[data-bank="H"\] \{[^}]*color: #ffbd4a;/s);
+  assert.doesNotMatch(css,
+    /(?:\.local-hibachi-hud|\.local-hibachi-chip)[^{]*\{[^}]*animation\s*:/s);
+  assert.match(shell, /onTelemetry: \(telemetry\) => \{[\s\S]*paintHibachiTelemetry\(telemetry\)/);
+  assert.match(shell, /this\.hibachiHud\.hidden = !telemetry\?\.active \|\| this\.gameId !== 'ddpdoj'/);
+  assert.match(shell, /String\(player\.pattern\)\.padStart\(2, '0'\)/);
+  assert.match(shell, /power rung \$\{player\.powerRung\}/);
+  assert.match(runtime, /this\.onTelemetry\?\.\(this\.stats\(\)\.playableHibachi\)/);
 });
 
 test('Mixup renderer forwards private palette metadata and namespace', () => {

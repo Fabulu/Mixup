@@ -1043,6 +1043,11 @@ body[data-local-view="true"] { overflow: hidden; }
   overflow: hidden;
 }
 
+.local-game-frame {
+  position: relative;
+  flex: 0 0 auto;
+}
+
 .local-viewport canvas {
   display: block;
   max-width: 100%;
@@ -1052,6 +1057,35 @@ body[data-local-view="true"] { overflow: hidden; }
   background: #000;
   image-rendering: pixelated;
 }
+
+.local-hibachi-hud {
+  position: absolute;
+  z-index: 3;
+  inset: 4px 4px auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  pointer-events: none;
+  container-type: inline-size;
+}
+
+.local-hibachi-hud[hidden] { display: none; }
+
+.local-hibachi-chip {
+  min-width: 5.2em;
+  padding: 2px 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  color: #70d9ff;
+  background: rgba(3, 7, 12, 0.72);
+  font: 700 clamp(7px, 3.6cqi, 11px)/1.15 ui-monospace, SFMono-Regular, Consolas, monospace;
+  text-shadow: 0 1px #000;
+  white-space: nowrap;
+}
+
+.local-hibachi-chip:last-child { text-align: right; }
+.local-hibachi-chip[data-bank="H"] { color: #ffbd4a; background: rgba(24, 7, 16, 0.76); }
+.local-hibachi-player { color: #eef7ff; }
 
 .local-stage:fullscreen {
   width: 100vw;

@@ -67,14 +67,14 @@ const BLAST_ROWS = Object.freeze([
   [0x0d, 0xd400, 0x0400, 0x0460, 0x0400, 0x0a, 0x27cdf2],
 ]);
 
-/** W399 exported it: HIBACHI's A4 script 1 calls the SAME `$27CBB6` twice, at $2A5C3E and
- *  $2A5C4A, and a second transcription of a twelve-row table is how two copies end up with
- *  each other's constants. The body is unchanged. */
-export function finalBurst27CBB6(ram, ctx, root) {
+/** Coordinate-local body of `$27CBB6`. It emits only the eleven authentic
+ * pool-B rows and their sound, so private callers do not need a native root. */
+export function finalBurst27CBB6At(ram, ctx, y, x) {
   ctx.soundPost?.(0x28c2c2);
+  const position = (((y & 0xffff) << 16) | (x & 0xffff)) >>> 0;
   for (const [kind, ny, nx, speed, sub14, delay, site] of BLAST_ROWS) {
     const e = spawnEffect(ram, ctx, kind, site);
-    ram.setU32(e + B.pos, ram.u32(root + S.posX));
+    ram.setU32(e + B.pos, position);
     ram.setU16(e + B.bucket, 0x10);
     ram.setU16(e + B.nudge, ny);
     ram.setU16(e + B.nudge + 2, nx);
@@ -83,6 +83,13 @@ export function finalBurst27CBB6(ram, ctx, root) {
     ram.setU16(e + B.sub14, sub14);
     ram.setU16(e + B.delay, delay);
   }
+}
+
+/** W399 exported it: HIBACHI's A4 script 1 calls the SAME `$27CBB6` twice, at $2A5C3E and
+ *  $2A5C4A, and a second transcription of a twelve-row table is how two copies end up with
+ *  each other's constants. The native wrapper keeps its root-record contract. */
+export function finalBurst27CBB6(ram, ctx, root) {
+  finalBurst27CBB6At(ram, ctx, ram.u16(root + S.posX), ram.u16(root + S.posY));
 }
 
 function randomDeathEffect(ram, rom, a5, root, ctx) {

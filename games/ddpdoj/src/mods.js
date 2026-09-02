@@ -17,7 +17,8 @@ import { RUNAHEAD_EXTERNAL_STATE } from './runahead-state.js';
 import {
   armPlayableHibachiLaunchPresentation,
   beginPlayableHibachiCreditedRun, bindPlayableHibachiGame,
-  capturePlayableHibachiLaunch, clearPlayableHibachiBulletOnSpawn,
+  capturePlayableHibachiDeath, capturePlayableHibachiLaunch,
+  clearPlayableHibachiBulletOnSpawn,
   collectPlayableHibachiSpriteRequests,
   createPlayableHibachiState,
   endPlayableHibachiRun, exportPlayableHibachiReplayState,
@@ -886,12 +887,15 @@ export function modGameOptions(state) {
     const capture = options.deathPositionCapture;
     options.deathPositionCapture = (ram, side, y, x, canRespawn) => {
       capture?.(ram, side, y, x, canRespawn);
-      if (active()) resetPlayableHibachiPlayerLife(playable, ram, side);
+      if (active()) {
+        capturePlayableHibachiDeath(playable, ram, side, y, x);
+        resetPlayableHibachiPlayerLife(playable, ram, side);
+      }
     };
     const spawn = options.bulletSpawnHook;
     options.bulletSpawnHook = (ram, event) => {
       spawn?.(ram, event);
-      if (active()) clearPlayableHibachiBulletOnSpawn(playable, event);
+      if (active()) clearPlayableHibachiBulletOnSpawn(playable, ram, event);
     };
     const retire = options.bulletRetireHook;
     options.bulletRetireHook = (ram, event, ctx) => {
@@ -931,8 +935,8 @@ export function modGameOptions(state) {
       const prior = virtual(game) ?? [];
       return prior.length === 0 ? own : [...prior, ...own];
     };
-    options.privateDamageTailHook = (game) => active()
-      ? runPlayableHibachiDamage(playable, game) : 0;
+    options.privateDamageTailHook = (game, invokingCtx) => active()
+      ? runPlayableHibachiDamage(playable, game, invokingCtx) : 0;
   }
   const callbacks = Object.freeze({ ...options });
   if (!state.loadout.presentation.runaheadFrames) {

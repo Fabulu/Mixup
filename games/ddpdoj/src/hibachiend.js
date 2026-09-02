@@ -108,7 +108,7 @@ import {
   drawByte242E24,
 } from './rng.js';
 import { finalBlast2440E0 } from './boss2.js';
-import { finalBurst27CBB6 } from './stage4type9f.js';
+import { finalBurst27CBB6At } from './stage4type9f.js';
 import { bossA5, bossA6, bigBurst28B34A } from './boss.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { AimTables, aim64, slew64, slew64FromRecord, targetSelect } from './aim.js';
@@ -347,6 +347,42 @@ const S1_ROWS = Object.freeze([
   [0x0d, 0x2a5bf8, 0xd800, 0x0400, 0x0460, 0x0000, 0x0400, 0x0008],
 ]);
 
+/** Coordinate-local terminal portion of script 1: nine fixed rows followed by
+ * both authentic eleven-row `$27CBB6` bursts. No global boss teardown runs. */
+export function hibachiScript1TerminalEffectsAt(ram, ctx, y, x) {
+  const position = (((y & 0xffff) << 16) | (x & 0xffff)) >>> 0;
+  for (const [kind, site, nHi, nLo, speed, sub12, sub14, delay] of S1_ROWS) {
+    emit(ram, ctx, kind, position, site, nHi, nLo, speed, sub12, sub14, delay);
+  }
+  finalBurst27CBB6At(ram, ctx, u16(y - 0x0c00), u16(x - 0x0f00));
+  finalBurst27CBB6At(ram, ctx, u16(y - 0x0c00), u16(x + 0x0f00));
+}
+
+/** Coordinate-local `$2A5D46..$2A5DC2` burst used by script 1 and the
+ * Playable Hibachi death presentation. It deliberately has no A4, A6, shake,
+ * scheduler, stage, or ending-fork writes. */
+export function hibachiScript1RandomBurstAt(ram, rom, ctx, y, x) {
+  // $2A5D46/$2A5D4C/$2A5D52/$2A5D54/$2A5D5A -- A0 is $28C274 unless the draw is NEGATIVE.
+  // W416/D48: NEGATIVE means bit 7 of the byte $242ED6 loaded, not bit 15 of the word.
+  ctx.soundPost?.(drawNegative242EC2(ram, rom) ? 0x28c28e : 0x28c274);
+  const kind = rom.u16(HIBACHI_A4.kindTable
+    + (drawWord242EC2(ram, rom) & 7) * 2);               // $2A5D5C..$2A5D6E
+  const a0 = spawnEffect(ram, ctx, kind, 0x2a5d72);      // $2A5D72 jsr $289004
+  ram.setU32(a0 + B.pos, (((y & 0xffff) << 16) | (x & 0xffff)) >>> 0);
+  ram.setU16(a0 + B.bucket, 0x0010);                     // $2A5D7E
+  ram.setU16(a0 + B.sub12, 0);                           // $2A5D84
+  ram.setU16(a0 + B.sub14, 0x0800);                      // $2A5D8A
+  ram.setU8(a0 + B.speed, u16(drawByte2431F4(ram, rom) + 3) & 0xff);   // $2A5D90/$2A5D96/$2A5D98
+  ram.setU8(a0 + B.angle, drawWord242EC2(ram, rom) & 0xff);            // $2A5D9C/$2A5DA2
+  // $2A5DA6..$2A5DB6 -- x + (x >> 1) - $800. `asr.w #1` is ARITHMETIC, so a negative draw
+  // halves toward minus infinity; `>> 1` on the sign-extended value is that.
+  const nudgeX = i16(drawWord24328E(ram, rom));
+  ram.setU16(a0 + B.nudge, u16(nudgeX + (nudgeX >> 1) - 0x800));
+  // $2A5DBA..$2A5DC2 -- y >> 1, and NOTHING added. Script 3's copy differs here too.
+  ram.setU16(a0 + B.nudge + 2, u16(i16(drawWord24328E(ram, rom)) >> 1));
+  return a0;
+}
+
 /** `$2A5D3A` -- script 1's per-frame explosion.  `subq.b` + `bcc` is the UNDERFLOW
  *  convention, so the reload at `($5,A4)` lands on the frame AFTER the counter passes zero.
  *  `($4,A4)` and `($5,A4)` are the two halves of the init's ONE `move.w #$0303` (TRAP 3). */
@@ -355,24 +391,9 @@ function frameBurst2A5D3A(ram, rom, ctx, a4, a6) {
   ram.setU8(a4 + 0x04, u16(c - 1) & 0xff);               // $2A5D3A subq.b #1,($4,A4)
   if (c !== 0) return;                                   // $2A5D3E bcc -> the rts
   ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));               // $2A5D40 move.b ($5,A4),($4,A4)
-  // $2A5D46/$2A5D4C/$2A5D52/$2A5D54/$2A5D5A -- A0 is $28C274 unless the draw is NEGATIVE.
-  // W416/D48: NEGATIVE means bit 7 of the byte $242ED6 loaded, not bit 15 of the word.
-  ctx.soundPost?.(drawNegative242EC2(ram, rom) ? 0x28c28e : 0x28c274);
-  const kind = rom.u16(HIBACHI_A4.kindTable
-    + (drawWord242EC2(ram, rom) & 7) * 2);               // $2A5D5C..$2A5D6E
-  const a0 = spawnEffect(ram, ctx, kind, 0x2a5d72);      // $2A5D72 jsr $289004
-  ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));            // $2A5D78
-  ram.setU16(a0 + B.bucket, 0x0010);                     // $2A5D7E
-  ram.setU16(a0 + B.sub12, 0);                           // $2A5D84
-  ram.setU16(a0 + B.sub14, 0x0800);                      // $2A5D8A
-  ram.setU8(a0 + B.speed, u16(drawByte2431F4(ram, rom) + 3) & 0xff);   // $2A5D90/$2A5D96/$2A5D98
-  ram.setU8(a0 + B.angle, drawWord242EC2(ram, rom) & 0xff);            // $2A5D9C/$2A5DA2
-  // $2A5DA6..$2A5DB6 -- x + (x >> 1) - $800. `asr.w #1` is ARITHMETIC, so a negative draw
-  // halves toward minus infinity; `>> 1` on the sign-extended value is that.
-  const x = i16(drawWord24328E(ram, rom));
-  ram.setU16(a0 + B.nudge, u16(x + (x >> 1) - 0x800));
-  // $2A5DBA..$2A5DC2 -- y >> 1, and NOTHING added. Script 3's copy differs here too.
-  ram.setU16(a0 + B.nudge + 2, u16(i16(drawWord24328E(ram, rom)) >> 1));
+  hibachiScript1RandomBurstAt(
+    ram, rom, ctx, ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+  );
 }
 
 /** `$2A61F2` -- script 3's per-frame explosion. Same eleven calls, TWO different lines. */
@@ -1319,20 +1340,9 @@ function s1Step2A5A28(ram, rom, ctx, a4) {
   if (left !== 0) { frameBurst2A5D3A(ram, rom, ctx, a4, a6); return; }   // $2A5A2C bne $2A5D3A
 
   clearEffectPool(ram);                                  // $2A5A30 jsr $288E0C
-  const pos = ram.u32(a6 + 0x02);
-  for (const [kind, site, nHi, nLo, spd, s12, s14, dly] of S1_ROWS) {
-    emit(ram, ctx, kind, pos, site, nHi, nLo, spd, s12, s14, dly);
-  }
-  // $2A5C2E..$2A5C50 -- the position is nudged for TWO `$27CBB6` bursts and restored from
-  // the stack as a LONG, so BOTH halves come back. `addi.w` on ($2,A6) and ($4,A6) is
-  // per-word wrap, not a 32-bit add.
-  const saved = ram.u32(a6 + 0x02);                      // $2A5C2E move.l ($2,A6),-(A7)
-  ram.setU16(a6 + 0x02, u16(ram.u16(a6 + 0x02) + 0xf400));   // $2A5C32 addi.w #-$C00
-  ram.setU16(a6 + 0x04, u16(ram.u16(a6 + 0x04) + 0xf100));   // $2A5C38 addi.w #-$F00
-  finalBurst27CBB6(ram, ctx, a6);                        // $2A5C3E jsr $27CBB6
-  ram.setU16(a6 + 0x04, u16(ram.u16(a6 + 0x04) + 0x1e00));   // $2A5C44 addi.w #$1E00
-  finalBurst27CBB6(ram, ctx, a6);                        // $2A5C4A jsr $27CBB6
-  ram.setU32(a6 + 0x02, saved);                          // $2A5C50 move.l (A7)+,($2,A6)
+  hibachiScript1TerminalEffectsAt(
+    ram, ctx, ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
+  );
 
   ram.setU16(0x803930, 0x0014);                          // $2A5C54
   shakeStart260E36(ram);                                 // $2A5C5C jsr $260E36
