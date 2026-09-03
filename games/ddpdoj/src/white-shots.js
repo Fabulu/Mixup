@@ -30,10 +30,13 @@ const SHOT_SPEEDS = Object.freeze([
 ]);
 const SHOT_SPEED_SET = new Set(SHOT_SPEEDS);
 
-const WHITE_GENERIC_SPEED_SET = new Set([
-  ...Array.from({ length: 64 }, (_, index) => index + 4),
-  96, 128, 176,
-]);
+export const WHITE_GENERIC_SPEED_LEVELS = Object.freeze([
+  ...new Set([
+    ...Array.from({ length: 64 }, (_, index) => index + 4),
+    ...Array.from({ length: 31 }, (_, index) => (index + 1) * 8),
+  ]),
+].sort((a, b) => a - b));
+const WHITE_GENERIC_SPEED_SET = new Set(WHITE_GENERIC_SPEED_LEVELS);
 
 export const WHITE_SHOT = Object.freeze({
   type5: 0x18a0e4,
@@ -221,7 +224,7 @@ export function createWhiteShotTables(rom) {
     vector(speedIndex, angleByte) {
       if (!WHITE_GENERIC_SPEED_SET.has(speedIndex)) {
         unreached(0x141b60,
-          `Version A generic speed ${speedIndex} is outside the exact spark closure`);
+          `Version A generic speed ${speedIndex} is outside the exact caller closure`);
       }
       const pointerAddress = WHITE_SHOT.speedPointers + speedIndex * 4;
       const pointer = rom.u32(pointerAddress);

@@ -162,6 +162,43 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     assert.ok(exported.has(`${window.base}:${window.len}`));
     assert.ok(Number.parseInt(window.base.slice(1), 16) + window.len <= 0x200000);
   }
+  assert.deepEqual(white.worldRuntimeWindows, [
+    { base: '$129FE0', len: 0x0004 },
+    { base: '$12A044', len: 0x0004 },
+    { base: '$12A0A8', len: 0x0004 },
+    { base: '$12A170', len: 0x0004 },
+    { base: '$12A1D4', len: 0x0004 },
+    { base: '$12A238', len: 0x0004 },
+    { base: '$130C6C', len: 0x1964 },
+    { base: '$13DAB0', len: 0x003c },
+    { base: '$13E21C', len: 0x003c },
+    { base: '$141094', len: 0x0014 },
+    { base: '$1423E8', len: 0x00f9 },
+    { base: '$14289C', len: 0x0050 },
+    { base: '$143192', len: 0x0080 },
+    { base: '$16067C', len: 0x02d8 },
+    { base: '$16137C', len: 0x0014 },
+    { base: '$1623B0', len: 0x0010 },
+    { base: '$166924', len: 0x0008 },
+    { base: '$166FE8', len: 0x0008 },
+    { base: '$167018', len: 0x0024 },
+    { base: '$16711A', len: 0x000e },
+    { base: '$167876', len: 0x000a },
+    { base: '$16778C', len: 0x0008 },
+    { base: '$167880', len: 0x0020 },
+    { base: '$1678A0', len: 0x001c },
+    { base: '$167B96', len: 0x0080 },
+    { base: '$167C16', len: 0x0100 },
+    { base: '$167D16', len: 0x0080 },
+    { base: '$18692E', len: 0x0008 },
+    { base: '$18892A', len: 0x0004 },
+    { base: '$188962', len: 0x001c },
+    { base: '$1889E6', len: 0x0030 },
+  ]);
+  for (const window of white.worldRuntimeWindows) {
+    assert.ok(exported.has(`${window.base}:${window.len}`));
+    assert.ok(Number.parseInt(window.base.slice(1), 16) + window.len <= 0x200000);
+  }
   assert.deepEqual(white.hyperHud.object, {
     entry: '$18C046', init: '$18C028', destroy: '$18C038',
     priority: 0x09, killTarget: '$1415CC', aliveFlag: '$81B6F0',
@@ -221,6 +258,7 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
   const { seedBytes, tables } = fixtures();
   const descriptors = [
     ...tables.editions.whiteLabel.frontendWindows,
+    ...tables.editions.whiteLabel.worldRuntimeWindows,
     ...tables.editions.whiteLabel.hyperHudRuntimeWindows,
     ...tables.editions.whiteLabel.playerWindows,
     ...tables.editions.whiteLabel.shotProducerWindows,
@@ -236,8 +274,8 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
   const g = game();
   const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
 
-  assert.equal(excluded.size, 704);
-  assert.equal(tables.rom.windows.length, 1653,
+  assert.equal(excluded.size, 734);
+  assert.equal(tables.rom.windows.length, 1683,
     'runtime projection does not mutate the complete exported table');
   assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [949, 457509]);
   for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);

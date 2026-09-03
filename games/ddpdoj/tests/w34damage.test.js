@@ -16,6 +16,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert';
+import { createHash } from 'node:crypto';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { DMG, shotBoundingBox, poolDamage, runType5Tail } from '../src/damage.js';
@@ -485,6 +486,39 @@ test("type $11's death is TWO STAGES: reload+score first, kill second", () => {
     "$26884C moveq #$7,D0 -- type $11's DEATH kind");
   assert.equal(a.ram.u16(0x81b732) & 0xff, 0x03,
     "$268952 moveq #$3,D0 -- and its HIT kind, on the FIRST trip to zero");
+});
+
+test("type $11's resource path keeps the Black second-stage death byte-identical", () => {
+  const rom = ledgerRom();
+  const h = handlerMap().get(0x2688cc);
+  const f = handlerFixture({ hp: 0xff00, deathFlag: 0x80, f38: 0 });
+  f.ram.setU32(f.sub + 0x02, 0x40002000);
+  const sound = [], effects = [], poolC = [], kills = [];
+  const c = {
+    unportedLog: new UnportedLog(),
+    soundPost: (address) => sound.push(address),
+    effectSpawn: (kind, site, slot) => effects.push([kind, site, slot]),
+    poolCSpawn: (slot, kind, bucket) => poolC.push([slot, kind, bucket]),
+    killEvent: (score, mask) => kills.push([score, mask]),
+  };
+
+  h(f.ram, rom, f.rec, { ...c, tables: null, unported: c.unportedLog, rom });
+
+  assert.equal(f.ram.u16(f.rec), 0);
+  assert.deepEqual(sound, [0x28c25a]);
+  assert.deepEqual(effects, [[0x07, 0x268852, 0x81b732]]);
+  assert.deepEqual(poolC, [[0x81cdee, 0x04, 0]]);
+  assert.deepEqual(kills, [[0x10, 0x10]]);
+
+  const hash = createHash('sha256');
+  for (const [address, length] of [
+    [0x81332c, 0x50], [0x81459c, 0x40], [0x81b4c0, 0x140],
+    [0x81b732, 0x38], [0x81cdee, 0x30], [0x815ea2, 0x04],
+  ]) {
+    hash.update(f.ram.b.slice(address - 0x800000, address - 0x800000 + length));
+  }
+  assert.equal(hash.digest('hex'),
+    'c9600090f79b7d9e446b3399649433f1845687aa419c1ec3b8100fe975fedda3');
 });
 
 test("$268882 DISARMS type $11's pool-D sub-spawn when $815EA2 is already set",

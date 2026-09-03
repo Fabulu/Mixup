@@ -48,6 +48,7 @@
 // build-B one; this is that rule with a number attached.
 
 import { unreached } from './unported.js';
+import { BLACK_WORLD_RESOURCES } from './world-resources.js';
 import { install24150A, install2415E8 } from './palette.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 
@@ -506,9 +507,10 @@ export function uploadRegs(ram, video, { subtractShake = false } = {}) {
  * D2,D4`): the base carries the tile number in its high word and zero in its
  * low, so the attr word rides through untouched.
  */
-export function writeMapLong(ram, rom, vram, row, col, d4) {
+export function writeMapLong(ram, rom, vram, row, col, d4,
+  resources = BLACK_WORLD_RESOURCES) {
   const stage = ram.u16(BGRAM.stageX4);                    // $240D7A
-  const base = rom.u32(BGTAB.tileBase + stage);            // $240D80/$240D86
+  const base = rom.u32(resources.background.tileBase + stage);
   vram.setLong(row, col, u32(d4 + base));                  // $240D88/$240D9A
 }
 
@@ -1075,7 +1077,7 @@ function repeatStep(ram, a5, mut) {
 
 /** One opcode.  `a1` is the record cursor just past the op word; returns the
  *  new cursor.  `blk` is `$813192` or `$8131AA`; `d6` is 1 for script 0. */
-function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
+function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut, resources) {
   const note = (addr, what) => ctx.unportedLog.note(addr,
     `${what} -- scroll record t=$${recTime.toString(16).toUpperCase()
       .padStart(4, '0')}, op $${op.toString(16).padStart(2, '0')} `
@@ -1186,7 +1188,7 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
         // high word alone.
         const lo = u16(u16(arg & 0xffff) - 0x800 - ram.u16(BGRAM.scrollPrev));
         arg = u32((arg & 0xffff0000) | lo);                // $26216E/$262172
-        const tab = rom.u32(BGTAB.elemTable + ram.u16(BGRAM.stageX4));
+        const tab = rom.u32(resources.background.element + ram.u16(BGRAM.stageX4));
         const handler = rom.u32(tab + id * 4);
         note(0x262366, `$262366 background-element spawn (id ${id}, handler `
           + `$${handler.toString(16).toUpperCase()}, arg $${arg.toString(16)
@@ -1256,7 +1258,7 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
       return a1;
     }
     default:
-      return unreached(BGTAB.opTable, `opcode $${op.toString(16)
+      return unreached(resources.background.opcode, `opcode $${op.toString(16)
         .padStart(2, '0')} is not one of the SEVEN longwords at $2620C2 `
         + `($00 $04 $08 $0C $10 $14 $18).  $262086 adds the op word to the `
         + `table base with no bound check, so this would jsr into data`);
@@ -1271,7 +1273,7 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut) {
  *               `$262068` with a replay counter instead, which is why the clock
  *               is a parameter and not a read.
  */
-function interpret(ram, rom, ctx, a5, clock, mut) {
+function interpret(ram, rom, ctx, a5, clock, mut, resources) {
   for (let d6 = 1; d6 >= 0; d6--) {                        // $26206E moveq #1,D6
     const blk = d6 === 1 ? BGRAM.scr0 : BGRAM.scr1;        // $262068 / $262096
     for (;;) {
@@ -1293,7 +1295,7 @@ function interpret(ram, rom, ctx, a5, clock, mut) {
       // it back and no arm depends on it.
       ctx.scrollRecord?.({ at: a1 - 6, op, t, script: d6 === 1 ? 0 : 1,
         replay: ram.u16(BGRAM.fastFwd) !== 0 });
-      a1 = runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, t, mut);
+      a1 = runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, t, mut, resources);
       // $262092 `move.l A1,(A6)` -- the record LEDGER wave 17 tapped: it runs
       // only after a record has been dispatched and its value names the next.
       ram.setU32(blk + SB.cur, a1);
@@ -1321,10 +1323,10 @@ function interpret(ram, rom, ctx, a5, clock, mut) {
  * The normal route has consumed fifteen prefill columns plus one column per four
  * clock ticks when op $04 runs. Its signed rewind therefore names the band from
  * cartridge data without treating the following palette block as map columns. */
-function permanentRepeatAtEntry(rom, stageX4, entryClock) {
-  const pair = rom.u32(BGTAB.scriptPair + stageX4);
+function permanentRepeatAtEntry(rom, stageX4, entryClock, resources) {
+  const pair = rom.u32(resources.background.scriptPair + stageX4);
   const script = rom.u32(pair);
-  const mapStart = rom.u32(BGTAB.colStream + stageX4);
+  const mapStart = rom.u32(resources.background.column + stageX4);
   let at = script + 8;
   let repeat = null;
   for (;;) {
@@ -1333,7 +1335,7 @@ function permanentRepeatAtEntry(rom, stageX4, entryClock) {
     const op = rom.u16(at + 4);
     const bytes = OP_RECORD_BYTES[op];
     if (bytes === undefined) {
-      return unreached(BGTAB.opTable, `background script record at $${
+      return unreached(resources.background.opcode, `background script record at $${
         at.toString(16).toUpperCase()} carries unknown op $${
         op.toString(16).toUpperCase()}`);
     }
@@ -1358,8 +1360,9 @@ function permanentRepeatAtEntry(rom, stageX4, entryClock) {
 /** `$261FDA` -- install both scripts' state blocks, then FALL THROUGH into
  *  `$26200E`.  There is no branch at `$26200C`: `dbra D1,$261FFA` is followed
  *  immediately by `tst.w $8130CE`.  READ PAST THE APPARENT END. */
-function installScripts(ram, rom, ctx, a5, mut, acceleratedRepeat = null) {
-  const pair = rom.u32(BGTAB.scriptPair + ram.u16(BGRAM.stageX4));  // $26152C
+function installScripts(ram, rom, ctx, a5, mut, acceleratedRepeat = null,
+  resources = BLACK_WORLD_RESOURCES) {
+  const pair = rom.u32(resources.background.scriptPair + ram.u16(BGRAM.stageX4));
   for (let a = BGRAM.fastFwd; a < BGRAM.fastFwd + 56; a += 2) {     // $261FE0
     ram.setU16(a, 0);                                              // 28 words
   }
@@ -1370,7 +1373,7 @@ function installScripts(ram, rom, ctx, a5, mut, acceleratedRepeat = null) {
     ram.setU32(blk + SB.cue, rom.u32(script + 4));                 // $262000
     ram.setU32(blk + SB.cur, script + 8);                          // $262004
   }
-  fastForward(ram, rom, ctx, a5, mut, acceleratedRepeat);  // FALL-THROUGH
+  fastForward(ram, rom, ctx, a5, mut, acceleratedRepeat, resources); // FALL-THROUGH
 }
 
 /**
@@ -1386,7 +1389,8 @@ function installScripts(ram, rom, ctx, a5, mut, acceleratedRepeat = null) {
  *     rewind the replayed `04` performed;
  *   - `$81319E`/`$8131B6` -- the two blocks' ($c) rewind targets -- are cleared.
  */
-function fastForward(ram, rom, ctx, a5, mut, acceleratedRepeat = null) {
+function fastForward(ram, rom, ctx, a5, mut, acceleratedRepeat = null,
+  resources = BLACK_WORLD_RESOURCES) {
   if (mut === 'no-fast-forward') { ram.setU16(BGRAM.fastFwd, 0); return; }
   if (ram.u16(BGRAM.clock) === 0) {                        // $26200E tst/beq
     ram.setU16(BGRAM.fastFwd, 0);                          // $26205A
@@ -1397,7 +1401,7 @@ function fastForward(ram, rom, ctx, a5, mut, acceleratedRepeat = null) {
   const a4 = ram.u32(a5 + BGO.colPtr);                     // $262024 / $26202A push
   let d7 = 0;                                              // $26202C
   do {
-    interpret(ram, rom, ctx, a5, d7, mut);                 // $26202E bsr $262068
+    interpret(ram, rom, ctx, a5, d7, mut, resources);      // $26202E bsr $262068
     d7 = u16(d7 + 1);                                      // $262032
   } while (d7 !== ram.u16(BGRAM.clock));                   // $262034 cmp/bne
   ram.setU32(a5 + BGO.scr1Ptr, a3);                        // $26203C/$262040 pop
@@ -1428,7 +1432,8 @@ function fastForward(ram, rom, ctx, a5, mut, acceleratedRepeat = null) {
 // -------------------------------------------------------------- the object
 
 /** `$26114C` -- the init.  Runs on the object's FIRST dispatch. */
-export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
+export function backgroundInit(ram, rom, vram, ctx, a5, mut,
+  resources = BLACK_WORLD_RESOURCES) {
   ram.setU16(BGRAM.clock, ram.u16(a5 + BGO.entryClock));   // $26114C -- BEFORE
   for (let a = 0x81316a; a < 0x81316a + 36; a += 2) {      // $261154, 18 words
     ram.setU16(a, 0);                                      // $81316A..$81318D
@@ -1457,7 +1462,7 @@ export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
   // middle third of palette RAM, out of one per-stage cartridge block.  This is
   // the LIVE site; `Game` also replays it at boot through `catchUpBgPalette`,
   // because on a mid-stage seed this init has already happened on the board.
-  const bgBlock = rom.u32(BGTAB.palette + stage);
+  const bgBlock = rom.u32(resources.background.palette + stage);
   if (ctx.palette) {
     install2415E8(ram, ctx.palette, 0, 0x1f, rom.bytes(bgBlock, 32 * 64),
       0x2611c4, `$${bgBlock.toString(16).toUpperCase()} ($261252[$${stage
@@ -1471,7 +1476,7 @@ export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
   const entryClock = ram.u16(BGRAM.clock);
   let acceleratedRepeat = null;
   if (ctx.backgroundRepeatRestoreHook) {
-    const candidate = permanentRepeatAtEntry(rom, stage, entryClock);
+    const candidate = permanentRepeatAtEntry(rom, stage, entryClock, resources);
     if (candidate && ctx.backgroundRepeatRestoreHook(ram, {
       stage: stage >>> 2, entryClock, ...candidate,
     })) acceleratedRepeat = candidate;
@@ -1479,7 +1484,7 @@ export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
   // colptr = stream + (clock >> 2) * 36   ($2611E0..$2611F2)
   let colptr = acceleratedRepeat
     ? u32(acceleratedRepeat.target + acceleratedRepeat.phase * 36)
-    : u32(rom.u32(BGTAB.colStream + stage) + ((entryClock >>> 2) * 36));
+    : u32(rom.u32(resources.background.column + stage) + ((entryClock >>> 2) * 36));
   ram.setU16(a5 + BGO.cursor, 0);                          // $2611F4
   ram.setU32(a5 + BGO.colPtr, colptr);                     // $2611F8
   // $2611FC -- THE 15-COLUMN PRE-FILL.  Ring columns 0..14 regardless of the
@@ -1490,7 +1495,7 @@ export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
   const nPre = mut === 'prefill-14-columns' ? 14 : 15;
   for (let col = 0; col < nPre; col++) {
     for (let row = 0; row < 9; row++) {
-      writeMapLong(ram, rom, vram, row, col, rom.u32(colptr));
+      writeMapLong(ram, rom, vram, row, col, rom.u32(colptr), resources);
       colptr = u32(colptr + 4);
     }
     if (acceleratedRepeat && colptr === acceleratedRepeat.end) {
@@ -1500,13 +1505,13 @@ export function backgroundInit(ram, rom, vram, ctx, a5, mut) {
   }
   ram.setU32(a5 + BGO.colPtr, colptr);                     // $26121C
   ram.setU16(a5 + BGO.cursor, nPre);                       // $261220 -- $F
-  installScripts(ram, rom, ctx, a5, mut, acceleratedRepeat); // $261226 (+$26200E)
+  installScripts(ram, rom, ctx, a5, mut, acceleratedRepeat, resources);
   // $26122C `jsr $262316` -- clear the 8 element slots and install the per-stage
   // handler table pointer.  Both are pure state; the DRIVER is W18.
   for (let a = BGRAM.elemSlots; a < BGRAM.elemSlots + 260; a += 2) {
     ram.setU16(a, 0);                                      // $262320, 130 words
   }
-  ram.setU32(BGRAM.elemTable, rom.u32(BGTAB.elemTable + stage));   // $262332
+  ram.setU32(BGRAM.elemTable, rom.u32(resources.background.element + stage));
   ram.setU16(BGRAM.crossMode, 1);                          // $261232 -> $261116
   ram.setU16(BGRAM.crossRaw, 0);                           // $26111E
   ram.bset8(a5 + BGO.state, 2);                            // $261236
@@ -1548,7 +1553,8 @@ export function pushExternalSpeed(ram, d0, d1) {
   ram.setU16(BGRAM.extSpeedTx, u16(d1));                   // $26110E
 }
 
-export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {}) {
+export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {},
+  resources = BLACK_WORLD_RESOURCES) {
   if (ram.u16(BGRAM.bgFreeze) !== 0) {                     // $2612A0 tst/bne
     // $2613A0 -- the element driver and the shake still run on a frozen frame.
     elementDriverAndShake(ram, rom, ctx);
@@ -1579,7 +1585,7 @@ export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {}) {
   } else {
     crossAxis(ram, a5);
   }
-  interpret(ram, rom, ctx, a5, ram.u16(BGRAM.clock), mut); // $2612D2 (D7 = $8130CE)
+  interpret(ram, rom, ctx, a5, ram.u16(BGRAM.clock), mut, resources);
   const ext = ram.u16(BGRAM.extFreeze);                    // $2612D8
   if (ext !== 0) {                                         // never seen non-zero
     ram.setU16(BGRAM.extFreeze, 0);                        // $2612E2
@@ -1618,7 +1624,7 @@ export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {}) {
     vram.streamPtr = a0;                                   // W14 diagnostic
     const col = ram.u16(a5 + BGO.cursor);                  // $261352
     for (let row = 0; row < 9; row++) {                    // $261358 moveq #8,D6
-      writeMapLong(ram, rom, vram, row, col, rom.u32(a0)); // $26135A/$26135C
+      writeMapLong(ram, rom, vram, row, col, rom.u32(a0), resources);
       a0 = u32(a0 + 4);
     }
     vram.columnsWritten++;
@@ -1720,15 +1726,15 @@ export function screenShake260EC8(ram, rom, ctx) {
  *   frame 4+ `btst #3` set     -> the handler
  * A port that runs the handler on frame 2 is 2 frames of scroll ahead forever.
  */
-export function makeBackground(rom, vram, opts = {}) {
+export function makeBackground(rom, vram, opts = {}, resources = BLACK_WORLD_RESOURCES) {
   const mut = opts.mutate ?? null;
   return function backgroundObject(ram, a5, _slot, ctx) {
     if (ram.btst8(a5 + BGO.state, 3)) {                    // $26127A btst #3/bne
-      backgroundFrame(ram, rom, vram, ctx, a5, mut, opts); // $2612A0
+      backgroundFrame(ram, rom, vram, ctx, a5, mut, opts, resources); // $2612A0
       return;
     }
     if (ram.bset8(a5 + BGO.state, 0) === 0) {              // $261284 bset/beq
-      backgroundInit(ram, rom, vram, ctx, a5, mut);        // $26128A -> $26114C
+      backgroundInit(ram, rom, vram, ctx, a5, mut, resources);
       return;
     }
     if (ram.btst8(a5 + BGO.state, 1) === 0) {              // $26128E btst/beq

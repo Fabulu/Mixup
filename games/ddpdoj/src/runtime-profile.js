@@ -22,6 +22,7 @@ const WHITE_CAPABILITIES = Object.freeze({
   stage1Options: 'ddpdoj.runtime.white-label-a.stage1-options.v1',
   stage1HyperHud: 'ddpdoj.runtime.white-label-a.stage1-hyper-hud.v1',
   stage1EnemyBullets: 'ddpdoj.runtime.white-label-a.stage1-enemy-bullets.v1',
+  stage1WorldPrivate: 'ddpdoj.runtime.white-label-a.stage1-world-private.v1',
 });
 
 export const BLACK_RUNTIME_BINDING = Object.freeze({

@@ -95,7 +95,9 @@ import { handler1E_296DD6 } from './bossf23.js';
 import { stepMovement, scrollCompensate, applyVelocity, applyVelocityA6,
   stickMove242A48, offScreen242684 } from './movement.js';
 import { readInput23D186 } from './tallyscreen.js';
-import { fire as fireBulletFan, WriteLog } from './bullets.js';
+import {
+  fire as fireBulletFan, fireWithResources as fireBulletWithResources, WriteLog,
+} from './bullets.js';
 // W372: type $4C's seven. `packedAdd` is deliberately absent -- it is a one-line local in
 // stage3carrier.js, not an export, so $4C inlines `u32(pos + delta)` instead.
 import { dist242494 } from './bossscripts.js';
@@ -123,6 +125,7 @@ import { spawnCues28AC72, spawnCues28AC86 } from './cues.js';
 import { pushExternalSpeed } from './background.js';
 import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
+import { BLACK_WORLD_RESOURCES } from './world-resources.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
 import { handler83 } from './stage3type83.js';
 import { handler16 } from './stage3type16.js';
@@ -319,8 +322,8 @@ function noteEffect(u, addr, a5, what) {
  *
  *  `move.b ($1e,A6)` takes the HIGH byte of the sub-record's `anim` word and
  *  uses it as a RAW BYTE OFFSET, which `remapBucket` range-checks. */
-function effectArmNine(ram, rom, ctx, a6, kind, row, site) {
-  const a0 = spawnEffect(ram, ctx, kind, site);
+function effectArmNine(ram, rom, ctx, a6, kind, row, site, resources) {
+  const a0 = spawnEffect(ram, ctx, kind, site, resources);
   ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));
   const d0 = ram.u8(a6 + 0x1e);
   ram.setU16(a0 + B.bucket, remapBucket(rom, row, d0, site));
@@ -427,10 +430,7 @@ export function fireBullet(ctx, entry, regs) {
 //      minimum of the two is compared against `$2680A2[$813092]`.
 //   4. `$26809E cmp.w D4,D0 / rts` -- CARRY SET (do not fire) iff the nearest
 //      live player is CLOSER than the stage's threshold.
-const FG = {
-  stageWord: 0x813096, boxD2: 0x242576, boxD2rank: 0x24259e,
-  boxD3: 0x242562, boxD3rank: 0x24258a, thresh: 0x2680a2,
-};
+const FG = BLACK_WORLD_RESOURCES.enemyTypes[0x11].fireGate;
 
 /** `$268018..$26804C` -- |dy|*3/4 and |dx|, then max + min/2. */
 function octDistance(ram, a6, player) {
@@ -445,12 +445,12 @@ function octDistance(ram, a6, player) {
 }
 
 /** @returns {{carry:boolean}} carry SET = DO NOT FIRE. */
-function fireGate267FC6(u, ram, rom, a5, a6) {
+function fireGate267FC6(u, ram, rom, a5, a6, gate = FG) {
   void u; void a5;
-  const off = ram.u16(FG.stageWord);                      // $267FC6
+  const off = ram.u16(0x813096);                           // $267FC6
   const rank = ram.u16(G.rank98) !== 0;                   // $267FD2 / $267FEC
-  const d2 = rom.u32((rank ? FG.boxD2rank : FG.boxD2) + off);  // $267FE2
-  const d3 = rom.u32((rank ? FG.boxD3rank : FG.boxD3) + off);  // $267FFC
+  const d2 = rom.u32((rank ? gate.boxD2Rank : gate.boxD2) + off); // $267FE2
+  const d3 = rom.u32((rank ? gate.boxD3Rank : gate.boxD3) + off); // $267FFC
   const pos = ram.u32(a6 + 0x02);                         // $268004 move.l (A0),D1
   // $268006/$26800A -- only the ADD's carry is tested (`sub.w` first, `bcs` last).
   if (u16((pos & 0xffff) - (d2 & 0xffff)) + ((d2 >>> 16) & 0xffff) > 0xffff) {
@@ -459,7 +459,7 @@ function fireGate267FC6(u, ram, rom, a5, a6) {
   if (u16((pos >>> 16) - (d3 & 0xffff)) + ((d3 >>> 16) & 0xffff) > 0xffff) {
     return { carry: true };                               // $268016 bcs $267FC4
   }
-  return playerDist268018(ram, rom, a6);                   // falls into $268018
+  return playerDist268018(ram, rom, a6, gate);              // falls into $268018
 }
 
 /**
@@ -477,7 +477,7 @@ function fireGate267FC6(u, ram, rom, a5, a6) {
  * @returns {{carry:boolean}} carry SET = the nearest LIVE player is CLOSER than
  *   the stage's threshold `$2680A2[$813092]`, i.e. DO NOT FIRE.
  */
-function playerDist268018(ram, rom, a6) {
+function playerDist268018(ram, rom, a6, gate = FG) {
   let d4 = 0x7fff;                                        // $268018 move.w #$7fff
   if ((ram.u16(AIM.selP1) & 0x8000) !== 0)                // $26801C tst.w / bpl
     d4 = octDistance(ram, a6, AIM.selP1 + 2);             // $268024 $8103E8
@@ -485,7 +485,7 @@ function playerDist268018(ram, rom, a6) {
   if ((ram.u16(AIM.selP2) & 0x8000) !== 0)                // $268054 tst.w / bpl
     d0 = octDistance(ram, a6, AIM.selP2 + 2);             // $26805C $81044A
   if (d4 < d0) d0 = d4;                                   // $268086 cmp/bcc/move
-  const th = rom.u16(FG.thresh + u16(ram.u16(G.stage) * 2)); // $26808C/$26809C
+  const th = rom.u16(gate.thresholds + u16(ram.u16(G.stage) * 2)); // $26808C/$26809C
   return { carry: d0 < th };                              // $26809E cmp.w D4,D0
 }
 
@@ -510,16 +510,16 @@ function playerDist268018(ram, rom, a6) {
  *   past its fire.
  */
 function boxTest2425B2(ram, rom, a6) {
-  const off = ram.u16(FG.stageWord);                      // $2425B6 / $2425DE
+  const off = ram.u16(0x813096);                           // $2425B6 / $2425DE
   const rank = ram.u16(G.rank98) !== 0;                   // $2425C0 / $2425E8
   const pos = ram.u32(a6 + 0x02);                         // $2425D2 / $2425FA
   // FIRST: ($2,A6) -- the LONG axis -- against $242562 / $24258A.
-  const dA = rom.u32((rank ? FG.boxD3rank : FG.boxD3) + off);   // $2425BC/$2425CA
+  const dA = rom.u32((rank ? FG.boxD3Rank : FG.boxD3) + off);   // $2425BC/$2425CA
   if (u16((pos >>> 16) - (dA & 0xffff)) + ((dA >>> 16) & 0xffff) > 0xffff) {
     return { carry: true };                               // $2425DC bcs $242604
   }
   // SECOND: ($4,A6) -- the SHORT axis -- against $242576 / $24259E.
-  const dB = rom.u32((rank ? FG.boxD2rank : FG.boxD2) + off);   // $2425E4/$2425F2
+  const dB = rom.u32((rank ? FG.boxD2Rank : FG.boxD2) + off);   // $2425E4/$2425F2
   return { carry: u16((pos & 0xffff) - (dB & 0xffff))
     + ((dB >>> 16) & 0xffff) > 0xffff };                  // $242602 add.w -> rts
 }
@@ -564,13 +564,38 @@ function offScreen2426A4(ram, a6) {
 // cache is keyed on the ROM OBJECT, so it is a pure derivation of immutable
 // input -- NOT per-Game mutable state, which `NOTES-replay.md` §2 forbids.
 const AIM_TABLES = new WeakMap();
-function aimTables(rom) {
-  let t = AIM_TABLES.get(rom);
-  if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
+function aimTables(rom, descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x11]) {
+  let byDescriptor = AIM_TABLES.get(rom);
+  if (!byDescriptor) { byDescriptor = new Map(); AIM_TABLES.set(rom, byDescriptor); }
+  let t = byDescriptor.get(descriptor);
+  if (!t && descriptor.aim64) {
+    const a = descriptor.aim64;
+    const lut64 = Uint8Array.from(rom.bytes(a.lut, a.entries));
+    const base64 = [], sub64 = [];
+    for (let i = 0; i < 8; i++) {
+      base64.push(rom.u16(a.base + i * 2));
+      const op = rom.u32(a.ops + i * 4);
+      if (op !== a.sub && op !== a.add) unreached(a.ops + i * 4, 'invalid aim64 operation');
+      sub64.push(op === a.sub);
+    }
+    t = { lut64, base64: Object.freeze(base64), sub64: Object.freeze(sub64) };
+  }
+  if (!t) t = new AimTables(rom);
+  byDescriptor.set(descriptor, t);
   return t;
 }
-const TURRET_11 = TURRET_HANDLERS.get(0x2688cc);
 const TURRET_10 = TURRET_HANDLERS.get(0x268232);
+const TURRET_11 = TURRET_HANDLERS.get(0x2688cc);
+
+function turret11(descriptor) {
+  if (descriptor.handler === 0x2688cc) return TURRET_11;
+  return {
+    type: descriptor.type, gfx: descriptor.fireSprite,
+    block: descriptor.handler + 0x142, aimSite: descriptor.handler + 0x164,
+    muzzleY: 0x200, init: descriptor.initBody,
+    recProto: descriptor.recordPrototype, subProto: descriptor.subPrototype,
+  };
+}
 
 // helper: $11-style on-screen bounds test (Y first, then X; the inlined variant
 // at $2688D2).  Returns true if OFF-screen.
@@ -588,7 +613,7 @@ function bounds11(ram, a6) {
 // (reached via `bmi $268844` from `$26892A`).  flow.py TRUE span
 // `$268844..$268B1E` (730 B, 177 insns) -- reading only from the table addr
 // `$2688CC` misses the entire death path.
-function handler11(ram, rom, a5, ctx) {
+function handler11(ram, rom, a5, ctx, descriptor) {
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   if (stepMovement(ram, rom, a5, tables, u)) return;   // $2688CC jsr $2638A6 (freed)
@@ -604,7 +629,7 @@ function handler11(ram, rom, a5, ctx) {
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $26890E andi.b #$a3
     const pc = ram.u8(a5 + R.palCycle);                // $268912
     ram.setU8(a6 + S.palette, ram.u8(a6 + S.palette) ^ pc); // $268916 eor.b
-    scoreHit(ram, ctx, a6, d1);                        // $26891A jsr $286096 (W34)
+    scoreHit(ram, ctx, a6, d1, a6, descriptor.score);     // $26891A jsr $286096 (W34)
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $268920 tst.w $18 / $268924 bpl
       // ================================================================
       // W34.  THE TWO-STAGE DEATH, WHICH THIS PORT DID NOT HAVE.
@@ -626,34 +651,36 @@ function handler11(ram, rom, a5, ctx) {
       // `$286096` was a note and this branch had never executed anywhere.
       // ================================================================
       if ((ram.u8(a5 + R.deathFlag) & 0x80) !== 0) {   // $268926/$26892A bmi $268844
-        deathSeq11(ram, rom, a5, a6, ctx, d1);
+        deathSeq11(ram, rom, a5, a6, ctx, d1, descriptor);
         return;
       }
       ram.setU16(a6 + S.hp, ram.u16(a5 + R.hpReload)); // $26892E move.w ($26,A5)
-      scoreKill(ram, rom, ctx, 0x08, d1);              // $268934/$268936
+      scoreKill(ram, rom, ctx, 0x08, d1, descriptor.score); // $268934/$268936
       ram.bset8(a5 + R.deathFlag, 7);                  // $26893C bset #$7,($20,A5)
       if (ram.u16(0x815ea2) === 0) {                   // $268942 tst.w / bne $268990
         ram.setU16(0x815ea2, 1);                       // $26894A move.w #$1
         // W54: SPAWNED, not noted.  $268952 moveq #$3 / $268954 lea
         // ($267FAC,PC),A1 -- the HIT row -- / $268958 jsr $289004, then
         // $26895E..$268982's seven field writes.
-        effectArmNine(ram, rom, ctx, a6, 0x03, REMAP.hit267FAC, 0x268958);
+        effectArmNine(ram, rom, ctx, a6, 0x03, descriptor.remaps.hit,
+          descriptor.handler + 0x8c, descriptor.effects);
       }
       // $268988 bra.b $268990 -- and on into the fire machine.
     }
   } else {
     ram.setU8(a6 + S.palette, ram.u8(a5 + R.pal34));   // $26898A
   }
-  fire11(ram, rom, a5, a6, ctx);                       // $268990 (fall-through)
+  fire11(ram, rom, a5, a6, ctx, descriptor);
 }
 
 // ---- $268844: SHARED DEATH SEQUENCE (the prologue) ------------------------
-function deathSeq11(ram, rom, a5, a6, ctx, d1) {
+function deathSeq11(ram, rom, a5, a6, ctx, d1, descriptor) {
   const u = ctx.unported;
-  scoreKill(ram, rom, ctx, 0x10, d1);                  // $268844/$268846
+  scoreKill(ram, rom, ctx, 0x10, d1, descriptor.score); // $268844/$268846
   // W54: SPAWNED.  $26884C moveq #$7 / $26884E lea ($267FA0,PC),A1 -- the
   // DEATH row -- / $268852 jsr $289004, then $268858..$268880's seven writes.
-  const eff = effectArmNine(ram, rom, ctx, a6, 0x07, REMAP.death267FA0, 0x268852);
+  const eff = effectArmNine(ram, rom, ctx, a6, 0x07, descriptor.remaps.death,
+    descriptor.handler - 0x7a, descriptor.effects);
   // $268882..$268898 -- THE ONE-PER-FRAME CAP, and it is what makes type $11's
   // death effect DISARM its own sub-spawn.  `50-recon` §4.2's "every death arm
   // writes ($12) = 0" is true of the instruction at $26887C and not of the
@@ -669,20 +696,21 @@ function deathSeq11(ram, rom, a5, a6, ctx, d1) {
   // $26889E btst #0,$815EA5 -- set means the secondary explosion runs. W235 ports
   // it: `$2688A8 moveq #$4,D0` and D1 = `$267FB8[($1f,A6)*2]`, then $289AF4.
   if ((ram.u8(0x815ea5) & 1) !== 0) {                  // $26889E (set -> call)
-    spawnPoolC289AF4(ram, rom, ctx, 0x04, a6, REMAP.secondary267FB8);  // $2688BA
+    spawnPoolC289AF4(ram, rom, ctx, 0x04, a6, descriptor.remaps.secondary,
+      descriptor.effects);
   }
-  ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst          // $2688C0
+  ctx.soundPost?.(descriptor.sound.death);                // $2688C0
   freeEnemy(ram, a5);                                  // $2688C6 jmp $263762
 }
 
 // ---- $268990..$268B1A: fire / state machine -------------------------------
-function fire11(ram, rom, a5, a6, ctx) {
+function fire11(ram, rom, a5, a6, ctx, descriptor) {
   if (ram.u16(G.freeze) === 0) {                       // $268990 tst.w $8130D2
     const d7 = ram.u16(a6 + S.speed);                  // $268998 move.w $1a(A6)
     let d1 = (d7 & 0x3e) << 2;                         // $26899C/A0/A2 (x4)
     if ((d7 & 0x40) === 0 && (ram.u8(G.mirror) & 0x04) !== 0) // $2689A4/$2689AA
       d1 = u16(d1 + 4);                                // $2689B4 (mirror)
-    ram.setU32(a6 + S.sprite0a, rom.u32(SPRITE_TAB.h11_main + d1)); // $2689BC
+    ram.setU32(a6 + S.sprite0a, rom.u32(descriptor.mainSprite + d1));
   }
   // ------------------------------------------------------------- W30.
   // $2689C2 `movea.l ($2A,A5),A0 / jsr (A0)` -- THE RECORD-CONVENTION SPRITE
@@ -711,14 +739,15 @@ function fire11(ram, rom, a5, a6, ctx) {
   // `$268A0E..$268A5A`: shared with type $10. Frozen and no-live-player
   // carry branch to this type's common draw; cadence no-borrow and a completed
   // aim fall through into the type $11 fan below.
-  const turret = turretStep(() => aimTables(rom), ram, rom, a5, a6, TURRET_11);
+  const turret = turretStep(() => aimTables(rom, descriptor), ram, rom, a5, a6,
+    turret11(descriptor));
   if (turret.next === 'draw') { draw11(ram, rom, a5, a6); return; }
   // $268A5A: the FAN counter (+$28), behind the sub-record's bit-5 flag.
   if ((ram.u8(a6) & 0x20) === 0) { draw11(ram, rom, a5, a6); return; } // btst #5 / beq
   const c = (ram.u8(a5 + R.fireCtr) - 1) & 0xff;       // $268A62 subq.b #1,($28,A5)
   ram.setU8(a5 + R.fireCtr, c);
   if (c !== 0) { draw11(ram, rom, a5, a6); return; }    // $268A66 beq $268A86
-  fireFan11(ram, rom, a5, a6, ctx);                    // $268A86
+  fireFan11(ram, rom, a5, a6, ctx, descriptor);
 }
 
 // $268A68: THE COMMON DRAW.  Every arm of $11's fire machine falls into it, and
@@ -735,7 +764,7 @@ function draw11(ram, rom, a5, a6) {
 // $268A86..$268B1A: THE KIND-$D FAN -- W30 WIRES IT.  This is the fire W29 §5.1
 // specified and did not do, and it is the highest-volume one in the stage: type
 // $11 is 104 of stage 1's 339 spawn records.
-function fireFan11(ram, rom, a5, a6, ctx) {
+function fireFan11(ram, rom, a5, a6, ctx, descriptor) {
   const u = ctx.unported;
   let d0 = u16(u16(0xa0 - ram.u16(G.aa)) + 4);         // $268A86/$268A8A/$268A90
   // $268A92/$268A9C/$268AA6 -- `bcs` on `cmpi.w #$159,$8130CE` is UNSIGNED.
@@ -744,7 +773,7 @@ function fireFan11(ram, rom, a5, a6, ctx) {
     d0 = u16(u16(0x30 - ram.u16(G.ba)) - 6);           // $268AB0/$268AB2/$268AB8
   }
   ram.setU8(a5 + R.fireCtr, d0 & 0xff);                // $268ABA move.b D0,($28,A5)
-  if (fireGate267FC6(u, ram, rom, a5, a6).carry) {     // $268ABE jsr / $268AC2 bcs
+  if (fireGate267FC6(u, ram, rom, a5, a6, descriptor.fireGate).carry) {
     draw11(ram, rom, a5, a6); return;
   }
   if (ram.u16(G.stage) === 1 && ram.u16(G.midbossD8) !== 0) { // $268AC4/$268AD0/$268AD6
@@ -758,13 +787,16 @@ function fireFan11(ram, rom, a5, a6, ctx) {
   // D2: the $268B1E muzzle table.  `move.w D1,D2 / add.w D2,D2` is a *2 on an
   // index that is already a multiple of 4, so the ENTRIES ARE 8 BYTES APART and
   // only the first longword of each is read -- byte offsets 0,8,..,$78.
-  const d2 = u32(rom.u32(MUZZLE_11 + u16(d1 * 2)) + ram.u32(a6 + 0x02)); // $268AF2/$268AF6
+  const d2 = u32(rom.u32(descriptor.muzzle + u16(d1 * 2)) + ram.u32(a6 + 0x02));
   // D0: kind $D.  `cmpi.w #$3,$813092 / bcs` is UNSIGNED, so stages 0..2 keep
   // the bare `moveq #$D` (speed bias 0) and 3+ take the $FFFC bias.
   const d0f = ram.u16(G.stage) < 3 ? 0x0000000d : 0xfffc000d;  // $268AFA/$268AFC/$268B08
   const regs = { d0: d0f, d1, d2, d3: 0x02000000, d4: 0, d5: 0, a5 }; // $268B0E
-  const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402, regs); // $268B14
-  ctx.bulletSpawn?.(0x268b14, res);
+  const bullet = descriptor.bullet;
+  const res = fireBulletWithResources(
+    { ram, rom, log: new WriteLog(ram) }, bullet.entry, regs, bullet,
+  );
+  ctx.bulletSpawn?.(bullet.site, res);
   draw11(ram, rom, a5, a6);                            // $268B1A bra $268A68
 }
 
@@ -8892,7 +8924,8 @@ function handler9C(ram, rom, a5, ctx) {
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
-  [0x2688cc, handler11],
+  [0x2688cc, (ram, rom, a5, ctx) =>
+    handler11(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x11])],
   [0x268232, handler10],
   [0x269cea, handler05],
   [0x26a2e2, handler07],
@@ -9003,12 +9036,14 @@ const HANDLERS = new Map([
 
 /** Run the handler at `addr` for the enemy record `a5`.  An unknown address is a
  *  LOUD NAMED THROW (never a silence).  `ctx = { tables, unported }`. */
-export function runHandler(addr, ram, rom, a5, ctx) {
-  const fn = HANDLERS.get(addr & 0xffffff);
+export function runHandler(addr, ram, rom, a5, ctx,
+  resources = BLACK_WORLD_RESOURCES) {
+  const handlers = handlerMap(resources);
+  const fn = handlers.get(addr & 0xffffff);
   if (!fn) {
     unreached(addr, `enemy handler at $${(addr & 0xffffff).toString(16).toUpperCase()} `
       + `is not in the ported handler table {`
-      + [...HANDLERS.keys()].map((a) => `$${a.toString(16).toUpperCase()}`).join(' ')
+      + [...handlers.keys()].map((a) => `$${a.toString(16).toUpperCase()}`).join(' ')
       + `}. Either an unported type was dispatched, or a handler was missed`);
   }
   fn(ram, rom, a5, ctx);
@@ -11186,7 +11221,22 @@ function death1A(ram, rom, a5, a6, ctx) {
 }
 
 /** The map of ported handler addresses -> functions, for the enemy driver. */
-export function handlerMap() { return HANDLERS; }
+const RESOURCE_HANDLER_MAPS = new WeakMap();
+export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
+  if (resources === BLACK_WORLD_RESOURCES) return HANDLERS;
+  let handlers = RESOURCE_HANDLER_MAPS.get(resources);
+  if (handlers) return handlers;
+  handlers = new Map(HANDLERS);
+  for (const descriptor of Object.values(resources.enemyTypes ?? {})) {
+    if (descriptor.algorithm === 'type11') {
+      handlers.delete(0x2688cc);
+      handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
+        handler11(ram, rom, a5, ctx, descriptor));
+    }
+  }
+  RESOURCE_HANDLER_MAPS.set(resources, handlers);
+  return handlers;
+}
 export const HANDLER_ADDRESSES = [...HANDLERS.keys()];
 
 // W346: every one of these specs carried a hand-written comment claiming its entry points were

@@ -241,6 +241,7 @@
 // and its conclusion was right for one more wave than it expected.
 
 import { u16 } from './ram.js';
+import { BLACK_SCORE_RESOURCES } from './type11-resources.js';
 import { grantHyper287682, HYPER_MUTATE } from './hyper.js';
 
 export const SCORE = {
@@ -310,6 +311,18 @@ export const SCORE = {
    *  of `src/rom.js`, which is the correct answer to an unproven extent. */
   refillTable: 0x287df4,
 };
+
+export { BLACK_SCORE_RESOURCES };
+
+function scoreResources(resources = BLACK_SCORE_RESOURCES) {
+  if (!resources || !Number.isSafeInteger(resources.hit)
+      || !Number.isSafeInteger(resources.kill)
+      || !Number.isSafeInteger(resources.capTable)
+      || !Number.isSafeInteger(resources.refillTable)) {
+    throw new TypeError('score resources require hit, kill, cap, and refill cartridge roots');
+  }
+  return resources;
+}
 
 /** The per-player address block.  P1's is `$2862C6`'s and P2's is `$286476`'s;
  *  the two routines are instruction-for-instruction identical and differ only
@@ -659,12 +672,14 @@ function capClamp(ram, rom, ctx, p, d1) {
  * This port never decrements (see the header), so it can only ever be on the
  * "chain continues" side of that fork once a chain has started.
  */
-export function chainHit(ram, rom, ctx, p, d0, d1) {
+export function chainHit(ram, rom, ctx, p, d0, d1,
+  resources = BLACK_SCORE_RESOURCES) {
+  const score = scoreResources(resources);
   const d3 = d0 >>> 0;                                // $2862C6 move.l D0,D3
   const sel = ram.u16(p.weaponSel);                   // $2862C8
   // $2862CE lea $287DF4,A0 / $2862D4 move.w (A0,D2.w),$81B5E0.  D2 is the
   // selector UNSCALED -- it is already a byte offset.
-  ram.setU16(SCORE.refillAmt, rom.u16(SCORE.refillTable + sel));
+  ram.setU16(SCORE.refillAmt, rom.u16(score.refillTable + sel));
   const laser = ram.u16(SCORE.laserRec);              // $2862DC move.w $811F72,D2
   if ((laser & 0x8000) !== 0 && (laser & 0x80) === 0  // $2862E2 bpl / $2862E4 btst #7
       && ram.u16(p.guard) === 0) {                    // $2862EA tst.w / beq $286320
@@ -1179,7 +1194,9 @@ function creditPrivateScore(ctx, phase, ram, ownership, d0) {
   });
 }
 
-export function scoreHit(ram, ctx, a6, d1, receiptRecord = a6) {
+export function scoreHit(ram, ctx, a6, d1, receiptRecord = a6,
+  resources = BLACK_SCORE_RESOURCES) {
+  scoreResources(resources);
   const ownership = privateScoreOwnership(ram, ctx, 'score-hit', d1, receiptRecord);
   d1 = ownership.mask;
   if ((ram.u8(a6) & 0x02) !== 0) return;              // $286096 btst #1,(A6)
@@ -1243,7 +1260,9 @@ export function scoreHit(ram, ctx, a6, d1, receiptRecord = a6) {
  * 232 times in a 4,600-frame run.  Then it runs the chain machine, and if a
  * HYPER is up it re-enters that machine `$81B654` more times.
  */
-export function scoreKill(ram, rom, ctx, d0, d1) {
+export function scoreKill(ram, rom, ctx, d0, d1,
+  resources = BLACK_SCORE_RESOURCES) {
+  const score = scoreResources(resources);
   const ownership = privateScoreOwnership(ram, ctx, 'score-kill', d1);
   d1 = ownership.mask;
   creditPrivateScore(ctx, 'score-kill', ram, ownership, d0);
@@ -1254,18 +1273,18 @@ export function scoreKill(ram, rom, ctx, d0, d1) {
   ctx?.killEvent?.(d0, d1);
   if (ownership.privateOnly) return ownership;
   const loop = ram.u16(SCORE.loop);                   // $28615E
-  ram.setU16(SCORE.capWord, rom.u16(SCORE.capTable + u16(loop + loop)));  // $28616C
+  ram.setU16(SCORE.capWord, rom.u16(score.capTable + u16(loop + loop)));  // $28616C
   if ((d1 & 0x10) !== 0) {                            // $286174 btst #4,D1
-    killFor(ram, rom, ctx, LEDGER.p1, d0, d1);
+    killFor(ram, rom, ctx, LEDGER.p1, d0, d1, score);
   }
   if ((d1 & 0x08) !== 0) {                            // $28621C btst #3,D1
-    killFor(ram, rom, ctx, LEDGER.p2, d0, d1);
+    killFor(ram, rom, ctx, LEDGER.p2, d0, d1, score);
   }
   return ownership;
 }
 
-function killFor(ram, rom, ctx, p, d0, d1) {
-  chainHit(ram, rom, ctx, p, d0, d1);                 // $28617C / $286224 bsr
+function killFor(ram, rom, ctx, p, d0, d1, resources) {
+  chainHit(ram, rom, ctx, p, d0, d1, resources);       // $28617C / $286224 bsr
   if (ram.u16(p.hyper) === 0) return;                 // $286180 / $286228 tst.w / beq
   // ---- $28618A..$286218: the HYPER repeat.  D2 = the hyper LEVEL - 1 and the
   // block below runs D2+1 times through a `dbra`.  With a level of 0 the `dbra`
@@ -1284,10 +1303,10 @@ function killFor(ram, rom, ctx, p, d0, d1) {
   for (;;) {                                          // $2861BC .. $286218 dbra
     const saved = ram.u32(p.accA);                    // $2861BE move.l $81B5CE,D0 / -(A7)
     if (ram.u16(SCORE.loop) !== 0) {                  // $2861C6 tst.w / bne $28620A
-      chainHit(ram, rom, ctx, p, 0, d1);              // $28620A moveq #0,D0 / bsr
+      chainHit(ram, rom, ctx, p, 0, d1, resources);   // $28620A moveq #0,D0 / bsr
     } else {
       ram.setU32(p.accA, saved >>> 4);                // $2861D0 lsr.l #4 / $2861D2
-      chainHit(ram, rom, ctx, p, 0, d1);              // $2861D8/$2861DA
+      chainHit(ram, rom, ctx, p, 0, d1, resources);   // $2861D8/$2861DA
       for (let k = 0; k < 4; k++) {                   // $2861DE..$286202, four times
         bcdAdd(ram, p.pendingEnd, ram.u32(p.accA));   // the $28614A/$286154 wrapper
       }

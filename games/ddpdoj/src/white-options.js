@@ -33,6 +33,7 @@ import {
   runWhiteBombDamage144CE8, runWhiteBombDriver155394,
   preflightWhiteBombPointers,
 } from './white-bomb.js';
+import { runEnemyFrame } from './enemyframe.js';
 
 const freezeObject = (entries) => Object.freeze(Object.fromEntries(entries));
 const freezeRows = (rows) => Object.freeze(
@@ -823,6 +824,15 @@ function beginWhiteCombat(
     ...deriveProfileContext(runtimeContext, { tables: prepared.tables }),
     ram, rom,
   };
+  const privateWorld = ctx?.stage1WorldPrivate;
+  if (privateWorld) {
+    const enemyFrame = runEnemyFrame(
+      ram, rom, { ...runtimeContext, tables: privateWorld.tables },
+      privateWorld.enemyHandlers, privateWorld.resources,
+    );
+    if (ctx != null) ctx.enemyFrame = enemyFrame;
+    traceWhiteType5(ctx, 0x18a128, privateWorld.resources.enemyFrame.entry);
+  }
   const poolAFrame = runWhitePoolADriver(ram, rom, bulletCtx, profile);
   traceWhiteType5(ctx, 0x18a134, 0x17e9de);
   const seam = Object.freeze({
@@ -836,9 +846,10 @@ function beginWhiteCombat(
 /**
  * Reach the task #237 insertion point before `$18A146 -> $155394`.
  *
- * Task #238 owns only `$18A134 -> $17E9DE` in this prefix. It does not claim the omitted cartridge calls at
- * `$18A122 -> $1886BC`, `$18A128 -> $16256E`, `$18A12E -> $189890`,
- * `$18A13A -> $18798A`, or `$18A140 -> $187C2E`.
+ * Task #238 owns only `$18A134 -> $17E9DE` in this prefix. Task #253
+ * supplies `$18A128 -> $16256E` only when the private world seam is present.
+ * Neither task claims the omitted cartridge calls at `$18A122 -> $1886BC`,
+ * `$18A12E -> $189890`, `$18A13A -> $18798A`, or `$18A140 -> $187C2E`.
  */
 export function runWhiteType5BeforeBombCall18A146(
   ram, rom, slot, ctx, profileRequest,

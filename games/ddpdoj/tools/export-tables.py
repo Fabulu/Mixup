@@ -11388,6 +11388,42 @@ WHITE_LABEL_WINDOWS = [
     (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
 ]
 
+# Task #253's private Stage 1 world slice. These are the bounded Build A data
+# windows read by the shared background, spawn, type-$11 and emitter algorithms.
+WHITE_WORLD_RUNTIME_WINDOWS = [
+    (0x129FE0, 0x0004, "White A Pool-C rebased descriptor root $229FE0"),
+    (0x12A044, 0x0004, "White A Pool-C rebased descriptor root $22A044"),
+    (0x12A0A8, 0x0004, "White A Pool-C rebased descriptor root $22A0A8"),
+    (0x12A170, 0x0004, "White A Pool-C rebased descriptor root $22A170"),
+    (0x12A1D4, 0x0004, "White A Pool-C rebased descriptor root $22A1D4"),
+    (0x12A238, 0x0004, "White A Pool-C rebased descriptor root $22A238"),
+    (0x130C6C, 0x1964, "White A Stage 1 spawn, aux, and movement-script closure"),
+    (0x13DAB0, 0x003C, "White A type-$11 record-convention sprite emitter"),
+    (0x13E21C, 0x003C, "White A type-$11 register-convention sprite emitter"),
+    (0x141094, 0x0014, "White A five-entry background tile-base table"),
+    (0x1423E8, 0x00F9, "White A Aim64 operations, bases, and 129-byte LUT"),
+    (0x14289C, 0x0050, "White A type-$11 normal and rank fire-gate boxes"),
+    (0x143192, 0x0080, "White A type-$11 rank RNG byte table"),
+    (0x16067C, 0x02D8, "White A Stage 1 background script closure"),
+    (0x16137C, 0x0014, "White A five-entry background element table"),
+    (0x1623B0, 0x0010, "White A Stage 1 spawn-table entry"),
+    (0x166924, 0x0008, "White A low type-table entry $11"),
+    (0x166FE8, 0x0008, "White A type-$11 initial emitter pair"),
+    (0x167018, 0x0024, "White A type-$11 death, hit, and secondary remap rows"),
+    (0x16711A, 0x000E, "White A type-$11 seven-stage fire-distance thresholds"),
+    (0x167876, 0x000A, "White A type-$11 loop palette bytes"),
+    (0x16778C, 0x0008, "White A type-$11 run-length init stub"),
+    (0x167880, 0x0020, "White A type-$11 enemy-record prototype"),
+    (0x1678A0, 0x001C, "White A type-$11 sub-record prototype"),
+    (0x167B96, 0x0080, "White A type-$11 muzzle offsets"),
+    (0x167C16, 0x0100, "White A type-$11 main sprite table"),
+    (0x167D16, 0x0080, "White A type-$11 fire and art sprite table"),
+    (0x18692E, 0x0008, "White A type-$11 score cap and refill tables"),
+    (0x18892A, 0x0004, "White A Pool-C kind-$04 template pointer"),
+    (0x188962, 0x001C, "White A Pool-C kind-$04 template and list pointers"),
+    (0x1889E6, 0x0030, "White A Pool-C kind-$04 reachable descriptor lists"),
+]
+
 # Task #239's type-0 HUD reads only these seven Build A table families. The
 # executable entry points, calls, emitters, and sound identity are asserted
 # separately below and are deliberately not exported as readable cartridge data.
@@ -11706,7 +11742,7 @@ WHITE_LASER_RUNTIME_REQUESTS = (
 _WHITE_BULLET_KINDS = (3, 4, 5, 7, 12, 13, 19)
 _WHITE_BULLET_TEMPLATE_RUN_INIT = {
     3: 0x180A1C, 4: 0x180A30, 5: 0x180A44, 7: 0x180A6C,
-    12: 0x180AD0, 13: 0x180AE4, 19: 0x180B34,
+    12: 0x180AD0, 19: 0x180B34,
 }
 WHITE_BULLET_RUNTIME_WINDOWS = [
     (0x141E2E, 0x0200, "White A enemy-bullet 256-word movement fold table"),
@@ -11733,6 +11769,7 @@ WHITE_BULLET_RUNTIME_WINDOWS = [
     (0x1829AA, 0x0180, "White A 32-entry enemy-bullet muzzle table"),
     (0x1828AA, 0x0040, "White A 32-word enemy-bullet direction fold table"),
     (0x1816A8, 0x0024, "White A kind-7 nine-entry direction sprite table"),
+    (0x180AD4, 0x0012, "White A enemy-bullet kind 13 complete template"),
 ]
 WHITE_BULLET_RUNTIME_WINDOWS.extend(
     (0x14264C + i * 8, 0x0002, f"White A Aim256 octant {i} operation word")
@@ -11764,14 +11801,19 @@ for _speed in WHITE_BULLET_SPEED_LEVELS:
     ])
 
 SHOT_WINDOWS.extend(WHITE_LABEL_WINDOWS)
+SHOT_WINDOWS.extend(WHITE_WORLD_RUNTIME_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_HYPER_HUD_RUNTIME_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_BUTTON2_RUNTIME_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_PLAYER_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_SHOT_PRODUCER_WINDOWS)
 WHITE_SHOT_SHARED_OPTION_WINDOW_KEYS = {(0x189042, 0x00A6)}
+_white_existing_window_keys = {
+    (address, length) for address, length, _ in SHOT_WINDOWS
+}
 WHITE_SHOT_EXCLUSIVE_RUNTIME_WINDOWS = [
     row for row in WHITE_SHOT_RUNTIME_WINDOWS
     if (row[0], row[1]) not in WHITE_SHOT_SHARED_OPTION_WINDOW_KEYS
+    and (row[0], row[1]) not in _white_existing_window_keys
 ]
 SHOT_WINDOWS.extend(WHITE_SHOT_EXCLUSIVE_RUNTIME_WINDOWS)
 _white_player_window_keys = {(address, length) for address, length, _ in WHITE_PLAYER_WINDOWS}
@@ -11859,6 +11901,8 @@ def white_label_tables(d: bytes) -> dict:
         },
         "frontendWindows": [{"base": f"${address:06X}", "len": length}
                             for address, length, _ in WHITE_LABEL_WINDOWS],
+        "worldRuntimeWindows": [{"base": f"${address:06X}", "len": length}
+                                 for address, length, _ in WHITE_WORLD_RUNTIME_WINDOWS],
         "hyperHudRuntimeWindows": [{"base": f"${address:06X}", "len": length}
                             for address, length, _ in WHITE_HYPER_HUD_RUNTIME_WINDOWS],
         "hyperHud": WHITE_HYPER_HUD_IDENTITY,

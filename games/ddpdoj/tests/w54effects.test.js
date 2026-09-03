@@ -565,8 +565,8 @@ test('type $10\'s death arm passes kind $4, NOT $7 -- $2681D6 is `moveq #$4,D0`'
     + 'REMAP.death267FA0, 0x2681dc)'),
     `$2681DC's call must pass 0x${kind10}, the kind the cartridge holds`);
   assert.ok(src.includes(`effectArmNine(ram, rom, ctx, a6, 0x${kind11}, `
-    + 'REMAP.death267FA0, 0x268852)'),
-    `$268852's call must pass 0x${kind11}`);
+    + 'descriptor.remaps.death,\n    descriptor.handler - 0x7a, descriptor.effects)'),
+    `$268852's edition-aware call must pass 0x${kind11}`);
   assert.notEqual(kind10, kind11,
     'and the two are DIFFERENT, so this test can see them being confused');
 });

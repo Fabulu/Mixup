@@ -38,6 +38,7 @@ import {
 } from '../src/spark.js';
 import { runShotPool } from '../src/weapons.js';
 import {
+  WHITE_GENERIC_SPEED_LEVELS,
   WHITE_SHOT,
   WHITE_SHOT_DRIVER_RESOURCES,
   WHITE_SHOT_LIFECYCLE_RESOURCES,
@@ -183,6 +184,28 @@ test('White option capability rejects Black before cartridge access', () => {
     /White Label Stage 1 option and laser island is unavailable/,
   );
   assert.equal(reads, 0);
+});
+
+test('White generic movement closes every spark and option deployment speed', () => {
+  const expected = [
+    ...new Set([
+      ...Array.from({ length: 64 }, (_, index) => index + 4),
+      ...Array.from({ length: 31 }, (_, index) => (index + 1) * 8),
+    ]),
+  ].sort((a, b) => a - b);
+  assert.deepEqual(WHITE_GENERIC_SPEED_LEVELS, expected);
+
+  const rom = cartridge();
+  const tables = createWhiteShotTables(rom);
+  for (const speed of WHITE_GENERIC_SPEED_LEVELS) {
+    assert.doesNotThrow(() => tables.vector(speed, 0));
+  }
+  assert.deepEqual(
+    Array.from({ length: 6 }, (_, index) =>
+      rom.u16(WHITE_OPTION_EDITION_RESOURCES.deployTargets + index * 2)),
+    [0xe0, 0xe0, 0xf0, 0xe8, 0xe8, 0xf8],
+  );
+  assert.throws(() => tables.vector(68, 0), /outside the exact caller closure/);
 });
 
 test('White strict preflights fail before beam, spark, or shot mutation', () => {

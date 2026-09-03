@@ -715,10 +715,20 @@
 // Measured: 1643 -> 1653 windows, 640,376 -> 642,930 bytes, and 79 -> 79
 // overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1653;
+// ---------------------------------------------------------------------------
+// TASK #253 WHITE STAGE 1 WORLD ADDED THIRTY WINDOWS AND REPLACED ONE.
+// ---------------------------------------------------------------------------
+// The spawn, background, type-$11 prototype, sprite, fire-gate, bullet-template,
+// scoring, effect, sound, and helper-table closure adds 8,517 exact bytes, all
+// below $200000. Kind $0D's prior isolated run-init word is replaced by its
+// complete readable template.
+// Measured: 1653 -> 1683 windows, 642,930 -> 651,447 bytes, and 79 -> 79
+// overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 1683;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 642930;
+export const ROM_WINDOW_BYTES = 651447;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -765,8 +775,8 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 704;
-const WHITE_LABEL_WINDOW_BYTES = 185421;
+const WHITE_LABEL_WINDOW_COUNT = 734;
+const WHITE_LABEL_WINDOW_BYTES = 193938;
 
 /** Remove the later embedded Version A window family before reconstructing any
  *  earlier Black Label ledger. The edition manifest is the identity list, so a
@@ -776,6 +786,7 @@ export function tableBeforeWhiteLabel(tables) {
   const edition = copy.editions?.whiteLabel;
   const descriptorRows = [
     ...(edition?.frontendWindows ?? []),
+    ...(edition?.worldRuntimeWindows ?? []),
     ...(edition?.hyperHudRuntimeWindows ?? []),
     ...(edition?.playerWindows ?? []),
     ...(edition?.shotProducerWindows ?? []),

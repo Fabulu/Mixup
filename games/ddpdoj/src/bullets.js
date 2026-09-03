@@ -99,8 +99,32 @@ export const BUL = {
   coreB: 0x2817c2,
 };
 
+export const BLACK_BULLET_SPAWN_RESOURCES = Object.freeze({
+  pool: BUL.pool,
+  slots: BUL.slots,
+  stride: BUL.stride,
+  window: Object.freeze([...BUL.window]),
+  windowIters: Object.freeze([...BUL.windowIters]),
+  freezeA: BUL.freezeA,
+  freezeB: BUL.freezeB,
+  freezeC: BUL.freezeC,
+  rank: BUL.rank,
+  speedBias1: BUL.speedBias1,
+  speedBias2: BUL.speedBias2,
+  initX: BUL.initX,
+  initY: BUL.initY,
+  entry: 0x281402,
+  semantic: 'bank-a-plus4',
+  templatePtrs: BUL.templatePtrs,
+  spawnInitPtrs: BUL.spawnInitPtrs,
+  kinds: BUL.kinds,
+  supportedKinds: null,
+  coreA: BUL.coreA,
+  coreB: BUL.coreB,
+});
+
 /**
- * THE 20-BYTE TEMPLATE, `$281956[kind]` -> here.  Every offset carries the
+ * THE 20-BYTE TEMPLATE. Every offset carries the
  * instruction that reads it, because the core reads the template STRICTLY
  * SEQUENTIALLY through `(A1)+` and the offsets are therefore implied by the
  * sizes of the six loads, not written down anywhere in the ROM.
@@ -235,38 +259,38 @@ export function installBulletSpawnHook(ram, hook) {
  *          full and THE SHOT WAS SILENTLY DROPPED.  Carry CLEAR means either a
  *          bullet was spawned or the freeze gate declined -- see below.
  */
-export function spawnCore(ctx, regs, bank) {
+export function spawnCoreWithResources(ctx, regs, bank, resources) {
   const { ram } = ctx;
-  const entry = bank === 'A' ? BUL.coreA : BUL.coreB;
+  const entry = bank === 'A' ? resources.coreA : resources.coreB;
 
   // $2814BA..$2814C6: D7 = $8130D4 + $8130D2 + $811F72, added as WORDS.
-  const d7gate = u16(ram.u16(BUL.freezeA) + ram.u16(BUL.freezeB)
-    + ram.u16(BUL.freezeC));
+  const d7gate = u16(ram.u16(resources.freezeA) + ram.u16(resources.freezeB)
+    + ram.u16(resources.freezeC));
   if (d7gate !== 0) {                                  // $2814CC bne $28153C
     // $28153C tst.w $811F72 / bpl $28154E -- and note the exit at $28154E
     // returns with CARRY CLEAR (`tst.w` clears C and nothing sets it after),
     // i.e. the freeze path reports SUCCESS to the caller while spawning
     // nothing.  Transcribe it; do not "fix" it into a failure.
-    if (i16(ram.u16(BUL.freezeC)) >= 0) {
+    if (i16(ram.u16(resources.freezeC)) >= 0) {
       return { carry: false, slot: null, addr: null, declined: true };
     }
     // $281544 btst #$0,$811F73 -- bit 0 of the LOW byte of the $811F72 word.
-    if ((ram.u8(BUL.freezeC + 1) & 1) === 0) {
+    if ((ram.u8(resources.freezeC + 1) & 1) === 0) {
       return { carry: false, slot: null, addr: null, declined: true };
     }
     // bne -> $2814CE: spawn anyway.
   }
 
   // $2814D4..$281502 -- the ACTIVE WINDOW ladder, a cascade of four tests.
-  let iters = BUL.windowIters[0];                      // moveq #$D,D7
-  for (let i = 0; i < 4; i++) {
-    if (ram.u16(BUL.window[i]) === 0) break;
-    iters = BUL.windowIters[i + 1];
+  let iters = resources.windowIters[0];                  // moveq #$D,D7
+  for (let i = 0; i < resources.window.length; i++) {
+    if (ram.u16(resources.window[i]) === 0) break;
+    iters = resources.windowIters[i + 1];
   }
   // MUTATION `window-constant`: "the pool is 210 slots, so the cap is 210".
   // MEASURED moving 70 -> 160 inside stage 1; the ladder is a progression
   // variable and a constant here silently raises the bullet cap.
-  if (ctx.mut === 'window-constant') iters = BUL.windowIters[4];
+  if (ctx.mut === 'window-constant') iters = resources.windowIters.at(-1);
 
   // $281506..$28152E -- the free-slot search, FIVE SLOTS PER UNROLLED ITERATION
   // with `dbra D7`, so exactly 5*(D7+1) slots are examined: 70/110/160/190/210.
@@ -276,16 +300,16 @@ export function spawnCore(ctx, regs, bank) {
   const limit = 5 * (iters + 1);
   let slot = -1;
   for (let s = 0; s < limit; s++) {
-    if (ram.u16(BUL.pool + s * BUL.stride) === 0) { slot = s; break; }
+    if (ram.u16(resources.pool + s * resources.stride) === 0) { slot = s; break; }
   }
   if (slot < 0) {
     // $281536 ori #$1,SR -- CARRY SET, and the shot is silently dropped.
     return { carry: true, slot: null, addr: null, declined: false };
   }
 
-  const addr = BUL.pool + slot * BUL.stride;
+  const addr = resources.pool + slot * resources.stride;
   const speedTransform = ctx.bulletSpeedTransform ?? BULLET_SPEED_TRANSFORMS.get(ram);
-  emitRecord(ctx, regs, bank, addr, entry, speedTransform);
+  emitRecord(ctx, regs, bank, addr, entry, resources, speedTransform);
   const spawnHook = ctx.bulletSpawnHook ?? BULLET_SPAWN_HOOKS.get(ram);
   spawnHook?.(ram, {
     addr, slot, bank,
@@ -294,27 +318,30 @@ export function spawnCore(ctx, regs, bank) {
   return { carry: false, slot, addr, declined: false };
 }
 
+export function spawnCore(ctx, regs, bank) {
+  return spawnCoreWithResources(ctx, regs, bank, BLACK_BULLET_SPAWN_RESOURCES);
+}
+
 /** `$281554`/`$281860` onwards -- the template copy and everything after it. */
-function emitRecord(ctx, regs, bank, base, entry, speedTransform = null) {
+function emitRecord(ctx, regs, bank, base, entry, resources, speedTransform = null) {
   const { ram, rom, log } = ctx;
   const mut = ctx.mut ?? null;
   // $281556 andi.w #$3F,D0 -- the LOW WORD only; the high word (the speed bias)
   // is untouched and is read back off the stack four instructions later.
   const kind = regs.d0 & 0x3f;
   const speedBias = (regs.d0 >>> 16) & 0xffff;        // $281578 add.w (A7),D7
-  if (kind >= BUL.kinds) {
-    // $28155E lea ($281956,PC),A1 / movea.l (A1,D0.w),A1 with no bound at all.
-    // On the board this reads the longword AFTER the table ($018100 for kind
-    // 39) and copies 20 bytes from wherever that points.  It is not a path the
-    // port may guess at.
-    unreached(BUL.templatePtrs + 4 * kind,
+  if (kind >= resources.kinds) {
+    // The board has no bound check. The port refuses to copy an unproven template.
+    unreached(resources.templatePtrs + 4 * kind,
       `bullet KIND ${kind} was passed to $${entry.toString(16).toUpperCase()}, `
-      + `but $281956 has exactly ${BUL.kinds} entries -- proven from both ends `
-      + `(entry[39] is $018100, not a pointer, and the template block that the `
-      + `39 entries point into ends where code begins at $281CD6). The board `
-      + `would index past the table and copy 20 bytes of garbage as a template`);
+      + `outside its ${resources.kinds}-entry template table`);
   }
-  const tpl = rom.u32(BUL.templatePtrs + 4 * kind);   // $281564
+  if (resources.supportedKinds != null && !resources.supportedKinds.includes(kind)) {
+    unreached(resources.templatePtrs + 4 * kind,
+      `bullet KIND ${kind} is outside the supported $${entry.toString(16)
+        .toUpperCase()} spawn closure`);
+  }
+  const tpl = rom.u32(resources.templatePtrs + 4 * kind);
 
   // ---- the type word.  Bank B sets bit 9 FIRST, in the register.
   let typeWord = rom.u16(tpl + TPL.typeWord);
@@ -348,8 +375,8 @@ function emitRecord(ctx, regs, bank, base, entry, speedTransform = null) {
   // MUTATION `no-global-bias`: both globals MEASURED 0 through all of stage 1,
   // so compiling the 0 in is invisible until the game writes one.
   if (mut !== 'no-global-bias') {
-    d7 = u16(d7 + ram.u16(BUL.speedBias1));           // $28157A
-    d7 = u16(d7 + ram.u16(BUL.speedBias2));           // $281580
+    d7 = u16(d7 + ram.u16(resources.speedBias1));       // $28157A
+    d7 = u16(d7 + ram.u16(resources.speedBias2));       // $281580
   }
   // Optional policy-neutral host transform. It sees the authentic final byte,
   // cannot mutate caller registers, and affects both the live and original-speed
@@ -393,12 +420,12 @@ function emitRecord(ctx, regs, bank, base, entry, speedTransform = null) {
 
   // ---- the SPAWN-INIT, run only if the template's +$10 word is non-zero.
   if (rom.u16(tpl + TPL.runInit) === 0) return;       // $2815AC tst.w (A1) / beq
-  const init = rom.u32(BUL.spawnInitPtrs + 4 * kind); // $2815B6 adda.w D0,A1
+  const init = rom.u32(resources.spawnInitPtrs + 4 * kind); // $2815B6 adda.w D0,A1
   // MUTATION `init-raw-displacement`: run the inits with A0 = the record base
   // rather than base+$10, i.e. take every instruction's displacement at face
   // value. Five parameter fields land in the sprite fields.
   runSpawnInit(ctx, regs,
-    base - (ctx.mut === 'init-raw-displacement' ? 0x10 : 0), init, kind);
+    base - (ctx.mut === 'init-raw-displacement' ? 0x10 : 0), init, kind, resources);
 }
 
 /**
@@ -412,7 +439,7 @@ function emitRecord(ctx, regs, bank, base, entry, speedTransform = null) {
  * `$2818E0` is a byte-for-byte DUPLICATE of `$2818B4` (checked mechanically by
  * `w21patterns.py inits`), not a variant.
  */
-function runSpawnInit(ctx, regs, base, init, kind) {
+function runSpawnInit(ctx, regs, base, init, kind, resources) {
   const { ram, log } = ctx;
   switch (init) {
     case 0x2818ac:                                    // 20 kinds: nothing
@@ -436,8 +463,8 @@ function runSpawnInit(ctx, regs, base, init, kind) {
       log.w16(base + REC.param36, regs.d5);           // move.w D5,($26,A0)
       return;
     case 0x28190c:                                    // kinds 27,32,36,37,38
-      log.w16(base + REC.param28, ram.u16(BUL.initX));  // move.w $8130D8,($18,A0)
-      log.w16(base + REC.param2a, ram.u16(BUL.initY));  // move.w $8130DA,($1a,A0)
+      log.w16(base + REC.param28, ram.u16(resources.initX));  // move.w $8130D8,($18,A0)
+      log.w16(base + REC.param2a, ram.u16(resources.initY));  // move.w $8130DA,($1a,A0)
       log.w32(base + REC.param2c, regs.d4);
       log.w8(base + REC.param34, 0);
       log.w32(base + REC.param36, regs.d5);           // move.l D5,($26,A0) -- LONG
@@ -581,9 +608,29 @@ function adaptive(ctx, regs, bank) {
 
 /** Is the fan gate open?  `tst.w $813098`. */
 // MUTATION `fan-always` / `fan-never`: ignore $813098 in each direction.
-const fan = (ctx) => (ctx.mut === 'fan-always' ? true
+const fanWithResources = (ctx, resources) => (ctx.mut === 'fan-always' ? true
   : ctx.mut === 'fan-never' ? false
-  : ctx.ram.u16(BUL.rank) !== 0);
+  : ctx.ram.u16(resources.rank) !== 0);
+const fan = (ctx) => fanWithResources(ctx, BLACK_BULLET_SPAWN_RESOURCES);
+
+function bankAPlus4(ctx, regs, resources) {
+  if (!fanWithResources(ctx, resources)) {
+    return [spawnCoreWithResources(ctx, regs, 'A', resources)];
+  }
+  regs.d0 = (regs.d0 + S(4)) >>> 0;
+  const out = [spawnCoreWithResources(ctx, regs, 'A', resources)];
+  regs.d0 = (regs.d0 - S(4)) >>> 0;
+  return out;
+}
+
+export function fireWithResources(ctx, entry, regs, resources) {
+  if (!resources || resources.semantic !== 'bank-a-plus4'
+      || entry !== resources.entry) {
+    unreached(entry, `no resource-bound generator entry at $${entry.toString(16)
+      .toUpperCase()}`);
+  }
+  return bankAPlus4(ctx, regs, resources);
+}
 
 /**
  * The twelve rank!=0 fan entries wrap their body in
@@ -626,13 +673,7 @@ export const ENTRIES = new Map([
   // $2813F0: `beq $2814B6` and `jmp ($2814B6,PC)` -- BOTH arms are the core.
   // The rank test is dead code in this one.
   [0x2813f0, (ctx, r) => [spawnCore(ctx, r, 'A')]],
-  [0x281402, (ctx, r) => {
-    if (!fan(ctx)) return [spawnCore(ctx, r, 'A')];   // $281408 beq $2814B6
-    r.d0 = (r.d0 + S(4)) >>> 0;                       // $28140C addi.l #$40000
-    const out = [spawnCore(ctx, r, 'A')];
-    r.d0 = (r.d0 - S(4)) >>> 0;                       // $281418 subi.l #$40000
-    return out;
-  }],
+  [0x281402, (ctx, r) => bankAPlus4(ctx, r, BLACK_BULLET_SPAWN_RESOURCES)],
   [0x281420, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'A')]
     : restoreFan(r, () => pair06(ctx, r, 'A')))],    // $28142E bra $28134E
   [0x281432, (ctx, r) => (!fan(ctx) ? [spawnCore(ctx, r, 'A')]

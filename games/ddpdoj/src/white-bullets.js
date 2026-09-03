@@ -3,6 +3,7 @@
 import { WHITE_LABEL_PROFILE, resolveGameProfile } from './profiles.js';
 import { requireRuntimeCapability, resolveGameRuntime } from './runtime-profile.js';
 import { runPoolADriverWithResources } from './bee.js';
+import { BLACK_BULLET_SPAWN_RESOURCES } from './bullets.js';
 import {
   runBulletDriverWithResources, runClearTimerWithResources, runScreenClearWithResources,
 } from './bulletdriver.js';
@@ -17,6 +18,17 @@ export const WHITE_VECTOR_RESOURCES = Object.freeze({
   quadStride: 0x0208,
   fold: 0x141e2e,
   foldEntries: 256,
+});
+
+export const WHITE_BULLET_SPAWN_RESOURCES = Object.freeze({
+  ...BLACK_BULLET_SPAWN_RESOURCES,
+  entry: 0x180486,
+  coreA: 0x180502,
+  coreB: 0x1807aa,
+  templatePtrs: 0x18093e,
+  spawnInitPtrs: 0x180612,
+  kinds: 36,
+  supportedKinds: Object.freeze([13]),
 });
 
 export const WHITE_AIM256_RESOURCES = Object.freeze({
@@ -226,6 +238,7 @@ export const WHITE_BULLET_DRIVER_RESOURCES = Object.freeze({
 });
 
 export const WHITE_ENEMY_BULLET_RESOURCES = Object.freeze({
+  spawn: WHITE_BULLET_SPAWN_RESOURCES,
   vectors: WHITE_VECTOR_RESOURCES,
   aim256: WHITE_AIM256_RESOURCES,
   poolA: WHITE_POOL_A_RESOURCES,

@@ -38,11 +38,12 @@ import { loadRecordProto, loadSubProto } from './enemyproto.js';
 import { readMovementInit } from './movement.js';
 import { install24150A } from './palette.js';
 import { AimTables, aim64, aim64AtTarget, aim64FromCaller, aim256, targetSelect } from './aim.js';
-import { drawByte242B3C, drawByte242E24, drawNegative242EC2, drawWord242EC2,
+import { drawByte242B3C, drawByte242E24, drawByteWithResources, drawNegative242EC2, drawWord242EC2,
   drawWord24328E, drawByte24311A, drawByte2431F4,
   drawLong243A9C } from './rng.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { initType99_29E580 } from './boss3type99.js';
+import { BLACK_WORLD_RESOURCES } from './world-resources.js';
 
 // ----------------------------------------------------------- the record layout
 // A5 = enemy record, A6 = sub-record (= ($6,A5)).  The offsets the init bodies
@@ -195,15 +196,15 @@ function damageFirstFamily(ram, rom, a5, a6, unported, p) {
 
 // --------------------------------------------------------- type $11 (104 records)
 // $26871C.  The commonest stage-1 enemy: script-mover, aims, turns.
-function init11(ram, rom, a5, a6, unported) {
-  loadSubProto(ram, rom, a5, a6, 0x268828);            // $268722 jsr $2637A2
-  loadRecordProto(ram, rom, a5, 0x268808, 0x0f);       // $268730 jsr $26377A (D0=$F)
+function init11(ram, rom, a5, a6, unported, p) {
+  loadSubProto(ram, rom, a5, a6, p.subPrototype);
+  loadRecordProto(ram, rom, a5, p.recordPrototype, 0x0f);
   // $268736: D0 = $8130B2; sub.b D0,($28,A5) and sub.b D0,($1a,A5).
   let d0 = ram.u16(G.b2) & 0xff;
   ram.setU8(a5 + R.rec28, (ram.u8(a5 + R.rec28) - d0) & 0xff);  // sub.b D0,($28,A5)
   ram.setU8(a5 + R.rec1A, (ram.u8(a5 + R.rec1A) - d0) & 0xff);  // sub.b D0,($1a,A5)
   // $268744: jsr $242E24 (rank byte); lsr.b #1,D0; add.b D0,($28,A5).
-  d0 = drawByte242E24(ram, rom) >> 1;                  // $26874A lsr.b #1,D0
+  d0 = drawByteWithResources(ram, rom, p.rankByteRng) >> 1;
   ram.setU8(a5 + R.rec28, (ram.u8(a5 + R.rec28) + d0) & 0xff);  // add.b D0,($28,A5)
   // $268750: D0 = $8130BC >> 4; sub.b D0,($18,A5).
   d0 = (ram.u16(G.bc) & 0xff) >> 4;
@@ -218,7 +219,7 @@ function init11(ram, rom, a5, a6, unported) {
   if (ram.u16(G.stage) === 2) ram.setU8(a6 + S.f1f, 2);  // move.b #$2,($1f,A6)
   // $268796: bucket emitter pair from $267F70 indexed by (sub +$1F)<<3.
   const f = ram.u8(a6 + S.f1f);
-  const btab = 0x267F70 + (f << 3);
+  const btab = p.bucketTable + (f << 3);
   ram.setU32(a5 + R.rec2A, rom.u32(btab));             // move.l (A0)+,($2a,A5)
   ram.setU32(a5 + R.rec2E, rom.u32(btab + 4));         // move.l (A0),($2e,A5)
   // $2687B0: D1 still holds +$1F from the bucket lookup. A nonzero +$1E
@@ -231,11 +232,11 @@ function init11(ram, rom, a5, a6, unported) {
   // $2687C4: record +$33 := heading; then heading+1 quantised for the sprite.
   ram.setU8(a5 + R.rec33, ram.u8(a6 + S.heading));     // move.b D1,($33,A5)
   let d1 = (ram.u8(a6 + S.heading) + 1) & 0x3e;
-  const sp = 0x268C9E + (d1 << 1);                     // add.w D1,D1 (x2 of the quantised)
+  const sp = p.fireSprite + (d1 << 1);                 // add.w D1,D1 (x2 of the quantised)
   ram.setU32(a5 + R.rec22, rom.u32(sp));               // move.l (A0,D1.w),($22,A5)
   // $2687E0: palette byte from $2687FE indexed by $813094 (loop word).
   const lp = ram.u16(G.stageX2);
-  const pal = 0x2687FE + lp;
+  const pal = p.palette + lp;
   ram.setU8(a6 + S.palette, rom.u8(pal));              // move.b (A0),($1d,A6)
   ram.setU8(a5 + R.rec34, rom.u8(pal));                // move.b (A0)+,($34,A5)
   ram.setU8(a5 + R.rec35, rom.u8(pal + 1));            // move.b (A0)+,($35,A5)
@@ -383,7 +384,8 @@ BODY.set(0x26ABA0, (ram, rom, a5, a6, unported) => damageFirstFamily(ram, rom, a
 }));
 
 // --- type $11 / $10 (defined above as named functions).
-BODY.set(0x26871C, init11);
+BODY.set(0x26871C, (ram, rom, a5, a6, unported) =>
+  init11(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x11]));
 BODY.set(0x2680B8, init10);
 
 // --- type $8A ($2766AE): scroll-locked ground gun.  Loaders, position, a small
@@ -2449,16 +2451,27 @@ BODY.set(0x27d404, (ram, rom, a5, a6, unported) => {
 // which does `lea <64-byte block>,A0 / moveq #<bank>,D0 / jsr $24150A` and
 // carried a counted note from W23 to W91.  A caller that omits it gets that
 // note back rather than a silently missing colour install.
+export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyTypes) {
+  const map = new Map(BODY);
+  for (const descriptor of Object.values(typeDescriptors ?? {})) {
+    if (descriptor.algorithm === 'type11') {
+      map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
+        init11(ram, rom, a5, a6, unported, descriptor));
+    }
+  }
+  return map;
+}
+
 export function runInitBodyAddr(addr, ram, rom, a5, unported, tables, palette,
-  soundPost) {
+  soundPost, bodyMap = createInitBodyMap(), resources = BLACK_WORLD_RESOURCES) {
   const a6 = ram.u32(a5 + R.subRec);                  // A6 = ($6,A5)
-  const fn = BODY.get(addr);
+  const fn = bodyMap.get(addr);
   if (!fn) {
     unreached(addr, `init+8 body at $${addr.toString(16).toUpperCase()} -- not in `
       + `the live init-body registry. Either an unported type was spawned, or `
       + `a body was missed; do NOT smooth`);
   }
-  const r = fn(ram, rom, a5, a6, unported, tables, palette, soundPost);
+  const r = fn(ram, rom, a5, a6, unported, tables, palette, soundPost, resources);
   return r === FREED ? FREED : undefined;
 }
 

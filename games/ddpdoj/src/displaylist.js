@@ -166,6 +166,7 @@ import {
   BUCKETS, COUNTER_BASE, COUNTER_COUNT, RECORD_BYTES, STAGING_LO, STAGING_HI,
 } from './spritequeue.js';
 import { unreached } from './unported.js';
+import { BLACK_WORLD_RESOURCES } from './world-resources.js';
 
 export const DL = {
   build: 0x23d2ae,
@@ -433,6 +434,9 @@ export function assertShortAxis(before, after, entry, telemetry, warn) {
  */
 export function buildDisplayList(ram, opts = {}) {
   const warn = opts.warn ?? (() => {});
+  const displayResources = (opts.resources ?? BLACK_WORLD_RESOURCES).displayList;
+  const filler = displayResources.filler;
+  const directCoordinates = displayResources.coordinates === 'direct';
   const virtualBuckets = virtualBucketsFrom(opts.virtualRequests);
   const virtualRequestCount = virtualBuckets
     ? virtualBuckets.reduce((sum, requests) => sum + requests.length, 0) : 0;
@@ -603,7 +607,7 @@ export function buildDisplayList(ram, opts = {}) {
   const b054 = ram.u32(DL.globalOffset);
   t.b054 = b054;
   t.b054Values.add(b054);
-  if (b054 !== 0) {
+  if (!directCoordinates && b054 !== 0) {
     // THE LOUD WATCH.  W432 named what moves it: `$260EC8`'s SCREEN SHAKE, 42
     // frames per boss death out of the table at $260F4C.  It stays loud because
     // these are the only frames on which the emit's 32-bit add and the $3FFF
@@ -628,7 +632,7 @@ export function buildDisplayList(ram, opts = {}) {
       if (d4 === 0xffff) {                               // the borrow -> filler
         d4 = flatFiller ? DL.fillerFirst : DL.fillerThen; // $23D67E moveq #$32
         if (!noFiller) {
-          for (let k = 0; k < 5; k++) ram.setU16(a0 + k * 2, FILLER[k]);
+          for (let k = 0; k < 5; k++) ram.setU16(a0 + k * 2, filler[k]);
           a0 += 10;
           t.fillers++; t.entries++;
         }
@@ -642,16 +646,20 @@ export function buildDisplayList(ram, opts = {}) {
       }
       const w01 = (ram.u16(a1) << 16 | ram.u16(a1 + 2)) >>> 0;
       const d3 = (w01 & 0xf800f800) >>> 0;               // $23D69A grow+zoom
-      let d1 = (w01 & 0x07ff3fff) >>> 0;                 // $23D6A0 positions
+      let d1 = directCoordinates ? w01 : (w01 & 0x07ff3fff) >>> 0;
       const beforeAdd = d1 & 0xffff;
-      if (mutating(opts, 'b054-two-16bit-adds')) {
+      if (directCoordinates) {
+        // Build A copies both encoded coordinate words without shake recombination.
+      } else if (mutating(opts, 'b054-two-16bit-adds')) {
         d1 = ((u16((d1 >>> 16) + (b054 >>> 16)) << 16) | u16(d1 + b054)) >>> 0;
       } else {
         d1 = ((d1 + b054) >>> 0);                        // $23D6A6 add.l -- 32 BIT
       }
-      d1 = (d1 & (mutating(opts, 'emit-mask-03ff') ? 0x07ff03ff : 0x07ff3fff)) >>> 0;
-      assertShortAxis(beforeAdd, d1 & 0xffff, t.entries, t, warn);  // §3(ii)
-      d1 = (d1 | d3) >>> 0;                              // $23D6B2 or.l
+      if (!directCoordinates) {
+        d1 = (d1 & (mutating(opts, 'emit-mask-03ff') ? 0x07ff03ff : 0x07ff3fff)) >>> 0;
+        assertShortAxis(beforeAdd, d1 & 0xffff, t.entries, t, warn);
+        d1 = (d1 | d3) >>> 0;
+      }
       ram.setU16(a0 + 0, (d1 >>> 16) & 0xffff);          // $23D6B4 move.l
       ram.setU16(a0 + 2, d1 & 0xffff);
       ram.setU16(a0 + 4, ram.u16(a1 + 4));               // $23D6B6 move.l

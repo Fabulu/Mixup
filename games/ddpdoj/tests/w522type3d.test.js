@@ -56,6 +56,8 @@ test('W522 type-$3D dispatch crosses the former $26725C blocker and runs one liv
     assert.equal(ram.u16(a6), 0xa200);
     assert.doesNotThrow(() => runHandler(0x2673fa, ram, ROM, A5,
       { tables: MT, unported }));
+    assert.equal(ram.u8(A5 + 0x18), 0,
+      'the canonical type-$11 turret descriptor advances the live $3D cadence');
     assert.equal(ram.u16(A5 + 0x16), 1, 'the first in-bounds frame arms despawn');
     assert.ok(BUCKETS.some((bucket) => ram.u16(bucket.counter) !== 0),
       'the live handler reaches its cartridge-selected sprite emitter');

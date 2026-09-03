@@ -409,6 +409,7 @@ export function stageStart15F8DA(ram, rom, ctx, d6, d7) {
   stageClear15F84E(ram);
   wipeStageBlock25FD24(ram);
   const installed = stageInstall15F874(ram, rom, ctx);
+  ctx?.stage1WorldPrivate?.resetSpawn?.(ram, rom, ctx);
   const requests = dispatchRequests15F2E8(ram, rom, ctx);
   return Object.freeze({ installed, requests });
 }

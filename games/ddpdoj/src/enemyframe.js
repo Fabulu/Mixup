@@ -56,6 +56,7 @@ import { runSpawnWalker } from './spawn.js';
 import { runEnemyDriver } from './enemies.js';
 import { handlerMap } from './handlers.js';
 import { deriveProfileContext } from './profiles.js';
+import { BLACK_WORLD_RESOURCES } from './world-resources.js';
 
 /** The addresses this file is the port of. */
 export const ENEMY_FRAME = {
@@ -70,9 +71,9 @@ export const ENEMY_FRAME = {
  * `runEnemyDriver`'s `handlers.get(h)` miss is the ONLY place a missing handler
  * is decided.
  */
-export function enemyHandlerMap(rom) {
+export function enemyHandlerMap(rom, resources = BLACK_WORLD_RESOURCES) {
   const m = new Map();
-  for (const [addr, fn] of handlerMap()) {
+  for (const [addr, fn] of handlerMap(resources)) {
     m.set(addr, (ram, rec, slot, ctx) => { void slot; fn(ram, rom, rec, ctx); });
   }
   return m;
@@ -95,7 +96,8 @@ export function enemyHandlerMap(rom) {
  *          runner to print -- a subsystem that did nothing must be visible as
  *          having done nothing.
  */
-export function runEnemyFrame(ram, rom, ctx, handlers) {
+export function runEnemyFrame(ram, rom, ctx, handlers,
+  resources = BLACK_WORLD_RESOURCES) {
   const u = ctx.unportedLog;
   // W31: `ctx.tables` reaches the walker because the MIDBOSS's init body
   // ($26B48C) runs its arm kinematics ($26B4B4 bsr $26B304), which reads
@@ -109,7 +111,7 @@ export function runEnemyFrame(ram, rom, ctx, handlers) {
   // Appended like `tables` and `spawnEvent`; a caller that omits it gets those
   // notes back.
   const { script, deferred } = runSpawnWalker(ram, rom, u, ctx.tables,
-    ctx.spawnEvent, ctx.palette, ctx.soundPost);               // $2634F6
+    ctx.spawnEvent, ctx.palette, ctx.soundPost, resources);    // $2634F6
   const driven = runEnemyDriver(ram, handlers, hctx(ctx));    // $2634FA
   return { script, deferred, driven };
 }

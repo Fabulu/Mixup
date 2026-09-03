@@ -122,11 +122,13 @@
 //   that proved it).  Deferred with the rest of the sound wave.
 
 import { u16, i16 } from './ram.js';
+import { BLACK_TYPE11_EFFECT_RESOURCES } from './type11-resources.js';
 import { unreached } from './unported.js';
 import { enqueueThroughStub } from './spritequeue.js';
 import {
-  drawByte242B3C, drawByte242E24, drawByte24311A, drawByte2431F4, drawLong24397A,
-  drawSigned242CAC, drawSigned242FDE, drawWord242EC2,
+  drawByte242B3C, drawByte242E24, drawByte24311A, drawByte2431F4,
+  drawByteWithResources, drawLong24397A, drawSigned242CAC, drawSigned242FDE,
+  drawSignedByteWithResources, drawWord242EC2,
 } from './rng.js';
 
 export const POOL_B = {
@@ -169,6 +171,28 @@ export const POOL_C = {
   driver: 0x289b80,
   templateTable: 0x289dea,
 };
+
+export { BLACK_TYPE11_EFFECT_RESOURCES };
+
+function type11EffectResources(resources = BLACK_TYPE11_EFFECT_RESOURCES) {
+  const signed = resources?.rng?.signed;
+  const byte128 = resources?.rng?.byte128;
+  const byte64 = resources?.rng?.byte64;
+  if (!Number.isSafeInteger(resources?.poolBAllocator)
+      || !Number.isSafeInteger(resources?.poolCEntry)
+      || !Number.isSafeInteger(resources?.poolCTemplateTable)
+      || !Number.isSafeInteger(resources?.descriptorPointerBias)
+      || !Number.isSafeInteger(signed?.table) || signed.entries !== 256
+      || !Number.isSafeInteger(byte128?.table) || byte128.entries !== 128
+      || !Number.isSafeInteger(byte64?.table) || byte64.entries !== 64) {
+    throw new TypeError('type-$11 effect resources require bounded allocator, template, and RNG roots');
+  }
+  return resources;
+}
+
+function poolCDescriptor(value, resources) {
+  return (value + resources.descriptorPointerBias) >>> 0;
+}
 
 /** Pool-C's `$30`-byte satellite/explosion record. */
 export const C = {
@@ -370,15 +394,21 @@ export function walkDeathSpawns270D92(ram, rom, ctx, a1, d2, siteAddr = 0x270d92
  *  if it fires, the ADDRESS or the stride is wrong, not the data. */
 const WALK_CAP = 64;
 
-export function spawnEffect(ram, ctx, d0, siteAddr = 0x289004) {
+export function spawnEffect(ram, ctx, d0,
+  siteAddr = BLACK_TYPE11_EFFECT_RESOURCES.poolBAllocator,
+  resources = BLACK_TYPE11_EFFECT_RESOURCES) {
+  const effects = type11EffectResources(resources);
+  const allocator = effects.poolBAllocator;
+  const returnSite = allocator + 0x74;
   const d1 = d0 & 0x7f;                                  // $289008/$28900A
   if (d1 < 0) {                                          // $28900E cmpi.w #$0 / blt
-    unreached(0x289012, `$28900E cmpi.w #$0,D1 / blt $289078 -- D1 is `
+    unreached(allocator + 0x0e, `$${(allocator + 0x0a).toString(16).toUpperCase()} `
+      + `cmpi.w #$0,D1 / blt $${returnSite.toString(16).toUpperCase()} -- D1 is `
       + `(D0 & $7F) and CANNOT be negative. Reaching this means the mask above `
       + `has changed, not that the game found a new kind`);
   }
   if (d1 > POOL_B.kindMax) {                             // $289016 cmpi.w #$21 / bgt
-    ctx?.unportedLog?.note(0x289078, `$289016 -- effect kind `
+    ctx?.unportedLog?.note(returnSite, `$${(allocator + 0x12).toString(16).toUpperCase()} -- effect kind `
       + `$${d0.toString(16).toUpperCase()} is outside the 34 script entries `
       + `(kind & $7F must be 0..$21), so $289004 returned THE BIT BUCKET `
       + `$81C8B2 and the caller's field writes are DISCARDED. Site `
@@ -400,11 +430,11 @@ export function spawnEffect(ram, ctx, d0, siteAddr = 0x289004) {
     ram.setU32(a0 + B.fricDelta, 0);                     // $28905E ($22,A0)
     ram.setU32(a0 + B.nudge, 0);                         // $289062 ($26,A0)
     ram.setU32(a0 + B.vel, 0);                           // $289066 ($34,A0)
-    ctx?.effectSpawn?.(d0, siteAddr, a0);
+    ctx?.effectSpawn?.(d0, siteAddr, a0, allocator);
     return a0;                                           // $28906A/$28906E rts
   }
   // $289074's dbra falls through to $289078 -- THE POOL IS FULL.
-  ctx?.unportedLog?.note(0x289078, `$289004 found NO FREE SLOT in pool B's `
+  ctx?.unportedLog?.note(returnSite, `$${allocator.toString(16).toUpperCase()} found NO FREE SLOT in pool B's `
     + `${POOL_B.slots} and returned THE BIT BUCKET $81C8B2 for kind `
     + `$${d0.toString(16).toUpperCase()}. The caller writes its fields into a `
     + `slot nothing drives and CANNOT TELL -- there is no carry and no zero `
@@ -870,12 +900,13 @@ function poolCCollision289C54(ram, slot) {
  * arrives through the THIRD allocator `$289B22`, which is not ported.
  */
 export function spawnPoolC289B50(ram, rom, ctx, kind, bucket, position,
-  siteAddr = 0x289b50) {
+  siteAddr = 0x289b50, resources = BLACK_TYPE11_EFFECT_RESOURCES) {
+  const effects = type11EffectResources(resources);
   if ((kind & 0x3c) > 0x0c) {
     unreached(siteAddr, `pool C absolute allocator kind $${kind.toString(16)} `
-      + `indexes $289DEA at +$${(kind & 0x3c).toString(16)}, past the four real `
-      + `templates; +$10..+$1C all hold $289E7A, which is kind 0's list 0 and `
-      + `whose first word $0022 has bit 15 clear -- a record born dead`);
+      + `indexes $${effects.poolCTemplateTable.toString(16).toUpperCase()} at `
+      + `+$${(kind & 0x3c).toString(16)}, past the four real templates; the `
+      + `remaining entries point into kind 0's list and produce a record born dead`);
   }
   const narrow = ram.u16(0x813098) !== 0 || ram.u16(0x81308c) === 0;
   const limit = narrow ? POOL_C.slotsNarrow : POOL_C.slots;
@@ -886,7 +917,7 @@ export function spawnPoolC289B50(ram, rom, ctx, kind, bucket, position,
   }
   if (slot < 0) { ctx?.poolCDrop?.(kind, siteAddr); return 0; }
 
-  const template = rom.u32(POOL_C.templateTable + (kind & 0x3c));
+  const template = rom.u32(effects.poolCTemplateTable + (kind & 0x3c));
   ram.setU8(slot + C.marker, 0x1f);
   ram.setU16(slot + C.status, rom.u16(template));
   ram.setU32(slot + C.pos, position);
@@ -895,21 +926,26 @@ export function spawnPoolC289B50(ram, rom, ctx, kind, bucket, position,
   }
 
   ram.setU32(slot + C.offs, rom.u32(template + 2));
-  ram.setU8(slot + C.attr, drawSigned242FDE(ram, rom) === 0 ? 0x20 : 0);
+  ram.setU8(slot + C.attr,
+    drawSignedByteWithResources(ram, rom, effects.rng.signed) === 0 ? 0x20 : 0);
   ram.setU16(slot + C.size, rom.u16(template + 6));
   ram.setU16(slot + C.template18, rom.u16(template + 8));
   ram.setU8(slot + C.palette, 0x1e);
-  const cursor = drawByte24311A(ram, rom) * 4;
+  const cursor = drawByteWithResources(ram, rom, effects.rng.byte128) * 4;
   ram.setU16(slot + C.cursor, cursor);
   ram.setU16(slot + C.wrap, rom.u16(template + 10));
   ram.setU8(slot + C.bucket, bucket);
   ram.setU16(slot + C.cull, rom.u16(template + 12));
   const selector = i16(rom.u16(template + 14));
-  const listPick = selector < 0 ? drawSigned242FDE(ram, rom)
-    : selector === 0 ? drawByte24311A(ram, rom) : drawByte2431F4(ram, rom);
+  const listPick = selector < 0
+    ? drawSignedByteWithResources(ram, rom, effects.rng.signed)
+    : selector === 0
+      ? drawByteWithResources(ram, rom, effects.rng.byte128)
+      : drawByteWithResources(ram, rom, effects.rng.byte64);
   const list = rom.u32(template + 16 + listPick * 4);
   ram.setU32(slot + C.list, list);
-  ram.setU32(slot + C.descriptor, rom.u32(list + cursor));
+  ram.setU32(slot + C.descriptor,
+    poolCDescriptor(rom.u32(list + cursor), effects));
   ram.setU8(slot + C.marker, 0);
   ram.setU16(POOL_C.count, u16(ram.u16(POOL_C.count) + 1));
   ctx?.poolCSpawn?.(slot, kind, bucket);
@@ -930,14 +966,18 @@ export function spawnPoolC289B50(ram, rom, ctx, kind, bucket, position,
  * which are the same six instructions twice). W234's docket-D3 note: this is the
  * SECONDARY explosion, and it was a counted call at both of its kind-4 sites.
  */
-export function spawnPoolC289AF4(ram, rom, ctx, kind, caller, remapTable) {
+export function spawnPoolC289AF4(ram, rom, ctx, kind, caller, remapTable,
+  resources = BLACK_TYPE11_EFFECT_RESOURCES) {
+  const effects = type11EffectResources(resources);
   const bucket = rom.u16(remapTable + ram.u8(caller + 0x1f) * 2);
   return spawnPoolC289B50(ram, rom, ctx, kind, bucket,
-    ram.u32(caller + 0x02), 0x289af4);
+    ram.u32(caller + 0x02), effects.poolCEntry, effects);
 }
 
 /** `$289B80`, animate, cull and emit the live pool-C records. */
-export function runPoolCDriver(ram, rom, ctx) {
+export function runPoolCDriver(ram, rom, ctx,
+  resources = BLACK_TYPE11_EFFECT_RESOURCES) {
+  const effects = type11EffectResources(resources);
   let remaining = ram.u16(POOL_C.count);
   const initial = remaining;
   let emitted = 0, freed = 0, found = 0;
@@ -950,7 +990,7 @@ export function runPoolCDriver(ram, rom, ctx) {
     if (animate) {
       let cursor = ram.u16(slot + C.cursor);
       ram.setU32(slot + C.descriptor,
-        rom.u32(ram.u32(slot + C.list) + cursor));
+        poolCDescriptor(rom.u32(ram.u32(slot + C.list) + cursor), effects));
       cursor = u16(cursor - 4);
       if ((cursor & 0x8000) !== 0) cursor = ram.u16(slot + C.wrap);
       ram.setU16(slot + C.cursor, cursor);

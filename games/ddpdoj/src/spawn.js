@@ -42,7 +42,8 @@
 
 import { u16, i16, u32 } from './ram.js';
 import { allocEnemy, ENEMY } from './enemies.js';
-import { runInitBodyAddr, INIT_BODY_FREED } from './initbody.js';
+import { createInitBodyMap, runInitBodyAddr, INIT_BODY_FREED } from './initbody.js';
+import { BLACK_WORLD_RESOURCES } from './world-resources.js';
 
 // --------------------------------------------------------------- the addresses
 export const SPAWN = {
@@ -96,8 +97,8 @@ const E = { param: 0x0a, subRec: 0x06, handler: 0x4c, runLen: 0x04, classByte: 0
 export function stageIndex(ram) { return ram.u16(0x813096) >> 2; }
 
 /** The (script, aux, res) triple for a stage, read the way `$263386` does. */
-export function stageTableEntry(rom, stage) {
-  const a = SPAWN.STAGE_TAB + stage * STAGE.stride;
+export function stageTableEntry(rom, stage, resources = BLACK_WORLD_RESOURCES) {
+  const a = resources.spawn.stageTable + stage * STAGE.stride;
   return { script: rom.u32(a + STAGE.script), aux: rom.u32(a + STAGE.aux),
            res: rom.u32(a + STAGE.res) };
 }
@@ -107,11 +108,13 @@ export function stageTableEntry(rom, stage) {
  * queue.  The resource #$1F install (`$246CAC`) is noted, not ported (W24).
  * The port sets LIVE_CURSOR = script and AUX_BASE = aux, mirroring $26339C/$26339E.
  */
-export function installStage(ram, rom, stage, unported, prot, stageScriptInstallHook) {
-  const e = stageTableEntry(rom, stage);
-  ram.setU32(SPAWN.LIVE_CURSOR, e.script);          // $26339c move.l (A0)+,(A4)
-  ram.setU32(SPAWN.AUX_BASE, e.aux);                // $26339e move.l (A0)+,($4,A4)
-  ram.setU16(SPAWN.DEFQ_COUNT, 0);                  // $2633b6 clr.w $815ea8
+export function installStage(ram, rom, stage, unported, prot, stageScriptInstallHook,
+  resources = BLACK_WORLD_RESOURCES) {
+  const s = resources.spawn;
+  const e = stageTableEntry(rom, stage, resources);
+  ram.setU32(s.liveCursor, e.script);                // $26339c move.l (A0)+,(A4)
+  ram.setU32(s.auxBase, e.aux);                      // $26339e move.l (A0)+,($4,A4)
+  ram.setU16(s.deferredCount, 0);                    // $2633b6 clr.w $815ea8
   // $2633A2: `move.l res,-(A7); move.l #$1F,-(A7); jsr $246D04` installs the
   // resource base into protection slot #$1F.  resolveMovementPtr reads res from
   // the stage table directly (the latch is a transparent indirection for THIS
@@ -128,14 +131,15 @@ export function installStage(ram, rom, stage, unported, prot, stageScriptInstall
  * The half-open clear ends exactly where `$27E98A` starts the item pool.
  */
 export function resetAndInstallStage26331E(ram, rom, unported, prot,
-  stageScriptInstallHook) {
-  for (let i = 0; i < SPAWN.RESET_WORDS; i++) {
-    ram.setU16(SPAWN.RESET_BASE + i * 2, 0);         // $263328 move.w #0,(A0)+
+  stageScriptInstallHook, resources = BLACK_WORLD_RESOURCES) {
+  const s = resources.spawn;
+  for (let i = 0; i < s.resetWords; i++) {
+    ram.setU16(s.resetBase + i * 2, 0);               // $263328 move.w #0,(A0)+
   }
   const stage = stageIndex(ram);                     // $26338C $813096 / 4
   installStage(ram, rom, stage, unported, prot,
-    stageScriptInstallHook);                          // $263330 bsr.w $263386
-  return stageTableEntry(rom, stage);
+    stageScriptInstallHook, resources);               // $263330 bsr.w $263386
+  return stageTableEntry(rom, stage, resources);
 }
 
 // ----------------------------------------------------------------- the walker
@@ -156,9 +160,10 @@ export function resetAndInstallStage26331E(ram, rom, unported, prot,
  *
  * @returns {number} the count of dispatched records this frame
  */
-export function walkScriptLoop(ram, rom, onDispatch) {
-  const clock = ram.u16(SPAWN.DISTANCE_CLOCK);      // $2633d0 cmp.w $8130ce,D0
-  let cursor = ram.u32(SPAWN.LIVE_CURSOR);          // $2633c4 movea.l (A3),A2
+export function walkScriptLoop(ram, rom, onDispatch, resources = BLACK_WORLD_RESOURCES) {
+  const s = resources.spawn;
+  const clock = ram.u16(s.distanceClock);           // $2633d0 cmp.w $8130ce,D0
+  let cursor = ram.u32(s.liveCursor);               // $2633c4 movea.l (A3),A2
   let count = 0;
   for (;;) {
     const trig = rom.u16(cursor);                   // $2633c6 move.w (A2),D0
@@ -175,7 +180,7 @@ export function walkScriptLoop(ram, rom, onDispatch) {
     count++;
     cursor += 8;                                    // $263440 addq.w #8,A2
   }
-  ram.setU32(SPAWN.LIVE_CURSOR, cursor);            // $263444 move.l A2,(A3)
+  ram.setU32(s.liveCursor, cursor);                  // $263444 move.l A2,(A3)
   return count;
 }
 
@@ -189,11 +194,12 @@ export function walkScriptLoop(ram, rom, onDispatch) {
  * identical to `readSlot($1F)` and no new protection work is needed.
  * @returns {number} the movement-script pointer (resource base + aux[idx])
  */
-export function resolveMovementPtr(ram, rom, recCursor, unported) {
-  const auxBase = ram.u32(SPAWN.AUX_BASE);          // $2633fa movea.l ($4,A3),A1
+export function resolveMovementPtr(ram, rom, recCursor, unported,
+  resources = BLACK_WORLD_RESOURCES) {
+  const auxBase = ram.u32(resources.spawn.auxBase); // $2633fa movea.l ($4,A3),A1
   const idx = rom.u16(recCursor + REC.idx) & 0x0fff;// $2633f6 andi.w #$fff,D7
   const off = rom.u16(auxBase + idx * 2);           // $2633fe add.w D7,D7 / $263400 (A1,D7.w)
-  const res = stageTableEntry(rom, stageIndex(ram)).res; // $263408 readSlot($1F)
+  const res = stageTableEntry(rom, stageIndex(ram), resources).res; // $263408
   return (res + off) >>> 0;                         // $26341e adda.w D7,A1
 }
 
@@ -207,11 +213,12 @@ export function resolveMovementPtr(ram, rom, recCursor, unported) {
  * Returns `{init, initBody, runLen}` so a caller (or test) can name the body.
  */
 export function initDispatch(ram, rom, rec, unported, bodyFn, tables, palette,
-  soundPost) {
+  soundPost, resources = BLACK_WORLD_RESOURCES) {
+  const s = resources.spawn;
   const type = ram.u8(rec + E.typeByte);            // $2635f8 move.b ($c,A5),D7
   const lo = type < 0x80;                           // $263602 cmpi.w #$80,D7 / blt
-  const tab = lo ? SPAWN.TYPE_LO : SPAWN.TYPE_HI;   // $2635fc / $263608 lea
-  const t = (type & 0x7f) * SPAWN.TYPE_STRIDE;      // $263612 lsl.w #3,D7 (after sub $80)
+  const tab = lo ? s.low.table : s.high.table;       // $2635fc / $263608 lea
+  const t = (type & 0x7f) * s.typeStride;            // $263612 lsl.w #3,D7
   const init = rom.u32(tab + t);                    // $263614 movea.l (A0,D7.w),A1
   const handler = rom.u32(tab + t + 4);             // $263628 movea.l ($4,A0,D7.w),A0
   // $263618 jsr (A1): the 8-byte stub `move.w #N,($4,A5) / rts`.  N is the
@@ -220,7 +227,7 @@ export function initDispatch(ram, rom, rec, unported, bodyFn, tables, palette,
   ram.setU16(rec + E.runLen, runLen);               // the stub's one store
   const initBody = init + 8;                        // $26361a addq.w #8,A1  <-- +8
   // $263620 bsr $2635b2: the sub-record allocator (run-length consecutive slots)
-  const sub = allocSubRecord(ram, ram.u8(rec + E.classByte), runLen);
+  const sub = allocSubRecord(ram, ram.u8(rec + E.classByte), runLen, resources);
   // $263624 move.l A6,($6,A5): the sub-record pointer is the allocator's return.
   // allocSubRecord returns it; if it failed (pool exhausted) the record is cleared.
   if (sub === null) {                               // $263622 bcs $263674
@@ -240,7 +247,7 @@ export function initDispatch(ram, rom, rec, unported, bodyFn, tables, palette,
   // rule is).  The body takes `rom` because the prototype loaders + the
   // sprite/bucket/palette table lookups read ROM the way the 68000 does.
   const freed = (bodyFn ?? runInitBody)(initBody, ram, rom, rec, unported,
-    tables, palette, soundPost);
+    tables, palette, soundPost, resources);
   // If a stage-kill gate inside the body freed the enemy (`jmp $263762`), the
   // type word is already clear and the slot will be skipped by the driver; the
   // scroll-locked fixup below is a position op on a dead record, so skip it.
@@ -264,9 +271,11 @@ export function initDispatch(ram, rom, rec, unported, bodyFn, tables, palette,
  * THROW (never a silence).
  */
 export function runInitBody(addr, ram, rom, rec, unported, tables, palette,
-  soundPost) {
-  if (addr === SPAWN.NULL_INIT + 8 || addr === SPAWN.NULL_INIT2 + 8) return;
-  return runInitBodyAddr(addr, ram, rom, rec, unported, tables, palette, soundPost);
+  soundPost, resources = BLACK_WORLD_RESOURCES) {
+  const s = resources.spawn;
+  if (addr === s.low.nullInit + 8 || addr === s.high.nullInit + 8) return;
+  return runInitBodyAddr(addr, ram, rom, rec, unported, tables, palette, soundPost,
+    createInitBodyMap(resources.enemyTypes), resources);
 }
 
 // ------------------------------------------- $28AD54: THE SUB-RECORD REAPER
@@ -313,10 +322,10 @@ export const SUB_REAPER = {
 
 /** `$28AD54..$28AD6C` -- turn every DYING sub-record slot into a FREE one.
  *  @returns {number} how many slots this frame reaped (diagnostic only) */
-export function reapSubRecords(ram) {
+export function reapSubRecords(ram, resources = BLACK_WORLD_RESOURCES) {
   let n = 0;
   for (let i = 0; i < SUB_REAPER.slots; i++) {          // $28AD6C dbra
-    const a = SUB_REAPER.base + i * SPAWN.SUB_STRIDE;   // $28AD68 lea $20(A0),A0
+    const a = resources.spawn.subCommon + i * resources.spawn.subStride;
     const b = ram.u8(a);                                // $28AD60 tst.b (A0)
     if (b === 0) continue;                              // $28AD62 beq
     if ((b & 0x80) !== 0) continue;                     // $28AD64 bmi -- alive
@@ -340,11 +349,12 @@ export function reapSubRecords(ram) {
 //   when D1 exhausts: back up, mark runLen+1 slots, return the first
 // The result is returned (the slot address, or null if the pool could not fit
 // the run), mirroring how A6 carries the result out in the ROM.
-export function allocSubRecord(ram, classByte, runLen) {
+export function allocSubRecord(ram, classByte, runLen, resources = BLACK_WORLD_RESOURCES) {
+  const s = resources.spawn;
   const special = (classByte & 0x80) !== 0 || (classByte & 0x20) !== 0; // $2635b8/$2635c6
-  const base = special ? SPAWN.SUB_SPECIAL : SPAWN.SUB_COMMON;          // $2635bc/$2635cc
-  const slots = special ? SPAWN.SUB_SPECIAL_COUNT : SPAWN.SUB_COMMON_COUNT;
-  const stride = SPAWN.SUB_STRIDE;
+  const base = special ? s.subSpecial : s.subCommon;
+  const slots = special ? s.subSpecialCount : s.subCommonCount;
+  const stride = s.subStride;
   // find runLen+1 consecutive free slots
   let need = runLen + 1;                          // D1 = runLen, counts down runLen+1
   let runStart = -1;
@@ -389,11 +399,11 @@ export function allocSubRecord(ram, classByte, runLen) {
  * @returns {{ok:boolean, slot:number, type:number, initBody:number}}
  */
 export function dispatchScriptRecord(ram, rom, recCursor, unported, tables,
-  spawnEvent, palette, soundPost) {
+  spawnEvent, palette, soundPost, resources = BLACK_WORLD_RESOURCES) {
   const type = rom.u8(recCursor + REC.type);       // $2633e0
   const flags = rom.u8(recCursor + REC.flags);     // (the high byte of the +4 longword)
   const param = rom.u16(recCursor + REC.param);    // $263428
-  const mov = resolveMovementPtr(ram, rom, recCursor, unported); // $2633fa..$26341e
+  const mov = resolveMovementPtr(ram, rom, recCursor, unported, resources);
   const r = allocEnemy(ram, type, flags);          // $263420 bsr $2636d6
   if (r.carry) {                                   // $263424 bcs $263440
     spawnEvent?.('band-full', type);               // $263748 -- the DUMMY record
@@ -402,7 +412,7 @@ export function dispatchScriptRecord(ram, rom, recCursor, unported, tables,
   ram.setU16(r.addr + E.param, param);             // $263428 move.w ($2,A2),($a,A0)
   ram.setU32(r.addr + E.movement, mov);            // $26342e move.l A1,($12,A0)
   const init = initDispatch(ram, rom, r.addr, unported, undefined, tables,
-    palette, soundPost);                           // $263438
+    palette, soundPost, resources);                // $263438
   // `$263622 bcs $263674` -- the sub-record run did not fit and the record was
   // cleared.  The init BODY never ran, so this spawn produced nothing at all.
   if (init.failed) spawnEvent?.('sub-record-pool-full', type);
@@ -428,19 +438,21 @@ export const DEFQ_D1 = { FIXED80: 0x80, FIXED00: 0x00, CALLER: -1 };
  * @param {number} callerD1  the caller's D1, used only when d1mode == CALLER
  * @returns {{addr:number, dropped:boolean}}
  */
-export function enqueueDeferred(ram, type, d1mode, callerD1 = 0) {
-  let count = ram.u16(SPAWN.DEFQ_COUNT);           // $263694 move.w $815ea8,D2
-  if (count === SPAWN.DEFQ_CAP) {                  // $26369a cmpi.w #$c80,D2 / beq
-    return { addr: SPAWN.DEFQ_DUMMY, dropped: true };  // $2636ca lea $816b2a,A0
+export function enqueueDeferred(ram, type, d1mode, callerD1 = 0,
+  resources = BLACK_WORLD_RESOURCES) {
+  const s = resources.spawn;
+  let count = ram.u16(s.deferredCount);            // $263694 move.w $815ea8,D2
+  if (count === s.deferredCap) {                   // $26369a cmpi.w #$c80,D2 / beq
+    return { addr: s.deferredDummy, dropped: true };
   }
-  const a = SPAWN.DEFQ_BASE + count;               // $2636a2 lea $815eaa,A0 / adda D2
+  const a = s.deferredBase + count;                // $2636a2 lea $815eaa,A0 / adda D2
   const flags = d1mode === DEFQ_D1.FIXED80 ? 0x80
     : d1mode === DEFQ_D1.FIXED00 ? 0x00 : callerD1;
   ram.setU16(a + 0x02, type);                      // $2636aa move.w D0,($2,A0)
   ram.setU16(a + 0x04, flags);                     // $2636ae move.w D1,($4,A0)
   ram.setU32(a + 0x12, 0);                         // $2636b2 move.l #$0,($12,A0)
-  count += SPAWN.DEFQ_STRIDE;                      // $2636ba addi.w #$50,D2
-  ram.setU16(SPAWN.DEFQ_COUNT, count);             // $2636be move.w D2,$815ea8
+  count += s.deferredStride;                       // $2636ba addi.w #$50,D2
+  ram.setU16(s.deferredCount, count);              // $2636be move.w D2,$815ea8
   return { addr: a, dropped: false };
 }
 
@@ -453,16 +465,17 @@ export function enqueueDeferred(ram, type, d1mode, callerD1 = 0) {
  * @returns {number} the number of deferred spawns processed
  */
 export function processDeferred(ram, rom, unported, tables, spawnEvent, palette,
-  soundPost) {
+  soundPost, resources = BLACK_WORLD_RESOURCES) {
+  const s = resources.spawn;
   let n = 0;
   for (;;) {
-    let count = ram.u16(SPAWN.DEFQ_COUNT);         // $263446 move.w $815ea8,D6
+    let count = ram.u16(s.deferredCount);          // $263446 move.w $815ea8,D6
     if (count === 0) break;                        // $26344c beq -> done
-    count -= SPAWN.DEFQ_STRIDE;                    // $263450 subi.w #$50,D6
-    const a = SPAWN.DEFQ_BASE + count;             // $263454 lea $815eaa / adda D6
+    count -= s.deferredStride;                     // $263450 subi.w #$50,D6
+    const a = s.deferredBase + count;              // $263454 lea $815eaa / adda D6
     const type = ram.u16(a + 0x02) & 0x00ff;       // $26345c/$263460 move.w ($2,A4),D0
     const flags = ram.u16(a + 0x04);               // $263464 move.w ($4,A4),D1
-    ram.setU16(SPAWN.DEFQ_COUNT, count);           // (pop happens at $2634d2 in ROM)
+    ram.setU16(s.deferredCount, count);            // (pop happens at $2634d2 in ROM)
     const r = allocEnemy(ram, type, flags);        // $263468 jsr $2636d6
     if (r.addr === ENEMY.dummy) {                  // $2634d8 cmpa.l #$81454c / beq
       spawnEvent?.('deferred-band-full', type);
@@ -480,7 +493,7 @@ export function processDeferred(ram, rom, unported, tables, spawnEvent, palette,
       ram.setU32(r.addr + off, ram.u32(a + off));
     ram.setU16(r.addr + 0x4a, ram.u16(a + 0x4a));  // $2634cc move.w ($4a,A4),($4a,A0)
     const init = initDispatch(ram, rom, r.addr, unported, undefined, tables,
-      palette, soundPost);                         // $2634e4
+      palette, soundPost, resources);              // $2634e4
     spawnEvent?.(init.failed ? 'deferred-sub-record-pool-full' : 'deferred', type);
     n++;
     // re-read count: the loop tests $815ea8 at $2634e8
@@ -504,12 +517,12 @@ export function processDeferred(ram, rom, unported, tables, spawnEvent, palette,
  * move.w $815EA8,D6`, the deferred drain, which is what reaches `$2634F2 rts`.
  */
 export function runSpawnWalker(ram, rom, unported, tables, spawnEvent, palette,
-  soundPost) {
+  soundPost, resources = BLACK_WORLD_RESOURCES) {
   const script = walkScriptLoop(ram, rom, (cur, rec) =>
     dispatchScriptRecord(ram, rom, cur, unported, tables, spawnEvent, palette,
-      soundPost));
+      soundPost, resources), resources);
   const deferred = processDeferred(ram, rom, unported, tables, spawnEvent,
-    palette, soundPost);
+    palette, soundPost, resources);
   return { script, deferred };
 }
 
