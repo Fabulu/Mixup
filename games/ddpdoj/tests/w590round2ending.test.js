@@ -35,7 +35,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W588_TABLE = SKIP ? null : tableBeforeW589(TABLE_JSON);
 const CHECKPOINT_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 
-const LIVE_TABLE_HASH = 'f530de90426bbd72f48b3b5609cda85d92c12e56c286e421951379586756e760';
+const LIVE_TABLE_HASH = '8b1a0f893ee8ebf7a2033fbd90e70dfd0b3e125b0298c0fb073106f503c50995';
 const W588_TABLE_HASH = '5dd4830d8759db1fbfbeddef529225a76b264739a9c7375ba00f2be5ce47a837';
 const CHECKPOINT_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const STORED_CHECKPOINT_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
@@ -194,7 +194,7 @@ test('W590 exact checkpoint reaches P1 name entry, resets round 2, and hands to 
       canonicalHash(CHECKPOINT_TABLE), CHECKPOINT_TABLE.rom.windows.length,
       CHECKPOINT_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),
     ], [
-      LIVE_TABLE_HASH, 1636, 639792,
+      LIVE_TABLE_HASH, 1643, 640376,
       W588_TABLE_HASH, 855, 452797,
       CHECKPOINT_TABLE_HASH, 852, 452697,
     ]);

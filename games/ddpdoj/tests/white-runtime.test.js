@@ -54,7 +54,7 @@ test('White Stage 1 map joins the independently gated dispatch islands', () => {
   const shots = createWhiteStage1ShotHandlers(rom, WHITE_LABEL_PROFILE);
   assert.deepEqual([...shots.keys()], [0x05]);
   const handlers = createWhiteStage1Handlers(rom, WHITE_LABEL_PROFILE);
-  assert.deepEqual([...handlers.keys()], [0x14, 0x08, 0x09, 0x0a, 0x02, 0x03, 0x05]);
+  assert.deepEqual([...handlers.keys()], [0x14, 0x08, 0x09, 0x0a, 0x02, 0x03, 0x05, 0x00]);
   for (const handler of handlers.values()) assert.equal(typeof handler, 'function');
 });
 
@@ -81,6 +81,9 @@ test('capability-gated queue route executes live two-player Version A movement',
     order: new ObjOrder(),
     unportedLog: { note },
     unported: { note },
+    whiteHyperHudCallbacks: {
+      conversion() {}, endReset() {}, pendingFlush() {}, postHudTail() {},
+    },
   };
   const frame = () => runObjectDriver(ram, handlers, ctx);
 

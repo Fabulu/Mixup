@@ -20,6 +20,7 @@ const WHITE_CAPABILITIES = Object.freeze({
   stage1Players: 'ddpdoj.runtime.white-label-a.stage1-players.v1',
   stage1Shots: 'ddpdoj.runtime.white-label-a.stage1-shots.v1',
   stage1Options: 'ddpdoj.runtime.white-label-a.stage1-options.v1',
+  stage1HyperHud: 'ddpdoj.runtime.white-label-a.stage1-hyper-hud.v1',
   stage1EnemyBullets: 'ddpdoj.runtime.white-label-a.stage1-enemy-bullets.v1',
 });
 

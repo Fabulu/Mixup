@@ -1,8 +1,9 @@
 // Embedded Version A rank frontend and Stage 1 player handoff.
 
 import {
-  scoreDrainInit287084, setPanelBody1528C4, slideArm287A5E, txPrint240DC2,
+  scoreDrainInit287084, setPanelBody1528C4, txPrint240DC2,
 } from './hud.js';
+import { whiteSlideArm18659C } from './white-hyper-hud.js';
 import { clearRankRam2603DA } from './objslot12.js';
 import { ALLOC, queueKill, stageCreate } from './objalloc.js';
 import { install2414BE, install24150A } from './palette.js';
@@ -250,7 +251,7 @@ export function stagePair15F758(ram, rom, ctx, d0, d1) {
     ram.setU8(absent.addr + 0x07, side);
     made.push(absent);
   }
-  slideArm287A5E(ram);
+  whiteSlideArm18659C(ram);
   return Object.freeze({ made: Object.freeze(made), requests: Object.freeze([
     ram.u16(WHITE_RANK.records),
     ram.u16(WHITE_RANK.records + WHITE_RANK.recordStride),

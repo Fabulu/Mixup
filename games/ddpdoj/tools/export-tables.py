@@ -10722,6 +10722,18 @@ def verify(t: dict) -> list[str]:
         expected = {(address, length) for address, length, _ in expected_rows}
         if declared != expected or not expected.issubset(set(wins)):
             bad.append(f"embedded Version A {field} drifted from the exported ROM window list")
+    declared_hyper_hud = {(int(w["base"].lstrip("$"), 16), w["len"])
+                          for w in white.get("hyperHudRuntimeWindows", [])}
+    expected_hyper_hud = {(address, length)
+                          for address, length, _ in WHITE_HYPER_HUD_RUNTIME_WINDOWS}
+    if declared_hyper_hud != expected_hyper_hud \
+            or not expected_hyper_hud.issubset(set(wins)):
+        bad.append("embedded Version A hyperHudRuntimeWindows drifted from the exported ROM window list")
+    if white.get("hyperHud") != WHITE_HYPER_HUD_IDENTITY:
+        bad.append("embedded Version A hyper HUD identity manifest drifted")
+    if any(address < 0 or address + length > 0x200000
+           for address, length, _ in WHITE_HYPER_HUD_RUNTIME_WINDOWS):
+        bad.append("embedded Version A hyper HUD authority escaped the Build A cartridge region")
     if white.get("bulletSpeedLevels") != list(WHITE_BULLET_SPEED_LEVELS):
         bad.append("embedded Version A enemy-bullet speed closure drifted from its manifest")
     expected_bullet_manifest = {
@@ -11364,6 +11376,64 @@ WHITE_LABEL_WINDOWS = [
     (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
 ]
 
+# Task #239's type-0 HUD reads only these seven Build A table families. The
+# executable entry points, calls, emitters, and sound identity are asserted
+# separately below and are deliberately not exported as readable cartridge data.
+WHITE_HYPER_HUD_RUNTIME_WINDOWS = [
+    (0x18601E, 0x004C, "White A hyper flash frame table"),
+    (0x1869CC, 0x013C, "White A HUD cursor animation tables"),
+    (0x186D10, 0x0040, "White A HUD life tables and gauge linear-art slope anchors"),
+    (0x186DE4, 0x0020, "White A P1 HUD rank linear-art slope anchors"),
+    (0x186E64, 0x0020, "White A P2 HUD rank linear-art slope anchors"),
+    (0x186F0C, 0x0030, "White A moving and settled hyper-stock tables"),
+    (0x186F4C, 0x0010, "White A score-extend threshold continuation table"),
+]
+
+WHITE_HYPER_HUD_IDENTITY = {
+    "object": {
+        "entry": "$18C046", "init": "$18C028", "destroy": "$18C038",
+        "priority": 0x09, "killTarget": "$1415CC", "aliveFlag": "$81B6F0",
+        "stateOffset": 0x02, "idOffset": 0x4C,
+    },
+    "scoreDrain": "$182F0E",
+    "frame": {
+        "entry": "$1830AC", "cursorA": "$184BE4", "cursorB": "$184BAC",
+        "slide": "$183950", "step": ["$18466C", "$184796"],
+        "postTail": "$1830C6",
+    },
+    "slideArm": "$18659C",
+    "hyper": {
+        "end": ["$18474C", "$184876"],
+        "conversion": ["$15286C", "$152886"],
+        "endReset": ["$1528A8", "$1528B6"],
+        "pendingFlush": ["$1860F2", "$186154"],
+        "powerCap": 0x0F,
+        "endFlashActiveTest": ["$81B63E", "$81B63E"],
+    },
+    "flash": {
+        "frameTable": "$18601E", "emitter": "$140DA8",
+        "init": ["$185E62", "$185F40"],
+        "live": ["$185E7E", "$185F5C"],
+        "end": ["$185EEA", "$185FC8"],
+    },
+    "presentation": {
+        "spriteEmitter": "$13FDE4", "preservingSpriteEmitter": "$13FE12",
+        "textEmitter": "$1410F4", "blankEmitter": "$1411EE",
+        "movingLives": ["$186D10", "$186D18"],
+        "settledLives": ["$186D20", "$186D28"],
+        "movingStock": "$186F0C", "settledStock": "$186F24",
+        "bombRows": ["$1865FC", "$18662E"],
+        "linearArt": {
+            "sourceMax": 0x095F,
+            "gauge": {"base": "$186D30", "entries": 45,
+                      "reachableMaxIndex": 43, "step": -0x64},
+            "rank": {"base": ["$186DE4", "$186E64"], "entries": 32,
+                     "reachableMaxIndex": 31, "step": -0x1C},
+        },
+    },
+    "soundPost": "$18B19E",
+}
+
 # Version A's player initializer selects only these five movement speeds from
 # its six ship/style rows. Keep their pointer cells and 65-vector quadrants
 # sparse so this private campaign slice cannot read Build B data or unrelated A
@@ -11631,6 +11701,7 @@ for _speed in WHITE_BULLET_SPEED_LEVELS:
     ])
 
 SHOT_WINDOWS.extend(WHITE_LABEL_WINDOWS)
+SHOT_WINDOWS.extend(WHITE_HYPER_HUD_RUNTIME_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_PLAYER_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_SHOT_PRODUCER_WINDOWS)
 WHITE_SHOT_SHARED_OPTION_WINDOW_KEYS = {(0x189042, 0x00A6)}
@@ -11724,6 +11795,9 @@ def white_label_tables(d: bytes) -> dict:
         },
         "frontendWindows": [{"base": f"${address:06X}", "len": length}
                             for address, length, _ in WHITE_LABEL_WINDOWS],
+        "hyperHudRuntimeWindows": [{"base": f"${address:06X}", "len": length}
+                            for address, length, _ in WHITE_HYPER_HUD_RUNTIME_WINDOWS],
+        "hyperHud": WHITE_HYPER_HUD_IDENTITY,
         "playerWindows": [{"base": f"${address:06X}", "len": length}
                           for address, length, _ in WHITE_PLAYER_WINDOWS],
         "shotProducerWindows": [{"base": f"${address:06X}", "len": length}
@@ -11810,6 +11884,135 @@ def white_label_tables(d: bytes) -> dict:
 def check_white_label_frontend_windows(d: bytes) -> None:
     if hashlib.sha256(d).hexdigest() != WHITE_LABEL_IMAGE_SHA256:
         raise SystemExit("embedded Version A tables require the validated ddpdojblk cartridge image")
+
+    # Keep executable authority as identities, never as readable runtime windows.
+    # The frame prefix also proves the exact A order and same-call continuation
+    # after `$183950` clears the special slide flag.
+    if d[0x18C028:0x18C038] != bytes.fromhex(
+            "1b7c0001000233fc00010081b6f04e75"):
+        raise SystemExit("White A type-0 HUD initialization changed at $18C028")
+    if d[0x18C038:0x18C046] != bytes.fromhex(
+            "42790081b6f04ef9001415cc4e71"):
+        raise SystemExit("White A type-0 HUD destruction changed at $18C038")
+    if u16(d, 0x18C03E) != 0x4EF9 or u32(d, 0x18C040) != 0x1415CC:
+        raise SystemExit("White A type-0 HUD kill target changed at $18C03E")
+    if d[0x18C046:0x18C062] != bytes.fromhex(
+            "4a2d000267dc0c2d0002000267e44eb900182f0e4eb9001830ac4e75"):
+        raise SystemExit("White A type-0 HUD lifecycle changed at $18C046")
+    if d[0x1830AC:0x1830C6] != bytes.fromhex(
+            "61001b3661001afa4a790081b6ee66000894610015ac610016d2"):
+        raise SystemExit("White A HUD frame order changed at $1830AC")
+    if d[0x18659C:0x1865B8] != bytes.fromhex(
+            "08390000008130f9660833fc00530081b62033fc00010081b6ee4e75"):
+        raise SystemExit("White A HUD slide arm changed at $18659C")
+
+    absolute_calls = (
+        (0x182FB4, 0x18B19E, "score-extend sound"),
+        (0x184692, 0x185E62, "P1 flash init"),
+        (0x184698, 0x185A14, "P1 stock redraw"),
+        (0x1846EA, 0x15286C, "P1 activation conversion"),
+        (0x1846F0, 0x185E7E, "P1 live flash"),
+        (0x18475E, 0x1528A8, "P1 end reset"),
+        (0x18477E, 0x185A14, "P1 end stock redraw"),
+        (0x1847BC, 0x185F40, "P2 flash init"),
+        (0x1847C2, 0x185A7C, "P2 stock redraw"),
+        (0x184814, 0x152886, "P2 activation conversion"),
+        (0x18481A, 0x185F5C, "P2 live flash"),
+        (0x184888, 0x1528B6, "P2 end reset"),
+        (0x1848A8, 0x185A7C, "P2 end stock redraw"),
+        (0x1839F4, 0x13FE12, "P1 moving-life emitter"),
+        (0x183A8C, 0x13FE12, "P2 moving-life emitter"),
+        (0x183A34, 0x13FDE4, "P1 moving-stock emitter"),
+        (0x183ACC, 0x13FDE4, "P2 moving-stock emitter"),
+        (0x186474, 0x1410F4, "P1 settled-life text emitter"),
+        (0x1864FE, 0x1410F4, "P2 settled-life text emitter"),
+        (0x185EB2, 0x140DA8, "P1 live-flash emitter"),
+        (0x185F32, 0x140DA8, "P1 end-flash emitter"),
+        (0x185F90, 0x140DA8, "P2 live-flash emitter"),
+        (0x186010, 0x140DA8, "P2 end-flash emitter"),
+    )
+    for site, target, label in absolute_calls:
+        if u16(d, site) != 0x4EB9 or u32(d, site + 2) != target:
+            raise SystemExit(f"White A {label} call changed at ${site:06X}")
+    for site, target, label in (
+            (0x184784, 0x1860F2, "P1 pending flush"),
+            (0x1848AE, 0x186154, "P2 pending flush"),
+            (0x186612, 0x1410F4, "P1 bomb-row text emitter"),
+            (0x186644, 0x1410F4, "P2 bomb-row text emitter")):
+        if u16(d, site) != 0x4EF9 or u32(d, site + 2) != target:
+            raise SystemExit(f"White A {label} jump changed at ${site:06X}")
+    if d[0x1846BC:0x1846D4] != bytes.fromhex(
+            "d1790081b6460c79000f0081b646630833fc000f0081b646") \
+            or d[0x1847E6:0x1847FE] != bytes.fromhex(
+                "d1790081b6480c79000f0081b648630833fc000f0081b648"):
+        raise SystemExit("White A hyper power cap changed from $0F")
+    if d[0x18474C:0x184764] != bytes.fromhex(
+            "4a790081b63e6700000a33fc00480081b6fa4eb9001528a8"):
+        raise SystemExit("White A P1 hyper end-flash gate changed")
+    if d[0x184876:0x18488E] != bytes.fromhex(
+            "4a790081b63e6700000a33fc00480081b6fc4eb9001528b6"):
+        raise SystemExit("White A P2 hyper end-flash no longer tests P1 active state")
+
+    # The native readers accept the complete $0000..$095F producer domain. The
+    # runtime exports only each linear art sequence's first two longwords and
+    # reconstructs later pointers from that slope without clamping or wrapping.
+    gauge_readers = (
+        (0x1848C6, 0x81B642), (0x184A40, 0x81B644),
+    )
+    for site, source in gauge_readers:
+        expected = bytes.fromhex(
+            f"74003439{source:08x}c4fc001648424242484284fc04b0d442d442"
+            "41f900186d3024302000")
+        if d[site:site + len(expected)] != expected:
+            raise SystemExit(f"White A gauge linear-art reader changed at ${site:06X}")
+    rank_readers = (
+        (0x1849A6, 0x81B64A, 0x186DE4),
+        (0x184A0A, 0x81B64A, 0x186DE4),
+        (0x184B20, 0x81B64C, 0x186E64),
+        (0x184B84, 0x81B64C, 0x186E64),
+    )
+    for site, source, table in rank_readers:
+        expected = bytes.fromhex(
+            f"74003439{source:08x}671ce94a84fc04b0d442d44241f9{table:08x}24302000")
+        if d[site:site + len(expected)] != expected:
+            raise SystemExit(f"White A rank linear-art reader changed at ${site:06X}")
+    for site, source in ((0x1526DE, 0x81B642), (0x152706, 0x81B644)):
+        expected = bytes.fromhex(f"33fc095f{source:08x}")
+        if d[site:site + len(expected)] != expected:
+            raise SystemExit(f"White A gauge $095F producer changed at ${site:06X}")
+    for site, source in ((0x1866D8, 0x81B64A), (0x1866F4, 0x81B64C)):
+        expected = bytes.fromhex(
+            f"06790258{source:08x}0c79095f{source:08x}650833fc095e{source:08x}")
+        if d[site:site + len(expected)] != expected:
+            raise SystemExit(f"White A rank accumulator saturator changed at ${site:06X}")
+    for site, source in ((0x1861B6, 0x81B64A), (0x186256, 0x81B64C)):
+        expected = bytes.fromhex(f"33fc095f{source:08x}")
+        if d[site:site + len(expected)] != expected:
+            raise SystemExit(f"White A rank $095F refusal value changed at ${site:06X}")
+
+    linear_art = (
+        (0x186D30, 45, -0x64, "gauge"),
+        (0x186DE4, 32, -0x1C, "P1 rank"),
+        (0x186E64, 32, -0x1C, "P2 rank"),
+    )
+    for base, count, step, label in linear_art:
+        first = u32(d, base)
+        actual = tuple(u32(d, base + i * 4) for i in range(count))
+        expected = tuple((first + i * step) & 0xFFFFFFFF for i in range(count))
+        if actual != expected:
+            raise SystemExit(f"White A {label} art is no longer a {count}-long linear sequence")
+    gauge_max_index = ((0x095F * 0x16) & 0xFFFF) // 0x04B0
+    rank_max_index = ((0x095F << 4) & 0xFFFF) // 0x04B0
+    rank_boundary_index = ((0x0258 << 4) & 0xFFFF) // 0x04B0
+    if (gauge_max_index, rank_max_index, rank_boundary_index) != (43, 31, 8):
+        raise SystemExit("White A HUD source-domain index witnesses changed")
+    if (u32(d, 0x186D30 + gauge_max_index * 4),
+            u32(d, 0x186DE4 + rank_boundary_index * 4),
+            u32(d, 0x186E64 + rank_boundary_index * 4),
+            u32(d, 0x186DE4 + rank_max_index * 4),
+            u32(d, 0x186E64 + rank_max_index * 4)) \
+            != (0x001CAECC, 0x001CA28C, 0x001CEC38, 0x001CA008, 0x001CE9B4):
+        raise SystemExit("White A HUD linear-art boundary witnesses changed")
 
     for site, target in WHITE_OPTION_COMBAT_CALLS:
         if u16(d, site) != 0x4EB9 or u32(d, site + 2) != target:

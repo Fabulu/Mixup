@@ -2381,29 +2381,7 @@ export function gates2844A6(ram, ctx, rom = null) {
  *  port lands in state 1 on its first frame -- it simply was not dispatching
  *  it, and `runObjectDriver` counted the miss under `$240F62 + 0` every frame. */
 export function makeHudObject(rom) {
-  return function hudObject(ram, a5, slot, ctx) {
-    const st = ram.u8(a5 + 0x02);
-    if (st === 0) {                                     // $28D520 tst.b / beq.b
-      ram.setU8(a5 + 0x02, 1);                          // $28D502 move.b #$1,$2(A5)
-      ram.setU16(HUDRAM.objFlag, 1);                    // $28D508 move.w #$1,$81B6F0
-      // W115: seed the 20 score-record `+$2` dest addresses.  The board's HUD
-      // init does this via an un-ID'd one-time routine; the values are FIXED
-      // (W114 section 3) so they are hardcoded here.  On a seeded run the HUD
-      // object is already in state 1, so this is the cold-boot path only and
-      // the seed's own dests are used otherwise.
-      initScoreDigitDests(ram);
-      return;                                           // $28D510 rts
-    }
-    if (st === 2) {                                     // $28D526 cmpi.b #$2 / beq.b
-      ram.setU16(HUDRAM.objFlag, 0);                    // $28D512 clr.w $81B6F0
-      queueKill(ram, ram.u32(a5 + 0x4c));               // $28D518 jmp $241292
-      return;
-    }
-    drain2842B0(ram, rom, ctx);                         // $28D52E jsr $2842B0
-    ctx?.privateScoreFrameHook?.({ phase: 'drain', ctx });
-    perFrame28444E(ram, rom, ctx);                      // $28D534 jsr $28444E
-    void slot;
-  };
+  return makeHudObjectWithResources(rom, BLACK_HUD_RESOURCES);
 }
 
 // ===========================================================================
@@ -2620,10 +2598,103 @@ export function scoreDrainInit287084(ram, who) {
  * `$284D24`/`$284F6A` clear when it has landed.
  */
 export function slideArm287A5E(ram) {
-  if ((ram.u8(HUDRAM.flags9) & 0x01) === 0) {           // $287A5E btst #$0 / $287A66 bne.s
-    ram.setU16(HUDRAM.bannerTimer, 0x53);               // $287A68 move.w #$53,$81B620
+  return armHudSlideWithResources(ram, BLACK_HUD_RESOURCES);
+}
+
+function destroyHudObject(ram, id) {
+  queueKill(ram, id);
+}
+
+function blackHudAfterDrain(_ram, _rom, ctx) {
+  ctx?.privateScoreFrameHook?.({ phase: 'drain', ctx });
+}
+
+const BLACK_HUD_RAM_RESOURCES = Object.freeze({
+  slideFlag: HUDRAM.slideFlag,
+  flags9: HUDRAM.flags9,
+  bannerTimer: HUDRAM.bannerTimer,
+  objFlag: HUDRAM.objFlag,
+});
+
+export const BLACK_HUD_RESOURCES = Object.freeze({
+  edition: 'black-label-b',
+  entries: Object.freeze({ object: HUD.obj, init: HUD.objInit, destroy: HUD.objDestroy,
+    drain: HUD.drain, frame: HUD.perFrame, slideArm: 0x287a5e }),
+  object: Object.freeze({
+    stateAt: 0x02, idAt: 0x4c, priority: 0x09,
+    killTarget: HUD.kill, aliveFlag: HUDRAM.objFlag,
+  }),
+  ram: BLACK_HUD_RAM_RESOURCES,
+  routines: Object.freeze({
+    init: initScoreDigitDests,
+    destroy: destroyHudObject,
+    drain: drain2842B0,
+    afterDrain: blackHudAfterDrain,
+    frame: perFrame28444E,
+  }),
+});
+
+function requireHudResources(resources) {
+  if (!resources || !Object.isFrozen(resources)
+      || !Object.isFrozen(resources.entries) || !Object.isFrozen(resources.object)
+      || !Object.isFrozen(resources.ram) || !Object.isFrozen(resources.routines)
+      || !Number.isSafeInteger(resources.object.stateAt)
+      || !Number.isSafeInteger(resources.object.idAt)
+      || !Number.isSafeInteger(resources.object.priority)
+      || !Number.isSafeInteger(resources.object.killTarget)
+      || !Number.isSafeInteger(resources.object.aliveFlag)
+      || resources.object.aliveFlag !== resources.ram.objFlag
+      || !Number.isSafeInteger(resources.ram.slideFlag)
+      || !Number.isSafeInteger(resources.ram.flags9)
+      || !Number.isSafeInteger(resources.ram.bannerTimer)
+      || !Number.isSafeInteger(resources.ram.objFlag)
+      || typeof resources.routines.init !== 'function'
+      || typeof resources.routines.destroy !== 'function'
+      || typeof resources.routines.drain !== 'function'
+      || typeof resources.routines.frame !== 'function') {
+    throw new TypeError('HUD object needs a complete frozen edition resource graph');
   }
-  ram.setU16(HUDRAM.slideFlag, 1);                      // $287A70 -- BOTH arms reach this
+  return resources;
+}
+
+export function runHudDrainWithResources(ram, rom, ctx, suppliedResources) {
+  const resources = requireHudResources(suppliedResources);
+  return resources.routines.drain(ram, rom, ctx, resources);
+}
+
+export function runHudFrameWithResources(ram, rom, ctx, suppliedResources) {
+  const resources = requireHudResources(suppliedResources);
+  return resources.routines.frame(ram, rom, ctx, resources);
+}
+
+export function makeHudObjectWithResources(rom, suppliedResources) {
+  const resources = requireHudResources(suppliedResources);
+  return function hudObject(ram, a5, slot, ctx) {
+    const state = ram.u8(a5 + resources.object.stateAt);
+    if (state === 0) {
+      ram.setU8(a5 + resources.object.stateAt, 1);
+      ram.setU16(resources.ram.objFlag, 1);
+      resources.routines.init(ram, rom, ctx, resources);
+      return;
+    }
+    if (state === 2) {
+      ram.setU16(resources.ram.objFlag, 0);
+      resources.routines.destroy(ram, ram.u32(a5 + resources.object.idAt), ctx, resources);
+      return;
+    }
+    runHudDrainWithResources(ram, rom, ctx, resources);
+    resources.routines.afterDrain?.(ram, rom, ctx, resources);
+    runHudFrameWithResources(ram, rom, ctx, resources);
+    void slot;
+  };
+}
+
+export function armHudSlideWithResources(ram, suppliedResources) {
+  const resources = requireHudResources(suppliedResources);
+  if ((ram.u8(resources.ram.flags9) & 0x01) === 0) {
+    ram.setU16(resources.ram.bannerTimer, 0x53);
+  }
+  ram.setU16(resources.ram.slideFlag, 1);
 }
 
 /** `$2871E8` (P1) / `$287210` (P2) -- CLEAR THE CHAIN METER.

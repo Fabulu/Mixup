@@ -14,6 +14,7 @@ import { whiteRankTick15FAE8 } from './white-rank.js';
 import { whiteSelectorTick15BE3E } from './white-selector.js';
 import { createWhiteStage1ShotHandlers as createWhiteShotIslandHandlers } from './white-shots.js';
 import { createWhiteStage1CombatHandlers as createWhiteCombatIslandHandlers } from './white-options.js';
+import { createWhiteStage1HyperHudHandlers as createWhiteHyperHudIslandHandlers } from './white-hyper-hud.js';
 
 function requireWhiteFrontendRuntime(profileRequest, operation) {
   const profile = resolveGameProfile(profileRequest === undefined
@@ -82,11 +83,17 @@ export function createWhiteStage1CombatHandlers(rom, profileRequest) {
   return createWhiteCombatIslandHandlers(rom, profileRequest);
 }
 
-/** Join the independently gated frontend, player, and shot handler islands. */
+/** Build the separately gated Version A Stage 1 type-0 hyper HUD island. */
+export function createWhiteStage1HyperHudHandlers(rom, profileRequest) {
+  return createWhiteHyperHudIslandHandlers(rom, profileRequest);
+}
+
+/** Join the independently gated frontend, player, shot, and HUD handler islands. */
 export function createWhiteStage1Handlers(rom, profileRequest) {
   return new Map([
     ...createWhiteFrontendHandlers(rom, profileRequest),
     ...createWhiteStage1PlayerHandlers(rom, profileRequest),
     ...createWhiteStage1CombatHandlers(rom, profileRequest),
+    ...createWhiteStage1HyperHudHandlers(rom, profileRequest),
   ]);
 }

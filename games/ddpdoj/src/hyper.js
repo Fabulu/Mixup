@@ -9,6 +9,7 @@ import { enqueueRegisters } from './spritequeue.js';
 
 export const HYPER = Object.freeze({
   gate: 0x81b6e4, arm: 0x81b410, mode: 0x81b412,
+  chainSeed: 0x81b5b2,
   pause: 0x80392c, flags: 0x8130f8, drawGate: 0x812970,
   frame: 0x80390a, phase: 0x80390c, secondLoop: 0x813098,
   stage: 0x813092, bossPhase: 0x81309c, firstLoopBossGate: 0x80393a,
@@ -42,6 +43,65 @@ export const HYPER = Object.freeze({
     stockAnimPos: 0x812920, stockAnimTick: 0x812926, stockAnimReload: 0x812927,
   }),
 });
+
+function blackHyperConversion(ram, _rom, ctx, h, p2, resources) {
+  const invuln = p2 ? 0x50 : ((ram.u8(resources.ram.flags) & 0x04) ? 0x78 : 0x50);
+  ram.setU8(h.player + P.invuln, invuln);
+  ctx?.hyperEvent?.('activate', h.who, ram.u16(h.level));
+}
+
+function blackHyperEndReset(ram, _rom, ctx, _h, p2) {
+  beamReset25270C(ram, ctx, p2 ? 1 : 0);
+}
+
+function blackHyperPendingFlush(ram, rom, ctx, _h, p2) {
+  return flushPendingHyper2875B4(ram, rom, ctx, p2);
+}
+
+export const BLACK_HYPER_RESOURCES = Object.freeze({
+  edition: 'black-label-b',
+  entries: Object.freeze({ stepP1: 0x285a12, stepP2: 0x285b3c,
+    endP1: 0x285af2, endP2: 0x285c1c }),
+  ram: HYPER,
+  sides: Object.freeze([HYPER.p1, HYPER.p2]),
+  powerCap: 0x23,
+  flash: Object.freeze({ frameTable: 0x2874e0, emitter: 0x23efc2,
+    initialSprite: 0x000530fc, spriteStep: 0x0234, spriteEnd: 0x00056eac }),
+  endFlashActiveTest: Object.freeze([HYPER.p1.active, HYPER.p2.active]),
+  activationRedrawBeforeMutation: false,
+  clearFlagsBeforeEndReset: false,
+  callbacks: Object.freeze({
+    conversion: Object.freeze([0x285a74, 0x285b9e]),
+    endReset: Object.freeze([0x25270c, 0x25270c]),
+    pendingFlush: Object.freeze([0x2875b4, 0x287616]),
+  }),
+  operations: Object.freeze({
+    conversion: blackHyperConversion,
+    endReset: blackHyperEndReset,
+    pendingFlush: blackHyperPendingFlush,
+  }),
+});
+
+function requireHyperResources(resources) {
+  if (!resources || !Object.isFrozen(resources)
+      || !Object.isFrozen(resources.entries) || !Object.isFrozen(resources.ram)
+      || !Object.isFrozen(resources.sides) || resources.sides.length !== 2
+      || !Object.isFrozen(resources.sides[0]) || !Object.isFrozen(resources.sides[1])
+      || !Object.isFrozen(resources.flash)
+      || !Object.isFrozen(resources.endFlashActiveTest)
+      || resources.endFlashActiveTest.length !== 2
+      || !Object.isFrozen(resources.callbacks) || !Object.isFrozen(resources.operations)
+      || !Number.isSafeInteger(resources.powerCap)
+      || typeof resources.activationRedrawBeforeMutation !== 'boolean'
+      || typeof resources.clearFlagsBeforeEndReset !== 'boolean'
+      || !Number.isSafeInteger(resources.flash.frameTable)
+      || typeof resources.operations.conversion !== 'function'
+      || typeof resources.operations.endReset !== 'function'
+      || typeof resources.operations.pendingFlush !== 'function') {
+    throw new TypeError('hyper step needs a complete frozen edition resource graph');
+  }
+  return resources;
+}
 
 export const HYPER_MUTATE = { value: null };
 
@@ -276,15 +336,15 @@ function armHyperCancel(ram, ctx, p2) {
   return true;
 }
 
-function flashInit(ram, h) {
-  ram.setU32(h.flashSprite, 0x000530fc);
+function flashInit(ram, h, resources) {
+  ram.setU32(h.flashSprite, resources.flash.initialSprite);
   ram.setU16(h.liveFlash, 1);
   ram.setU16(h.flashTick, 1);
 }
 
-function liveFlash(ram, h) {
+function liveFlash(ram, h, resources) {
   if (ram.u16(h.liveFlash) === 0) return;
-  if ((ram.u16(h.player) & 0x8000) !== 0 && ram.u16(HYPER.drawGate) === 0) {
+  if ((ram.u16(h.player) & 0x8000) !== 0 && ram.u16(resources.ram.drawGate) === 0) {
     const pos = (ram.u32(h.pos) + 0xf200f600) >>> 0;
     enqueueRegisters(ram, 18, pos, ram.u32(h.flashSprite), 0x0e50, 4);
   }
@@ -292,35 +352,47 @@ function liveFlash(ram, h) {
   ram.setU8(h.flashTick, tick);
   if (tick === 0xff) {
     ram.setU8(h.flashTick, ram.u8(h.flashTick + 1));
-    const sprite = (ram.u32(h.flashSprite) + 0x234) >>> 0;
+    const sprite = (ram.u32(h.flashSprite) + resources.flash.spriteStep) >>> 0;
     ram.setU32(h.flashSprite, sprite);
-    if (sprite === 0x00056eac) ram.setU16(h.liveFlash, 0);
+    if (sprite === resources.flash.spriteEnd) ram.setU16(h.liveFlash, 0);
   }
 }
 
-function endFlash(ram, rom, h) {
+function endFlash(ram, rom, h, resources) {
   const timer = ram.u16(h.endFlash);
   if (timer === 0) return;
-  ram.setU32(h.flashSprite, rom.u32(0x2874e0 + timer));
-  if ((ram.u16(h.player) & 0x8000) !== 0 && ram.u16(HYPER.drawGate) === 0) {
+  ram.setU32(h.flashSprite, rom.u32(resources.flash.frameTable + timer));
+  if ((ram.u16(h.player) & 0x8000) !== 0 && ram.u16(resources.ram.drawGate) === 0) {
     const pos = (ram.u32(h.pos) + 0xf200f600) >>> 0;
     enqueueRegisters(ram, 18, pos, ram.u32(h.flashSprite), 0x0e50, 4);
   }
   ram.setU16(h.endFlash, u16(timer - 4));
 }
 
-export function endHyper285AF2(ram, rom, ctx, p2 = false, redrawStock = null) {
-  const h = side(p2);
-  if (ram.u16(h.active) !== 0) ram.setU16(h.endFlash, 0x48);
-  beamReset25270C(ram, ctx, p2 ? 1 : 0);
-  ram.bclr8(h.player + P.flags1, 0);
+export function endHyperWithResources(
+  ram, rom, ctx, p2 = false, redrawStock = null, suppliedResources,
+) {
+  const resources = requireHyperResources(suppliedResources);
+  const h = resources.sides[p2 ? 1 : 0];
+  if (ram.u16(resources.endFlashActiveTest[p2 ? 1 : 0]) !== 0) {
+    ram.setU16(h.endFlash, 0x48);
+  }
+  if (resources.clearFlagsBeforeEndReset) ram.bclr8(h.player + P.flags1, 0);
+  resources.operations.endReset(ram, rom, ctx, h, p2, resources);
+  if (!resources.clearFlagsBeforeEndReset) ram.bclr8(h.player + P.flags1, 0);
   ram.setU16(h.active, 0);
   ram.setU16(h.gauge, 0);
   ram.setU16(h.level, 0);
   ram.setU16(h.req, 0);
-  redrawStock?.(p2 ? 1 : 0);                         // $285B24/$285C4E
-  flushPendingHyper2875B4(ram, rom, ctx, p2);
+  redrawStock?.(p2 ? 1 : 0);
+  resources.operations.pendingFlush(ram, rom, ctx, h, p2, resources);
   ctx?.hyperEvent?.('end', h.who, ram.u16(h.power));
+}
+
+export function endHyper285AF2(ram, rom, ctx, p2 = false, redrawStock = null) {
+  return endHyperWithResources(
+    ram, rom, ctx, p2, redrawStock, BLACK_HYPER_RESOURCES,
+  );
 }
 
 /** `$25392E/$253968` -- the no-lives death reset. Power is deliberately not
@@ -339,30 +411,34 @@ export function resetHyper25392E(ram, p2 = false) {
   ram.setU16(h.pending, 0);                             // $253960/$25399A
 }
 
-/** `$285A12/$285B3C`, in the type-0 object's authentic frame slot. */
-export function stepHyper285A12(ram, rom, ctx, p2 = false, redrawStock = null) {
-  const h = side(p2);
+/** Edition-bound hyper step in the type-0 object's native frame slot. */
+export function stepHyperWithResources(
+  ram, rom, ctx, p2 = false, redrawStock = null, suppliedResources,
+) {
+  const resources = requireHyperResources(suppliedResources);
+  const h = resources.sides[p2 ? 1 : 0];
   if (ram.u16(h.active) === 0 && ram.u16(h.req) !== 0) {
     if ((ram.u8(h.player) & 0x11) !== 0) return;
     ram.setU16(h.active, 1);
-    flashInit(ram, h);
-    if (ram.u16(p2 ? 0x81b5ea : 0x81b5c0) !== 0) {
-      ram.setU16(p2 ? 0x81b5ea : 0x81b5c0, ram.u16(0x81b5b2));
+    flashInit(ram, h, resources);
+    if (resources.activationRedrawBeforeMutation) redrawStock?.(p2 ? 1 : 0);
+    if (ram.u16(h.chainMeter) !== 0) {
+      ram.setU16(h.chainMeter, ram.u16(resources.ram.chainSeed));
     }
     const stock = ram.u16(h.stock);
     ram.setU16(h.level, stock);
-    ram.setU16(h.power, Math.min(0x23, u16(ram.u16(h.power) + stock)));
+    ram.setU16(h.power, Math.min(
+      resources.powerCap, u16(ram.u16(h.power) + stock),
+    ));
     ram.setU16(h.subTick, 0);
     ram.setU16(h.stock, 0);
-    redrawStock?.(p2 ? 1 : 0);                       // $285A3E/$285B68
-    const invuln = p2 ? 0x50 : ((ram.u8(HYPER.flags) & 0x04) ? 0x78 : 0x50);
-    ram.setU8(h.player + 0x3e, invuln);
-    ctx?.hyperEvent?.('activate', h.who, stock);
+    if (!resources.activationRedrawBeforeMutation) redrawStock?.(p2 ? 1 : 0);
+    resources.operations.conversion(ram, rom, ctx, h, p2, resources);
   }
   if (ram.u16(h.active) !== 0) {
-    liveFlash(ram, h);
+    liveFlash(ram, h, resources);
     if ((ram.u8(h.player) & 0x01) !== 0) {
-      endHyper285AF2(ram, rom, ctx, p2, redrawStock);
+      endHyperWithResources(ram, rom, ctx, p2, redrawStock, resources);
       return;
     }
     if (ram.u16(h.chain) >= 0x10 && ram.u16(h.chainMeter) !== 0) {
@@ -370,17 +446,25 @@ export function stepHyper285A12(ram, rom, ctx, p2 = false, redrawStock = null) {
       ram.setU16(h.chainSaved, ram.u16(h.chainMeter));
       ram.setU16(h.chainHold, 0x78);
     }
-    if ((ram.u8(HYPER.flags) & 0x40) === 0 && ram.u16(HYPER.pause) === 0) {
+    if ((ram.u8(resources.ram.flags) & 0x40) === 0
+        && ram.u16(resources.ram.pause) === 0) {
       const before = ram.u16(h.gauge);
       ram.setU16(h.gauge, u16(before - 2));
       if (before < 2) {
-        endHyper285AF2(ram, rom, ctx, p2, redrawStock);
+        endHyperWithResources(ram, rom, ctx, p2, redrawStock, resources);
         return;
       }
     }
   } else {
-    endFlash(ram, rom, h);
+    endFlash(ram, rom, h, resources);
   }
+}
+
+/** `$285A12/$285B3C`, in the type-0 object's authentic frame slot. */
+export function stepHyper285A12(ram, rom, ctx, p2 = false, redrawStock = null) {
+  return stepHyperWithResources(
+    ram, rom, ctx, p2, redrawStock, BLACK_HYPER_RESOURCES,
+  );
 }
 
 /** `$249970/$249976`, bombing during hyper ends it and permanently debits 3. */

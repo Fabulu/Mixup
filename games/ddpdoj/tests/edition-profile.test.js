@@ -148,6 +148,43 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
   assert.ok(declared.includes('$125B78:8928'), 'the Stage 1 column stream is exported');
   assert.ok(declared.includes('$127E58:2048'), 'the Stage 1 background palette is exported');
   for (const window of declared) assert.ok(exported.has(window), `${window} is cartridge-backed`);
+
+  assert.deepEqual(white.hyperHudRuntimeWindows, [
+    { base: '$18601E', len: 0x004c },
+    { base: '$1869CC', len: 0x013c },
+    { base: '$186D10', len: 0x0040 },
+    { base: '$186DE4', len: 0x0020 },
+    { base: '$186E64', len: 0x0020 },
+    { base: '$186F0C', len: 0x0030 },
+    { base: '$186F4C', len: 0x0010 },
+  ]);
+  for (const window of white.hyperHudRuntimeWindows) {
+    assert.ok(exported.has(`${window.base}:${window.len}`));
+    assert.ok(Number.parseInt(window.base.slice(1), 16) + window.len <= 0x200000);
+  }
+  assert.deepEqual(white.hyperHud.object, {
+    entry: '$18C046', init: '$18C028', destroy: '$18C038',
+    priority: 0x09, killTarget: '$1415CC', aliveFlag: '$81B6F0',
+    stateOffset: 0x02, idOffset: 0x4c,
+  });
+  assert.deepEqual(white.hyperHud.frame, {
+    entry: '$1830AC', cursorA: '$184BE4', cursorB: '$184BAC',
+    slide: '$183950', step: ['$18466C', '$184796'], postTail: '$1830C6',
+  });
+  assert.deepEqual(white.hyperHud.hyper, {
+    end: ['$18474C', '$184876'],
+    conversion: ['$15286C', '$152886'],
+    endReset: ['$1528A8', '$1528B6'],
+    pendingFlush: ['$1860F2', '$186154'],
+    powerCap: 0x0f,
+    endFlashActiveTest: ['$81B63E', '$81B63E'],
+  });
+  assert.deepEqual(white.hyperHud.flash, {
+    frameTable: '$18601E', emitter: '$140DA8',
+    init: ['$185E62', '$185F40'], live: ['$185E7E', '$185F5C'],
+    end: ['$185EEA', '$185FC8'],
+  });
+  assert.equal(white.hyperHud.soundPost, '$18B19E');
 });
 
 runtimeTest('embedded Version A projection reconstructs the exact legacy Black ledger', () => {
@@ -184,6 +221,7 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
   const { seedBytes, tables } = fixtures();
   const descriptors = [
     ...tables.editions.whiteLabel.frontendWindows,
+    ...tables.editions.whiteLabel.hyperHudRuntimeWindows,
     ...tables.editions.whiteLabel.playerWindows,
     ...tables.editions.whiteLabel.shotProducerWindows,
     ...tables.editions.whiteLabel.shotRuntimeWindows,
@@ -197,8 +235,8 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
   const g = game();
   const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
 
-  assert.equal(excluded.size, 687);
-  assert.equal(tables.rom.windows.length, 1636,
+  assert.equal(excluded.size, 694);
+  assert.equal(tables.rom.windows.length, 1643,
     'runtime projection does not mutate the complete exported table');
   assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [949, 457509]);
   for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);
