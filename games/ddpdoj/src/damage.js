@@ -1272,6 +1272,20 @@ function nativeOutgoingShotPass(ram, ctx, ownerIndex) {
   return result;
 }
 
+function nativeCollisionArgs(ram, ownerIndex) {
+  const p1 = ownerIndex === 0;
+  return {
+    table: p1 ? DMG.p1shots : DMG.p2shots,
+    mask: p1 ? DMG.maskP1 : DMG.maskP2,
+    d1: ram.u16(p1 ? DMG.hyper1 : DMG.hyper2),
+    d2: ram.u16(p1 ? DMG.hyperLvl1 : DMG.hyperLvl2),
+    player: p1 ? DMG.p1rec : DMG.p2rec,
+    a1: p1 ? DMG.beamRecP1 : DMG.beamRecP2,
+    a2: p1 ? DMG.laserSlot27 : DMG.laserSlot27P2,
+    a3: p1 ? DMG.laserSlot30 : DMG.laserSlot30P2,
+  };
+}
+
 function selectedNativeOutgoingOwner(ram) {
   const gate = ram.u16(DMG.gate308c);
   const mirror = ram.u16(DMG.mirror2);
@@ -1333,7 +1347,8 @@ export function runNativeOutgoingCombatBeforeBombDamage(ram, ctx) {
  * `table` is A0 (the player's 36-slot shot table), `mask` is D0, `d1`/`d2` are
  * the hyper words the tail loads.  D7 is `$2800` at entry (`$244D74`).
  */
-export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a3 }) {
+function collisionPassCore(
+    ram, ctx, { table, mask, d1, d2, player, a1, a2, a3 }, transferBombDamage) {
   ram.setU16(DMG.fa72, mask);                         // $244D62 move.w D0,$80FA72
   ram.setU16(DMG.b6e6, d1);                           // $244D68 move.w D1,$81B6E6
   ram.setU16(DMG.b6e8, d2);                           // $244D6E move.w D2,$81B6E8
@@ -1369,7 +1384,7 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a
   }
   // ---- $244EE0: the shot bounding box.
   if (!shotBoundingBox(ram, table, d7)) {             // $244EF0 bra.w $24518A
-    const w = weaponTail(ram, ctx, player, a1, a2, a3);
+    const w = weaponTail(ram, ctx, player, a1, a2, a3, transferBombDamage);
     return { hitsA: 0, hitsB: 0, anyShot: false, player: pbox, ...w };
   }
   const gate = ram.u16(DMG.gate308c);
@@ -1390,8 +1405,15 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a
     hitsB = poolDamage(ram, DMG.poolB, cntB, table, d7, ram.u16(DMG.fa72),
       gate, 'B', ctx);
   }
-  const w = weaponTail(ram, ctx, player, a1, a2, a3);
+  const w = weaponTail(ram, ctx, player, a1, a2, a3, transferBombDamage);
   return { hitsA, hitsB, anyShot: true, player: pbox, ...w };
+}
+
+export function collisionPass(ram, ctx, args) {
+  const { reachedBombDamage: _reachedBombDamage, ...result } = collisionPassCore(
+    ram, ctx, args, true,
+  );
+  return result;
 }
 
 /**
@@ -1409,17 +1431,19 @@ export function collisionPass(ram, ctx, { table, mask, d1, d2, player, a1, a2, a
  * stream -- `$245258 dbra` falls into `$24525C`, `$245308 dbra` falls into
  * `$24530C`, and the `bsr` returns into the `bra`.  Not a measurement.
  */
-function weaponTail(ram, ctx, player, a1, a2, a3) {
+function weaponTail(ram, ctx, player, a1, a2, a3, transferBombDamage) {
   const d6 = 0x2800;                                  // $24518A move.w #$2800,D6
   const d0 = ram.u16(player);                         // $24518E move.w (A4),D0
-  if ((d0 & 0x8000) === 0) return { weapon: null };   // $245190 bpl.w $2459CE
+  if ((d0 & 0x8000) === 0) {                         // $245190 bpl.w $2459CE
+    return { weapon: null, reachedBombDamage: false };
+  }
   if ((d0 & 0x0080) !== 0) {                          // $245194 tst.b D0 / bmi
-    bombLaserBlock(ram, ctx, player);
-    return { weapon: null };
+    if (transferBombDamage) bombLaserBlock(ram, ctx, player);
+    return { weapon: null, reachedBombDamage: true };
   }
   if (ram.u8(player + DMG.laserByte) === 0) {         // $24519A tst.b ($3f,A4)
-    bombLaserBlock(ram, ctx, player);                 // $24519E beq.w $24560A
-    return { weapon: null };
+    if (transferBombDamage) bombLaserBlock(ram, ctx, player);  // $24519E beq.w $24560A
+    return { weapon: null, reachedBombDamage: true };
   }
   if (a1 === undefined) {
     // The tail always supplies A1/A2/A3; a caller that does not is a defect in
@@ -1429,8 +1453,72 @@ function weaponTail(ram, ctx, player, a1, a2, a3) {
   const hits27 = weaponObjectPass(ram, a2, d6, { block: 7 }, ctx);   // $2451A2
   const hits30 = weaponObjectPass(ram, a3, d6, { block: 8 }, ctx);   // $24525C
   const beam = laserDamagePass(ram, a1, d6, ctx);                    // $24530C bsr
-  bombLaserBlock(ram, ctx, player);                             // $245310 bra.w
-  return { weapon: { hits27, hits30, beam } };
+  if (transferBombDamage) bombLaserBlock(ram, ctx, player);     // $245310 bra.w
+  return { weapon: { hits27, hits30, beam }, reachedBombDamage: true };
+}
+
+function playerBoxOnlyPass(ram, ctx, args, entry) {
+  ram.setU16(DMG.fa72, args.mask);
+  ram.setU16(DMG.b6e6, args.d1);
+  ram.setU16(DMG.b6e8, args.d2);
+  if ((ram.u16(args.player) & 0x8000) === 0) return null;
+  const box = playerBox(ram, args.player, ctx);
+  return { player: { boxRun: true, hitPlayer: box.hit, items: 0, impacts: 0,
+    rammed: false, entry } };
+}
+
+function buildAFullCollision(ram, ctx, ownerIndex) {
+  const args = nativeCollisionArgs(ram, ownerIndex);
+  const { reachedBombDamage, ...collision } = collisionPassCore(
+    ram, ctx, args, false,
+  );
+  return {
+    path: 'full', entry: 0x144454, ownerIndex, playerRecord: args.player,
+    reachedBombDamage, ...collision,
+  };
+}
+
+function buildAPlayerBoxOnly(ram, ctx, ownerIndex) {
+  const args = nativeCollisionArgs(ram, ownerIndex);
+  const collision = playerBoxOnlyPass(ram, ctx, args, 0x144432);
+  return {
+    path: 'player-box-only', entry: 0x144432, ownerIndex,
+    playerRecord: args.player, reachedBombDamage: false,
+    ...(collision ?? {}),
+  };
+}
+
+function buildARts(ownerIndex = null) {
+  return {
+    path: 'rts', entry: 0x18a254, ownerIndex,
+    playerRecord: ownerIndex === null ? null : ownerIndex === 0 ? DMG.p1rec : DMG.p2rec,
+    reachedBombDamage: false,
+  };
+}
+
+/**
+ * Build A `$18A1AC` selection through the instruction before `$144CE8`.
+ *
+ * Unlike Build B, the alternate arm tests only `$813098`: zero returns at
+ * `$18A254`, while nonzero enters the player-box-only `$144432` path. The full
+ * `$144454` path runs all player, item, impact, ramming, shot, and laser blocks
+ * but reports the bomb continuation instead of executing Build B's damage body.
+ */
+export function runBuildAType5CollisionBeforeBombDamage18A1AC(ram, ctx) {
+  const gate = ram.u16(DMG.gate308c);
+  const mirror = ram.u16(DMG.mirror2);
+  if (gate !== 0) {
+    if (ram.u16(DMG.p1rec) !== 0) {
+      if (mirror === 0) return buildAFullCollision(ram, ctx, 0);
+      return ram.u16(DMG.loop98) !== 0
+        ? buildAPlayerBoxOnly(ram, ctx, 0) : buildARts(0);
+    }
+    if (ram.u16(DMG.p2rec) === 0) return buildARts();
+    if (mirror !== 0) return buildAFullCollision(ram, ctx, 1);
+    return ram.u16(DMG.loop98) !== 0
+      ? buildAPlayerBoxOnly(ram, ctx, 1) : buildARts(1);
+  }
+  return buildAFullCollision(ram, ctx, mirror === 0 ? 0 : 1);
 }
 
 /**
@@ -1523,12 +1611,5 @@ function tailNoPlayer(ram, ctx, args) {
       + `reads an address this port cannot name, so $2459D0 is not run`);
     return null;
   }
-  ram.setU16(DMG.fa72, args.mask);                    // $244D40 move.w D0
-  ram.setU16(DMG.b6e6, args.d1);                      // $244D46 move.w D1
-  ram.setU16(DMG.b6e8, args.d2);                      // $244D4C move.w D2
-  // $244D52 move.w #$2800,D7 -- loaded and never used on this path.
-  if ((ram.u16(args.player) & 0x8000) === 0) return null;  // $244D56/$244D58 bpl
-  const box = playerBox(ram, args.player, ctx);              // $244D5A jmp ($2459D0,PC)
-  return { player: { boxRun: true, hitPlayer: box.hit, items: 0, impacts: 0,
-    rammed: false, entry: DMG.passNoPlayer } };
+  return playerBoxOnlyPass(ram, ctx, args, DMG.passNoPlayer);
 }

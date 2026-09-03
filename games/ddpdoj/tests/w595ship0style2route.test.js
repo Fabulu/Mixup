@@ -45,7 +45,7 @@ const word = (...names) => portWordFromBits(names.map((name) => CONTROLS[name]))
 const DOWN_SHOT = word('DOWN', 'SHOT');
 const TOTAL_STEPS = 173697;
 const CADENCE = 500;
-const CURRENT_TABLE_HASH = '8b1a0f893ee8ebf7a2033fbd90e70dfd0b3e125b0298c0fb073106f503c50995';
+const CURRENT_TABLE_HASH = 'af3dee2f75818bcbb32d5c024b50b0816837d319595bb71eaade5d136fcd2a69';
 const W595_TABLE_HASH = '706201adef09d00737f1fafc687e52d12ab81f437bc842690af229afab258445';
 const PRE_W595_TABLE_HASH = '83ffbc84cbaec6b527bf784e1e3b3ba8c9b893546252a135ca5db34a7c64a23d';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
@@ -106,7 +106,7 @@ test('W595 is one exact BIOS-window widening and reconstructs the $000BEC fault'
       overlappingPairs(windowShape(before)),
     ], [PRE_W595_TABLE_HASH, 907, 453749, 77]);
     assert.deepEqual(EXPECTED.tables, {
-      sha256: CURRENT_TABLE_HASH, windows: 1643, bytes: 640376, overlapPairs: 79,
+      sha256: CURRENT_TABLE_HASH, windows: 1653, bytes: 642930, overlapPairs: 79,
     });
     assert.deepEqual(EXPECTED.preW595Tables, {
       sha256: PRE_W595_TABLE_HASH, windows: 907, bytes: 453749,

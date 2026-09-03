@@ -619,6 +619,17 @@ function whiteStepHyper(ram, rom, ctx, ownerIndex) {
   );
 }
 
+/** `$185A14` / `$185A7C`: redraw one Build A hyper-stock row. */
+export function redrawWhiteHyperStock185A14(ram, rom, ownerIndex, profileRequest) {
+  requireWhiteHyperHud(profileRequest, 'White Label hyper-stock redraw');
+  assertRam(ram);
+  assertRom(rom);
+  if (ownerIndex !== 0 && ownerIndex !== 1) {
+    throw new RangeError(`White hyper-stock owner ${ownerIndex} is outside {0, 1}`);
+  }
+  return whiteHyperStock(ram, rom, ownerIndex);
+}
+
 function whiteHudFrame(ram, rom, ctx) {
   whiteCursorA(ram, rom, ctx);
   whiteCursorB(ram, rom, ctx);

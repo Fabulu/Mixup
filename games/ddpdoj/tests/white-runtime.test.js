@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 
 import { WorkBudget } from '../src/budget.js';
 import { ALLOC } from '../src/objalloc.js';
-import { ObjOrder, runObjectDriver } from '../src/objdriver.js';
+import { OBJ, ObjOrder, runObjectDriver } from '../src/objdriver.js';
+import { PaletteState } from '../src/palette.js';
 import { BLACK_LABEL_PROFILE, WHITE_LABEL_PROFILE } from '../src/profiles.js';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
@@ -17,6 +18,10 @@ import { bootWhiteCabinet13C24E } from '../src/white-reset.js';
 import {
   createWhiteFrontendHandlers, createWhiteStage1Handlers, createWhiteStage1ShotHandlers,
 } from '../src/white-runtime.js';
+import { WHITE_BUTTON2_RESOURCES } from '../src/white-button2.js';
+import {
+  WHITE_HUD_RESOURCES, WHITE_HYPER_RESOURCES,
+} from '../src/white-hyper-hud.js';
 import { WHITE_PLAYER } from '../src/white-player.js';
 import { WHITE_RANK } from '../src/white-rank.js';
 import { WHITE_SELECTOR } from '../src/white-selector.js';
@@ -241,4 +246,103 @@ test('capability-gated queue route executes live two-player Version A movement',
   assert.ok(reads.length > 100);
   assert.ok(reads.every((address) => address < 0x200000),
     'the composed Version A route never reads a Build B cartridge address');
+});
+
+test('composed White frame preserves player, bomb, combat, and hyper order', () => {
+  const rom = new RomWindows(tables.rom);
+  const ram = new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
+  const handlers = createWhiteStage1Handlers(rom);
+  const p1Slot = OBJ.base;
+  const p2Slot = OBJ.base + OBJ.stride;
+  const type5Slot = OBJ.base + OBJ.stride * 2;
+  const hudSlot = OBJ.base + OBJ.stride * 3;
+  const p1 = WHITE_PLAYER.p1.rec;
+  const p2 = WHITE_PLAYER.p2.rec;
+  const p2Hyper = WHITE_HYPER_RESOURCES.sides[1];
+  const dispatches = [];
+  const type5Calls = [];
+  let precedenceSnapshot = null;
+
+  ram.setU16(p1Slot, 0x8002);
+  ram.setU8(p1Slot + 0x03, 1);
+  ram.setU8(p1Slot + 0x06, 1);
+  ram.setU8(p1Slot + 0x07, 0);
+  ram.setU16(p2Slot, 0x8003);
+  ram.setU8(p2Slot + 0x03, 1);
+  ram.setU8(p2Slot + 0x06, 1);
+  ram.setU8(p2Slot + 0x07, 1);
+  ram.setU16(type5Slot, 0x8005);
+  ram.setU8(type5Slot + 0x02, 1);
+  ram.setU16(hudSlot, 0x8000);
+  ram.setU8(hudSlot + WHITE_HUD_RESOURCES.object.stateAt, 1);
+
+  for (const [rec, x] of [[p1, 0x1800], [p2, 0x2800]]) {
+    ram.setU16(rec, 0x8000);
+    ram.setU16(rec + P.posY, 0x3000);
+    ram.setU16(rec + P.posX, x);
+    ram.setU8(rec + P.speedIdx, 22);
+    ram.setU8(rec + P.baseSpeed, 22);
+    ram.setU16(rec + P.shipSel, 0);
+    ram.setU8(rec + 0x24, 1);
+    ram.setU8(rec + 0x2a, 2);
+    ram.setU8(rec + 0x2b, 1);
+  }
+  ram.setU16(WHITE_PLAYER.button2Gate, 4);
+  ram.setU16(WHITE_RAM.p1raw, 0x20);
+  ram.setU16(WHITE_RAM.p2raw, 0x20);
+
+  const ctx = {
+    profile: WHITE_LABEL_PROFILE,
+    rom,
+    palette: new PaletteState(),
+    budget: new WorkBudget(),
+    order: new ObjOrder(),
+    unportedLog: { note() {} },
+    unported: { note() {} },
+    soundPost() {},
+    objectDriverHook(event) {
+      if (event.phase === 'before-dispatch') dispatches.push(event.type);
+    },
+    whiteType5SubsystemHook(event) {
+      type5Calls.push([event.call, event.target]);
+      if (event.call !== 0x18a146 || event.target !== 0x155394) return;
+      precedenceSnapshot = {
+        record: ram.u16(WHITE_BUTTON2_RESOURCES.ram.bombRecord),
+        p1Bombs: ram.u8(p1 + 0x24),
+        p2Bombs: ram.u8(p2 + 0x24),
+        p1Used: ram.u16(WHITE_BUTTON2_RESOURCES.sides[0].used),
+        p2Used: ram.u16(WHITE_BUTTON2_RESOURCES.sides[1].used),
+        p1Cadence: ram.u8(p1 + 0x2a),
+        p2Cadence: ram.u8(p2 + 0x2a),
+      };
+      ram.setU16(p2Hyper.stock, 1);
+      ram.setU16(p2Hyper.req, 1);
+      ram.setU16(p2Hyper.gauge, 0x0100);
+    },
+  };
+
+  const processed = runObjectDriver(ram, handlers, ctx);
+
+  assert.equal(processed, 4);
+  assert.deepEqual(dispatches, [0x02, 0x03, 0x05, 0x00]);
+  assert.equal(
+    type5Calls.filter(([call, target]) =>
+      call === 0x18a146 && target === 0x155394).length,
+    1,
+  );
+  assert.deepEqual(precedenceSnapshot, {
+    record: 0x8100,
+    p1Bombs: 0,
+    p2Bombs: 1,
+    p1Used: 1,
+    p2Used: 0,
+    p1Cadence: 2,
+    p2Cadence: 1,
+  });
+  assert.equal(ram.u16(p2Hyper.active), 1);
+  assert.equal(ram.u16(p2Hyper.level), 1);
+  assert.equal(ram.u16(p2Hyper.stock), 0);
+  assert.equal(ram.u8(p2Hyper.player + P.invuln), 0x50);
+  assert.ok(Object.isFrozen(ctx.whiteHyperHudCallbacks));
+  assert.ok(Object.isFrozen(ctx.whiteBombCallbacks));
 });

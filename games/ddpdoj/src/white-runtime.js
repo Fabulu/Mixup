@@ -14,7 +14,11 @@ import { whiteRankTick15FAE8 } from './white-rank.js';
 import { whiteSelectorTick15BE3E } from './white-selector.js';
 import { createWhiteStage1ShotHandlers as createWhiteShotIslandHandlers } from './white-shots.js';
 import { createWhiteStage1CombatHandlers as createWhiteCombatIslandHandlers } from './white-options.js';
-import { createWhiteStage1HyperHudHandlers as createWhiteHyperHudIslandHandlers } from './white-hyper-hud.js';
+import {
+  createWhiteStage1HyperHudHandlers as createWhiteHyperHudIslandHandlers,
+  redrawWhiteHyperStock185A14,
+} from './white-hyper-hud.js';
+import { installWhiteButton2Callbacks } from './white-button2.js';
 
 function requireWhiteFrontendRuntime(profileRequest, operation) {
   const profile = resolveGameProfile(profileRequest === undefined
@@ -90,10 +94,23 @@ export function createWhiteStage1HyperHudHandlers(rom, profileRequest) {
 
 /** Join the independently gated frontend, player, shot, and HUD handler islands. */
 export function createWhiteStage1Handlers(rom, profileRequest) {
-  return new Map([
-    ...createWhiteFrontendHandlers(rom, profileRequest),
-    ...createWhiteStage1PlayerHandlers(rom, profileRequest),
-    ...createWhiteStage1CombatHandlers(rom, profileRequest),
-    ...createWhiteStage1HyperHudHandlers(rom, profileRequest),
+  const profile = resolveGameProfile(profileRequest === undefined
+    ? WHITE_LABEL_PROFILE
+    : profileRequest);
+  const frontend = createWhiteFrontendHandlers(rom, profile);
+  const gameplay = new Map([
+    ...createWhiteStage1PlayerHandlers(rom, profile),
+    ...createWhiteStage1CombatHandlers(rom, profile),
+    ...createWhiteStage1HyperHudHandlers(rom, profile),
   ]);
+  const wrappedGameplay = new Map([...gameplay].map(([type, handler]) => [
+    type,
+    (ram, slot, slotIndex, ctx) => {
+      const runtimeContext = installWhiteButton2Callbacks(
+        ctx ?? {}, rom, profile, redrawWhiteHyperStock185A14,
+      );
+      return handler(ram, slot, slotIndex, runtimeContext);
+    },
+  ]));
+  return new Map([...frontend, ...wrappedGameplay]);
 }

@@ -10731,6 +10731,18 @@ def verify(t: dict) -> list[str]:
         bad.append("embedded Version A hyperHudRuntimeWindows drifted from the exported ROM window list")
     if white.get("hyperHud") != WHITE_HYPER_HUD_IDENTITY:
         bad.append("embedded Version A hyper HUD identity manifest drifted")
+    declared_button2 = {(int(w["base"].lstrip("$"), 16), w["len"])
+                        for w in white.get("button2RuntimeWindows", [])}
+    expected_button2 = {(address, length)
+                        for address, length, _ in WHITE_BUTTON2_RUNTIME_WINDOWS}
+    if declared_button2 != expected_button2 \
+            or not expected_button2.issubset(set(wins)):
+        bad.append("embedded Version A button2RuntimeWindows drifted from the exported ROM window list")
+    if white.get("button2") != WHITE_BUTTON2_EXECUTABLE_IDENTITY:
+        bad.append("embedded Version A Button 2 executable identity manifest drifted")
+    if any(address < 0 or address + length > 0x200000
+           for address, length, _ in WHITE_BUTTON2_RUNTIME_WINDOWS):
+        bad.append("embedded Version A Button 2 authority escaped the Build A cartridge region")
     if any(address < 0 or address + length > 0x200000
            for address, length, _ in WHITE_HYPER_HUD_RUNTIME_WINDOWS):
         bad.append("embedded Version A hyper HUD authority escaped the Build A cartridge region")
@@ -11389,6 +11401,57 @@ WHITE_HYPER_HUD_RUNTIME_WINDOWS = [
     (0x186F4C, 0x0010, "White A score-extend threshold continuation table"),
 ]
 
+# Task #237 reads only the bounded Build A control and bomb data below $200000.
+# Executable bodies remain identities rather than runtime-readable byte windows.
+WHITE_BUTTON2_RUNTIME_WINDOWS = [
+    (0x1548E2, 0x0014, "White A Button 2 hyper mode rows"),
+    (0x122A78, 0x0080, "White A ordinary and laser bomb palette rows"),
+    (0x155AD2, 0x0126, "White A ordinary bomb templates and scripts"),
+    (0x155BF8, 0x0648, "White A laser-bomb Type-A and Type-B graph"),
+    (0x156240, 0x009E, "White A laser-bomb install template"),
+    (0x1562DE, 0x0012, "White A laser-bomb segment template"),
+    (0x1434C4, 0x0080, "White A laser-bomb spark selector RNG"),
+    (0x188B6C, 0x000C, "White A laser-bomb spark pointer table"),
+    (0x188FA0, 0x00A2, "White A laser-bomb spark templates and lists"),
+    (0x17E866, 0x001A, "White A pending hyper item template"),
+]
+
+WHITE_BUTTON2_EXECUTABLE_IDENTITY = {
+    "button2": {"start": "$148EB2", "end": "$1491D0",
+                "sha256": "7c639e93295598065fdcf29ba6516ee9b6d2d3b112554d8b6f6d5c20811b6870"},
+    "driver": {"start": "$155394", "end": "$155AD2",
+               "sha256": "527d2daa1f6b94649f314133c732f39efcb628caee18b421f9693705c10b540b"},
+    "damage": {"start": "$144CE8", "end": "$1450AE",
+               "sha256": "8179a8c70658e0d45888f28dbe9ece35462a5795c719f8ee904690907f559f3a"},
+    "conversion": {"start": "$15286C", "end": "$1528C4",
+                   "sha256": "2035c1bfdbdc86ea8a367b9b0963114f32d3099dd55e756107e98fccb3ceb72c"},
+    "bombRedraw": {"start": "$1528F8", "end": "$1529A4",
+                   "sha256": "febcacdbc7576a951cd4f86facbb9e25c52affac4362a022b5c4e431ddb532fb"},
+    "pendingFlush": {"start": "$1860F2", "end": "$1861B6",
+                     "sha256": "46226722d7ca01f9ad5e4ff276404b362ab184426c43d80f0451828194df1282"},
+    "itemAllocator": {"start": "$17D9C4", "end": "$17DA3C",
+                      "sha256": "087bad79b8d43aec96229fa091a9d7a0e33100f3653bfe0619fe483f8d9de7c4"},
+    "itemFill": {"start": "$17E796", "end": "$17E7F8",
+                 "sha256": "29a94d13118f0585864aa6ef5b8d7634b37f843a9e1c0c07e691ecf7d1ecda20"},
+    "hyperRedraw": ["$185A14", "$185A7C"],
+    "deadUnderflowLookup": {
+        "start": "$1521F6", "end": "$1521F8",
+        "sha256": "1ceeabf0c6a5a30bad12cdac0e3ab015a7188a42e6aebb556aad00bb9cd693ad",
+    },
+    "deadCodeRead": {
+        "start": "$149AB4", "end": "$149AC0",
+        "sha256": "7202564bd3b766e7a388947a520b9b5e13cd23a523798524b91749eb5923b505",
+    },
+    "chainResetP1": {
+        "start": "$18630E", "end": "$18633C",
+        "sha256": "973c866ae6f9fe39a48a7b245a04d2ea7e2041b0950211b2572fcc22cc9b577b",
+    },
+    "chainResetP2": {
+        "start": "$18633C", "end": "$18636A",
+        "sha256": "0b0c583a6ce259c528bc0a0fceec8305acb2d6ab9238c65bbaadb063b8f75ab6",
+    },
+}
+
 WHITE_HYPER_HUD_IDENTITY = {
     "object": {
         "entry": "$18C046", "init": "$18C028", "destroy": "$18C038",
@@ -11702,6 +11765,7 @@ for _speed in WHITE_BULLET_SPEED_LEVELS:
 
 SHOT_WINDOWS.extend(WHITE_LABEL_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_HYPER_HUD_RUNTIME_WINDOWS)
+SHOT_WINDOWS.extend(WHITE_BUTTON2_RUNTIME_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_PLAYER_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_SHOT_PRODUCER_WINDOWS)
 WHITE_SHOT_SHARED_OPTION_WINDOW_KEYS = {(0x189042, 0x00A6)}
@@ -11798,6 +11862,9 @@ def white_label_tables(d: bytes) -> dict:
         "hyperHudRuntimeWindows": [{"base": f"${address:06X}", "len": length}
                             for address, length, _ in WHITE_HYPER_HUD_RUNTIME_WINDOWS],
         "hyperHud": WHITE_HYPER_HUD_IDENTITY,
+        "button2RuntimeWindows": [{"base": f"${address:06X}", "len": length}
+                                  for address, length, _ in WHITE_BUTTON2_RUNTIME_WINDOWS],
+        "button2": WHITE_BUTTON2_EXECUTABLE_IDENTITY,
         "playerWindows": [{"base": f"${address:06X}", "len": length}
                           for address, length, _ in WHITE_PLAYER_WINDOWS],
         "shotProducerWindows": [{"base": f"${address:06X}", "len": length}
@@ -12173,6 +12240,31 @@ def check_white_label_frontend_windows(d: bytes) -> None:
             or hashlib.sha256(white_button2).hexdigest() \
             != "7c639e93295598065fdcf29ba6516ee9b6d2d3b112554d8b6f6d5c20811b6870":
         raise SystemExit("White A held Button 2 control changed before $1491D0")
+    for label, start, end, digest in (
+            ("bomb driver", 0x155394, 0x155AD2,
+             "527d2daa1f6b94649f314133c732f39efcb628caee18b421f9693705c10b540b"),
+            ("bomb damage", 0x144CE8, 0x1450AE,
+             "8179a8c70658e0d45888f28dbe9ece35462a5795c719f8ee904690907f559f3a"),
+            ("hyper conversion", 0x15286C, 0x1528C4,
+             "2035c1bfdbdc86ea8a367b9b0963114f32d3099dd55e756107e98fccb3ceb72c"),
+            ("bomb redraw", 0x1528F8, 0x1529A4,
+             "febcacdbc7576a951cd4f86facbb9e25c52affac4362a022b5c4e431ddb532fb"),
+            ("pending hyper flush", 0x1860F2, 0x1861B6,
+             "46226722d7ca01f9ad5e4ff276404b362ab184426c43d80f0451828194df1282"),
+            ("pending item allocator", 0x17D9C4, 0x17DA3C,
+             "087bad79b8d43aec96229fa091a9d7a0e33100f3653bfe0619fe483f8d9de7c4"),
+            ("pending item fill", 0x17E796, 0x17E7F8,
+             "29a94d13118f0585864aa6ef5b8d7634b37f843a9e1c0c07e691ecf7d1ecda20"),
+            ("dead underflow lookup", 0x1521F6, 0x1521F8,
+             "1ceeabf0c6a5a30bad12cdac0e3ab015a7188a42e6aebb556aad00bb9cd693ad"),
+            ("dead code read", 0x149AB4, 0x149AC0,
+             "7202564bd3b766e7a388947a520b9b5e13cd23a523798524b91749eb5923b505"),
+            ("P1 chain reset", 0x18630E, 0x18633C,
+             "973c866ae6f9fe39a48a7b245a04d2ea7e2041b0950211b2572fcc22cc9b577b"),
+            ("P2 chain reset", 0x18633C, 0x18636A,
+             "0b0c583a6ce259c528bc0a0fceec8305acb2d6ab9238c65bbaadb063b8f75ab6")):
+        if hashlib.sha256(d[start:end]).hexdigest() != digest:
+            raise SystemExit(f"White A {label} executable identity changed")
     if d[0x1491D0:0x1492E2] != d[0x249B2C:0x249C3E]:
         raise SystemExit("White A shot-cadence prefix is no longer the exact Build B twin")
     white_cadence = bytearray(d[0x1491D0:0x1494F2])

@@ -42,7 +42,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W570_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW570(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
-const CURRENT_HASH = '8b1a0f893ee8ebf7a2033fbd90e70dfd0b3e125b0298c0fb073106f503c50995';
+const CURRENT_HASH = 'af3dee2f75818bcbb32d5c024b50b0816837d319595bb71eaade5d136fcd2a69';
 const ASSET_TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
 const TABLE_HASH = '0ec146c509a74bf3d75e585fdf2cd268fab86948924fd6c331a45ccce5ec12cc';
 const PRIOR_HASH = 'e1184c944c19acf60672d7ed50541f1ee31cdaee46813546ca46e795edb0a14c';
@@ -93,9 +93,9 @@ async function bundle() {
 
 test('W570 adds exactly four disjoint gun-0 windows and reconstructs W569',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 1643);
-    assert.equal(TABLE_JSON.rom.windows.length, 1643);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 640376);
+    assert.equal(ROM_WINDOW_COUNT, 1653);
+    assert.equal(TABLE_JSON.rom.windows.length, 1653);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 642930);
     assert.equal(canonicalHash(TABLE_JSON), CURRENT_HASH);
     assert.equal(W570_TABLE.rom.windows.length, 844);
     assert.equal(W570_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452321);

@@ -424,9 +424,12 @@ test('Version A recurring tick uses held Button 2 gates before cadence', () => {
   });
   assert.equal(edgeOnly.result.boundary, WHITE_PLAYER.drawTail);
 
-  assertUnreachedAt(() => movingOwner({
+  const held = movingOwner({
     y: 0x2000, x: 0x1800, direction: 0x20, button2Gate: 4,
-  }), WHITE_PLAYER.button2Boundary);
+  });
+  assert.equal(held.result.boundary, WHITE_PLAYER.drawTail);
+  assert.equal(held.ram.u8(held.rec + 0x24), 0,
+    'a held Button 2 with no bomb stock is an authentic refusal');
 });
 
 test('Version A recurring tick consumes synthesized auto-shot edges in the same frame', () => {

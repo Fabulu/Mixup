@@ -8,6 +8,9 @@ import { BLACK_LABEL_PROFILE, WHITE_LABEL_PROFILE } from '../src/profiles.js';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { WHITE_RUNTIME_BINDING } from '../src/runtime-profile.js';
+import {
+  DMG, runBuildAType5CollisionBeforeBombDamage18A1AC,
+} from '../src/damage.js';
 import { WHITE_OPTION_OVERLAP_PAIRS } from './romwindowset.js';
 import {
   WHITE_BEAMS,
@@ -72,6 +75,16 @@ function recurringRam() {
   const slot = 0x80e240;
   ram.setU8(slot + 2, 1);
   return { ram, slot };
+}
+
+function livePlayer(ram, player, y = 0x2000, x = 0x1800) {
+  ram.setU16(player, 0x8000);
+  ram.setU16(player + P.posY, y);
+  ram.setU16(player + P.posX, x);
+  ram.setU16(player + 0x10, 0x20);
+  ram.setU16(player + 0x12, 0x20);
+  ram.setU16(player + 0x14, 0x20);
+  ram.setU16(player + 0x16, 0x20);
 }
 
 test('White option capability, profile, and regenerated ROM ledgers agree exactly', () => {
@@ -325,9 +338,110 @@ test('White spark driver validates complete template payload before RAM writes',
   check();
 });
 
-test('White Button 2 boundary is an exact guarded one-use seam', () => {
+test('Build A collision selector preserves its full, player-box-only, and RTS arms', () => {
+  const select = ({ gate = 1, mirror = 0, p1 = 0, p2 = 0, loop98 = 0 }) => {
+    const ram = new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
+    ram.setU16(DMG.gate308c, gate);
+    ram.setU16(DMG.mirror2, mirror);
+    ram.setU16(DMG.loop98, loop98);
+    ram.setU16(DMG.g393a, 0);
+    ram.setU16(DMG.g309c, 1);
+    if (p1 !== 0) livePlayer(ram, DMG.p1rec);
+    if (p2 !== 0) livePlayer(ram, DMG.p2rec, 0x2000, 0x2800);
+    return runBuildAType5CollisionBeforeBombDamage18A1AC(ram, {});
+  };
+
+  assert.deepEqual(
+    [select({ p1: 1 }).path, select({ p1: 1 }).ownerIndex],
+    ['full', 0],
+  );
+  assert.deepEqual(
+    [select({ mirror: 1, p1: 1 }).path, select({ mirror: 1, p1: 1 }).ownerIndex],
+    ['rts', 0],
+  );
+  const p1Box = select({ mirror: 1, p1: 1, loop98: 1 });
+  assert.deepEqual(
+    [p1Box.path, p1Box.ownerIndex, p1Box.player.entry, p1Box.reachedBombDamage],
+    ['player-box-only', 0, 0x144432, false],
+    'Build A ignores the two extra Build B alternate-arm gates',
+  );
+
+  assert.deepEqual(
+    [select({ mirror: 1, p2: 1 }).path, select({ mirror: 1, p2: 1 }).ownerIndex],
+    ['full', 1],
+  );
+  assert.deepEqual(
+    [select({ p2: 1 }).path, select({ p2: 1 }).ownerIndex],
+    ['rts', 1],
+  );
+  const p2Box = select({ p2: 1, loop98: 1 });
+  assert.deepEqual(
+    [p2Box.path, p2Box.ownerIndex, p2Box.player.entry],
+    ['player-box-only', 1, 0x144432],
+  );
+  assert.deepEqual(
+    [select({}).path, select({}).ownerIndex],
+    ['rts', null],
+  );
+
+  const deadUngated = select({ gate: 0 });
+  assert.deepEqual(
+    [deadUngated.path, deadUngated.ownerIndex, deadUngated.reachedBombDamage],
+    ['full', 0, false],
+    'the gate-zero branch enters full collision without a liveness precheck',
+  );
+  const liveP2Ungated = select({ gate: 0, mirror: 1, p2: 1 });
+  assert.deepEqual(
+    [liveP2Ungated.path, liveP2Ungated.ownerIndex, liveP2Ungated.reachedBombDamage],
+    ['full', 1, true],
+  );
+});
+
+test('Build A full collision runs player bullets, items, impacts, and ramming', () => {
+  const bulletRam = new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
+  livePlayer(bulletRam, DMG.p1rec);
+  bulletRam.setU16(DMG.gate308c, 1);
+  const bullet = DMG.bulletPool;
+  bulletRam.setU16(bullet, 0x8000);
+  bulletRam.setU16(bullet + 0x02, 0x2000);
+  bulletRam.setU16(bullet + 0x04, 0x1800);
+  const bulletFrame = runBuildAType5CollisionBeforeBombDamage18A1AC(bulletRam, {});
+  assert.equal(bulletFrame.player.hitPlayer, true);
+  assert.equal(bulletRam.btst8(DMG.p1rec, 4), 1);
+  assert.equal(bulletFrame.reachedBombDamage, true);
+
+  const ram = new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
+  livePlayer(ram, DMG.p1rec);
+  ram.setU16(DMG.gate308c, 1);
+  ram.setU16(DMG.itemCount, 1);
+  ram.setU16(DMG.itemPool + 0x02, 0x2000);
+  ram.setU16(DMG.itemPool + 0x04, 0x1800);
+  ram.setU16(DMG.impactCount, 1);
+  ram.setU16(DMG.impactPool, 0x8000);
+  ram.setU16(DMG.impactPool + 0x02, 0x2000);
+  ram.setU16(DMG.impactPool + 0x04, 0x1800);
+  ram.setU16(DMG.poolACount, 1);
+  ram.setU16(DMG.poolA, 0x8001);
+  ram.setU16(DMG.poolA + 0x02, 0x2000);
+  ram.setU16(DMG.poolA + 0x04, 0x1800);
+  ram.setU16(DMG.poolA + 0x18, 5);
+
+  const frame = runBuildAType5CollisionBeforeBombDamage18A1AC(ram, {});
+  assert.deepEqual(
+    [frame.player.items, frame.player.impacts, frame.player.rammed],
+    [1, 1, true],
+  );
+  assert.equal(ram.u16(DMG.itemPool) & DMG.maskP1, DMG.maskP1);
+  assert.equal(ram.u16(DMG.impactPool) & DMG.maskP1, DMG.maskP1);
+  assert.equal(ram.u16(DMG.poolA) & DMG.maskP1, DMG.maskP1);
+  assert.equal(ram.u16(DMG.poolA + 0x18), 4);
+  assert.equal(frame.reachedBombDamage, true);
+});
+
+test('White bomb driver is integrated at the exact guarded type-5 seam', () => {
   const rom = cartridge();
   const { ram, slot } = recurringRam();
+  livePlayer(ram, RAM.player1);
   const calls = [];
   const ctx = {
     whiteType5SubsystemHook({ call, target }) {
@@ -339,16 +453,19 @@ test('White Button 2 boundary is an exact guarded one-use seam', () => {
   assert.equal(seam.phase, 'before-bomb-call-18a146');
   assert.deepEqual(calls, [[0x18a134, 0x17e9de]]);
 
-  let button2Calls = 0;
-  button2Calls++;
   const frame = runWhiteType5AfterBombCall18A146Through144A02(
     ram, rom, slot, ctx, seam,
   );
   assert.equal(frame.phase, 'recurring');
-  assert.equal(button2Calls, 1);
+  assert.deepEqual(
+    [frame.collision.path, frame.collision.entry, frame.collision.playerRecord,
+      frame.collision.reachedBombDamage],
+    ['full', 0x144454, RAM.player1, true],
+  );
+  assert.ok(calls.some(([call, target]) => call === 0x18a146 && target === 0x155394));
+  assert.ok(calls.some(([call, target]) => call === 0x18a1ac && target === 0x144454));
   assert.ok(calls.some(([call, target]) => call === 0x18a14c && target === 0x15302c));
-  assert.ok(!calls.some(([call]) => call === 0x18a146),
-    'the external Button 2 call remains outside the ordinary-combat composition');
+  assert.ok(calls.some(([call, target]) => call === 0x144a02 && target === 0x144ce8));
 
   const check = unchanged(ram);
   assert.throws(
@@ -358,6 +475,39 @@ test('White Button 2 boundary is an exact guarded one-use seam', () => {
     /exact guarded pre-bomb seam/,
   );
   check();
+});
+
+test('White recurring collision honors Build A player-box-only and RTS arms', () => {
+  const rom = cartridge();
+  for (const [loop98, path, target] of [
+    [0, 'rts', 0x18a254],
+    [1, 'player-box-only', 0x144432],
+  ]) {
+    const { ram, slot } = recurringRam();
+    livePlayer(ram, RAM.player1);
+    ram.setU16(DMG.gate308c, 1);
+    ram.setU16(DMG.mirror2, 1);
+    ram.setU16(DMG.loop98, loop98);
+    const calls = [];
+    const ctx = {
+      whiteType5SubsystemHook(event) {
+        calls.push([event.call, event.target]);
+      },
+    };
+
+    const seam = runWhiteType5BeforeBombCall18A146(ram, rom, slot, ctx);
+    const frame = runWhiteType5AfterBombCall18A146Through144A02(
+      ram, rom, slot, ctx, seam,
+    );
+    assert.deepEqual(
+      [frame.collision.path, frame.collision.ownerIndex,
+        frame.collision.reachedBombDamage, frame.bombDamage],
+      [path, 0, false, null],
+    );
+    if (loop98 !== 0) assert.equal(frame.collision.player.boxRun, true);
+    assert.ok(calls.some(([call, entry]) => call === 0x18a1ac && entry === target));
+    assert.ok(!calls.some(([call, entry]) => call === 0x144a02 && entry === 0x144ce8));
+  }
 });
 
 test('White RAM-backed Button 2 and inactive-owner Start reach the external seam', () => {
@@ -472,7 +622,7 @@ test('White beam impact preserves P1 and P2 geometry and inverted polarity', () 
   }
 });
 
-test('White ordinary combat rejects every explicit or active hyper state before mutation', () => {
+test('White ordinary combat accepts explicit and active hyper state', () => {
   const rom = cartridge();
   const cases = [
     (ram, ctx) => { ctx.whiteHyperEnabled = true; },
@@ -485,16 +635,17 @@ test('White ordinary combat rejects every explicit or active hyper state before 
   ];
 
   for (const arm of cases) {
-    const ram = new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
-    const slot = 0x80e240;
+    const { ram, slot } = recurringRam();
     const ctx = {};
+    livePlayer(ram, RAM.player1);
     arm(ram, ctx);
-    const check = unchanged(ram);
-    assert.throws(
-      () => runWhiteType5BeforeBombCall18A146(ram, rom, slot, ctx),
-      /ordinary laser does not enable hyper/,
+    const seam = runWhiteType5BeforeBombCall18A146(ram, rom, slot, ctx);
+    assert.equal(seam.phase, 'before-bomb-call-18a146');
+    const result = runWhiteType5AfterBombCall18A146Through144A02(
+      ram, rom, slot, ctx, seam,
     );
-    check();
+    assert.equal(result.phase, 'recurring');
+    assert.equal(result.collision.path, 'full');
   }
 });
 

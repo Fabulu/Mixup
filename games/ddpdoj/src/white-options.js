@@ -16,7 +16,7 @@ import {
 import { shotAndOptionHandlersWithResources } from './shots.js';
 import { runShotPool } from './weapons.js';
 import { clearPoolWithResources, runSparkDriverWithResources } from './spark.js';
-import { runNativeOutgoingCombatBeforeBombDamage } from './damage.js';
+import { runBuildAType5CollisionBeforeBombDamage18A1AC } from './damage.js';
 import { enqueueRequest } from './spritequeue.js';
 import {
   drawBonusFollowersWithResources, drawHyperStockAnimations252A52,
@@ -29,6 +29,10 @@ import {
 import {
   runWhiteBulletDriver, runWhiteClearTimer, runWhitePoolADriver,
 } from './white-bullets.js';
+import {
+  runWhiteBombDamage144CE8, runWhiteBombDriver155394,
+  preflightWhiteBombPointers,
+} from './white-bomb.js';
 
 const freezeObject = (entries) => Object.freeze(Object.fromEntries(entries));
 const freezeRows = (rows) => Object.freeze(
@@ -418,23 +422,6 @@ function assertRom(rom) {
   }
 }
 
-function rejectExplicitHyper(ctx) {
-  if (ctx?.whiteHyperEnabled === true) {
-    throw new RangeError('White Label Stage 1 ordinary laser does not enable hyper');
-  }
-}
-
-function rejectActiveHyper(ram) {
-  if ((ram.u8(RAM.player1 + P.flags1) & 1) !== 0
-      || (ram.u8(RAM.player2 + P.flags1) & 1) !== 0
-      || ram.u16(0x81b63e) !== 0
-      || ram.u16(0x81b640) !== 0
-      || ram.u16(0x81b658) !== 0
-      || ram.u16(0x81b65a) !== 0) {
-    throw new RangeError('White Label Stage 1 ordinary laser does not enable hyper');
-  }
-}
-
 function expectU16(rom, address, expected, label) {
   if (rom.u16(address) !== expected) {
     throw new RangeError(`${label} changed at $${address.toString(16)}`);
@@ -776,6 +763,12 @@ function prepareWhiteReset(ram, rom, ctx, ownerIndex, profileRequest) {
   return side;
 }
 
+export function preflightWhiteOptionReset(
+  ram, rom, ctx, ownerIndex, profileRequest,
+) {
+  return prepareWhiteReset(ram, rom, ctx, ownerIndex, profileRequest);
+}
+
 function resetWhiteOptions(ram, rom, ctx, ownerIndex, profileRequest, fullEntry) {
   const side = prepareWhiteReset(ram, rom, ctx, ownerIndex, profileRequest);
   if (fullEntry) {
@@ -816,10 +809,9 @@ function beginWhiteCombat(
   const profile = prepareWhiteCombatBase(
     rom, ctx, profileRequest, trustedProfile,
   );
-  rejectExplicitHyper(ctx);
-  rejectActiveHyper(ram);
   preflightWhiteOptionCartridge(rom);
   preflightWhiteLaserCartridge(rom);
+  preflightWhiteBombPointers(ram, rom, ctx, profile);
   if (ram.u8(slot + 2) === 0) {
     clearPoolWithResources(ram, WHITE_SPARK_RESOURCES);
     ram.setU8(slot + 2, 1);
@@ -855,11 +847,9 @@ export function runWhiteType5BeforeBombCall18A146(
 }
 
 /**
- * Resume after `$18A146 -> $155394` and finish task #238 ordinary combat
- * through the return before `$144A02` transfers into bomb damage. It does not
- * claim or trace `$18A16A -> $151E82`, `$18A170 -> $149ACC`,
- * `$18A176 -> $149AE0`, `$18A17C -> $149AB4`, `$18A182 -> $149AC0`,
- * `$18A188 -> $17DA50`, or `$18A18E -> $15222A`.
+ * Consume the guarded seam by running `$18A146 -> $155394`, then finish the
+ * recurring type-5 graph through `$144A02 -> $144CE8`. The remaining omitted
+ * cartridge calls are represented by their already-ported subsystem work.
  */
 export function runWhiteType5AfterBombCall18A146Through144A02(
   ram, rom, slot, ctx, seam,
@@ -875,6 +865,10 @@ export function runWhiteType5AfterBombCall18A146Through144A02(
   } = seam;
   const { tables, handlers } = prepared;
   const shotCtx = bulletCtx;
+  const bombFrame = runWhiteBombDriver155394(
+    ram, rom, shotCtx, prepared.profile,
+  );
+  traceWhiteType5(ctx, 0x18a146, 0x155394);
   ram.setU16(WHITE_SHOT.liveCount, 0);
   let shotsProcessed = 0;
   for (const resources of WHITE_SHOT_DRIVER_RESOURCES) {
@@ -913,20 +907,27 @@ export function runWhiteType5AfterBombCall18A146Through144A02(
   bulletCtx.whiteType5PresentationHook?.(
     ram, { address: 0x152106, emitted: hyperStockAnimations }, bulletCtx,
   );
-  const collision = runNativeOutgoingCombatBeforeBombDamage(ram, shotCtx);
-  traceWhiteType5(ctx, 0x18a1ac, 0x18a1ac);
+  const collision = runBuildAType5CollisionBeforeBombDamage18A1AC(ram, shotCtx);
+  traceWhiteType5(ctx, 0x18a1ac, collision.entry);
+  let bombDamage = null;
+  if (collision.reachedBombDamage) {
+    bombDamage = runWhiteBombDamage144CE8(
+      ram, shotCtx, collision.playerRecord, prepared.profile,
+    );
+    traceWhiteType5(ctx, 0x144a02, 0x144ce8);
+  }
 
   if (ctx != null) {
     Object.assign(ctx, {
-      poolAFrame, shotsProcessed, segmentsProcessed, beamDrawn, sparkFrame,
+      poolAFrame, bombFrame, shotsProcessed, segmentsProcessed, beamDrawn, sparkFrame,
       bulletFrame, clearTimerExpired, bonusFollowers, hyperStockAnimations,
-      whiteShotCollision: collision,
+      whiteShotCollision: collision, whiteBombDamage: bombDamage,
     });
   }
   return Object.freeze({
-    phase: 'recurring', poolAFrame, shotsProcessed, segmentsProcessed,
+    phase: 'recurring', poolAFrame, bombFrame, shotsProcessed, segmentsProcessed,
     beamDrawn, sparkFrame, bulletFrame, clearTimerExpired,
-    bonusFollowers, hyperStockAnimations, collision,
+    bonusFollowers, hyperStockAnimations, collision, bombDamage,
   });
 }
 

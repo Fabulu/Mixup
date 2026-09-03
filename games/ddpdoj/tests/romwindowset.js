@@ -705,11 +705,20 @@
 // and `$186F4C` windows border the existing frontend window at `$186F3C`
 // without absorbing it. No read crosses a seam. Measured: 1636 -> 1643 windows,
 // 639,792 -> 640,376 bytes, and 79 -> 79 overlapping pairs.
+//
+// ---------------------------------------------------------------------------
+// TASK #237 WHITE BUTTON 2 ADDED TEN DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The held-input hyper rows, bomb palettes, ordinary and laser bomb graphs,
+// laser-bomb spark graph, and pending-hyper item template add 2,554 exact bytes.
+// All ten lie below $200000 and are disjoint from every prior declaration.
+// Measured: 1643 -> 1653 windows, 640,376 -> 642,930 bytes, and 79 -> 79
+// overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1643;
+export const ROM_WINDOW_COUNT = 1653;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 640376;
+export const ROM_WINDOW_BYTES = 642930;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -756,8 +765,8 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 694;
-const WHITE_LABEL_WINDOW_BYTES = 182867;
+const WHITE_LABEL_WINDOW_COUNT = 704;
+const WHITE_LABEL_WINDOW_BYTES = 185421;
 
 /** Remove the later embedded Version A window family before reconstructing any
  *  earlier Black Label ledger. The edition manifest is the identity list, so a
@@ -775,6 +784,7 @@ export function tableBeforeWhiteLabel(tables) {
     ...(edition?.optionRuntimeWindows ?? []),
     ...(edition?.bulletRuntimeWindows ?? []),
     ...(edition?.bulletSpeedWindows ?? []),
+    ...(edition?.button2RuntimeWindows ?? []),
   ];
   const descriptors = [...new Map(descriptorRows.map((descriptor) =>
     [`${descriptor.base}:${descriptor.len}`, descriptor])).values()];
@@ -1414,4 +1424,6 @@ export const OVERLAP_NOTE = `${ROM_OVERLAP_PAIRS} overlapping pairs over the `
   + "$14EAB4+$C00 Type-A option-shot closure overlaps the prior $14EA86+$DC "
   + "normal and $14EB62+$136 hit tables, adding the 78th and 79th pairs. "
   + "Task #239 added seven disjoint White hyper-HUD windows totalling 584 bytes "
-  + "and moved no overlap pair. See tests/romwindowset.js.";
+  + "and moved no overlap pair. Task #237 added ten disjoint White Button 2 and "
+  + "bomb windows totalling 2,554 bytes and moved no overlap pair. See "
+  + "tests/romwindowset.js.";

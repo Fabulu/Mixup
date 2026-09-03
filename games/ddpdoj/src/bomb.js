@@ -392,6 +392,14 @@ export function resetChain2877D0(ram, p2) {
   ram.setU16(0x81b5da, 0);                              // $2877F6
 }
 
+/** Edition-neutral entry for the shared chain RAM reset shape. */
+export function resetBombChainWithSharedRam(ram, ownerIndex) {
+  if (ownerIndex !== 0 && ownerIndex !== 1) {
+    throw new RangeError(`bomb chain owner ${ownerIndex} is outside {0, 1}`);
+  }
+  return resetChain2877D0(ram, ownerIndex === 1);
+}
+
 // ===========================================================================
 // `$23FF06` / `$23FF42` / `$23FFB4` -- BUCKET 13, twelve bytes each
 // ===========================================================================
@@ -444,6 +452,21 @@ function draw23FFB4(ram, ctx, d1, d2, d3, d4) {
   let d0 = (d1 >= 0x80000000 ? (d1 - 0x100000000) : d1) >> 6;   // $23FFCE asr.l #$6
   d0 = ((d0 & 0x07ff03ff) | 0x80008000) >>> 0;          // $23FFD0 / $23FFD6
   emitBucket13(ram, ctx, d0, d2, d3, d4);
+}
+
+/** Edition-neutral record renderer for the shared bomb object RAM layout. */
+export function drawBombRecordWithSharedRam(ram, ctx, rec) {
+  return draw23FF06(ram, ctx, rec);
+}
+
+/** Edition-neutral script renderer for the shared bomb object RAM layout. */
+export function drawBombScriptRecordWithSharedRam(ram, ctx, position, anim, size, colour) {
+  return draw23FFB4(ram, ctx, position, anim, size, colour);
+}
+
+/** Edition-neutral damage body for the shared bomb and enemy RAM layouts. */
+export function runBombDamageWithSharedRam(ram, ctx, playerRecord) {
+  return bombDamage24560A(ram, ctx, playerRecord);
 }
 
 // ===========================================================================

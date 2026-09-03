@@ -229,14 +229,15 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
     ...tables.editions.whiteLabel.optionRuntimeWindows,
     ...tables.editions.whiteLabel.bulletRuntimeWindows,
     ...tables.editions.whiteLabel.bulletSpeedWindows,
+    ...tables.editions.whiteLabel.button2RuntimeWindows,
   ];
   const excluded = new Set(descriptors.map(({ base, len }) =>
     `${Number.parseInt(base.slice(1), 16)}:${len}`));
   const g = game();
   const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
 
-  assert.equal(excluded.size, 694);
-  assert.equal(tables.rom.windows.length, 1643,
+  assert.equal(excluded.size, 704);
+  assert.equal(tables.rom.windows.length, 1653,
     'runtime projection does not mutate the complete exported table');
   assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [949, 457509]);
   for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);
@@ -245,10 +246,11 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
     tables.editions.whiteLabel.playerWindows[0],
     tables.editions.whiteLabel.shotProducerWindows[0],
     tables.editions.whiteLabel.optionRuntimeWindows[2],
+    tables.editions.whiteLabel.button2RuntimeWindows[0],
   ]) {
     const address = Number.parseInt(privateWindow.base.slice(1), 16);
     assert.throws(() => g.rom.u8(address), (error) => error?.romAddress === address,
-      'a Black route cannot read private Version A player, shot, or option data');
+      'a Black route cannot read private Version A player, shot, option, or Button 2 data');
   }
 
   const playerOnly = tables.editions.whiteLabel.playerWindows[0];

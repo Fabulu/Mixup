@@ -653,6 +653,38 @@ export function spawnBeamBombSpark289FF4(ram, rom, ctx, spawner) {
     tpl, spawner, 0, 0xffff, 0x289ff4);                   // $28A00E move.w #$FFFF
 }
 
+/** Edition-bound laser-bomb spark entry sharing the audited pool-E fill tail. */
+export function spawnBeamBombSparkWithResources(
+  ram, rom, ctx, spawner, suppliedResources,
+) {
+  const resources = suppliedResources;
+  if (!Object.isFrozen(resources) || !Object.isFrozen(resources.rng)
+      || !Object.isFrozen(resources.templates)
+      || resources.templates.length !== 3
+      || !Number.isSafeInteger(resources.pointerTable)
+      || !Number.isSafeInteger(resources.entry)) {
+    throw new TypeError('laser-bomb spark needs a frozen edition resource graph');
+  }
+  validateSparkResources(resources.sparkResources);
+  const kind = drawByteWithResources(ram, rom, resources.rng);
+  if (kind >= resources.templates.length) {
+    throw new RangeError(`laser-bomb spark selector ${kind} escapes its three-entry table`);
+  }
+  for (let index = 0; index < resources.templates.length; index++) {
+    const pointer = rom.u32(resources.pointerTable + index * 4);
+    if (pointer !== resources.templates[index]) {
+      throw new RangeError(`laser-bomb spark pointer ${index} changed at $${
+        (resources.pointerTable + index * 4).toString(16)}`);
+    }
+  }
+  const p2 = ram.btst8(0x811f73, 7);
+  return poolETail(
+    ram, rom, ctx, p2 ? SPARK.p2Base : SPARK.p1Base,
+    resources.templates[kind], spawner, 0, 0xffff, resources.entry,
+    0, resources.sparkResources,
+  );
+}
+
 /**
  * `$289FC0` (P1) and `$289FDA` (P2) -- **THE LASER'S IMPACT EFFECT**, W90.
  *

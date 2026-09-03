@@ -8,6 +8,7 @@ import { requireRuntimeCapability, resolveGameRuntime } from './runtime-profile.
 import { asr, i16, u16 } from './ram.js';
 import { unreached } from './unported.js';
 import { spawnWhitePlayerShot } from './white-shots.js';
+import { whiteButton2Held148EC8 } from './white-button2.js';
 
 const P = WHITE_LABEL_PROFILE.ramLayout.playerFields;
 const RAM = WHITE_LABEL_PROFILE.ramLayout.addresses;
@@ -418,8 +419,10 @@ export function whiteShotCadence1491D0(ram, rom, rec, ctx, ownerIndex, profileRe
 function postMovement148E5E(ram, rom, rec, ctx, ownerIndex) {
   autoShot148E5E(ram, rec, ownerIndex);
   if (ram.u16(WHITE_PLAYER.button2Gate) >= 4 && ram.btst8(rec + P.dirByte, 5)) {
-    unreached(WHITE_PLAYER.button2Boundary,
-      'the White Label held Button 2 bomb and hyper path is outside this player slice');
+    const button2 = whiteButton2Held148EC8(
+      ram, rom, rec, ctx, ownerIndex, WHITE_LABEL_PROFILE,
+    );
+    if (button2.skipCadence) return cadenceTail1494F2();
   }
   return shotCadence1491D0(ram, rom, rec, ctx, ownerIndex);
 }
