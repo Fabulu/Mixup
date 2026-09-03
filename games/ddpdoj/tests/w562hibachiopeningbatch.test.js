@@ -153,7 +153,7 @@ test('W562 is exactly four disjoint additive windows and $16A bytes', { skip: SK
   assert.deepEqual(W562_TABLE, FUTURE_TABLE,
     'removing the later W563-W568 windows reconstructs the exact W562 additive result');
   assert.equal(TABLE_JSON.rom.windows.length, ROM_WINDOW_COUNT);
-  assert.equal(ROM_WINDOW_COUNT, 1612);
+  assert.equal(ROM_WINDOW_COUNT, 1636);
   assert.equal(W562_TABLE.rom.windows.length, 821);
   assert.equal(canonicalHash(W562_TABLE), FUTURE_HASH,
     'the adopted reconstruction has the exact W562 identity');
@@ -188,8 +188,8 @@ test('W562 is exactly four disjoint additive windows and $16A bytes', { skip: SK
     'removing only the four W562 windows reconstructs the prior table byte for byte');
   assert.equal(overlappingPairs(FUTURE_TABLE.rom.windows.map((w) => [
     Number.parseInt(w.base.slice(1), 16), w.len,
-  ])), ROM_OVERLAP_PAIRS);
-  assert.equal(ROM_OVERLAP_PAIRS, 77, 'all four new windows are disjoint');
+  ])), 77, 'all four W562 windows are disjoint');
+  assert.equal(ROM_OVERLAP_PAIRS, 79, 'the live table includes two later shared overlaps');
   assert.equal(0x2a967a + 0x3c, 0x2a96b6, 'the burst rows abut the vector table');
 
   const exporter = readFileSync(EXPORT_TABLES, 'utf8');

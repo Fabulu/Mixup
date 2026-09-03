@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import { Ram } from '../src/ram.js';
 import { RAM, P, OPT } from '../src/machine.js';
 import { UnportedLog } from '../src/unported.js';
-import { podKnockback24D188, POD_KNOCK } from '../src/options.js';
+import { OPTION_BLOCKS, podKnockback24D188, POD_KNOCK } from '../src/options.js';
 import {
   BOMB, BOMBRAM, BEAM_REC, BEAM_TEMPLATES, bombDriver255DD8,
   bombDamageAlt2456A6, fireBomb2498E2,
@@ -944,14 +944,14 @@ test('$24D188 walks the $24D28E ramp, and the FIRST push is the LAST entry',
     ram.setU16(0x812970, 1);                       // the draw freeze, so the
     // four gates below the ramp skip the shadow enqueue and this row is about
     // the ramp alone.
-    podKnockback24D188(ram, ctx({ rom }), { player: RAM.player1 }, pod);
+    podKnockback24D188(ram, ctx({ rom }), OPTION_BLOCKS[0], pod);
     // `($38,A6)` is $26 and the table is indexed in BYTES, so the first read
     // is `$24D28E[19]` -- and [19] is $0100 while [18] is $0200, i.e. the push
     // gets BIGGER on the second frame.  A reader who assumed a decay would
     // have written the table backwards.
     assert.equal(ram.u16(pod + OPT.posY), 0x4000 - 0x0100, 'frame 1: $100');
     assert.equal(ram.u16(pod + 0x38), 0x24, '$24D19C subq.w #$2');
-    podKnockback24D188(ram, ctx({ rom }), { player: RAM.player1 }, pod);
+    podKnockback24D188(ram, ctx({ rom }), OPTION_BLOCKS[0], pod);
     assert.equal(ram.u16(pod + OPT.posY), 0x4000 - 0x0100 - 0x0200,
       'frame 2: $200, which is LARGER');
     assert.equal(ram.u16(pod + 0x38), 0x22);
@@ -967,7 +967,7 @@ test('...and when the ramp is spent, $24D200 SETTLES through $2417D4', () => {
   ram.setU16(pod + 0x56, 0x08);                    // $249ADE's seed
   ram.setU16(0x812970, 1);
   podKnockback24D188(ram, ctx({ rom, tables: fakeTables() }),
-    { player: RAM.player1 }, pod);
+    OPTION_BLOCKS[0], pod);
   // `$24D200 move.w ($56,A6),D0` reads BEFORE `$24D204 subq.w #$4`, so the
   // first `movem.w` is at index 8 -- $24D282[4] and [5] -- and the cursor
   // ends at 4.
@@ -979,7 +979,7 @@ test('...and when the ramp is spent, $24D200 SETTLES through $2417D4', () => {
   // ...and it RELOADS to 8 when the cursor borrows.
   ram.setU16(pod + 0x56, 0);
   podKnockback24D188(ram, ctx({ rom, tables: fakeTables() }),
-    { player: RAM.player1 }, pod);
+    OPTION_BLOCKS[0], pod);
   assert.equal(ram.u16(pod + 0x56), 8, '$24D208 bpl / $24D20A move.w #$8');
 });
 

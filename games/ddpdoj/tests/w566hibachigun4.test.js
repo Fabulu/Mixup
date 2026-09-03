@@ -128,7 +128,7 @@ test('W566 is the strict one-window additive template with no self-pointers or p
     assert.equal(overlappingPairs(TABLE_JSON.rom.windows.map((w) => [
       Number.parseInt(w.base.slice(1), 16), w.len,
     ])), ROM_OVERLAP_PAIRS);
-    assert.equal(ROM_OVERLAP_PAIRS, 77);
+    assert.equal(ROM_OVERLAP_PAIRS, 79);
     assert.equal(caught(() => ROM.u8(0x2aa051)), null);
     for (const address of [0x2aa052, 0x2aa071]) {
       assert.equal(caught(() => ROM.u8(address))?.romAddress, address);

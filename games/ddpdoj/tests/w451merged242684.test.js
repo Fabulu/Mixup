@@ -286,10 +286,8 @@ test('SECTION 3: one `$242684` claimant survives, and all six old private heads 
   const pairs = bodyPairs().map(([p]) => p);
   assert.equal(pairs.includes('handlers.js onScreen242684 <> items.js offScreen242684'), false,
     'the deleted body pair left the body register too');
-  assert.equal(headRegister().length, 72,
-    'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi source '
-    + 'consolidation removes the temporary W554 $2A54E2 duplicate; W614 registers the '
-    + 'documented $249D2C native Type-B facade/resource implementation split');
+  assert.equal(headRegister().length, 73,
+    'W614 left 72; current resource seams remove $24C096 and add $27CBB6 and $289FC0');
   assert.equal(pairs.length, 28,
     'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after '
     + 'generalizing both callers through one body; W630 adds the name-button/filter control-flow overlap');

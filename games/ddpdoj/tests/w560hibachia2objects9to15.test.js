@@ -181,7 +181,7 @@ test('W560 is a strict one-window additive superset with exact count and hashes'
       'removing exactly the W560 window reconstructs every byte of the prior table');
     assert.equal(overlappingPairs(FUTURE_TABLE.rom.windows.map((w) => [
       Number.parseInt(w.base.slice(1), 16), w.len,
-    ])), ROM_OVERLAP_PAIRS, 'the new exact window is disjoint');
+    ])), 77, 'the new exact window is disjoint');
 
     const exporter = readFileSync(EXPORT_TABLES, 'utf8');
     assert.match(exporter, /\(0x2A4B40, 0x0018, "W560: HIBACHI A2 objects 9 and 15/);

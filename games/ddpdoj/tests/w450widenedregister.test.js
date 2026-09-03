@@ -149,10 +149,8 @@ test('SECTION 2: the shipped register is a STRICT SUBSET of the widened one -- n
   const narrow = narrowRegister();
   const wide = headRegister();
   assert.equal(narrow.length, 20,
-    'the shipped `export function` scan no longer reports 20. W449 left 19, W457 removed '
-    + '$25D9E6, W458 removed $25DA60, W459 removed $25FF38, W474 removed $28D520, '
-    + 'W497 added the authentic $2491C0 seed adapter claim, and W614 registers the separately '
-    + 'named $2497AA native facade, resource implementation, and composed path: '
+    'the shipped `export function` scan no longer reports 20. W614 left 17, and current '
+    + 'Hibachi death and edition-resource wrappers add $27CBB6, $289F96 and $289FC0: '
     + narrow.map(hex).join(' '));
   const dropped = narrow.filter((a) => !wide.includes(a));
   assert.deepEqual(dropped.map(hex), [],
@@ -266,6 +264,7 @@ test('SECTION 2b: the individual claim the two scans attribute differently is th
 //     later Hibachi source consolidation removed the second claim and restored 71.
 //     W614 adds `$249D2C`: the native Type-B facade retains the cartridge span while
 //     the resource-bound implementation owns the moved body, leaving 72 registered heads.
+//     Current resource seams remove `$24C096` and add `$27CBB6` and `$289FC0`, leaving 73.
 //
 // Each of those is its own wave. W446/W447/W448/W449 say what they cost when
 // they are not: a frozen background, a boss that refills its HP, a death effect
@@ -305,7 +304,8 @@ test('SECTION 3: the widened head register is exactly these 73 addresses', () =>
     'the widened register is not 73. W450 found 92; W451 through W475 reduced it to 68, '
     + 'W497 registers $2491C0 plus the $253D82/$253D90 Type-B hit-flag wrapper rows, '
     + 'later Hibachi source consolidation removes the temporary W554 $2A54E2 duplicate, '
-    + 'and W614 registers the documented $249D2C native Type-B facade/resource split');
+    + 'W614 registers the documented $249D2C native Type-B facade/resource split, and '
+    + 'current resource seams remove $24C096 and add $27CBB6 and $289FC0');
 
   // ...and every address the four merged waves removed must STAY off it, now
   // measured by a scan that can see private copies rather than only exports.

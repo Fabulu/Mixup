@@ -42,7 +42,7 @@ const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '014d08807a70b5883b2574ac67d1a268f61e1943f23a3d42866997efef734980';
+const LIVE_TABLE_HASH = 'f530de90426bbd72f48b3b5609cda85d92c12e56c286e421951379586756e760';
 const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
 const STORED_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
@@ -73,9 +73,9 @@ async function bundle() {
 const attached = (ram, part) => ram.u32(SUB + part + 0x02);
 
 test('W574 pins the exact A0 id-1 pair and adds no ROM window', { skip: SKIP }, () => {
-  assert.equal(ROM_WINDOW_COUNT, 1612);
-  assert.equal(TABLE_JSON.rom.windows.length, 1612);
-  assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 621626);
+  assert.equal(ROM_WINDOW_COUNT, 1636);
+  assert.equal(TABLE_JSON.rom.windows.length, 1636);
+  assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 639792);
   assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
   assert.equal(canonicalHash(W575_TABLE), TABLE_HASH);
   assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W574:')), []);

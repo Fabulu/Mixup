@@ -157,6 +157,9 @@ test('White shot manifest is exact, sparse, Build A-only authority', () => {
     { base: '$14E6C0', len: 0x0010 },
     { base: '$14E6D0', len: 0x03b6 },
   ]);
+  assert.deepEqual(white.shotRuntimeWindows.filter(({ base }) => base === '$189042'), [
+    { base: '$189042', len: 0x00a6 },
+  ]);
   assert.deepEqual(white.shotSpeedLevels, WHITE_SHOT.speedLevels);
   assert.equal(white.shotSpeedWindows.length, WHITE_SHOT.speedLevels.length * 2 - 10,
     'five movement speeds reuse their exact pointer and quadrant windows');
@@ -249,12 +252,18 @@ test('type 5 first frame resets only spark state and both 36-record shot pools r
   assert.equal(ram.u16(WHITE_SPARK_RESOURCES.p1Base + E.status), 0);
   assert.equal(ram.u16(WHITE_SPARK_RESOURCES.count), 0);
   assert.equal(ram.u16(WHITE_SPARK_RESOURCES.budget), 0);
+  ram.setU16(WHITE_SHOT.p1Pool, 0);
 
-  for (const resources of WHITE_SHOT_PRODUCER_RESOURCES) {
-    const rec = resources.pool;
-    ram.setU16(rec, 0x8048);
-    ram.setU16(rec + S.posY, 0x7fff);
-    ram.setU16(rec + S.velY, 1);
+  for (const ownerIndex of [0, 1]) {
+    const { resources, rec } = setProducerState(
+      ram, ownerIndex, { ship: 0, style: 4, power: 0, hyper: false },
+    );
+    spawnWhitePlayerShot(ram, rom, rec, {}, ownerIndex);
+    const [shot] = activeRecords(ram, resources);
+    assert.ok(shot);
+    ram.setU16(shot, 0x8048);
+    ram.setU16(shot + S.posY, 0x7fff);
+    ram.setU16(shot + S.velY, 1);
   }
   const frame = tick(ram, slot, 0, {});
   assert.equal(frame.phase, 'recurring');

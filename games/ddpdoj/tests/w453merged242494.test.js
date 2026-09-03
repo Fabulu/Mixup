@@ -304,15 +304,14 @@ test('SECTION 6: live registers include W453 and every later proved merge',
     const heads = headRegister();
     const pairs = bodyPairs();
     const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
-    assert.equal(heads.length, 72,
-      'W475 left 68; W497 adds $2491C0 and $253D82/$253D90; later Hibachi consolidation '
-      + 'removes W554 $2A54E2; W614 registers the documented $249D2C facade/resource split');
+    assert.equal(heads.length, 73,
+      'W614 left 72; current resource seams remove $24C096 and add $27CBB6 and $289FC0');
     assert.ok(!heads.includes(0x242494), '$242494 has one function head after the merge');
     assert.equal(pairs.length, 28,
       'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after '
       + 'generalizing both callers through one body; W630 adds the name-button/filter control-flow overlap');
     assert.ok(!pairs.some(([pair]) => pair === 'bossscripts.js dist242494 <> items.js dist242494'),
       'the deleted body must stay absent from the body-marker register');
-    assert.equal(narrow.length, 17,
-      'W474 left 15; W497 registers $2491C0; W614 registers the separately named $2497AA shot adapters');
+    assert.equal(narrow.length, 20,
+      'W614 left 17; Hibachi death and edition-resource wrappers add $27CBB6, $289F96 and $289FC0');
   });

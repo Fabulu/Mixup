@@ -462,13 +462,12 @@ test('SECTION 5b: items.js no longer exports a second body, and the stream does 
 // The count is asserted here as well as there so that deleting the register does not silently
 // delete the debt.
 
-test('SECTION 6: the doubly-claimed register is 17, and all later proved merges are ABSENT '
+test('SECTION 6: the doubly-claimed register is 20, and all later proved merges are ABSENT '
   + 'from it', () => {
   const dup = [...portedIndex()].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
-  assert.equal(dup.length, 17,
-    'W474 left the export-only floor at 15; W497 registers the authentic $2491C0 '
-    + 'seed-adapter claim, and W614 registers the separately named $2497AA native facade, '
-    + 'resource implementation, and composed path, so the live floor is 17. A different '
+  assert.equal(dup.length, 20,
+    'W614 left the export-only floor at 17; current Hibachi death and edition-resource '
+    + 'wrappers add $27CBB6, $289F96 and $289FC0, so the live floor is 20. A different '
     + 'number means either a merge was undone or an unclassified duplicate landed: '
     + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
   assert.equal(dup.includes(0x2428a6), false, '$2428A6 is merged');
@@ -493,12 +492,12 @@ test('SECTION 6: the doubly-claimed register is 17, and all later proved merges 
 // private $28C0FC counted-note adapter row at W463). See
 // tests/w450widenedregister.test.js; the number is cross-checked in all four
 // register holders so none of them can be read as the whole count.
-test('SECTION 6b [W450/current]: the widened register is 72, and this wave\'s two merges hold under it too',
+test('SECTION 6b [W450/current]: the widened register is 73, and this wave\'s two merges hold under it too',
   async () => {
     const { headRegister } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 72,
-      'the widened duplicate register is not 72. ' + W453_NOTE
+    assert.equal(wide.length, 73,
+      'the widened duplicate register is not 73. ' + W453_NOTE
       + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
       + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
       + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '
@@ -507,7 +506,8 @@ test('SECTION 6b [W450/current]: the widened register is 72, and this wave\'s tw
       + 'the palette-reporting method claim at $24133C; W497 registers $2491C0 and '
       + 'the $253D82/$253D90 Type-B hit-flag wrapper rows; later Hibachi source '
       + 'consolidation removes the temporary W554 $2A54E2 duplicate; W614 registers the '
-      + 'documented $249D2C native Type-B facade/resource implementation split; '
+      + 'documented $249D2C native Type-B facade/resource implementation split; current '
+      + 'resource seams remove $24C096 and add $27CBB6 and $289FC0; '
       + 'w450widenedregister.test.js SECTION 3 owns the set');
     // The two W447 merged must stay merged under a scan that can ALSO see a
     // private re-transcription, which is the only way to know they really went.

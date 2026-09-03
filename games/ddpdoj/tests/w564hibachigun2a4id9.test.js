@@ -135,8 +135,8 @@ test('W564 is one strict additive $2A9A68+$18 window with no padding', { skip: S
   assert.equal(WINDOW.hex, '208009090f0f040800030013fff70005ff00000000000000');
   assert.equal(overlappingPairs(FUTURE_TABLE.rom.windows.map((w) => [
     Number.parseInt(w.base.slice(1), 16), w.len,
-  ])), ROM_OVERLAP_PAIRS);
-  assert.equal(ROM_OVERLAP_PAIRS, 77);
+  ])), 77);
+  assert.equal(ROM_OVERLAP_PAIRS, 79);
   assert.equal(caught(() => ROM.u8(0x2a9a7f)), null);
   assert.equal(caught(() => ROM.u8(0x2a9a80))?.romAddress, 0x2a9a80);
   assert.equal(caught(() => ROM.u8(0x2a9a9f))?.romAddress, 0x2a9a9f);

@@ -325,7 +325,7 @@ test('SECTION 6: source keeps one $25D9E6 body and W458 leaves one $25DA60 body'
     '$25DA60 imports now share one function object');
 });
 
-test('SECTION 6b: live registers derive 17 narrow, 72 widened, 28 pairs and 22 body-only; '
+test('SECTION 6b: live registers derive 20 narrow, 73 widened, 28 pairs and 22 body-only; '
   + 'W630 adds the name-button/filter control-flow overlap', () => {
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
   const heads = headRegister();
@@ -342,11 +342,10 @@ test('SECTION 6b: live registers derive 17 narrow, 72 widened, 28 pairs and 22 b
   const mergedRequest = 'player.js armRequest25FF38 <> tallyscreen.js tallyRequest25FF38';
   const mergedRank = 'initbody.js rankByte242E24 <> rng.js drawByte242E24';
 
-  assert.equal(narrow.length, 17,
-    'W497 registers $2491C0; W614 registers the separately named $2497AA shot adapters');
-  assert.equal(heads.length, 72,
-    'W475 left 68; W497 adds three rows; Hibachi removes W554 $2A54E2; W614 registers '
-    + 'the documented $249D2C native Type-B facade/resource implementation split');
+  assert.equal(narrow.length, 20,
+    'W614 left 17; Hibachi death and edition-resource wrappers add $27CBB6, $289F96 and $289FC0');
+  assert.equal(heads.length, 73,
+    'W614 left 72; current resource seams remove $24C096 and add $27CBB6 and $289FC0');
   assert.equal(pairs.length, 28,
     'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after '
     + 'generalizing both callers through one body; W630 adds the name-button/filter control-flow overlap');

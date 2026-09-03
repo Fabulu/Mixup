@@ -506,8 +506,8 @@ test('W443/W497 SECTION 5: W226\'s $24B900+$02AA serves all beam groups whole',
   assert.ok(holds(PTRTAB, PTRTAB + PAIRS * PAIRSTRIDE),
     'and so is the pair table it abuts');
   // Later gameplay and edition-private data add unrelated windows; no beam window moves.
-  assert.equal(ROM_WINDOW_COUNT, 1612,
+  assert.equal(ROM_WINDOW_COUNT, 1636,
     'later slices reconcile the current exact RomWindows registry');
-  assert.equal(ROM_OVERLAP_PAIRS, 77,
+  assert.equal(ROM_OVERLAP_PAIRS, 79,
     'the beam window is unchanged; W518 adds the later forced slot-[15] data overlap');
 });

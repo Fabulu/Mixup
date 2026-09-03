@@ -255,7 +255,7 @@ const srcText = () => {
 /** Comment lines are the RECORD of a merge, so every code check runs on code only. */
 const codeOf = (text) => text.split('\n').filter((L) => !/^\s*(\/\/|\*|\/\*)/.test(L)).join('\n');
 
-test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the live register is at 17', () => {
+test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the live register is at 20', () => {
   const idx = portedIndex();
   const claims = [...(idx.get(0x246800) ?? [])].sort();
   assert.equal(claims.length, 1,
@@ -268,10 +268,9 @@ test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the live register is at 
 
   // THE REGISTER, held here as well as in w446/w447/w448 so deleting one guard cannot hide it.
   const dup = [...idx].filter(([, v]) => v.size > 1).map(([a]) => a).sort((x, y) => x - y);
-  assert.equal(dup.length, 17,
-    'W474 left 15, W497 registered the authentic-selection adapter at $2491C0, and W614 '
-    + 'registered the separately named $2497AA shot adapters. A new duplicate is a wave, '
-    + 'not a row: '
+  assert.equal(dup.length, 20,
+    'W614 left the export-only register at 17; current Hibachi death and edition-resource '
+    + 'wrappers add $27CBB6, $289F96 and $289FC0. A new duplicate is a wave, not a row: '
     + dup.map((a) => '$' + a.toString(16).toUpperCase()).join(', '));
   assert.ok(!dup.includes(0x246800), '$246800 is off the register');
 });
@@ -288,18 +287,18 @@ test('SECTION 2: `$246800` is claimed EXACTLY ONCE, and the live register is at 
 // merged `$25FF38` to leave 87, W460 removed the optional `$24631C` shim to leave 86,
 // W461 merged the private `$242E24` rank-byte body to leave 85, W462 removed both
 // private `$2414BE` adapter heads to leave 84, and W463 removed both private `$28C0FC`
-// counted-note adapter heads to leave 83, and W464 removed the duplicate $28E7A2 clear to leave 82, and W465 removed the private $28C6C6 adapter to leave 81, and W466 removed the two name-frame range claims to leave 79, and W467 removed the private $285A12 HUD caller claim to leave 78, and W468 removed the private $2A6EDC form-1 adapter claim to leave 77, W469 removed the private $23C622 slot-12 adapter claim to leave 76, W470 removed the two Game#boot endpoint claims to leave 74, W471 removed the parameterized emitter claim to leave 73, W472 removed the shared bomb arithmetic helper claim to leave 72, W473 removed the generic u32 helper claim to leave 71, W474 removed both retired ledger-note address claims to leave 69, and W475 removed the palette-reporting method claim to leave 68. W497 registered the authentic-selection adapter and two Type-B hit-flag wrapper heads to reach 71. W554 adds the shared $2A54E2 A3 selector row to reach 72, and later Hibachi source consolidation removes its second claim to return to 71. W614 registers the documented $249D2C native Type-B facade/resource implementation split to reach 72. The body
+// counted-note adapter heads to leave 83, and W464 removed the duplicate $28E7A2 clear to leave 82, and W465 removed the private $28C6C6 adapter to leave 81, and W466 removed the two name-frame range claims to leave 79, and W467 removed the private $285A12 HUD caller claim to leave 78, and W468 removed the private $2A6EDC form-1 adapter claim to leave 77, W469 removed the private $23C622 slot-12 adapter claim to leave 76, W470 removed the two Game#boot endpoint claims to leave 74, W471 removed the parameterized emitter claim to leave 73, W472 removed the shared bomb arithmetic helper claim to leave 72, W473 removed the generic u32 helper claim to leave 71, W474 removed both retired ledger-note address claims to leave 69, and W475 removed the palette-reporting method claim to leave 68. W497 registered the authentic-selection adapter and two Type-B hit-flag wrapper heads to reach 71. W554 adds the shared $2A54E2 A3 selector row to reach 72, and later Hibachi source consolidation removes its second claim to return to 71. W614 registers the documented $249D2C native Type-B facade/resource implementation split to reach 72. Current resource seams remove $24C096 and add $27CBB6 and $289FC0 to reach 73. The body
 // register started at 39 pairs, fell to 38 at W451, 37 at W453, and 36 after
 // W454 merged the shared type $11/type $10 turret body. It records a shared RUN
 // of ROM instructions -- the
 // axis that names `clearChain`, and the ONLY one that does. W450's SECTION 6
 // replays these three bodies verbatim and requires all three pairings.
-test('SECTION 2e [W450/current]: the widened register is 72, and $246800 is claimed once under IT too',
+test('SECTION 2e [W450/current]: the widened register is 73, and $246800 is claimed once under IT too',
   async () => {
     const { headRegister, bodyPairs } = await import('./w450widenedscan.js');
     const wide = headRegister();
-    assert.equal(wide.length, 72,
-      'the widened duplicate register is not 72. ' + W453_NOTE
+    assert.equal(wide.length, 73,
+      'the widened duplicate register is not 73. ' + W453_NOTE
       + 'W457 merged $25D9E6; W458 merged $25DA60; W459 merged $25FF38; '
       + 'W460 removed the optional $24631C forwarding shim; W461 merged the private '
       + '$242E24 rank-byte body into rng.js drawByte242E24; W462 removed both private '
@@ -308,7 +307,8 @@ test('SECTION 2e [W450/current]: the widened register is 72, and $246800 is clai
       + 'the palette-reporting method claim at $24133C; W497 adds $2491C0 and '
       + '$253D82/$253D90; later Hibachi source consolidation removes the temporary '
       + 'W554 $2A54E2 duplicate; W614 registers the documented $249D2C native Type-B '
-      + 'facade/resource implementation split; '
+      + 'facade/resource implementation split; current resource seams remove $24C096 and '
+      + 'add $27CBB6 and $289FC0; '
       + 'w450widenedregister.test.js SECTION 3 owns the set');
     assert.ok(!wide.includes(0x246800),
       '$246800 is claimed twice AGAIN, and this time by a scan that can see a private copy. '

@@ -149,7 +149,7 @@ test('W565 is a strict two-window additive superset with no self-pointers or pad
     assert.equal(overlappingPairs(TABLE_JSON.rom.windows.map((w) => [
       Number.parseInt(w.base.slice(1), 16), w.len,
     ])), ROM_OVERLAP_PAIRS);
-    assert.equal(ROM_OVERLAP_PAIRS, 77);
+    assert.equal(ROM_OVERLAP_PAIRS, 79);
     for (const address of [0x2a9e64, 0x2a9e83, 0x2aa003, 0x2aa040]) {
       assert.equal(caught(() => ROM.u8(address))?.romAddress, address);
     }

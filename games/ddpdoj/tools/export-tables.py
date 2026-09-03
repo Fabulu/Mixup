@@ -11442,6 +11442,7 @@ WHITE_SHOT_RUNTIME_WINDOWS = [
     (0x143720, 0x0100, "White A ordinary shot-hit RNG longword table"),
     (0x14336A, 0x0100, "White A shot-spark signed RNG byte table"),
     (0x143192, 0x0080, "White A shot-spark speed RNG byte table"),
+    (0x189042, 0x00A6, "White A shared shot and beam-impact template and descriptor list"),
     (0x1890E8, 0x05DA, "White A shot-spark templates, lists, and pointer table"),
     (0x189736, 0x0040, "White A shot-spark angle RNG byte table"),
     (0x14D48A, 0x00DC, "White A family 0 normal shot presentation table"),
@@ -11632,7 +11633,12 @@ for _speed in WHITE_BULLET_SPEED_LEVELS:
 SHOT_WINDOWS.extend(WHITE_LABEL_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_PLAYER_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_SHOT_PRODUCER_WINDOWS)
-SHOT_WINDOWS.extend(WHITE_SHOT_RUNTIME_WINDOWS)
+WHITE_SHOT_SHARED_OPTION_WINDOW_KEYS = {(0x189042, 0x00A6)}
+WHITE_SHOT_EXCLUSIVE_RUNTIME_WINDOWS = [
+    row for row in WHITE_SHOT_RUNTIME_WINDOWS
+    if (row[0], row[1]) not in WHITE_SHOT_SHARED_OPTION_WINDOW_KEYS
+]
+SHOT_WINDOWS.extend(WHITE_SHOT_EXCLUSIVE_RUNTIME_WINDOWS)
 _white_player_window_keys = {(address, length) for address, length, _ in WHITE_PLAYER_WINDOWS}
 WHITE_SHOT_EXCLUSIVE_SPEED_WINDOWS = [
     row for row in WHITE_SHOT_SPEED_WINDOWS

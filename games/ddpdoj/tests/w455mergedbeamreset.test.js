@@ -469,7 +469,9 @@ test('SECTION 5: real release caller enters the inner body, wipes dirty beam sta
   });
 
 test('SECTION 6: one common production body serves every full and inner caller', () => {
-  const calls = { beamReset25270C: {}, wipeSegmentPool: {} };
+  const calls = {
+    beamReset25270C: {}, wipeSegmentPool: {}, wipeSegmentPoolWithResources: {},
+  };
   for (const entry of readdirSync(SRC, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.endsWith('.js')) continue;
     const source = readFileSync(join(SRC, entry.name), 'utf8');
@@ -481,8 +483,11 @@ test('SECTION 6: one common production body serves every full and inner caller',
   assert.deepEqual(calls.beamReset25270C, { 'bomb.js': 1, 'hyper.js': 2, 'items.js': 5 },
     'four item arms, hyper request/end and bomb cleanup plus the sole wrapper declaration');
   assert.deepEqual(calls.wipeSegmentPool,
-    { 'bomb.js': 1, 'items.js': 1, 'laser.js': 1, 'options.js': 1, 'player.js': 1 },
+    { 'bomb.js': 1, 'items.js': 1, 'laser.js': 1, 'player.js': 1 },
     'bomb arm, full wrapper, release and death all use the sole laser.js implementation');
+  assert.deepEqual(calls.wipeSegmentPoolWithResources,
+    { 'laser.js': 2, 'options.js': 1, 'white-options.js': 1 },
+    'edition-bound option cleanup shares the explicit resource implementation');
 
   const itemsSource = readFileSync(join(SRC, 'items.js'), 'utf8');
   const laserSource = readFileSync(join(SRC, 'laser.js'), 'utf8');
@@ -500,11 +505,10 @@ test('SECTION 7: W455 removes one body-only pair and changes no head register', 
   const heads = headRegister();
   const pairs = bodyPairs();
   const narrow = [...narrowIndex()].filter(([, claims]) => claims.size > 1);
-  assert.equal(narrow.length, 17,
-    'W497 registers $2491C0; W614 registers the separately named $2497AA shot adapters');
-  assert.equal(heads.length, 72,
-    'W475 left 68; W497 adds three rows; Hibachi removes W554 $2A54E2; W614 registers '
-    + 'the documented $249D2C native Type-B facade/resource implementation split');
+  assert.equal(narrow.length, 20,
+    'W614 left 17; Hibachi death and edition-resource wrappers add $27CBB6, $289F96 and $289FC0');
+  assert.equal(heads.length, 73,
+    'W614 left 72; current resource seams remove $24C096 and add $27CBB6 and $289FC0');
   assert.equal(pairs.length, 28,
     'W497 added the authentic-selection/player-object pair; W603 removes the score-hit pair after '
     + 'generalizing both callers through one body; W630 adds the name-button/filter control-flow overlap');
