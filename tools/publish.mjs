@@ -17,7 +17,7 @@
 // temptation to publish "just this once" past a red stage does not survive
 // being written down as an exit code.
 
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import process from 'node:process';
 
 const args = process.argv.slice(2);
@@ -47,6 +47,38 @@ function run(label, cmd, cmdArgs, opts = {}) {
     process.stderr.write(`\nREFUSING TO PUBLISH: "${label}" failed.\n`);
     process.exit(1);
   }
+}
+
+function elapsed(ms) {
+  const seconds = Math.floor(ms / 1000);
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
+}
+
+function runTrackedTests(label, files) {
+  process.stdout.write(`\n=== ${label} (${files.length} files)\n`);
+  const suiteStarted = Date.now();
+  const width = String(files.length).length;
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index];
+    const position = `${String(index + 1).padStart(width)}/${files.length}`;
+    const started = Date.now();
+    process.stdout.write(`[${position}] RUN  ${file}\n`);
+    const result = spawnSync(process.execPath,
+      ['--test', '--test-concurrency=1', file],
+      { encoding: 'utf8', maxBuffer: 1 << 26 });
+    const duration = elapsed(Date.now() - started);
+    if (result.error || result.status !== 0) {
+      process.stdout.write(result.stdout || '');
+      process.stderr.write(result.stderr || '');
+      if (result.error) process.stderr.write(`${result.error.stack || result.error}\n`);
+      process.stderr.write(`[${position}] FAIL ${duration} ${file}\n`);
+      process.stderr.write(`\nREFUSING TO PUBLISH: "${label}" failed.\n`);
+      process.exit(1);
+    }
+    if (result.stderr) process.stderr.write(result.stderr);
+    process.stdout.write(`[${position}] PASS ${duration} ${file}\n`);
+  }
+  process.stdout.write(`PASS ${label}: ${files.length} files in ${elapsed(Date.now() - suiteStarted)}\n`);
 }
 
 // ---- 1. the gates ---------------------------------------------------------
@@ -86,8 +118,9 @@ if (only === null || only === 'ddpdoj') {
     process.stderr.write('\nREFUSING TO PUBLISH: Git found no tracked DaiOuJou unit tests.\n');
     process.exit(1);
   }
-  run('ddpdoj unit tests', process.execPath,
-    ['--test', '--test-concurrency=1', ...trackedTests]);
+  // A single `node --test` invocation keeps running after a red file. Run each
+  // tracked file separately so the first failure ends the gate with its full TAP.
+  runTrackedTests('ddpdoj unit tests', trackedTests);
   const d = run('ddpdoj bundle gate', process.execPath, [
     'games/ddpdoj/tools/bundlegate.mjs',
     '--assets', 'games/ddpdoj/assets',
