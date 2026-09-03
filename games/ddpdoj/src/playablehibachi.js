@@ -40,6 +40,7 @@ export const PLAYABLE_HIBACHI_BULLET_SLOTS = 210;
 /** Baseline rung retained as the public minimum-damage constant. */
 export const PLAYABLE_HIBACHI_BULLET_POWER = 0x0100;
 export const PLAYABLE_HIBACHI_DEATH_FRAMES = 192;
+export const PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR = 4;
 export const PLAYABLE_HIBACHI_POWER_POLICY = Object.freeze([
   Object.freeze({ power: 0, rung: 0, damage: 0x0100, speedDelta: 0, halfExtent: 0x0180 }),
   Object.freeze({ power: 2, rung: 1, damage: 0x010f, speedDelta: 8, halfExtent: 0x0280 }),
@@ -226,6 +227,7 @@ function fingerprintObject() {
       .map(({ power, rung, damage, speedDelta, halfExtent }) =>
         `${power}:${rung}:${damage}:${speedDelta}:${halfExtent}`).join('|'),
     deathCadence: `${PLAYABLE_HIBACHI_DEATH_FRAMES}:3:3:4-188/4:9+11+11`,
+    switchDelayDivisor: PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR,
     gunIds: PLAYABLE_HIBACHI_GUN_IDS.join(','),
     descriptors: PLAYABLE_HIBACHI_DESCRIPTORS
       .map((descriptor) => descriptor.signature).join('|'),
@@ -864,6 +866,8 @@ export function stepPlayableHibachiWeapon(state, ram, rec, playerIdx, ctx) {
   updatePrivateBody(player, ram, rec, ctx.rom);
   const target = updateReflectedTarget(player, ram, rec);
   const descriptor = selectedDescriptor(state, ram, rec, playerIdx);
+  const switched = runtime.descriptorId !== -1
+    && runtime.descriptorId !== descriptor.id;
   if (runtime.descriptorId !== descriptor.id || runtime.retired) {
     for (let offset = 0; offset < 0x020; offset++) {
       player.memory.setU8(player.layout.gun + offset, 0);
@@ -876,6 +880,15 @@ export function stepPlayableHibachiWeapon(state, ram, rec, playerIdx, ctx) {
   state.selectedGuns[playerIdx] = descriptor.gun;
   if (!runtime.initialized) {
     descriptor.init(player.memory, ctx.rom, player.layout.gun, player.layout.parts);
+    if (switched) {
+      const delayAddress = player.layout.gun + 0x02;
+      const delay = player.memory.u8(delayAddress);
+      if (delay % PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR !== 0) {
+        throw new Error(`Playable Hibachi switch delay ${delay} is not divisible by four`);
+      }
+      player.memory.setU8(delayAddress,
+        delay / PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR);
+    }
     runtime.initialized = true;
     runtime.frames = 0;
     return true;

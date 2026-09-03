@@ -15,7 +15,7 @@ import {
   PLAYABLE_HIBACHI_CONFLICT, PLAYABLE_HIBACHI_DEATH_FRAMES,
   PLAYABLE_HIBACHI_EXTERNAL_KIND,
   PLAYABLE_HIBACHI_PALETTE_BANKS, PLAYABLE_HIBACHI_PALETTE_SOURCES,
-  PLAYABLE_HIBACHI_POWER_POLICY,
+  PLAYABLE_HIBACHI_POWER_POLICY, PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR,
   PLAYABLE_HIBACHI_SIDECAR_BYTES,
   armPlayableHibachiLaunchPresentation,
   beginPlayableHibachiCreditedRun, bindPlayableHibachiGame,
@@ -86,6 +86,9 @@ test('Playable Hibachi publishes exact private geometry and palette identity', (
   assert.equal(state.fingerprints.powerPolicy,
     '0:0:256:0:384|2:1:271:8:640|4:2:281:16:704|6:3:305:24:768|8:4:320:48:1024');
   assert.equal(state.fingerprints.deathCadence, '192:3:3:4-188/4:9+11+11');
+  assert.equal(state.fingerprints.switchDelayDivisor,
+    PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR);
+  assert.equal(PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR, 4);
   assert.equal(PLAYABLE_HIBACHI_DEATH_FRAMES, 192);
   assert.deepEqual(PLAYABLE_HIBACHI_POWER_POLICY.map(({ power, rung }) => [power, rung]),
     [[0, 0], [2, 1], [4, 2], [6, 3], [8, 4]]);
@@ -628,6 +631,8 @@ test('Playable Hibachi replay validates completely before restoring in place', (
     /fingerprint ownedRecordFormat does not match/);
   rejectWithoutMutation((value) => { value.fingerprints.deathCadence = 'stale'; },
     /fingerprint deathCadence does not match/);
+  rejectWithoutMutation((value) => { value.fingerprints.switchDelayDivisor = 1; },
+    /fingerprint switchDelayDivisor does not match/);
   rejectWithoutMutation((value) => { delete value.lifecycle.launchEligible; },
     /lifecycle launchEligible is invalid/);
   rejectWithoutMutation((value) => { delete value.ordinaryPatternCursors; },

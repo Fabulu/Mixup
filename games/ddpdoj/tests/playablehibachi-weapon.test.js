@@ -17,22 +17,25 @@ import { HIBACHI_A1 } from '../src/hibachiguns.js';
 import { BEAM, SEG } from '../src/laser.js';
 import { P, RAM } from '../src/machine.js';
 import {
-  bindModGame, createModState, modGameOptions, prepareModCabinetBoot,
-  resolveLoadout,
+  bindModGame, createModState, exportModReplaySeed, modGameOptions,
+  prepareModCabinetBoot, resolveLoadout, restoreModReplaySeed,
+  validateModReplaySeed,
 } from '../src/mods.js';
 import { runMover } from '../src/mover.js';
 import {
   PLAYABLE_HIBACHI_BULLET_POWER, PLAYABLE_HIBACHI_HYPER_PATTERNS,
   PLAYABLE_HIBACHI_LAYOUTS, PLAYABLE_HIBACHI_ORDINARY_PATTERNS,
-  PLAYABLE_HIBACHI_POWER_POLICY,
+  PLAYABLE_HIBACHI_POWER_POLICY, PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR,
   beginPlayableHibachiCreditedRun,
   bindPlayableHibachiGame, capturePlayableHibachiDeath,
   clearPlayableHibachiBulletOnSpawn,
   createPlayableHibachiState, filterPlayableHibachiGrazeEvent,
   playableHibachiAcceptsTarget, playableHibachiAllowsBulletCollision,
   playableHibachiAllowsFriendlyConversion, playableHibachiBulletOverlapsEnemy,
-  playableHibachiBulletOwner, retirePlayableHibachiBullet,
-  runPlayableHibachiDamage, stepPlayableHibachiWeapon,
+  playableHibachiBulletOwner, projectPlayableHibachiTelemetry,
+  restorePlayableHibachiRunaheadState, retirePlayableHibachiBullet,
+  runPlayableHibachiDamage, savePlayableHibachiRunaheadState,
+  stepPlayableHibachiWeapon,
 } from '../src/playablehibachi.js';
 import {
   bombAndShotGuards, runNativeButton2Path2497FE,
@@ -779,6 +782,215 @@ test('all 20 Playable Hibachi descriptors map and restart by unique pattern iden
   assert.deepEqual([...state.ordinaryPatternCursors], [5, 5]);
   assert.deepEqual([...state.hyperPatternCursors], [1, 1]);
   assert.equal(state.players[0].runtime.descriptorId, -1);
+});
+
+test('all 20 manual switches retain exactly one quarter of the native firing delay', () => {
+  const attacks = [
+    ...PLAYABLE_HIBACHI_HYPER_PATTERNS,
+    ...PLAYABLE_HIBACHI_ORDINARY_PATTERNS,
+  ];
+  const nativeDelays = [
+    32, 32, 96, 96,
+    32, 32, 32, 32, 32, 32, 96, 96, 16, 16, 16, 32, 112, 32, 32, 32,
+  ];
+  assert.equal(PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR, 4);
+  assert.deepEqual(attacks.map(({ id }) => id),
+    Array.from({ length: attacks.length }, (_, id) => id));
+
+  const select = (state, game, attack) => {
+    game.ram.setU16(DMG.hyper1, attack.bank === 'hyper' ? 1 : 0);
+    const cursors = attack.bank === 'hyper'
+      ? state.hyperPatternCursors : state.ordinaryPatternCursors;
+    cursors[0] = attack.pattern;
+  };
+
+  for (const attack of attacks) {
+    const { game, mods } = playableRetireBench();
+    const state = mods.playableHibachi;
+    const rec = RAM.player1;
+    game.ram.setU16(rec, 0x8000);
+    game.ram.setU16(rec + P.posY, 0x3000);
+    game.ram.setU16(rec + P.posX, 0x1800);
+    game.ram.setU8(rec + P.btnByte, 0);
+    game.ram.setU8(rec + P.dirByte, 0);
+    armDamageEnemy(game.ram, { y: 0x2400, x: 0x1700 });
+
+    const prior = attack.id === 0 ? attacks[4] : attacks[0];
+    select(state, game, prior);
+    assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
+    assert.equal(state.players[0].memory.u8(state.players[0].layout.gun + 0x02),
+      nativeDelays[prior.id], 'first activation keeps its full native delay');
+
+    select(state, game, attack);
+    assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
+    const retainedDelay = nativeDelays[attack.id] / PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR;
+    const label = `${attack.bank} pattern ${attack.pattern}`;
+    assert.equal(state.players[0].runtime.descriptorId, attack.id, `${label} descriptor`);
+    assert.equal(state.selectedGuns[0], attack.gun, `${label} gun telemetry`);
+    assert.equal(state.players[0].memory.u8(state.players[0].layout.gun + 0x02),
+      retainedDelay, `${label} retains exactly 25 percent of its delay counter`);
+    assert.deepEqual(projectPlayableHibachiTelemetry(state, game.ram).p1, {
+      player: 1,
+      bank: attack.bank === 'hyper' ? 'H' : 'N',
+      pattern: attack.pattern,
+      powerRung: 0,
+    }, `${label} updates the HUD on the switch frame`);
+
+    let remaining = 0;
+    while (!state.ownedBullets.some(Boolean) && remaining <= retainedDelay + 1) {
+      assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
+      remaining++;
+    }
+    assert.equal(remaining, retainedDelay + 1,
+      `${label} fires after only the retained timer expires`);
+  }
+});
+
+test('switch delay reduction is independent per player and not reused for finite rearming', () => {
+  const game = new Game(null, TABLES, { palCatchUp: false });
+  const state = createPlayableHibachiState();
+  bindPlayableHibachiGame(state, game);
+  beginPlayableHibachiCreditedRun(state, game, {});
+  for (const [playerIdx, rec] of [RAM.player1, RAM.player2].entries()) {
+    game.ram.setU16(rec, 0x8000);
+    game.ram.setU16(rec + P.posY, 0x3000 + playerIdx * 0x100);
+    game.ram.setU16(rec + P.posX, 0x1800 + playerIdx * 0x100);
+    game.ram.setU8(rec + P.btnByte, 0);
+    game.ram.setU8(rec + P.dirByte, 0);
+    assert.equal(stepPlayableHibachiWeapon(
+      state, game.ram, rec, playerIdx, { rom: game.rom }), true);
+  }
+
+  state.ordinaryPatternCursors[1] = 6;
+  assert.equal(stepPlayableHibachiWeapon(
+    state, game.ram, RAM.player2, 1, { rom: game.rom }), true);
+  assert.equal(state.players[1].memory.u8(state.players[1].layout.gun + 0x02), 8);
+  assert.equal(state.players[0].memory.u8(state.players[0].layout.gun + 0x02), 32,
+    'switching P2 cannot alter P1 state');
+
+  state.players[1].runtime.retired = true;
+  assert.equal(stepPlayableHibachiWeapon(
+    state, game.ram, RAM.player2, 1, { rom: game.rom }), true);
+  assert.equal(state.players[1].memory.u8(state.players[1].layout.gun + 0x02), 32,
+    'automatic finite-pattern rearming keeps the native pattern cadence');
+});
+
+test('mid-switch replay, checkpoint, and runahead preserve the first-fire frame', () => {
+  const loadout = resolveLoadout(['playable-hibachi', 'runahead-3']);
+  const makeMidSwitch = () => {
+    const mods = createModState(loadout);
+    const game = new Game(null, TABLES, {
+      palCatchUp: false,
+      ...modGameOptions(mods),
+    });
+    bindModGame(mods, game);
+    beginPlayableHibachiCreditedRun(mods.playableHibachi, game, {});
+    const state = mods.playableHibachi;
+    const rec = RAM.player1;
+    game.ram.setU16(rec, 0x8000);
+    game.ram.setU16(rec + P.posY, 0x3000);
+    game.ram.setU16(rec + P.posX, 0x1800);
+    game.ram.setU8(rec + P.btnByte, 0);
+    game.ram.setU8(rec + P.dirByte, 0);
+    armDamageEnemy(game.ram, { y: 0x2400, x: 0x1700 });
+
+    state.ordinaryPatternCursors[0] = 5;
+    assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
+    state.ordinaryPatternCursors[0] = 17;
+    assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
+    assert.equal(state.players[0].memory.u8(state.players[0].layout.gun + 0x02), 28);
+    for (let frame = 0; frame < 7; frame++) {
+      assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
+    }
+    assert.equal(state.players[0].memory.u8(state.players[0].layout.gun + 0x02), 21);
+    assert.equal(state.ownedBullets.some(Boolean), false);
+    return { game, mods, state, rec };
+  };
+  const identity = ({ game, state }) => ({
+    ram: new Uint8Array(game.ram.b),
+    descriptor: state.players[0].runtime.descriptorId,
+    gun: state.selectedGuns[0],
+    timer: state.players[0].memory.u8(state.players[0].layout.gun + 0x02),
+    telemetry: projectPlayableHibachiTelemetry(state, game.ram).p1,
+  });
+  const future = ({ game, state, rec }) => {
+    let calls = 0;
+    while (!state.ownedBullets.some(Boolean) && calls < 64) {
+      assert.equal(game.playerWeaponHook(game.ram, rec, 0, game), true);
+      calls++;
+    }
+    const owners = [...state.ownedBullets].filter(Boolean);
+    assert.ok(owners.length > 0);
+    assert.ok(owners.every((owner) => owner === 1),
+      'the restored first salvo remains exclusively P1-owned');
+    return {
+      calls,
+      ram: new Uint8Array(game.ram.b),
+      descriptor: state.players[0].runtime.descriptorId,
+      gun: state.selectedGuns[0],
+      telemetry: projectPlayableHibachiTelemetry(state, game.ram).p1,
+      owners: [...state.ownedBullets],
+    };
+  };
+
+  const baseline = makeMidSwitch();
+  const midIdentity = identity(baseline);
+  assert.deepEqual(midIdentity, {
+    ram: midIdentity.ram,
+    descriptor: 16,
+    gun: 1,
+    timer: 21,
+    telemetry: { player: 1, bank: 'N', pattern: 17, powerRung: 0 },
+  });
+  const expected = future(baseline);
+  assert.equal(expected.calls, 22,
+    'the saved midpoint fires after exactly its 21 remaining timer ticks');
+
+  const checkpointed = makeMidSwitch();
+  const checkpointRam = new Uint8Array(checkpointed.game.ram.b);
+  const checkpoint = savePlayableHibachiRunaheadState(checkpointed.state);
+  assert.deepEqual(identity(checkpointed), midIdentity);
+  assert.deepEqual(future(checkpointed), expected);
+  checkpointed.game.ram.b.set(checkpointRam);
+  restorePlayableHibachiRunaheadState(checkpointed.state, checkpoint);
+  assert.deepEqual(identity(checkpointed), midIdentity,
+    'the private checkpoint restores the partial timer and immediate HUD');
+  assert.deepEqual(future(checkpointed), expected,
+    'the private checkpoint repeats the same P1 salvo on the same call');
+
+  const replayed = makeMidSwitch();
+  const replayRam = new Uint8Array(replayed.game.ram.b);
+  const replaySeed = exportModReplaySeed(replayed.mods);
+  const candidate = validateModReplaySeed(replaySeed, loadout);
+  const replayGame = new Game(null, TABLES, {
+    palCatchUp: false,
+    ...modGameOptions(candidate.state),
+  });
+  replayGame.ram.b.set(replayRam);
+  const replayMods = restoreModReplaySeed(candidate, replayGame);
+  const replayFixture = {
+    game: replayGame,
+    mods: replayMods,
+    state: replayMods.playableHibachi,
+    rec: RAM.player1,
+  };
+  assert.deepEqual(identity(replayFixture), midIdentity,
+    'the replay seed restores the partial timer and immediate HUD');
+  assert.deepEqual(future(replayFixture), expected,
+    'replay restoration repeats the same P1 salvo on the same call');
+
+  const runahead = makeMidSwitch();
+  const runaheadCheckpoint = runahead.game.saveRunaheadState(3);
+  for (let frame = 0; frame < 3; frame++) {
+    assert.equal(runahead.game.playerWeaponHook(
+      runahead.game.ram, runahead.rec, 0, runahead.game), true);
+  }
+  assert.equal(identity(runahead).timer, 18);
+  runahead.game.restoreRunaheadState(runaheadCheckpoint);
+  assert.deepEqual(identity(runahead), midIdentity,
+    'Game runahead rolls the sidecar timer and HUD owner back in place');
+  assert.deepEqual(future(runahead), expected,
+    'runahead rollback repeats the same P1 salvo on the same call');
 });
 
 test('enemy-free aimed repertoire never falls back to native player targets', () => {
