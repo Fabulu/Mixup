@@ -4,11 +4,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
+import { B as BEE_REC, KIND as BEE_KIND, POOL_A, runPoolADriver } from '../src/bee.js';
 import { BOMBRAM, bombDamageAlt2456A6 } from '../src/bomb.js';
 import { BGRAM } from '../src/background.js';
 import { BULLET_DRIVER, runScreenClear } from '../src/bulletdriver.js';
 import { BUL, REC as BULLET_REC, poolClear } from '../src/bullets.js';
-import { DMG, poolDamage, shotBoundingBox } from '../src/damage.js';
+import { DMG, impactCollisionBlock, poolDamage, shotBoundingBox } from '../src/damage.js';
 import { B as EFFECT, POOL_B } from '../src/effects.js';
 import { Game } from '../src/main.js';
 import { handlerMap } from '../src/handlers.js';
@@ -38,6 +39,7 @@ import {
 } from '../src/player.js';
 import { Ram } from '../src/ram.js';
 import { RUNAHEAD_EXTERNAL_STATE } from '../src/runahead-state.js';
+import { LEDGER } from '../src/score.js';
 import { SCHED, a1Stop259B08 } from '../src/scheduler.js';
 import { BUCKETS, NAMED_BUCKETS } from '../src/spritequeue.js';
 import { rebuildWorld25FD38 } from '../src/stageend.js';
@@ -1064,6 +1066,85 @@ test('owned P1 and P2 bullets use native damage receipts and retire finitely', (
     assert.equal(game.ram.u16(bullet), 0, 'the native mover frees a hit projectile');
     assert.equal(state.ownedBullets[slot], 0,
       'the native retirement callback clears external ownership');
+  }
+});
+
+test('Playable Hibachi uncovers bees and collection belongs to the other player', () => {
+  const handlers = handlerMap();
+  for (const { slot, killer, collector, killMask, touchMask, collectorLedger,
+    killerLedger } of [
+    {
+      slot: 5, killer: 1, collector: 2, killMask: DMG.maskP1, touchMask: 0x0800,
+      collectorLedger: LEDGER.p2, killerLedger: LEDGER.p1,
+    },
+    {
+      slot: 6, killer: 2, collector: 1, killMask: DMG.maskP2, touchMask: 0x1000,
+      collectorLedger: LEDGER.p1, killerLedger: LEDGER.p2,
+    },
+  ]) {
+    const { game, mods } = playableRetireBench();
+    const { ram } = game;
+    const enemy = armDamageEnemy(ram, { hp: 1, type: 0x8100 });
+    const record = 0x81332c;
+    ram.setU16(record, 0x8000);
+    ram.setU32(record + 0x06, enemy);
+    ram.setU16(record + 0x1a, BEE_KIND.bee);
+    ram.setU16(DMG.gate308c, 1);
+
+    const bullet = BUL.pool + slot * BUL.stride;
+    ownPlayableBullet(mods.playableHibachi, slot, killer);
+    ram.setU16(bullet, 0x8000);
+    ram.setU16(bullet + BULLET_REC.posA, 0x3000);
+    ram.setU16(bullet + BULLET_REC.posB, 0x1800);
+
+    assert.equal(game.privateDamageTailHook(game), 1,
+      `P${killer} Hibachi bullet reaches the hidden carrier`);
+    assert.equal(ram.u16(enemy + 0x18) & 0x8000, 0x8000,
+      'the carrier receives lethal signed HP');
+    assert.equal(ram.u16(enemy) & killMask, killMask,
+      `the native carrier receipt records P${killer}`);
+
+    const unported = new UnportedLog();
+    const ctx = {
+      ram, rom: game.rom, tables: game.tables,
+      unported, unportedLog: unported, notes: unported,
+      soundPost: () => true,
+    };
+    handlers.get(0x276702)(ram, game.rom, record, ctx);
+    const bee = POOL_A.reservedBase;
+    assert.equal(ram.u16(record), 0, 'the dead carrier object is freed');
+    assert.equal(ram.u16(POOL_A.liveCount), 1, 'the death arm allocates one bee');
+    assert.equal(ram.u16(bee + BEE_REC.status), 0x8004,
+      'the first reserved bee slot is live and unowned');
+
+    const pending = (ledger) => ram.u32(ledger.pendingEnd - 4);
+    const collectorBefore = pending(collectorLedger);
+    const killerBefore = pending(killerLedger);
+    assert.equal(collectorBefore, 0,
+      'the carrier kill does not pre-credit the future collector');
+
+    ram.setU16(DMG.fa72, touchMask);
+    const y = ram.u16(bee + BEE_REC.pos);
+    const x = ram.u16(bee + BEE_REC.pos + 2);
+    const d7 = 0x2800;
+    const box = {
+      d0: (y + d7 + 0x1000) & 0xffff,
+      d1: (y + d7 - 0x1000) & 0xffff,
+      d2: (x + d7 + 0x1000) & 0xffff,
+      d3: (x + d7 - 0x1000) & 0xffff,
+    };
+    assert.equal(impactCollisionBlock(ram, box, d7), 1,
+      `P${collector} overlaps the released bee`);
+    assert.equal(ram.u16(bee + BEE_REC.status) & touchMask, touchMask,
+      `the collision records P${collector} as collector`);
+
+    const driven = runPoolADriver(ram, game.rom, ctx);
+    assert.equal(driven.collected, 1, 'the next native pool frame collects the bee');
+    assert.equal(ram.u8(bee + 1) & 1, 1, 'the bee enters collected presentation');
+    assert.equal(pending(collectorLedger), 0x00000100,
+      `P${collector} receives the flat 100-point bee award`);
+    assert.equal(pending(killerLedger), killerBefore,
+      `P${killer}'s pending score is unchanged by the other player's collection`);
   }
 });
 
