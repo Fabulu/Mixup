@@ -6,6 +6,7 @@ import fs from 'node:fs';
 
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
+import { MoveTables } from '../src/vectors.js';
 import { RAM, P } from '../src/machine.js';
 import { UnportedLog } from '../src/unported.js';
 import {
@@ -19,13 +20,14 @@ import {
 const TABLES = JSON.parse(fs.readFileSync(
   new URL('../rip/port/player.tables.json', import.meta.url), 'utf8'));
 const ROM = new RomWindows(TABLES.rom);
+const MT = new MoveTables(TABLES, ROM);
 BEE_MUTATE.value = process.env.DDPDOJ_W166_MUTATION || null;
 
 function fixture(p2 = false) {
   const ram = new Ram();
   const events = [];
   const ctx = {
-    ram, rom: ROM, unportedLog: new UnportedLog(), soundPost: () => {},
+    ram, rom: ROM, tables: MT, unportedLog: new UnportedLog(), soundPost: () => {},
     hyperEvent: (...v) => events.push(v),
   };
   for (let i = 0; i < POOL_A.clearWords * 2; i++) ram.setU8(POOL_A.base + i, 0);
