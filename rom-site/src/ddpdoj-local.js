@@ -586,10 +586,11 @@ export class LocalDdpdojRuntime {
 
   fit(container) {
     const dpr = Math.max(1, globalThis.devicePixelRatio || 1);
-    const scale = Math.max(1, Math.floor(Math.min(
+    const availableScale = Math.min(
       container.clientWidth * dpr / this.canvas.width,
       container.clientHeight * dpr / this.canvas.height,
-    )));
+    );
+    const scale = availableScale < 1 ? availableScale : Math.floor(availableScale);
     this.canvas.style.width = `${this.canvas.width * scale / dpr}px`;
     this.canvas.style.height = `${this.canvas.height * scale / dpr}px`;
   }

@@ -182,10 +182,11 @@ export function computeIntegerFit(logicalWidth, logicalHeight,
   const width = Math.max(1, Number(logicalWidth) || 1);
   const height = Math.max(1, Number(logicalHeight) || 1);
   const dpr = Math.max(1, Number(pixelRatio) || 1);
-  const scale = Math.max(1, Math.floor(Math.min(
+  const availableScale = Math.min(
     Math.max(1, availableWidth) * dpr / width,
     Math.max(1, availableHeight) * dpr / height,
-  )));
+  );
+  const scale = availableScale < 1 ? availableScale : Math.floor(availableScale);
   return {
     scale,
     cssWidth: width * scale / dpr,
