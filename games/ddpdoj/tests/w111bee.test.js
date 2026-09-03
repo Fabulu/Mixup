@@ -19,6 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert';
 import { Ram } from '../src/ram.js';
+import { MoveTables } from '../src/vectors.js';
 import { UnportedLog, Unreached } from '../src/unported.js';
 import {
   POOL_A, B, KIND, allocBee27F92A, runPoolADriver, clearPoolA,
@@ -29,8 +30,9 @@ import { LEDGER } from '../src/score.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
 const HAVE = fs.existsSync(TABLES);
-const ROM = HAVE ? new (await import('../src/rom.js')).RomWindows(
-  JSON.parse(fs.readFileSync(TABLES, 'utf8')).rom) : null;
+const TABLE_JSON = HAVE ? JSON.parse(fs.readFileSync(TABLES, 'utf8')) : null;
+const ROM = HAVE ? new (await import('../src/rom.js')).RomWindows(TABLE_JSON.rom) : null;
+const MT = HAVE ? new MoveTables(TABLE_JSON, ROM) : null;
 const SKIP = HAVE ? false
   : 'rip/port/player.tables.json missing -- `python tools/export-tables.py`';
 
@@ -55,7 +57,7 @@ function freshRam() {
 
 /** A minimal context with an unported log that swallows notes. */
 function ctxOf(ram) {
-  return { ram, rom: ROM, unportedLog: new UnportedLog() };
+  return { ram, rom: ROM, tables: MT, unportedLog: new UnportedLog() };
 }
 
 /** Write a bee record directly into a reserved-ten slot, bypassing the

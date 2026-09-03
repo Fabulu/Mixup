@@ -8,6 +8,7 @@ import { gunzipSync } from 'node:zlib';
 import { Ram } from '../src/ram.js';
 import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
+import { MoveTables } from '../src/vectors.js';
 import { BUCKETS } from '../src/spritequeue.js';
 import { POOL_A, B, KIND, runPoolADriver, clearPoolA } from '../src/bee.js';
 
@@ -17,6 +18,7 @@ const streamsPath = new URL('../assets/spr/streams.u32.gz', import.meta.url);
 const HAVE = existsSync(tablesPath);
 const json = HAVE ? JSON.parse(readFileSync(tablesPath, 'utf8')) : null;
 const ROM = HAVE ? new RomWindows(json.rom) : null;
+const MT = HAVE ? new MoveTables(json, ROM) : null;
 const SKIP = HAVE ? false : 'generated ROM tables absent; skip, not pass';
 const SKIP_BUNDLE = HAVE && existsSync(manifestPath) && existsSync(streamsPath)
   ? false : 'generated assets absent; skip, not pass';
@@ -48,11 +50,69 @@ function collectedBee(ram, over = {}) {
 
 function ctxOf(ram) {
   const log = new UnportedLog();
-  return { log, ctx: { ram, rom: ROM, unported: log, unportedLog: log,
+  return { log, ctx: { ram, rom: ROM, tables: MT, unported: log, unportedLog: log,
     soundPost() {}, effectSpawn() {}, bulletSpawn() {} } };
 }
 
 const bucket8 = (ram) => ram.u16(BUCKETS[8].counter) / 12;
+
+function touchedBee(ram, touchMask) {
+  clearPoolA(ram);
+  const a6 = POOL_A.reservedBase;
+  ram.setU16(a6 + B.status, KIND.bee | 0x8000 | touchMask);
+  ram.setU32(a6 + B.pos, 0x40002000);
+  ram.setU16(POOL_A.liveCount, 1);
+  return a6;
+}
+
+test('W255 bee collection transforms and frees after the native 68 steps',
+  { skip: SKIP }, () => {
+    for (const [player, touchMask] of [[1, 0x1000], [2, 0x0800]]) {
+      const ram = new Ram();
+      const { ctx } = ctxOf(ram);
+      const a6 = touchedBee(ram, touchMask);
+      const beforePos = ram.u32(a6 + B.pos);
+
+      const collected = runPoolADriver(ram, ROM, ctx);
+      assert.equal(collected.collected, 1, `P${player} collection runs`);
+      assert.equal(ram.u16(a6 + B.status), 0x8005 | touchMask,
+        `P${player} touch and collected bits survive the transform`);
+      assert.equal(ram.u32(a6 + B.pos), (beforePos + 0x06000000) >>> 0);
+      assert.deepEqual({
+        spriteOff: ram.u32(a6 + B.spriteOff),
+        sprite: ram.u32(a6 + B.sprite),
+        size: ram.u16(a6 + B.size),
+        cursor: ram.u16(a6 + B.hitLongB),
+        timerReload: ram.u16(a6 + B.hitShortA),
+        step: ram.u16(a6 + B.hitShortB),
+        phaseLife: ram.u16(a6 + B.blinkTimer),
+        attr: ram.u16(a6 + B.tpl1C),
+      }, {
+        spriteOff: 0xfc00fb00,
+        sprite: 0x001e24dc,
+        size: 0x0428,
+        cursor: 0x0010,
+        timerReload: 0x0202,
+        step: 0x0054,
+        phaseLife: 0x070f,
+        attr: 0x001d,
+      }, 'the immediate popup record matches the native transform');
+
+      for (let step = 1; step <= 67; step++) {
+        runPoolADriver(ram, ROM, ctx);
+        assert.notEqual(ram.u16(a6 + B.status), 0,
+          `P${player} popup remains live through collected step ${step}`);
+      }
+      runPoolADriver(ram, ROM, ctx);
+      assert.equal(ram.u16(a6 + B.status), 0,
+        `P${player} popup frees on collected step 68`);
+      assert.equal(ram.u16(POOL_A.liveCount), 0);
+
+      for (let step = 69; step <= 600; step++) runPoolADriver(ram, ROM, ctx);
+      assert.equal(ram.u16(a6 + B.status), 0,
+        `P${player} marker is absent ten seconds after collection`);
+    }
+  });
 
 test('W234 the popup draws its digits, and only above the timer floor',
   { skip: SKIP }, () => {

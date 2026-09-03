@@ -2221,8 +2221,10 @@ function scoreAward27FBEE(ram, rom, ctx, a6, d3, d4, d5) {
   ctx.soundPost?.(0x28c62a);  // WAVE A: BGM id=$1F, bee-collect sound ($27FC6C)
 
   // $27FC72: set "already collected" bit (bit 0 of the low byte = bit 0 of the
-  // status word).  Next drive, btst #0 sends the slot to the collected arm.
+  // status word), then `$27FC78 bra.w $280FDC` converts this same record into
+  // the finite collected popup. The next drive routes it through `$28112C`.
   ram.setU8(a6 + 0x01, ram.u8(a6 + 0x01) | 0x01);        // $27FC72 ori.b #$1,($1,A6)
+  collectedTransform280FDC(ram, rom, ctx, a6);            // $27FC78 bra.w $280FDC
 
   return { collected: true };
 }
