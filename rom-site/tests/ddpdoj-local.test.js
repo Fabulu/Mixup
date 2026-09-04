@@ -425,7 +425,7 @@ test('Mixup local stats preserve detached projected Hibachi telemetry', () => {
   });
 });
 
-test('Mixup local HUD is responsive, accessible, static, and telemetry-only', async () => {
+test('Mixup local HUD is responsive, accessible, static, and game-styled', async () => {
   const [html, css, shell, runtime] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../styles.css', import.meta.url), 'utf8'),
@@ -436,11 +436,18 @@ test('Mixup local HUD is responsive, accessible, static, and telemetry-only', as
     /id="local-game-frame"[^>]*>[\s\S]*?<canvas id="game-canvas"[\s\S]*?<div id="local-hibachi-hud"[^>]+hidden>/);
   assert.match(html, /id="local-hibachi-hud"[^>]*role="status" aria-live="polite"/);
   assert.match(html, /aria-label="Playable Hibachi weapon status"/);
+  assert.match(html, /class="local-hibachi-stat-label">SHOT<\/span>/);
+  assert.match(html, /class="local-hibachi-stat-label">PWR<\/span>/);
   assert.match(css, /\.local-game-frame \{[^}]*position: relative;/s);
   assert.match(css,
     /\.local-hibachi-hud \{[^}]*position: absolute;[^}]*justify-content: space-between;/s);
+  assert.match(css,
+    /\.local-hibachi-chip \{[^}]*display: grid;[^}]*border-radius: 0;[^}]*background: none;/s);
+  assert.match(css, /\.local-hibachi-bank::after \{[^}]*content: "NORMAL";/s);
+  assert.match(css,
+    /\.local-hibachi-chip\[data-bank="H"\] \.local-hibachi-bank::after \{ content: "HYPER"; \}/);
   assert.match(css, /\.local-hibachi-chip \{[^}]*color: #70d9ff;/s);
-  assert.match(css, /\.local-hibachi-chip\[data-bank="H"\] \{[^}]*color: #ffbd4a;/s);
+  assert.match(css, /\.local-hibachi-chip\[data-bank="H"\] \{ color: #ffbd4a;/s);
   assert.doesNotMatch(css,
     /(?:\.local-hibachi-hud|\.local-hibachi-chip)[^{]*\{[^}]*animation\s*:/s);
   assert.match(shell, /onTelemetry: \(telemetry\) => \{[\s\S]*paintHibachiTelemetry\(telemetry\)/);

@@ -154,15 +154,22 @@ test('packaged stats retain projected Hibachi telemetry before live restoration'
   });
 });
 
-test('packaged HUD stays inside the game frame with accessible static bank chips', () => {
+test('packaged HUD stays inside the game frame as a native-style score readout', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html,
     /id="game-frame"><canvas[^>]+><\/canvas><div id="hibachi-hud"[^>]+hidden>/);
   assert.match(html, /id="hibachi-hud" role="status" aria-live="polite"/);
   assert.match(html, /aria-label="Playable Hibachi weapon status"/);
   assert.match(html, /#hibachi-hud \{[^}]*position: absolute;[^}]*justify-content: space-between;/s);
+  assert.match(html,
+    /\.hibachi-chip \{[^}]*display: grid;[^}]*border-radius: 0;[^}]*background: none;/s);
+  assert.match(html, /class="hibachi-stat-label">SHOT<\/span>/);
+  assert.match(html, /class="hibachi-stat-label">PWR<\/span>/);
+  assert.match(html, /\.hibachi-bank::after \{[^}]*content: "NORMAL";/s);
+  assert.match(html,
+    /\.hibachi-chip\[data-bank="H"\] \.hibachi-bank::after \{ content: "HYPER"; \}/);
   assert.match(html, /\.hibachi-chip \{[^}]*color: #70d9ff;/s);
-  assert.match(html, /\.hibachi-chip\[data-bank="H"\] \{[^}]*color: #ffbd4a;/s);
+  assert.match(html, /\.hibachi-chip\[data-bank="H"\] \{ color: #ffbd4a;/s);
   assert.doesNotMatch(html, /(?:#hibachi-hud|\.hibachi-chip)[^{]*\{[^}]*animation\s*:/s);
   assert.match(html, /paintHibachiHud\(s\.playableHibachi\)/);
   assert.match(html, /String\(player\.pattern\)\.padStart\(2, '0'\)/);

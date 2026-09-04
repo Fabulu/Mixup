@@ -162,20 +162,47 @@
   #game-frame { position: relative; flex: 0 0 auto; }
   canvas { image-rendering: pixelated; display: block; background: #000; }
   #hibachi-hud {
-    position: absolute; z-index: 4; inset: 4px 4px auto;
+    position: absolute; z-index: 4; inset: 3px 3px auto;
     display: flex; justify-content: space-between; align-items: flex-start;
     pointer-events: none; container-type: inline-size;
   }
   #hibachi-hud[hidden] { display: none; }
   .hibachi-chip {
-    min-width: 5.2em; padding: 2px 4px; border: 1px solid currentColor;
-    border-radius: 3px; background: rgba(3, 7, 12, .72); color: #70d9ff;
-    font: 700 clamp(7px, 3.6cqi, 11px)/1.15 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    text-shadow: 0 1px #000; white-space: nowrap;
+    display: grid; grid-template-columns: auto auto; gap: 1px 5px;
+    grid-template-areas: "player bank" "shot power";
+    min-width: 5.8em; padding: 0; border: 0; border-radius: 0;
+    background: none; color: #70d9ff;
+    font: 900 clamp(7px, 3.6cqi, 11px)/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums; letter-spacing: -.04em;
+    text-shadow: -1px -1px #02040a, 1px -1px #02040a,
+                 -1px 1px #02040a, 1px 1px #02040a, 0 2px #02040a;
+    white-space: nowrap;
   }
-  .hibachi-chip:last-child { text-align: right; }
-  .hibachi-chip[data-bank="H"] { color: #ffbd4a; background: rgba(24, 7, 16, .76); }
-  .hibachi-player { color: #eef7ff; }
+  .hibachi-chip:last-child {
+    grid-template-areas: "bank player" "power shot"; text-align: right;
+  }
+  .hibachi-player {
+    grid-area: player; align-self: end; padding: 1px 3px 0;
+    border-bottom: 2px solid #70d9ff; color: #f6fbff;
+    background: linear-gradient(90deg, rgba(12, 88, 136, .88), rgba(5, 18, 35, .18));
+    letter-spacing: .04em;
+  }
+  .hibachi-chip:last-child .hibachi-player {
+    border-bottom-color: #ff6d91;
+    background: linear-gradient(270deg, rgba(139, 18, 55, .88), rgba(35, 5, 16, .18));
+  }
+  .hibachi-bank { grid-area: bank; align-self: end; color: #70d9ff; font-size: 0; }
+  .hibachi-bank::after {
+    content: "NORMAL"; font-size: clamp(6px, 3cqi, 9px); letter-spacing: .08em;
+  }
+  .hibachi-stat { color: #fff3b0; }
+  .hibachi-shot { grid-area: shot; }
+  .hibachi-power { grid-area: power; }
+  .hibachi-stat-label { color: #a6b0bd; font-size: .72em; letter-spacing: 0; }
+  .hibachi-chip[data-bank="H"] { color: #ffbd4a; }
+  .hibachi-chip[data-bank="H"] .hibachi-player { border-bottom-color: #ffbd4a; }
+  .hibachi-chip[data-bank="H"] .hibachi-bank { color: #ffbd4a; }
+  .hibachi-chip[data-bank="H"] .hibachi-bank::after { content: "HYPER"; }
 
   /* WAVE 109 -- the floating-stick movement zone (left half of the stage).
      Invisible until the picker selects FLOAT; then a coarse pointer landing
@@ -385,7 +412,7 @@
 </div>
 <button id="show-ui" type="button" aria-label="Show the game menu">SHOW UI</button>
 
-<div id="stage"><div id="game-frame"><canvas id="screen" width="224" height="448"></canvas><div id="hibachi-hud" role="status" aria-live="polite" aria-label="Playable Hibachi weapon status" hidden><div id="hibachi-p1" class="hibachi-chip" data-bank="N"><span class="hibachi-player">P1</span> <span data-hibachi-bank>N</span><span data-hibachi-pattern>05</span> P<span data-hibachi-power>0</span></div><div id="hibachi-p2" class="hibachi-chip" data-bank="N"><span class="hibachi-player">P2</span> <span data-hibachi-bank>N</span><span data-hibachi-pattern>05</span> P<span data-hibachi-power>0</span></div></div></div><div id="stickzone"><i id="stick-origin" aria-hidden="true"></i><i id="stick-knob" aria-hidden="true"></i></div></div>
+<div id="stage"><div id="game-frame"><canvas id="screen" width="224" height="448"></canvas><div id="hibachi-hud" role="status" aria-live="polite" aria-label="Playable Hibachi weapon status" hidden><div id="hibachi-p1" class="hibachi-chip" data-bank="N"><span class="hibachi-player">P1</span><span class="hibachi-bank" data-hibachi-bank>N</span><span class="hibachi-stat hibachi-shot"><span class="hibachi-stat-label">SHOT</span> <span data-hibachi-pattern>05</span></span><span class="hibachi-stat hibachi-power"><span class="hibachi-stat-label">PWR</span> <span data-hibachi-power>0</span></span></div><div id="hibachi-p2" class="hibachi-chip" data-bank="N"><span class="hibachi-player">P2</span><span class="hibachi-bank" data-hibachi-bank>N</span><span class="hibachi-stat hibachi-shot"><span class="hibachi-stat-label">SHOT</span> <span data-hibachi-pattern>05</span></span><span class="hibachi-stat hibachi-power"><span class="hibachi-stat-label">PWR</span> <span data-hibachi-power>0</span></span></div></div></div><div id="stickzone"><i id="stick-origin" aria-hidden="true"></i><i id="stick-knob" aria-hidden="true"></i></div></div>
 
 <!--
   The pad's LAYOUT is here; the BITS are CONTROLS in src/web/input.js, looked up
