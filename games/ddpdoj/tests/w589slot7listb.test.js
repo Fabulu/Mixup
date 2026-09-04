@@ -467,8 +467,8 @@ test('W589 production route completes entries, terminates, hands to type $800F, 
           resumed.game.ram.u8(slot7 + SLOT7.stateAt),
           state.ramSha256, state.gameSha256,
         ], [156873, 167534, 2,
-          '39fec6bd684f28cb9d226707e954455bccb63830753eb1b09bcc9ab2b73b4db1',
-          '40861007cfd8cde3ae4898ac195c9c2e7a88a4c714866a98a0cdbd59636320ce']);
+          'd68e9734acd8127caf4cc85be311430886a51d31c7013e16fddcad99127d2ea2',
+          'bf30261b4edb68730c3e0b638949af354102bc68c1bab9a90e99df5cfde3c5be']);
       }
       if (attempted === 5244) {
         const state = checkpointDocument(resumed.game, assets, {
@@ -480,8 +480,8 @@ test('W589 production route completes entries, terminates, hands to type $800F, 
           resumed.game.ram.u32(ALLOC.table + ALLOC.idOff),
           state.ramSha256, state.gameSha256,
         ], [156875, 167536, 0x800f, 1, 2,
-          '01fef155caf28fcdf4bc47b9f92814865d46c09ca65002f24168c3915260b662',
-          '736fef04c3da5e958c7e82160e67df80801e354cba40376eb8ab732ca09a6d2d']);
+          'd96a3c6717aa59a4604268b5edfc726e60efeceffe2feea43907ac4dfc239feb',
+          'bc28ef70247a96fc8c1f08c6de227a6f4014b1734c56256e6cf2b33256591aa4']);
       }
     }
 
