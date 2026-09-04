@@ -303,7 +303,8 @@ test('W419 the guard still refuses everything above $C, and says why',
     const ram = new Ram();
     dirtyPool(ram);
     assert.throws(() => spawnPoolC289B50(ram, ROM, {}, kind, 0, 0),
-      /289E7A/, `kind $${kind.toString(16)} must be refused BY NAME`);
+      /past the four real templates/,
+      `kind $${kind.toString(16)} must be refused with the native table bound`);
     assert.equal(ram.u16(POOL_C.count), 0, 'and nothing was allocated');
   }
 });
