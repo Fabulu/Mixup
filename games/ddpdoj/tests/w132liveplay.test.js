@@ -311,19 +311,19 @@ test('packaged PLAY validates Playable state before replacing visible state',
     assert.equal(badHost.playback, null);
 
     const source = makeMods();
-    source.playableHibachi.selectedGuns.set([3, 8]);
+    source.playableHibachi.selectedGuns.set([3, 7]);
     source.playableHibachi.ordinaryPatternCursors.set([8, 12]);
     Object.assign(source.playableHibachi.players[0].runtime,
       { descriptorId: 7, gun: 3 });
     Object.assign(source.playableHibachi.players[1].runtime,
-      { descriptorId: 11, gun: 8 });
+      { descriptorId: 11, gun: 7 });
     const good = asV2(source);
     const goodHost = makeHost(source, { marker: 'old' });
     Demo.prototype.playFrom.call(goodHost, good);
     assert.notStrictEqual(goodHost.game.marker, 'old');
     assert.notStrictEqual(goodHost.mods, source,
       'successful playback swaps in its detached candidate state');
-    assert.deepEqual([...goodHost.mods.playableHibachi.selectedGuns], [3, 8]);
+    assert.deepEqual([...goodHost.mods.playableHibachi.selectedGuns], [3, 7]);
   });
 
 test('headless PLAY respects the explicit arm instead of inheriting its default',
