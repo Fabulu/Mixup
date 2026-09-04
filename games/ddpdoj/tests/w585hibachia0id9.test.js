@@ -353,7 +353,7 @@ test('W585 periodic checkpoints restore exactly and reach the W587 loud frontier
       resumed.game.ram.u16(SCHED.a4Base + index * SCHED.a4Stride)),
     Array(SCHED.a4Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      '8630486d00d5484982b6443ceaf2f72b85d22a7794034cdc00127086d304791f',
+      '7c8e4f3ae55f00a473926624977d95a04734ccd5866e4d5c95a2a0b7ba9c3663',
+      '425f8faa467ad9ecf36b21fb6e90e56d9cfa12944443c674a7027414276b76df',
     ]);
   });

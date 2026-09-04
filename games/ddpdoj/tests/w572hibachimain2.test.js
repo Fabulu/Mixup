@@ -198,7 +198,7 @@ test('W572 pins boundaries, separate registration, dispatch, and accounting',
     assert.equal(HIBACHI_A1_COUNTED[3], undefined,
       'W573 registers main gun 3 without changing gun 2');
     assert.equal(HIBACHI_A1_COUNTED[4].init, 0x2a805a);
-    assert.equal(HIBACHI_A1_SCRIPTS.length, 11);
+    assert.equal(HIBACHI_A1_SCRIPTS.length, 13);
 
     const b = gunBench();
     installScripts(b.ram, ROM, { a1: HIBACHI_A1.main });

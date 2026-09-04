@@ -201,8 +201,9 @@ test('W408 SECTION 2: all three links are ported and every arrow is registered c
     assert.ok(reg.has(HIBACHI_A1.gunAInit) && reg.has(HIBACHI_A1.gunAStep),
       '$2A8B7C and $2A8BC0 are BOTH registered now');
     assert.equal(HIBACHI_A1_COUNTED[0x0a], undefined, '  ...and A1 $A is no longer counted');
-    assert.deepEqual([...HIBACHI_A1_SCRIPTS], [0, 1, 2, 3, 5, 6, 7, 8, 9, 0x0a, 0x0b],
-      '  ...eleven A1 ids are ported now');
+    assert.deepEqual([...HIBACHI_A1_SCRIPTS],
+      [0, 1, 2, 3, 5, 6, 7, 8, 9, 0x0a, 0x0b, 0x0c, 0x0d],
+      '  ...thirteen A1 ids are ported now');
     assert.equal(Object.keys(HIBACHI_A1_COUNTED).length + HIBACHI_A1_SCRIPTS.length,
       HIBACHI_A1.pairs, 'ported + counted = fourteen, the whole table');
   });
@@ -991,12 +992,13 @@ test('W408 SECTION 7: ONE new window, bounded three ways and none of them an abs
 
 test('W408 SECTION 7: the ported and counted lists still add up to the whole table',
   { skip: SKIP }, () => {
-    assert.deepEqual([...HIBACHI_A1_SCRIPTS], [0, 1, 2, 3, 5, 6, 7, 8, 9, 0x0a, 0x0b],
-      'W573 CORRECTION: ELEVEN A1 ids are ported now');
+    assert.deepEqual([...HIBACHI_A1_SCRIPTS],
+      [0, 1, 2, 3, 5, 6, 7, 8, 9, 0x0a, 0x0b, 0x0c, 0x0d],
+      'Playable catalogue correction: THIRTEEN A1 ids are ported now');
     assert.deepEqual([...HIBACHI_GUN_A4_SCRIPTS],
       [0x0a, 0x0b, 0x0c, 0x0d, 0x0f, 0x10, 0x11], '  ...and seven A4');
-    assert.deepEqual(Object.keys(HIBACHI_A1_COUNTED).map(Number), [4, 0x0c, 0x0d],
-      '  ...leaving three counted');
+    assert.deepEqual(Object.keys(HIBACHI_A1_COUNTED).map(Number), [4],
+      '  ...leaving one counted');
     // ...and every extent still in the counted list is MEASURED from the table, not typed.
     const above = [];
     for (let i = 0; i < HIBACHI_A1.pairs * 2; i++) above.push(l(HIBACHI_A1.main + i * 4));

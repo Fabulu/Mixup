@@ -437,8 +437,8 @@ test('W584 migrated checkpoints restore exactly and reach the W587 loud frontier
     assert.deepEqual(slotWords(resumed.game.ram,
       SCHED.a4Base, SCHED.a4Slots, SCHED.a4Stride), Array(SCHED.a4Slots).fill(0));
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      'fd1eec26149f88bedfb3034285dfde7c3c1d89aa09e4a8d35e8127771a98d5cf',
+      '7c8e4f3ae55f00a473926624977d95a04734ccd5866e4d5c95a2a0b7ba9c3663',
+      '307dc53df9a0ed2c4a2648cd713674853b1f5ab1117c4011dafcde0b10319413',
     ]);
     assert.equal(HIBACHI_A0.table + 8 * 8, 0x2a4e96,
       'the table row for A0 id 8 remains pinned after its script is ported');

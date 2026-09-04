@@ -232,9 +232,10 @@ test('W573 pins code/data boundaries, separate dispatch, and ID-3 accounting',
     const registered = new Set(scriptAddresses());
     assert.ok(registered.has(HIBACHI_A1.gun3Init));
     assert.ok(registered.has(HIBACHI_A1.gun3Step));
-    assert.deepEqual(HIBACHI_A1_SCRIPTS, [0, 1, 2, 3, 5, 6, 7, 8, 9, 0x0a, 0x0b]);
+    assert.deepEqual(HIBACHI_A1_SCRIPTS,
+      [0, 1, 2, 3, 5, 6, 7, 8, 9, 0x0a, 0x0b, 0x0c, 0x0d]);
     assert.equal(HIBACHI_A1_COUNTED[3], undefined);
-    assert.deepEqual(Object.keys(HIBACHI_A1_COUNTED).map(Number), [4, 0x0c, 0x0d]);
+    assert.deepEqual(Object.keys(HIBACHI_A1_COUNTED).map(Number), [4]);
     assert.equal(HIBACHI_A1_COUNTED[4].init, 0x2a805a);
     assert.equal(Object.keys(HIBACHI_A1_COUNTED).length + HIBACHI_A1_SCRIPTS.length,
       HIBACHI_A1.pairs);
@@ -707,8 +708,8 @@ test('W573 migrates lf146131 additively and pins every periodic frontier and blo
       error?.romAddress, attemptState.ramSha256, attemptState.gameSha256,
     ], [
       7667, 153797, 164459, 0x291040,
-      'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      'b809cf01be3acb39d37fba497b09ab1d0f7875052c73d9542dd5985de21e90d7',
+      '7c8e4f3ae55f00a473926624977d95a04734ccd5866e4d5c95a2a0b7ba9c3663',
+      '0964922af141ff9e7e33921204dbd499a4ad52c859f915c8632c53d6b3f6c219',
     ]);
     assert.match(error?.message ?? '', /word at \$291040 is outside every ROM window/);
   });
