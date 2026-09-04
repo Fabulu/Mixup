@@ -177,7 +177,7 @@ test('SECTION 2b: the individual claim the two scans attribute differently is th
       // -- which contradicts W444's own stated contract for it ("`Opens with` and
       // not `mentions`"). The span rule takes the first backtick span that holds
       // an address, which is what "opens with" was always meant to mean.
-      '$278320 effects.js:231 remapBucket',
+      '$278320 effects.js:255 remapBucket',
     ], 'a SECOND claim is attributed differently by the two scans. Read both docs and decide '
       + 'which reading is right before adding a row here');
   });
