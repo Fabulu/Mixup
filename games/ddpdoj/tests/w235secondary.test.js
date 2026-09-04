@@ -34,7 +34,8 @@ test('W235 the sibling allocator DELEGATES rather than copying the fill',
     const src = readFileSync(new URL('../src/effects.js', import.meta.url), 'utf8');
     const body = src.split('export function spawnPoolC289AF4(')[1].split('\n}\n')[0];
     assert.ok(/return spawnPoolC289B50\(/.test(body), 'it calls the ported fill');
-    assert.ok(/0x289af4/.test(body), 'passing its OWN site address for the drop');
+    assert.ok(/effects\.poolCEntry/.test(body),
+      'passing its edition-specific own site address for the drop');
     assert.ok(!/templateTable/.test(body), 'and does not read the template itself');
     // ...and the caller-record position is the one thing it does differently.
     assert.ok(/caller \+ 0x02/.test(body), '$289C50 move.l $2(a6),$2(a0)');
