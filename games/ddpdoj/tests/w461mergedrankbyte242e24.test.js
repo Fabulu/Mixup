@@ -112,15 +112,15 @@ const SOURCE_REPRESENTED_SITES = Object.freeze([
   0x268744, 0x27699c, 0x27e02a, 0x27ead6, 0x27ec86,
   0x280cfa, 0x280d12, 0x288cd4, 0x289756, 0x28a26c, 0x28a3a2,
   0x2933de, 0x2933ee, 0x29924c, 0x299362, 0x29a132,
-  0x29a13c, 0x29d1ec, 0x2a81cc, 0x2a83e8, 0x2a8810,
+  0x29a13c, 0x29d1ec, 0x2a81cc, 0x2a83e8, 0x2a8810, 0x2a8ee0,
 ]);
 const SOURCE_GAPS = Object.freeze(EXTERNAL_CALLERS
   .filter((at) => !SOURCE_REPRESENTED_SITES.includes(at)));
 
 const SOURCE_CALL_COUNTS = Object.freeze([
   ['bee.js', 1], ['boss2.js', 2], ['boss2attacks.js', 2], ['boss3.js', 1],
-  ['bossscripts.js', 2], ['effects.js', 1], ['hibachiend.js', 3], ['hibachiguns.js', 3],
-  ['initbody.js', 4], ['items.js', 2],
+  ['bossscripts.js', 2], ['effects.js', 1], ['hibachiend.js', 3], ['hibachiguns.js', 4],
+  ['initbody.js', 3], ['items.js', 2],
 ]);
 
 function bytes(at, count) { return IMG.subarray(at, at + count); }
@@ -440,8 +440,8 @@ test('SECTION 5: one canonical source body serves all production calls with no c
       'initbody imports the existing RNG dependency');
     assert.doesNotMatch(sourceMap.get('rng.js'), /from '\.\/initbody\.js'/,
       'the canonical dependency direction introduces no cycle');
-    assert.match(init, /d0 = drawByte242E24\(ram, rom\) >> 1;\s+\/\/ \$26874A lsr\.b/,
-      'type $11 retains its unsigned byte continuation');
+    assert.match(init, /d0 = drawByteWithResources\(ram, rom, p\.rankByteRng\) >> 1;/,
+      'type $11 retains its unsigned byte continuation through descriptor-owned RNG resources');
     assert.match(init, /const rankByte = drawByte242E24\(ram, rom\);[\s\S]*signedHalf = \(\(rankByte << 24\) >> 24\) >> 1;/,
       'type $8D retains its signed byte continuation');
 
@@ -459,9 +459,9 @@ test('SECTION 5: one canonical source body serves all production calls with no c
 
 test('SECTION 5b: cartridge static reachability, production source coverage and indirect uncertainty stay separate',
   () => {
-    assert.equal(SOURCE_REPRESENTED_SITES.length, 21,
-      'nineteen direct source calls plus W519 ctx wiring represent twenty-one cartridge sites because the bee body serves two copies');
-    assert.equal(SOURCE_GAPS.length, 16);
+    assert.equal(SOURCE_REPRESENTED_SITES.length, 22,
+      'twenty source calls plus W519 ctx wiring represent twenty-two cartridge sites because the bee body serves two copies');
+    assert.equal(SOURCE_GAPS.length, 15);
     assert.deepEqual([...SOURCE_REPRESENTED_SITES, ...SOURCE_GAPS].sort((a, b) => a - b),
       [...EXTERNAL_CALLERS], 'source-covered sites and explicit gaps partition the static callers');
     assert.equal(SOURCE_GAPS.includes(0x288cd4), false,
