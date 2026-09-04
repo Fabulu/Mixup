@@ -53,9 +53,12 @@ import { HIBACHI_A4, HIBACHI_END_COUNTED } from '../src/hibachiend.js';
 import {
   HIBACHI_A1, HIBACHI_A1_SCRIPTS, HIBACHI_GUN_A4_SCRIPTS, HIBACHI_A1_COUNTED,
   HIBACHI_A1_ALT_COUNTED, HIBACHI_A1_ALT_END, W404_MUTATE,
-  gun5Init2A81BC, gun5Step2A8206, gun6Init2A8370, gun6Step2A8396, a4B2A68D4, a4C2A6930,
+  gun5Init2A81BC, gun5Step2A8206, gun6Init2A8370, gun6Step2A8396,
+  gunCInit2A8ED0, gunCStep2A8F1C, gunDInit2A90A4, gunDStep2A90E0,
+  a4B2A68D4, a4C2A6930,
 } from '../src/hibachiguns.js';
 import { aim256, AimTables } from '../src/aim.js';
+import { MoveTables } from '../src/vectors.js';
 import { poolClear } from '../src/bullets.js';
 import {
   ROM_WINDOW_COUNT,
@@ -370,7 +373,10 @@ function gunBench({ freeze = 0, p1 = 0x8000, p2 = 0x0000 } = {}) {
   const ROM = new RomWindows(tables.rom);
   const ram = new Ram();
   const shots = [];
-  const ctx = { bulletSpawn: (site, res) => shots.push([site, res]) };
+  const ctx = {
+    tables: new MoveTables(tables, ROM),
+    bulletSpawn: (site, res, regs, entry) => shots.push([site, res, regs, entry]),
+  };
   ram.setU16(HIBACHI_A1.freeze, freeze);
   ram.setU16(HIBACHI_A1.selP1, p1);
   ram.setU16(HIBACHI_A1.selP1 + 2, 0x2000);          // P1 Y
@@ -907,6 +913,187 @@ test('W404 SECTION 6b: A4 $C starts main sequencer 6 ONCE, and hands to $D when 
   });
 
 // ===============================================================================================
+// SECTION 6c -- SHARED GUNS C AND D.
+// ===============================================================================================
+
+const rawVector = (table, angle, add) =>
+  (l(table + (((angle + 2) & 0xffff) & 0xfc)) + add) >>> 0;
+
+function copiedBytes(ram, a4, words) {
+  return Buffer.from([...Array(words * 2).keys()].map((i) => ram.u8(a4 + 2 + i)));
+}
+
+test('W404 SECTION 6c: gun C init copies all 14 ROM words and applies its exact three draws',
+  { skip: SKIP }, () => {
+    const b = gunBench();
+    b.ram.setU8(SUB + 0x1ef, 2);
+    gunCInit2A8ED0(b.ram, b.ROM, A4SLOT, SUB);
+
+    const expected = Buffer.from(IMG.subarray(HIBACHI_A1.gunCTemplate,
+      HIBACHI_A1.gunCTemplate + 14 * 2));
+    expected[0x0c] = (IMG[0x242e42 + 1] + 0x60) & 0xff;
+    if ((IMG[0x242ede + 2] & 0x80) !== 0) expected[0x0d] = (-expected[0x0d]) & 0xff;
+    expected.writeUInt16BE(IMG[0x243174 + 3] + 2, 0x10);
+    expected.writeUInt16BE(IMG[0x243174 + 3], 0x1a);
+    expected[0x04] = (expected[0x04] + 2) & 0xff;
+    expected[0x05] = (expected[0x05] + 2) & 0xff;
+    assert.deepEqual(copiedBytes(b.ram, A4SLOT, 14), expected,
+      'every copied byte equals $2A8E94, except the exact RNG and ramp writes');
+    assert.equal(b.ram.u8(0x803917), 3, 'the init makes exactly three shared-counter draws');
+  });
+
+test('W404 SECTION 6c: gun C immediately retires in native dispatch and emits no bullets',
+  { skip: SKIP }, () => {
+    const b = gunBench();
+    b.ram.setU16(A4SLOT, 0x800c);
+    gunCInit2A8ED0(b.ram, b.ROM, A4SLOT, SUB);
+    gunCStep2A8F1C(b.ram, b.ROM, b.ctx, A4SLOT, REC, SUB);
+    assert.equal(b.ram.u16(A4SLOT), 0,
+      '$2A8F1C moveq #$C / jsr $259B08 clears the native A1 slot first');
+    assert.equal(b.shots.length, 0, 'the initial $20 timer cannot fire before that retirement');
+  });
+
+test('W404 SECTION 6c: gun C retained body fires the exact aimed eight-shot ring',
+  { skip: SKIP }, () => {
+    const b = gunBench();
+    b.ctx.privateA1StopHook = (script) => script === 0x0c;
+    b.ram.setU16(A4SLOT, 0x800c);
+    gunCInit2A8ED0(b.ram, b.ROM, A4SLOT, SUB);
+    b.ram.setU8(A4SLOT + 0x02, 0);
+    const start = b.ram.u8(A4SLOT + 0x0e);
+    const step = b.ram.u8(A4SLOT + 0x0f);
+    const shape = b.ram.u16(A4SLOT + 0x12);
+    poolClear(b.ram);
+    gunCStep2A8F1C(b.ram, b.ROM, b.ctx, A4SLOT, REC, SUB);
+
+    assert.equal(b.shots.length, 8, 'the retained body executes dbra D7 from 7 through 0');
+    assert.deepEqual(b.shots.map(([site]) => site), Array(8).fill(0x2a8fe0));
+    const regs = b.shots.map((entry) => entry[2]);
+    const angles = [...Array(8).keys()].map((i) => (start + i * 0x20) & 0xff);
+    assert.deepEqual(regs.map((r) => r.d1), angles, 'headings start at ($E,A4) and add $20');
+    assert.deepEqual(regs.map((r) => r.d3),
+      angles.map((angle) => rawVector(HIBACHI_A1.vectors, angle, 0xfa000000)),
+      'each muzzle vector is the exact $26BFFC lookup plus $FA000000');
+    assert.deepEqual(new Set(regs.map((r) => r.d0)), new Set([0xfff90022]));
+    assert.deepEqual(new Set(regs.map((r) => r.d2)), new Set([0x38001c00]));
+    assert.deepEqual(new Set(regs.map((r) => r.d4)), new Set([(0x01010000 | shape) >>> 0]));
+    assert.deepEqual(new Set(regs.map((r) => r.d5)), new Set([0x0b0b0001]));
+
+    const aim = aim256(new AimTables(b.ROM),
+      (0x3800 + 0xfa00) & 0xffff, 0x1c00, 0x2000, 0x2400);
+    const velocity = b.ctx.tables.shotVector(0x12, aim);
+    assert.equal(b.ram.u16(HIBACHI_A1.gunCVelocityY), velocity.dy & 0xffff);
+    assert.equal(b.ram.u16(HIBACHI_A1.gunCVelocityX), velocity.dx & 0xffff);
+    assert.equal(b.ram.u8(REC + 0x03), 1, 'the aimed body toggles ($3,A5) once');
+    assert.equal(b.ram.u8(A4SLOT + 0x0e), (start + step) & 0xff);
+    assert.equal(b.ram.u16(A4SLOT + 0x18), 0x13, 'the speed word advances from $12 to $13');
+  });
+
+test('W404 SECTION 6c: gun D init copies all 15 ROM words and performs three exact draws',
+  { skip: SKIP }, () => {
+    const b = gunBench();
+    gunDInit2A90A4(b.ram, b.ROM, A4SLOT, SUB);
+    const expected = Buffer.from(IMG.subarray(HIBACHI_A1.gunDTemplate,
+      HIBACHI_A1.gunDTemplate + 15 * 2));
+    expected[0x14] = IMG[0x242ede + 1];
+    expected[0x16] = IMG[0x242ede + 2];
+    expected[0x18] = IMG[0x242ede + 3];
+    assert.deepEqual(copiedBytes(b.ram, A4SLOT, 15), expected,
+      'every copied byte equals $2A905A, except the three move.b RNG destinations');
+    assert.equal(b.ram.u8(0x803917), 3, 'three calls to $242EC2 advance the counter three times');
+    assert.equal(b.ram.u16(SUB + 0x1fe), 5);
+    assert.equal(b.ram.u8(SUB + 0x1fd), 8);
+    assert.deepEqual([...Array(6).keys()].map((i) => w(HIBACHI_A1.gunDKindTable + i * 2)),
+      [0x001b, 0x0024, 0x001b, 0x0025, 0x001b, 0x0024],
+      'the embedded third-ring kind table is exact ROM data');
+  });
+
+test('W404 SECTION 6c: gun D fires all three exact rings and remains permanent under freeze',
+  { skip: SKIP }, () => {
+    const b = gunBench({ freeze: 1 });
+    b.ram.setU16(A4SLOT, 0x800d);
+    gunDInit2A90A4(b.ram, b.ROM, A4SLOT, SUB);
+    const firstAngle = b.ram.u8(A4SLOT + 0x16);
+    const thirdAngle = b.ram.u8(A4SLOT + 0x18);
+    const secondAngle = b.ram.u8(A4SLOT + 0x1a);
+    b.ram.setU8(A4SLOT + 0x02, 0);
+    b.ram.setU8(A4SLOT + 0x04, 0);
+    b.ram.setU8(A4SLOT + 0x06, 0);
+    b.ram.setU16(SUB + 0x1ea, 0);
+    poolClear(b.ram);
+    gunDStep2A90E0(b.ram, b.ROM, b.ctx, A4SLOT, REC, SUB);
+
+    assert.deepEqual(b.shots.map(([site]) => site), [
+      ...Array(4).fill(0x2a9118), ...Array(4).fill(0x2a917e), ...Array(10).fill(0x2a920c),
+    ], 'the body emits 4, 4, and 10 shots in ROM order despite the global freeze word');
+    const groups = [b.shots.slice(0, 4), b.shots.slice(4, 8), b.shots.slice(8)];
+    const starts = [firstAngle, secondAngle, thirdAngle];
+    const strides = [0x40, 0x40, 0x19];
+    const vectorTables = [HIBACHI_A1.gunDVector1, HIBACHI_A1.gunDVector2,
+      HIBACHI_A1.gunDVector3];
+    for (let group = 0; group < groups.length; group++) {
+      const angles = [...Array(groups[group].length).keys()]
+        .map((i) => (starts[group] + i * strides[group]) & 0xffff);
+      assert.deepEqual(groups[group].map((entry) => entry[2].d1), angles);
+      assert.deepEqual(groups[group].map((entry) => entry[2].d3),
+        angles.map((angle) => rawVector(vectorTables[group], angle, 0xfe000000)));
+    }
+    assert.deepEqual(new Set(groups[0].map((entry) => entry[2].d0)), new Set([0x000a000b]));
+    assert.deepEqual(new Set(groups[1].map((entry) => entry[2].d0)), new Set([0x0005000b]));
+    assert.deepEqual(new Set(groups[2].map((entry) => entry[2].d0)), new Set([0xfffa001b]));
+    assert.deepEqual(new Set(groups[2].map((entry) => entry[2].d4)), new Set([0x01010005]));
+    assert.deepEqual(new Set(groups[2].map((entry) => entry[2].d5)), new Set([0x01010001]));
+    assert.equal(b.ram.u8(A4SLOT + 0x16), (firstAngle - 2) & 0xff);
+    assert.equal(b.ram.u8(A4SLOT + 0x1a), (secondAngle + 3) & 0xff);
+    assert.equal(b.ram.u8(A4SLOT + 0x18), (thirdAngle - 6) & 0xff);
+    assert.equal(b.ram.u16(SUB + 0x1ea), 6, 'the kind cursor subtracts two and reloads six on borrow');
+    assert.equal(b.ram.u16(A4SLOT), 0x800d, 'gun D has no native retirement call');
+  });
+
+test('W404 SECTION 6c: gun D positional gates and nine-call control cycle match the ROM',
+  { skip: SKIP }, () => {
+    const high = gunBench();
+    high.ram.setU16(A4SLOT, 0x800d);
+    gunDInit2A90A4(high.ram, high.ROM, A4SLOT, SUB);
+    high.ram.setU32(REC + 0x16, 0x0001f800);
+    const secondTimer = high.ram.u8(A4SLOT + 0x06);
+    gunDStep2A90E0(high.ram, high.ROM, high.ctx, A4SLOT, REC, SUB);
+    assert.equal(high.ram.u16(A4SLOT + 0x1c), 0x00ff);
+    assert.equal(high.ram.u8(A4SLOT + 0x06), secondTimer,
+      'the first high-position gate branches around rings two and three');
+    assert.equal(high.ram.u8(SUB + 0x1fd), 7, 'that branch still reaches the control tail');
+
+    const middle = gunBench();
+    middle.ram.setU16(A4SLOT, 0x800d);
+    gunDInit2A90A4(middle.ram, middle.ROM, A4SLOT, SUB);
+    middle.ram.setU16(A4SLOT + 0x1c, 0);
+    middle.ram.setU32(REC + 0x16, 0x0001c000);
+    const thirdTimer = middle.ram.u8(A4SLOT + 0x04);
+    gunDStep2A90E0(middle.ram, middle.ROM, middle.ctx, A4SLOT, REC, SUB);
+    assert.equal(middle.ram.u16(A4SLOT + 0x1e), 0x00ff);
+    assert.equal(middle.ram.u8(A4SLOT + 0x04), thirdTimer,
+      'the second high-position gate returns before ring three');
+    assert.equal(middle.ram.u8(SUB + 0x1fd), 8, 'the direct return also skips the control tail');
+
+    const control = gunBench();
+    control.ram.setU16(A4SLOT, 0x800d);
+    gunDInit2A90A4(control.ram, control.ROM, A4SLOT, SUB);
+    control.ram.setU16(A4SLOT + 0x1c, 0);
+    control.ram.setU16(A4SLOT + 0x1e, 0);
+    control.ram.setU8(A4SLOT + 0x19, 0xfa);
+    control.ram.setU8(A4SLOT + 0x08, 0);
+    control.ram.setU8(SUB + 0x1fd, 0);
+    control.ram.setU8(SUB + 0x1fc, 0);
+    control.ram.setU16(SUB + 0x1fe, 5);
+    gunDStep2A90E0(control.ram, control.ROM, control.ctx, A4SLOT, REC, SUB);
+    assert.equal(control.ram.u8(SUB + 0x1fd), 8, 'the zero cadence reloads to eight');
+    assert.equal(control.ram.u8(A4SLOT + 0x08), control.ram.u8(A4SLOT + 0x09));
+    assert.equal(control.ram.u8(SUB + 0x1fc) & 1, 1,
+      'an endpoint underflow reloads the cycle count and toggles direction');
+    assert.equal(control.ram.u16(A4SLOT), 0x800d, 'the permanent slot remains live');
+  });
+
+// ===============================================================================================
 // SECTION 7 -- THE WINDOW SET.
 // ===============================================================================================
 
@@ -965,6 +1152,35 @@ test('W404 SECTION 7: five new windows, each bounded by an instruction operand',
       '$26BFFC\'s 64 longwords sit inside W31/W176\'s $26BE70 + $28C, untouched');
   });
 
+test('Playable HIBACHI gun C and D windows have exact native bounds',
+  { skip: SKIP }, () => {
+    const set = new Map(WINDOWS());
+    for (const [site, base, words] of [
+      [HIBACHI_A1.gunCInit, HIBACHI_A1.gunCTemplate, 14],
+      [HIBACHI_A1.gunDInit, HIBACHI_A1.gunDTemplate, 15],
+    ]) {
+      assert.equal(w(site), 0x41fa, `$${site.toString(16)} lea (d16,PC),A0`);
+      assert.equal(site + 2 + disp16(site + 2), base,
+        `the copy source is $${base.toString(16).toUpperCase()}`);
+      assert.equal(w(site + 8) & 0xff00, 0x7000, 'the copy count comes from moveq #n,D0');
+      assert.equal((w(site + 8) & 0xff) + 1, words, `dbra copies exactly ${words} words`);
+      assert.equal(set.get(base), words * 2, 'the exported window ends with the copied template');
+    }
+
+    assert.equal(HIBACHI_A1.gunCTemplate + 0x1c, 0x2a8eb0,
+      'gun C excludes its following self-pointer block');
+    assert.equal(l(0x2a8eb0), HIBACHI_A1.gunCInit,
+      'the first excluded gun C self-pointer names its init');
+    assert.equal(HIBACHI_A1.gunDTemplate + 0x1e, 0x2a9078,
+      'gun D excludes its following self-pointer block');
+    assert.equal(l(0x2a9078), HIBACHI_A1.gunDKindTable,
+      'the first excluded gun D self-pointer names its kind table');
+    assert.equal(set.get(HIBACHI_A1.gunDKindTable), 0x0c,
+      'gun D exports exactly its six indexed kind words');
+    assert.equal(HIBACHI_A1.gunDKindTable + 0x0c, HIBACHI_A1.gunDInit,
+      'the kind-table window ends exactly at gun D init code');
+  });
+
 test('W404 SECTION 7: every counted gun\'s extent is MEASURED from the image, not typed',
   { skip: SKIP }, () => {
     const inits = [...Array(HIBACHI_A1.pairs).keys()].map((i) => l(HIBACHI_A1.main + i * 8));
@@ -1021,11 +1237,11 @@ test('W404 SECTION 7: every counted gun\'s extent is MEASURED from the image, no
     // W571 CORRECTION: main gun 1's $262 now does the same.
     // W572 CORRECTION: main gun 2's $3B2 now does the same.
     // W573 CORRECTION: main gun 3's $1F6 now does the same.
+    // Guns $C and $D add their final $1D4 and $204 native extents.
     assert.equal(HIBACHI_A1.alt - l(HIBACHI_A1.main),
       Object.values(HIBACHI_A1_COUNTED).reduce((s, c) => s + c.bytes, 0)
-      + 0x4c6 + 0x262 + 0x3b2 + 0x1f6 + 0x1b4 + 0x1a6 + 0x2ea + 0x1ba + 0x1c2 + 0x11e + 0x236,
-      'the fourteen main-table guns fill $2A738A..$2A92A8 exactly -- $1F1E, of which the port '
-      + 'now runs $4C6 (gun 0) + $262 (gun 1) + $3B2 (gun 2) + $1F6 (gun 3) + $1B4 (gun 5) + '
-      + '$1A6 (gun 6) + $2EA (gun 7) + $1BA (gun 8) + $1C2 (gun 9) + $11E (gun $A) + '
-      + '$236 (gun $B) = $19E4');
+      + 0x4c6 + 0x262 + 0x3b2 + 0x1f6 + 0x1b4 + 0x1a6 + 0x2ea + 0x1ba + 0x1c2
+      + 0x11e + 0x236 + 0x1d4 + 0x204,
+      'the fourteen main-table guns fill $2A738A..$2A92A8 exactly -- $1F1E, and only gun 4 '
+      + 'remains counted');
   });

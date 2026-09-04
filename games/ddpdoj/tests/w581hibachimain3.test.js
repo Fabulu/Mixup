@@ -42,7 +42,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = 'c5429f67e9ff4da89bea27fa63afb8c4fac7fc8947b7a0146c8935c5fb981688';
+const LIVE_TABLE_HASH = 'a262d979e0a369afba14cec7858efdf6932ca4ce7b3f6aab13d433c87f0860cc';
 const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const STORED_W587_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const REC = 0x810c00;
@@ -110,10 +110,10 @@ test('W581 pins the raw id-3 contract, registration, and unchanged table identit
     assert.equal(registered.filter((address) => address === HIBACHI_A0.s3Init).length, 1);
     assert.equal(registered.filter((address) => address === HIBACHI_A0.s3Step).length, 1);
 
-    assert.equal(ROM_WINDOW_COUNT, 1683);
+    assert.equal(ROM_WINDOW_COUNT, 1686);
     assert.equal(ROM_OVERLAP_PAIRS, 79);
-    assert.equal(TABLE_JSON.rom.windows.length, 1683);
-    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 651447);
+    assert.equal(TABLE_JSON.rom.windows.length, 1686);
+    assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0), 651517);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W581:')), []);
   });

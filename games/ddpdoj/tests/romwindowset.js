@@ -724,11 +724,20 @@
 // complete readable template.
 // Measured: 1653 -> 1683 windows, 642,930 -> 651,447 bytes, and 79 -> 79
 // overlapping pairs.
+//
+// ---------------------------------------------------------------------------
+// PLAYABLE HIBACHI GUNS C AND D ADDED THREE DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// `$2A8E94 + $1C` and `$2A905A + $1E` are the exact fourteen-word and
+// fifteen-word slot templates copied by guns C and D. `$2A9098 + $0C` is gun
+// D's exact six-word kind table and ends at its init. The unrelated self-pointer
+// gaps remain unexported. Measured: 1683 -> 1686 windows,
+// 651,447 -> 651,517 bytes, and 79 -> 79 overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1683;
+export const ROM_WINDOW_COUNT = 1686;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 651447;
+export const ROM_WINDOW_BYTES = 651517;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -769,6 +778,35 @@ export const W428_OVERLAP_PAIRS = Object.freeze([
  *  can say what the number WAS as well as what it is. */
 export const OVERLAP_PAIRS_BEFORE_W428 = 71;
 
+const PLAYABLE_HIBACHI_WINDOWS = Object.freeze([
+  Object.freeze({ base: '$2A8E94', len: 0x001c }),
+  Object.freeze({ base: '$2A905A', len: 0x001e }),
+  Object.freeze({ base: '$2A9098', len: 0x000c }),
+]);
+
+/** Remove the latest Playable HIBACHI gun C and D data windows before
+ * reconstructing any earlier table identity. */
+export function tableBeforePlayableHibachi(tables) {
+  const copy = JSON.parse(JSON.stringify(tables));
+  const found = copy.rom.windows.filter((window) =>
+    PLAYABLE_HIBACHI_WINDOWS.some(({ base }) => window.base === base));
+  if (found.length === 0) return copy;
+  if (found.length !== PLAYABLE_HIBACHI_WINDOWS.length) {
+    throw new Error('the Playable HIBACHI gun C and D windows are only partially present');
+  }
+  for (const { base, len } of PLAYABLE_HIBACHI_WINDOWS) {
+    const matches = found.filter((window) => window.base === base);
+    if (matches.length !== 1 || matches[0].len !== len
+        || matches[0].hex.length !== len * 2
+        || !matches[0].why.startsWith('Playable HIBACHI shared gun')) {
+      throw new Error(`${base} is not an exact Playable HIBACHI gun window`);
+    }
+  }
+  copy.rom.windows = copy.rom.windows.filter((window) =>
+    !PLAYABLE_HIBACHI_WINDOWS.some(({ base }) => window.base === base));
+  return copy;
+}
+
 const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28F9AC', 0x0078]), Object.freeze(['$28FA24', 0x0074]),
   Object.freeze(['$28FA98', 0x003a]), Object.freeze(['$28FC16', 0x0020]),
@@ -782,7 +820,7 @@ const WHITE_LABEL_WINDOW_BYTES = 193938;
  *  earlier Black Label ledger. The edition manifest is the identity list, so a
  *  partial, duplicated, or mislabeled family fails instead of being hidden. */
 export function tableBeforeWhiteLabel(tables) {
-  const copy = JSON.parse(JSON.stringify(tables));
+  const copy = tableBeforePlayableHibachi(tables);
   const edition = copy.editions?.whiteLabel;
   const descriptorRows = [
     ...(edition?.frontendWindows ?? []),

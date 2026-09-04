@@ -78,7 +78,7 @@ test('HUD telemetry is frozen, detached, read-only, and bank-specific', () => {
   assert.equal(projectPlayableHibachiTelemetry(state, game.ram), null,
     'an inactive Playable state is never visible to the HUD');
   beginPlayableHibachiCreditedRun(state, game, {});
-  state.ordinaryPatternCursors.set([20, 19]);
+  state.ordinaryPatternCursors.set([18, 17]);
   state.hyperPatternCursors.set([3, 4]);
   game.ram.setU16(DMG.hyper1, 0);
   game.ram.setU16(DMG.hyper2, 1);
@@ -92,7 +92,7 @@ test('HUD telemetry is frozen, detached, read-only, and bank-specific', () => {
 
   assert.deepEqual(telemetry, {
     active: true,
-    p1: { player: 1, bank: 'N', pattern: 20, powerRung: 4 },
+    p1: { player: 1, bank: 'N', pattern: 18, powerRung: 4 },
     p2: { player: 2, bank: 'H', pattern: 4, powerRung: 1 },
   });
   assert.equal(Object.isFrozen(telemetry), true);
@@ -117,7 +117,7 @@ test('packaged stats retain projected Hibachi telemetry before live restoration'
     undefined, null, null, resolveLoadout(['playable-hibachi', 'runahead-2']));
   const state = demo.mods.playableHibachi;
   beginPlayableHibachiCreditedRun(state, demo.game, {});
-  state.ordinaryPatternCursors.set([18, 19]);
+  state.ordinaryPatternCursors.set([18, 18]);
   state.hyperPatternCursors.set([3, 2]);
   demo.game.ram.setU16(DMG.hyper1, 1);
   demo.game.ram.setU16(DMG.hyper2, 0);
@@ -128,7 +128,7 @@ test('packaged stats retain projected Hibachi telemetry before live restoration'
   assert.deepEqual(projected.playableHibachi, {
     active: true,
     p1: { player: 1, bank: 'H', pattern: 3, powerRung: 2 },
-    p2: { player: 2, bank: 'N', pattern: 19, powerRung: 4 },
+    p2: { player: 2, bank: 'N', pattern: 18, powerRung: 4 },
   });
 
   state.hyperPatternCursors[0] = 1;

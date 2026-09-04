@@ -4092,6 +4092,12 @@ SHOT_WINDOWS.extend([
                        "$2A7E64 moveq #$9 plus dbra and ending before its unused self-pointer block"),
     (0x2A7FEC, 0x003C, "W573: loop-nonzero HIBACHI A1 gun 3's five twelve-byte paired-shot rows, walked "
                        "from offset $30 down through $00 and ending exactly at gun 4's template"),
+    (0x2A8E94, 0x001C, "Playable HIBACHI shared gun C's fourteen-word slot template, copied by "
+                       "$2A8ED0 moveq #$D plus dbra and ending before its unused self-pointer block"),
+    (0x2A905A, 0x001E, "Playable HIBACHI shared gun D's fifteen-word slot template, copied by "
+                       "$2A90A4 moveq #$E plus dbra and ending before its unused self-pointer block"),
+    (0x2A9098, 0x000C, "Playable HIBACHI shared gun D's six-word kind table, indexed by the signed "
+                       "word byte offset at A6+$1EA and ending exactly at gun D's init"),
     (0x2A9318, 0x0016, "W562: loop-zero HIBACHI A1 gun 0's eleven-word slot template, copied by "
                        "$2A9366 moveq #$A plus dbra and ending before its unused self-pointer block"),
     (0x2A934E, 0x0018, "W562: loop-zero HIBACHI A1 gun 0's six attached-position longwords, walked "

@@ -184,7 +184,7 @@ import { u16, i16 } from './ram.js';
 import { registerScript, a4Start25980C, a1Start259A18, a1Running259A4A,
   a1Stop259B08, a2Stop25994A, a2Run2598E6, seqStart2598D0 } from './scheduler.js';
 import { aim256, AimTables, targetSelect } from './aim.js';
-import { drawByte242B3C, drawWord242B90, drawByte242E24, drawByte2431F4,
+import { drawByte242B3C, drawWord242B90, drawByte242E24, drawByte24311A, drawByte2431F4,
   drawNegative242EC2, drawWord242EC2 } from './rng.js';
 import { fire, WriteLog } from './bullets.js';
 import { bossA5, bossA6 } from './boss.js';
@@ -251,6 +251,11 @@ export const HIBACHI_A1 = Object.freeze({
   gunBInit: 0x2a8c9a, gunBStep: 0x2a8cb2, gunBTemplate: 0x2a8c70,
   gunBCode: 0x2a8e92,              // W407: `4E75` AT that address, gun $B's last instruction
   gunBRetire: 0x2a8e84,            // W407: where gun $B's FREEZE arm branches -- see below
+  gunCTemplate: 0x2a8e94, gunCInit: 0x2a8ed0, gunCStep: 0x2a8f1c,
+  gunDTemplate: 0x2a905a, gunDKindTable: 0x2a9098,
+  gunDInit: 0x2a90a4, gunDStep: 0x2a90e0,
+  gunDVector1: 0x2734fa, gunDVector2: 0x2736fa, gunDVector3: 0x2735fa,
+  gunCVelocityY: 0x8130d8, gunCVelocityX: 0x8130da,
   vectors: 0x26bffc,               // $2A8274 / $2A82B6 / $2A88E2 / $2A8BEA lea $26BFFC,A1
   spawn: 0x2817c2,                 // bank B's core, called direct
   freeze: 0x8130d4,
@@ -2340,6 +2345,235 @@ export function gunBStep2A8CB2(ram, rom, ctx, a4, a5, a6) {
   gunBRetire2A8E84(ram, a5, ctx);                      // $2A8E84 -- and NO A6 ramp on the way out
 }
 
+// ===========================================================================
+// SHARED GUN C -- $2A8ED0 / $2A8F1C
+// ===========================================================================
+
+/** `$2A8ED0` copies fourteen words, then applies three native RNG draws and the
+ * boss-owned two-byte cadence ramp. */
+export function gunCInit2A8ED0(ram, rom, a4, a6) {
+  copyTemplate(ram, rom, a4, HIBACHI_A1.gunCTemplate, 14); // $2A8ED0..$2A8EDE
+  ram.setU8(a4 + 0x0e, u8(drawByte242E24(ram, rom) + 0x60)); // $2A8EE0..$2A8EEA
+  if (drawNegative242EC2(ram, rom)) {                    // $2A8EEE..$2A8EF8
+    ram.setU8(a4 + 0x0f, u8(-ram.u8(a4 + 0x0f)));
+  }
+  const shape = drawByte24311A(ram, rom);                // $2A8EFC..$2A8F0A
+  ram.setU16(a4 + 0x1c, shape);
+  ram.setU16(a4 + 0x12, shape + 2);
+  const ramp = ram.u8(a6 + 0x1ef);                       // $2A8F0E..$2A8F18
+  ram.setU8(a4 + 0x06, u8(ram.u8(a4 + 0x06) + ramp));
+  ram.setU8(a4 + 0x07, u8(ram.u8(a4 + 0x07) + ramp));
+}
+
+function gunCVolley(ram, rom, ctx, a4, a5, a6) {
+  const target = pickTarget(ram, a5, ctx);               // $2A8F48..$2A8F66
+  if (target === null) return false;
+  const aim = aim256(aimTables(rom),                     // $2A8F68..$2A8F7E
+    u16(ram.u16(a6 + 0x02) + 0xfa00), ram.u16(a6 + 0x04),
+    ram.u16(target + 0x02), ram.u16(target + 0x04));
+  ram.setU8(a4 + 0x1a, aim);
+  return true;
+}
+
+/** `$2A8F1C`. The unconditional leading `$259B08` call is intentional: native
+ * dispatch retires gun C on its first step, before its timer can reach a body
+ * frame. A private stop hook can retain the slot to expose the remaining ROM
+ * body to exact tests. */
+export function gunCStep2A8F1C(ram, rom, ctx, a4, a5, a6) {
+  a1Stop259B08(ram, 0x0c, ctx);                          // $2A8F1C..$2A8F22
+  if (ram.u16(HIBACHI_A1.freeze) !== 0) {                // $2A8F24..$2A8F2C
+    gunCInit2A8ED0(ram, rom, a4, a6);
+    return;
+  }
+  const timer = ram.u8(a4 + 0x02);                       // $2A8F2E
+  ram.setU8(a4 + 0x02, u8(timer - 1));
+  if (timer !== 0) return;
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x08));              // $2A8F36
+
+  let targetAvailable = true;
+  if (ram.u8(a4 + 0x04) === ram.u8(a4 + 0x05)) {        // $2A8F3C..$2A8F44
+    targetAvailable = gunCVolley(ram, rom, ctx, a4, a5, a6);
+  }
+  if (targetAvailable) {
+    const velocity = ctx.tables.shotVector(              // $2A8F82..$2A8F9C
+      ram.u16(a4 + 0x18), ram.u8(a4 + 0x1a));
+    ram.setU16(HIBACHI_A1.gunCVelocityY, u16(velocity.dy));
+    ram.setU16(HIBACHI_A1.gunCVelocityX, u16(velocity.dx));
+    ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);         // $2A8F9E
+
+    const d0 = ram.u32(a4 + 0x0a);                       // $2A8FA4..$2A8FC8
+    let d1 = ram.u8(a4 + 0x0e);
+    const d2 = ram.u32(a6 + 0x02);
+    const d4 = ((ram.u16(a4 + 0x10) << 16) | ram.u16(a4 + 0x12)) >>> 0;
+    const d5 = ((ram.u16(a4 + 0x14) << 16) | ram.u16(a4 + 0x16)) >>> 0;
+    for (let i = 0; i < 8; i++) {                        // $2A8FCA..$2A8FEA
+      shot(ram, rom, ctx, 0x2a8fe0, {
+        d0, d1, d2, d3: vector(rom, d1, 0xfa000000), d4, d5, d6: 0xfa000000, a5,
+      });
+      d1 = u8(d1 + 0x20);
+    }
+    ram.setU8(a4 + 0x0e, u8(ram.u8(a4 + 0x0e) + ram.u8(a4 + 0x0f)));
+    ram.setU16(a4 + 0x18, u16(ram.u16(a4 + 0x18) + 1));
+  }
+
+  const groups = ram.u8(a4 + 0x04);                      // $2A8FFA
+  ram.setU8(a4 + 0x04, u8(groups - 1));
+  if (groups !== 0) return;
+  ram.setU8(a4 + 0x05, u8(ram.u8(a4 + 0x05) + 1));      // $2A9002..$2A900A
+  ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
+  ram.setU8(a4 + 0x0f, u8(-ram.u8(a4 + 0x0f)));
+  ram.setU16(a4 + 0x18, 0x0012);
+  ram.setU8(a4 + 0x02, ram.u8(a4 + 0x09));
+  ram.setU8(a4 + 0x09, u8(ram.u8(a4 + 0x09) - 4));
+  let shape = u16(ram.u16(a4 + 0x1c) + 1);              // $2A9020..$2A903A
+  if (shape > 2) shape = 0;
+  ram.setU16(a4 + 0x1c, shape);
+  ram.setU16(a4 + 0x12, shape + 2);
+
+  const rounds = ram.u8(a4 + 0x06);                      // $2A903C
+  ram.setU8(a4 + 0x06, u8(rounds - 1));
+  if (rounds !== 0) return;
+  if (ram.u8(a6 + 0x1ef) < 4) {
+    ram.setU8(a6 + 0x1ef, u8(ram.u8(a6 + 0x1ef) + 2));
+  }
+  a1Stop259B08(ram, 0x0c, ctx);                          // $2A9050
+}
+
+// ===========================================================================
+// SHARED GUN D -- $2A90A4 / $2A90E0
+// ===========================================================================
+
+/** `$2A90A4`, including all three independent `$242EC2` draws and both
+ * boss-owned permanent-pattern controls. */
+export function gunDInit2A90A4(ram, rom, a4, a6) {
+  copyTemplate(ram, rom, a4, HIBACHI_A1.gunDTemplate, 15); // $2A90A4..$2A90B2
+  ram.setU8(a4 + 0x16, u8(drawWord242EC2(ram, rom)));   // $2A90B4..$2A90BA
+  ram.setU8(a4 + 0x18, u8(drawWord242EC2(ram, rom)));   // $2A90BE..$2A90C4
+  ram.setU8(a4 + 0x1a, u8(drawWord242EC2(ram, rom)));   // $2A90C8..$2A90CE
+  ram.setU16(a6 + 0x1fe, 5);                            // $2A90D2
+  ram.setU8(a6 + 0x1fd, 8);                             // $2A90D8
+}
+
+function gunDVector(rom, table, angle) {
+  const offset = u16(u16(angle + 2) & 0x00fc);
+  return (rom.u32(table + offset) + 0xfe000000) >>> 0;
+}
+
+function gunDRing(ram, rom, ctx, a4, a5, a6, spec) {
+  const timer = ram.u8(a4 + spec.timer);
+  ram.setU8(a4 + spec.timer, u8(timer - 1));
+  if (timer !== 0) return;
+  ram.setU8(a4 + spec.timer, ram.u8(a4 + spec.reload));
+  let d1 = ram.u8(a4 + spec.angle);
+  const d0 = ram.u32(a4 + spec.kind);
+  const d2 = ram.u32(a6 + 0x02);
+  for (let i = 0; i < 4; i++) {
+    shot(ram, rom, ctx, spec.site, {
+      d0, d1, d2, d3: gunDVector(rom, spec.vectors, d1), d4: 0, d5: 0,
+      d6: 0xfe000000, a5,
+    });
+    d1 = u16(d1 + 0x40);
+  }
+  ram.setU8(a4 + spec.angle,
+    u8(ram.u8(a4 + spec.angle) + ram.u8(a4 + spec.angleStep)));
+}
+
+const GUN_D_RING_1 = Object.freeze({
+  timer: 0x02, reload: 0x03, kind: 0x0a, angle: 0x16, angleStep: 0x17,
+  vectors: HIBACHI_A1.gunDVector1, site: 0x2a9118,
+});
+const GUN_D_RING_2 = Object.freeze({
+  timer: 0x06, reload: 0x07, kind: 0x12, angle: 0x1a, angleStep: 0x1b,
+  vectors: HIBACHI_A1.gunDVector2, site: 0x2a917e,
+});
+
+function gunDThirdRing(ram, rom, ctx, a4, a5, a6) {
+  const timer = ram.u8(a4 + 0x04);                       // $2A91AC
+  ram.setU8(a4 + 0x04, u8(timer - 1));
+  if (timer !== 0) return;
+  ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));
+  const kindOffset = i16(ram.u16(a6 + 0x1ea));           // $2A91C0..$2A91CA
+  if ((kindOffset & 1) !== 0 || kindOffset < 0 || kindOffset >= 0x0c) {
+    throw new RangeError(`gun D kind-table byte offset ${kindOffset} is outside $2A9098`);
+  }
+  const d0 = ((ram.u16(a4 + 0x0e) << 16)
+    | rom.u16(HIBACHI_A1.gunDKindTable + kindOffset)) >>> 0;
+  let d1 = ram.u8(a4 + 0x18);
+  const d2 = ram.u32(a6 + 0x02);
+  ram.setU16(HIBACHI_A1.gunCVelocityY, 0);               // $2A91D4/$2A91DA
+  ram.setU16(HIBACHI_A1.gunCVelocityX, 0);
+  const d4 = (0x01010000 | ram.u16(a6 + 0x1fe)) >>> 0;
+  const d5 = 0x01010001;
+  for (let i = 0; i < 10; i++) {                         // $2A91F6..$2A9216
+    shot(ram, rom, ctx, 0x2a920c, {
+      d0, d1, d2, d3: gunDVector(rom, HIBACHI_A1.gunDVector3, d1),
+      d4, d5, d6: 0xfe000000, a5,
+    });
+    d1 = u16(d1 + 0x19);
+  }
+  ram.setU8(a4 + 0x18, u8(ram.u8(a4 + 0x18) + ram.u8(a4 + 0x19)));
+  const selector = ram.u16(a6 + 0x1ea);                  // $2A9222..$2A922E
+  ram.setU16(a6 + 0x1ea, selector < 2 ? 6 : selector - 2);
+}
+
+function gunDControl(ram, a4, a6) {
+  const cadence = ram.u8(a6 + 0x1fd);                    // $2A9230
+  ram.setU8(a6 + 0x1fd, u8(cadence - 1));
+  if (cadence !== 0) return;
+  ram.setU8(a6 + 0x1fd, 8);
+
+  let endpoint = false;
+  if ((ram.u8(a6 + 0x1fc) & 1) === 0) {                 // $2A923E..$2A9268
+    if (ram.u8(a4 + 0x19) !== 0xfa) {
+      ram.setU8(a4 + 0x19, u8(ram.u8(a4 + 0x19) - 1));
+      return;
+    }
+    if (ram.u16(a6 + 0x1fe) !== 5) {
+      ram.setU16(a6 + 0x1fe, u16(ram.u16(a6 + 0x1fe) + 1));
+      return;
+    }
+    endpoint = true;
+  } else {                                               // $2A926C..$2A928C
+    if (ram.u8(a4 + 0x19) !== 6) {
+      ram.setU8(a4 + 0x19, u8(ram.u8(a4 + 0x19) + 1));
+      return;
+    }
+    if (ram.u16(a6 + 0x1fe) !== 0xfffb) {
+      ram.setU16(a6 + 0x1fe, u16(ram.u16(a6 + 0x1fe) - 1));
+      return;
+    }
+    endpoint = true;
+  }
+  if (!endpoint) return;
+  const cycles = ram.u8(a4 + 0x08);                      // $2A9292..$2A92A4
+  ram.setU8(a4 + 0x08, u8(cycles - 1));
+  if (cycles !== 0) return;
+  ram.setU8(a4 + 0x08, ram.u8(a4 + 0x09));
+  ram.setU8(a6 + 0x1fc, ram.u8(a6 + 0x1fc) ^ 1);
+}
+
+/** `$2A90E0`. Gun D has no freeze arm and no `$259B08` call, so its native
+ * lifetime is permanent. */
+export function gunDStep2A90E0(ram, rom, ctx, a4, a5, a6) {
+  gunDRing(ram, rom, ctx, a4, a5, a6, GUN_D_RING_1);
+  if (ram.u16(a4 + 0x1c) !== 0) {                        // $2A912E..$2A9144
+    ram.setU16(a4 + 0x1c, u16(ram.u16(a4 + 0x1c) - 1));
+    if (ram.u32(a5 + 0x16) >= 0x0001f800) {
+      gunDControl(ram, a4, a6);
+      return;
+    }
+  }
+
+  gunDRing(ram, rom, ctx, a4, a5, a6, GUN_D_RING_2);
+  if (ram.u16(a4 + 0x1e) !== 0) {                        // $2A9194..$2A91AA
+    ram.setU16(a4 + 0x1e, u16(ram.u16(a4 + 0x1e) - 1));
+    if (ram.u32(a5 + 0x16) >= 0x0001c000) return;
+  }
+
+  gunDThirdRing(ram, rom, ctx, a4, a5, a6);
+  gunDControl(ram, a4, a6);
+}
+
 /** The nine `jsr $2817C2` sites of each arm, read out of the image. */
 const ARM_A_SITES = Object.freeze([0x2a8d3c, 0x2a8d4c, 0x2a8d5c, 0x2a8d6c, 0x2a8d7c,
   0x2a8d8c, 0x2a8d9c, 0x2a8dac, 0x2a8dbc]);
@@ -2662,6 +2896,16 @@ registerScript(HIBACHI_A1.gunBInit, (ram, rom, ctx, a4) => gunBInit2A8C9A(ram, r
 registerScript(HIBACHI_A1.gunBStep, (ram, rom, ctx, a4) =>
   gunBStep2A8CB2(ram, rom, ctx, a4, bossA5(ctx, HIBACHI_A1.gunBStep),
     bossA6(ctx, HIBACHI_A1.gunBStep)));
+registerScript(HIBACHI_A1.gunCInit, (ram, rom, ctx, a4) =>
+  gunCInit2A8ED0(ram, rom, a4, bossA6(ctx, HIBACHI_A1.gunCInit)));
+registerScript(HIBACHI_A1.gunCStep, (ram, rom, ctx, a4) =>
+  gunCStep2A8F1C(ram, rom, ctx, a4, bossA5(ctx, HIBACHI_A1.gunCStep),
+    bossA6(ctx, HIBACHI_A1.gunCStep)));
+registerScript(HIBACHI_A1.gunDInit, (ram, rom, ctx, a4) =>
+  gunDInit2A90A4(ram, rom, a4, bossA6(ctx, HIBACHI_A1.gunDInit)));
+registerScript(HIBACHI_A1.gunDStep, (ram, rom, ctx, a4) =>
+  gunDStep2A90E0(ram, rom, ctx, a4, bossA5(ctx, HIBACHI_A1.gunDStep),
+    bossA6(ctx, HIBACHI_A1.gunDStep)));
 
 // The A4 pairs are the other way round: the word before each step is an
 // operand, so the init entry runs the init AND the step in one dispatch, which
@@ -2690,7 +2934,9 @@ registerScript(0x2a6a76, (ram, rom, ctx, a4) => a4Ten2A6A76(ram, a4, true));
 registerScript(0x2a6a7c, (ram, rom, ctx, a4) => a4Ten2A6A76(ram, a4, false));
 
 /** The shared/main-table A1 ids whose init AND step this file registers. */
-export const HIBACHI_A1_SCRIPTS = Object.freeze([0, 1, 2, 3, 5, 6, 7, 8, 9, 0x0a, 0x0b]);
+export const HIBACHI_A1_SCRIPTS = Object.freeze([
+  0, 1, 2, 3, 5, 6, 7, 8, 9, 0x0a, 0x0b, 0x0c, 0x0d,
+]);
 /** The loop-zero table's unique ids whose init AND step this file registers. */
 export const HIBACHI_A1_ALT_SCRIPTS = Object.freeze([0, 1, 2, 3, 4]);
 /** The A4 attack-loop ids this file registers alongside `hibachiend.js`. */
@@ -2711,9 +2957,7 @@ export const HIBACHI_A1_COUNTED = Object.freeze({
   // $2A -- not the $3C W407's note said, which was gun $B's own trailing figure copied one
   // line too far -- is gun $B's $A of template plus $20 of self-pointers.
   // W407: $B is no longer here -- this file runs it, with A4 $11 and A4 $10.
-  0x0c: { init: 0x2a8ed0, step: 0x2a8f1c, bytes: 0x01d4, why: 'A4 $12 ($2A6B1E)' },
-  0x0d: { init: 0x2a90a4, step: 0x2a90e0, bytes: 0x0204, why: 'A4 $13 ($2A6B6C); bounded '
-    + 'ABOVE by the alt table $2A92A8 itself, a positive witness' },
+  // Guns $C and $D now run from their exact image-backed translations too.
 });
 
 /** All five ids unique to `$2A92A8`'s loop-zero table now run. W562-W566

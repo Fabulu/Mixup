@@ -59,11 +59,11 @@ function copyNativeBulletRecord(fromRam, toRam, slot) {
 test('Playable Hibachi publishes exact private geometry and palette identity', () => {
   assert.equal(PLAYABLE_HIBACHI_CONFLICT,
     'Formation cannot be combined with Playable Hibachi');
-  assert.equal(PLAYABLE_HIBACHI_EXTERNAL_KIND, 'ddpdoj.playable-hibachi/v3');
+  assert.equal(PLAYABLE_HIBACHI_EXTERNAL_KIND, 'ddpdoj.playable-hibachi/v4');
   assert.deepEqual(PLAYABLE_HIBACHI_BASES, [0x11000000, 0x11010000]);
   assert.equal(PLAYABLE_HIBACHI_SIDECAR_BYTES, 0x276);
   assert.equal(PLAYABLE_HIBACHI_BULLET_SLOTS, 210);
-  assert.equal(PLAYABLE_HIBACHI_BULLET_POWER, 0x0100);
+  assert.equal(PLAYABLE_HIBACHI_BULLET_POWER, 0x00c0);
   assert.deepEqual(PLAYABLE_HIBACHI_PALETTE_BANKS,
     [0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x0f]);
   assert.deepEqual(PLAYABLE_HIBACHI_PALETTE_SOURCES,
@@ -84,7 +84,7 @@ test('Playable Hibachi publishes exact private geometry and palette identity', (
   assert.equal(state.fingerprints.bulletPower, PLAYABLE_HIBACHI_BULLET_POWER);
   assert.equal(state.fingerprints.ownedRecordFormat, 'owned-record/full-0x40/v1');
   assert.equal(state.fingerprints.powerPolicy,
-    '0:0:256:0:384|2:1:271:8:640|4:2:281:16:704|6:3:305:24:768|8:4:320:48:1024');
+    '0:0:192:0:384|2:1:224:8:640|4:2:240:16:704|6:3:264:24:768|8:4:288:48:1024');
   assert.equal(state.fingerprints.deathCadence, '192:3:3:4-188/4:9+11+11');
   assert.equal(state.fingerprints.switchDelayDivisor,
     PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR);
@@ -270,9 +270,9 @@ test('Playable Hibachi runahead restores every external owner in place', () => {
     randomBursts: 4,
   });
   state.selectedGuns[1] = 0x0a;
-  state.ordinaryPatternCursors.set([20, 14]);
+  state.ordinaryPatternCursors.set([18, 15]);
   state.hyperPatternCursors.set([4, 3]);
-  state.players[1].runtime.descriptorId = 13;
+  state.players[1].runtime.descriptorId = 14;
   state.players[1].runtime.gun = 0x0a;
   state.players[1].runtime.frames = 9;
   state.players[1].runtime.presentationFrames = 13;
@@ -344,9 +344,9 @@ test('Playable Hibachi runahead restores every external owner in place', () => {
     y: 0x2a00, x: 0x2300, randomBursts: 4, terminal: false,
   });
   assert.equal(state.selectedGuns[1], 0x0a);
-  assert.deepEqual([...state.ordinaryPatternCursors], [20, 14]);
+  assert.deepEqual([...state.ordinaryPatternCursors], [18, 15]);
   assert.deepEqual([...state.hyperPatternCursors], [4, 3]);
-  assert.equal(state.players[1].runtime.descriptorId, 13);
+  assert.equal(state.players[1].runtime.descriptorId, 14);
   assert.equal(state.players[1].runtime.gun, 0x0a);
   assert.equal(state.players[1].runtime.frames, 9);
   assert.equal(state.players[1].runtime.presentationFrames, 13);
@@ -465,13 +465,13 @@ test('Playable Hibachi replay validates completely before restoring in place', (
   state.bulletPowers[209] = 8;
   state.bulletHalfExtents[209] = 0x0400;
   seedNativeBulletRecord(game.ram, 209, 0x8316, 0x73);
-  state.selectedGuns.set([3, 4]);
-  state.ordinaryPatternCursors.set([8, 20]);
+  state.selectedGuns.set([3, 0x0d]);
+  state.ordinaryPatternCursors.set([8, 18]);
   state.hyperPatternCursors.set([4, 4]);
   state.players[0].runtime.descriptorId = 7;
   state.players[0].runtime.gun = 3;
-  state.players[1].runtime.descriptorId = 19;
-  state.players[1].runtime.gun = 4;
+  state.players[1].runtime.descriptorId = 17;
+  state.players[1].runtime.gun = 0x0d;
   state.players[0].runtime.presentationFrames = 13;
   state.players[1].runtime.presentationFrames = 17;
   state.players[0].runtime.presentationStarted = true;
@@ -522,13 +522,13 @@ test('Playable Hibachi replay validates completely before restoring in place', (
   assert.equal(state.ownedBullets[209], 2);
   assert.equal(state.bulletPowers[209], 8);
   assert.equal(state.bulletHalfExtents[209], 0x0400);
-  assert.deepEqual([...state.selectedGuns], [3, 4]);
-  assert.deepEqual([...state.ordinaryPatternCursors], [8, 20]);
+  assert.deepEqual([...state.selectedGuns], [3, 0x0d]);
+  assert.deepEqual([...state.ordinaryPatternCursors], [8, 18]);
   assert.deepEqual([...state.hyperPatternCursors], [4, 4]);
   assert.equal(state.players[0].runtime.descriptorId, 7);
   assert.equal(state.players[0].runtime.gun, 3);
-  assert.equal(state.players[1].runtime.descriptorId, 19);
-  assert.equal(state.players[1].runtime.gun, 4);
+  assert.equal(state.players[1].runtime.descriptorId, 17);
+  assert.equal(state.players[1].runtime.gun, 0x0d);
   assert.equal(state.players[0].runtime.presentationFrames, 13);
   assert.equal(state.players[1].runtime.presentationFrames, 17);
   assert.equal(state.players[0].runtime.presentationStarted, true);
@@ -558,10 +558,10 @@ test('Playable Hibachi replay validates completely before restoring in place', (
     mutate(candidate);
     assert.throws(() => importPlayableHibachiReplayState(state, candidate), pattern);
     assert.deepEqual(exportPlayableHibachiReplayState(state), before,
-      'every rejected v3 payload leaves live state unchanged');
+      'every rejected v4 payload leaves live state unchanged');
   };
-  rejectWithoutMutation((value) => { value.kind = 'ddpdoj.playable-hibachi/v2'; },
-    /external kind must be ddpdoj\.playable-hibachi\/v3/);
+  rejectWithoutMutation((value) => { value.kind = 'ddpdoj.playable-hibachi/v3'; },
+    /external kind must be ddpdoj\.playable-hibachi\/v4/);
   rejectWithoutMutation((value) => { delete value.ownedBulletRecords; },
     /owned bullet records are missing/);
   rejectWithoutMutation((value) => { value.ownedBulletRecords = []; },
@@ -641,7 +641,7 @@ test('Playable Hibachi replay validates completely before restoring in place', (
     /ordinary pattern cursors are invalid/);
   rejectWithoutMutation((value) => { value.ordinaryPatternCursors[0] = 5.5; },
     /ordinary pattern cursors are invalid/);
-  rejectWithoutMutation((value) => { value.ordinaryPatternCursors[0] = 21; },
+  rejectWithoutMutation((value) => { value.ordinaryPatternCursors[0] = 19; },
     /ordinary pattern cursors are invalid/);
   rejectWithoutMutation((value) => { value.hyperPatternCursors = [1]; },
     /hyper pattern cursors are invalid/);
@@ -651,7 +651,7 @@ test('Playable Hibachi replay validates completely before restoring in place', (
     /hyper pattern cursors are invalid/);
   rejectWithoutMutation((value) => { delete value.playerRuntime[0].descriptorId; },
     /P1 runtime descriptorId is invalid/);
-  rejectWithoutMutation((value) => { value.playerRuntime[0].descriptorId = 20; },
+  rejectWithoutMutation((value) => { value.playerRuntime[0].descriptorId = 18; },
     /P1 runtime descriptorId is invalid/);
   rejectWithoutMutation((value) => { value.playerRuntime[0].gun = 2; },
     /P1 descriptor gun telemetry does not match/);
@@ -669,7 +669,7 @@ test('Playable Hibachi replay validates completely before restoring in place', (
   }
 });
 
-test('replay v3 validates and restores the exact Playable Hibachi loadout', () => {
+test('replay v4 validates and restores the exact Playable Hibachi loadout', () => {
   const sourceMods = createModState(resolveLoadout(['playable-hibachi']));
   const { game: sourceGame } = fakeGame();
   bindModGame(sourceMods, sourceGame);
@@ -678,13 +678,13 @@ test('replay v3 validates and restores the exact Playable Hibachi loadout', () =
   sourceMods.playableHibachi.bulletPowers[17] = 4;
   sourceMods.playableHibachi.bulletHalfExtents[17] = 0x02c0;
   seedNativeBulletRecord(sourceGame.ram, 17, 0xc316, 0x4b);
-  sourceMods.playableHibachi.selectedGuns.set([1, 4]);
-  sourceMods.playableHibachi.ordinaryPatternCursors.set([6, 20]);
+  sourceMods.playableHibachi.selectedGuns.set([1, 0x0d]);
+  sourceMods.playableHibachi.ordinaryPatternCursors.set([6, 18]);
   sourceMods.playableHibachi.hyperPatternCursors.set([4, 3]);
   sourceMods.playableHibachi.players[0].runtime.descriptorId = 5;
   sourceMods.playableHibachi.players[0].runtime.gun = 1;
-  sourceMods.playableHibachi.players[1].runtime.descriptorId = 19;
-  sourceMods.playableHibachi.players[1].runtime.gun = 4;
+  sourceMods.playableHibachi.players[1].runtime.descriptorId = 17;
+  sourceMods.playableHibachi.players[1].runtime.gun = 0x0d;
   const seed = exportModReplaySeed(sourceMods);
 
   assert.deepEqual(seed.ids, ['playable-hibachi']);
@@ -715,11 +715,11 @@ test('replay v3 validates and restores the exact Playable Hibachi loadout', () =
   assert.equal(restored.playableHibachi.ownedBullets[17], 2);
   assert.equal(restored.playableHibachi.bulletPowers[17], 4);
   assert.equal(restored.playableHibachi.bulletHalfExtents[17], 0x02c0);
-  assert.deepEqual([...restored.playableHibachi.selectedGuns], [1, 4]);
-  assert.deepEqual([...restored.playableHibachi.ordinaryPatternCursors], [6, 20]);
+  assert.deepEqual([...restored.playableHibachi.selectedGuns], [1, 0x0d]);
+  assert.deepEqual([...restored.playableHibachi.ordinaryPatternCursors], [6, 18]);
   assert.deepEqual([...restored.playableHibachi.hyperPatternCursors], [4, 3]);
   assert.equal(restored.playableHibachi.players[0].runtime.descriptorId, 5);
   assert.equal(restored.playableHibachi.players[0].runtime.gun, 1);
-  assert.equal(restored.playableHibachi.players[1].runtime.descriptorId, 19);
-  assert.equal(restored.playableHibachi.players[1].runtime.gun, 4);
+  assert.equal(restored.playableHibachi.players[1].runtime.descriptorId, 17);
+  assert.equal(restored.playableHibachi.players[1].runtime.gun, 0x0d);
 });

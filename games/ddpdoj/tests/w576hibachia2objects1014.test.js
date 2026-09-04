@@ -46,7 +46,7 @@ const PRE_W627_TABLE = SKIP ? null : tableBeforeW627(TABLE_JSON);
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = 'c5429f67e9ff4da89bea27fa63afb8c4fac7fc8947b7a0146c8935c5fb981688';
+const LIVE_TABLE_HASH = 'a262d979e0a369afba14cec7858efdf6932ca4ce7b3f6aab13d433c87f0860cc';
 const PRE_W627_TABLE_HASH = '02c3aea71c84407cdb17bfa454ddc3abac4a62171ec59c627f4d99f3cb9f439e';
 const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
 const W575_TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
@@ -120,12 +120,12 @@ test('W576 pins both raw code, NOP, and data boundaries with exactly two windows
 
 test('W576 table migration is strict, additive, identity-pinned, and composed for history',
   { skip: SKIP }, () => {
-    assert.deepEqual([ROM_WINDOW_COUNT, ROM_WINDOW_BYTES], [1683, 651447]);
+    assert.deepEqual([ROM_WINDOW_COUNT, ROM_WINDOW_BYTES], [1686, 651517]);
     assert.deepEqual([
       TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(TABLE_JSON),
-    ], [1683, 651447, LIVE_TABLE_HASH]);
+    ], [1686, 651517, LIVE_TABLE_HASH]);
     assert.deepEqual([
       PRE_W627_TABLE.rom.windows.length,
       PRE_W627_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
@@ -371,8 +371,8 @@ test('W576 migrates table identity only and reaches the exact W587 $291040 front
     ], [7667, 153797, 164459, 0x291040, 4, 8, 16, 1, 0x81533c, 0, 0x008a]);
     assert.match(error?.message ?? '', /word at \$291040 is outside every ROM window/);
     assert.deepEqual([state.ramSha256, state.gameSha256], [
-      'e37340e127fade24b6bb4b1db8de479c66a8aed883c53a3c5b3bc10d6a45e30b',
-      'b809cf01be3acb39d37fba497b09ab1d0f7875052c73d9542dd5985de21e90d7',
+      '7c8e4f3ae55f00a473926624977d95a04734ccd5866e4d5c95a2a0b7ba9c3663',
+      '0964922af141ff9e7e33921204dbd499a4ad52c859f915c8632c53d6b3f6c219',
     ]);
     assert.equal(frontier.frame.logic + 1500, 149131);
     assert.ok(resumed.game.logicFrame > frontier.frame.logic + 2500,

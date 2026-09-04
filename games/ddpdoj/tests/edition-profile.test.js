@@ -275,9 +275,9 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
   const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
 
   assert.equal(excluded.size, 734);
-  assert.equal(tables.rom.windows.length, 1683,
+  assert.equal(tables.rom.windows.length, 1686,
     'runtime projection does not mutate the complete exported table');
-  assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [949, 457509]);
+  assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [952, 457579]);
   for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);
 
   for (const privateWindow of [

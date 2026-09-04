@@ -24,6 +24,8 @@ import {
   gun9Init2A89BA, gun9Step2A89F4,
   gunAInit2A8B7C, gunAStep2A8BC0,
   gunBInit2A8C9A, gunBStep2A8CB2,
+  gunCInit2A8ED0, gunCStep2A8F1C,
+  gunDInit2A90A4, gunDStep2A90E0,
 } from './hibachiguns.js';
 import { MACHINE, P, RAM } from './machine.js';
 import { deriveProfileContext } from './profiles.js';
@@ -34,22 +36,22 @@ import { SHOT } from './weapons.js';
 import { PS } from './shots.js';
 
 export const PLAYABLE_HIBACHI_CONFLICT = 'Formation cannot be combined with Playable Hibachi';
-export const PLAYABLE_HIBACHI_EXTERNAL_KIND = 'ddpdoj.playable-hibachi/v3';
+export const PLAYABLE_HIBACHI_EXTERNAL_KIND = 'ddpdoj.playable-hibachi/v4';
 export const PLAYABLE_HIBACHI_SIDECAR_BYTES = 0x276;
 export const PLAYABLE_HIBACHI_BULLET_SLOTS = 210;
 /** Baseline rung retained as the public minimum-damage constant. */
-export const PLAYABLE_HIBACHI_BULLET_POWER = 0x0100;
+export const PLAYABLE_HIBACHI_BULLET_POWER = 0x00c0;
 export const PLAYABLE_HIBACHI_DEATH_FRAMES = 192;
 export const PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR = 4;
 export const PLAYABLE_HIBACHI_POWER_POLICY = Object.freeze([
-  Object.freeze({ power: 0, rung: 0, damage: 0x0100, speedDelta: 0, halfExtent: 0x0180 }),
-  Object.freeze({ power: 2, rung: 1, damage: 0x010f, speedDelta: 8, halfExtent: 0x0280 }),
-  Object.freeze({ power: 4, rung: 2, damage: 0x0119, speedDelta: 16, halfExtent: 0x02c0 }),
-  Object.freeze({ power: 6, rung: 3, damage: 0x0131, speedDelta: 24, halfExtent: 0x0300 }),
-  Object.freeze({ power: 8, rung: 4, damage: 0x0140, speedDelta: 48, halfExtent: 0x0400 }),
+  Object.freeze({ power: 0, rung: 0, damage: 0x00c0, speedDelta: 0, halfExtent: 0x0180 }),
+  Object.freeze({ power: 2, rung: 1, damage: 0x00e0, speedDelta: 8, halfExtent: 0x0280 }),
+  Object.freeze({ power: 4, rung: 2, damage: 0x00f0, speedDelta: 16, halfExtent: 0x02c0 }),
+  Object.freeze({ power: 6, rung: 3, damage: 0x0108, speedDelta: 24, halfExtent: 0x0300 }),
+  Object.freeze({ power: 8, rung: 4, damage: 0x0120, speedDelta: 48, halfExtent: 0x0400 }),
 ]);
 export const PLAYABLE_HIBACHI_GUN_IDS = Object.freeze([
-  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0a, 0x0b,
+  0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0x0a, 0x0b, 0x0c, 0x0d,
 ]);
 
 function gunDescriptor(id, bank, pattern, family, gun, init, step, finite = true) {
@@ -63,29 +65,28 @@ function gunDescriptor(id, bank, pattern, family, gun, init, step, finite = true
 }
 
 export const PLAYABLE_HIBACHI_HYPER_PATTERNS = Object.freeze([
-  gunDescriptor(0, 'hyper', 1, 'shared', 5, gun5Init2A81BC, gun5Step2A8206),
-  gunDescriptor(1, 'hyper', 2, 'shared', 6, gun6Init2A8370, gun6Step2A8396),
-  gunDescriptor(2, 'hyper', 3, 'shared', 7, gun7Init2A8516, gun7Step2A8538),
-  gunDescriptor(3, 'hyper', 4, 'shared', 8, gun8Init2A8800, gun8Step2A883A),
+  gunDescriptor(0, 'hyper', 1, 'main', 0, gun0Init2A738A, gun0Step2A7400),
+  gunDescriptor(1, 'hyper', 2, 'main', 1, gun1Init2A7850, gun1Step2A78D0),
+  gunDescriptor(2, 'hyper', 3, 'main', 2, gun2Init2A7AB2, gun2Step2A7B20),
+  gunDescriptor(3, 'hyper', 4, 'main', 3, gun3Init2A7E64, gun3Step2A7E96),
 ]);
 
 export const PLAYABLE_HIBACHI_ORDINARY_PATTERNS = Object.freeze([
-  gunDescriptor(4, 'ordinary', 5, 'main', 0, gun0Init2A738A, gun0Step2A7400),
-  gunDescriptor(5, 'ordinary', 6, 'main', 1, gun1Init2A7850, gun1Step2A78D0),
-  gunDescriptor(6, 'ordinary', 7, 'main', 2, gun2Init2A7AB2, gun2Step2A7B20),
-  gunDescriptor(7, 'ordinary', 8, 'main', 3, gun3Init2A7E64, gun3Step2A7E96),
-  gunDescriptor(8, 'ordinary', 9, 'shared', 5, gun5Init2A81BC, gun5Step2A8206),
-  gunDescriptor(9, 'ordinary', 10, 'shared', 6, gun6Init2A8370, gun6Step2A8396),
-  gunDescriptor(10, 'ordinary', 11, 'shared', 7, gun7Init2A8516, gun7Step2A8538),
-  gunDescriptor(11, 'ordinary', 12, 'shared', 8, gun8Init2A8800, gun8Step2A883A),
-  gunDescriptor(12, 'ordinary', 13, 'shared', 9, gun9Init2A89BA, gun9Step2A89F4),
-  gunDescriptor(13, 'ordinary', 14, 'shared', 0x0a, gunAInit2A8B7C, gunAStep2A8BC0),
-  gunDescriptor(14, 'ordinary', 15, 'shared', 0x0b, gunBInit2A8C9A, gunBStep2A8CB2),
-  gunDescriptor(15, 'ordinary', 16, 'alternate', 0, altGun0Init2A9366, altGun0Step2A93DC),
-  gunDescriptor(16, 'ordinary', 17, 'alternate', 1, altGun1Init2A97F4, altGun1Step2A9874),
-  gunDescriptor(17, 'ordinary', 18, 'alternate', 2, altGun2Init2A9AA0, altGun2Step2A9B0E),
-  gunDescriptor(18, 'ordinary', 19, 'alternate', 3, altGun3Init2A9E84, altGun3Step2A9EB6),
-  gunDescriptor(19, 'ordinary', 20, 'alternate', 4, altGun4Init2AA072, altGun4Step2AA084,
+  gunDescriptor(4, 'ordinary', 5, 'alternate', 0, altGun0Init2A9366, altGun0Step2A93DC),
+  gunDescriptor(5, 'ordinary', 6, 'alternate', 1, altGun1Init2A97F4, altGun1Step2A9874),
+  gunDescriptor(6, 'ordinary', 7, 'alternate', 2, altGun2Init2A9AA0, altGun2Step2A9B0E),
+  gunDescriptor(7, 'ordinary', 8, 'alternate', 3, altGun3Init2A9E84, altGun3Step2A9EB6),
+  gunDescriptor(8, 'ordinary', 9, 'alternate', 4, altGun4Init2AA072, altGun4Step2AA084,
+    false),
+  gunDescriptor(9, 'ordinary', 10, 'shared', 5, gun5Init2A81BC, gun5Step2A8206),
+  gunDescriptor(10, 'ordinary', 11, 'shared', 6, gun6Init2A8370, gun6Step2A8396),
+  gunDescriptor(11, 'ordinary', 12, 'shared', 7, gun7Init2A8516, gun7Step2A8538),
+  gunDescriptor(12, 'ordinary', 13, 'shared', 8, gun8Init2A8800, gun8Step2A883A),
+  gunDescriptor(13, 'ordinary', 14, 'shared', 9, gun9Init2A89BA, gun9Step2A89F4),
+  gunDescriptor(14, 'ordinary', 15, 'shared', 0x0a, gunAInit2A8B7C, gunAStep2A8BC0),
+  gunDescriptor(15, 'ordinary', 16, 'shared', 0x0b, gunBInit2A8C9A, gunBStep2A8CB2),
+  gunDescriptor(16, 'ordinary', 17, 'shared', 0x0c, gunCInit2A8ED0, gunCStep2A8F1C),
+  gunDescriptor(17, 'ordinary', 18, 'shared', 0x0d, gunDInit2A90A4, gunDStep2A90E0,
     false),
 ]);
 
@@ -883,21 +884,24 @@ export function stepPlayableHibachiWeapon(state, ram, rec, playerIdx, ctx) {
     if (switched) {
       const delayAddress = player.layout.gun + 0x02;
       const delay = player.memory.u8(delayAddress);
-      if (delay % PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR !== 0) {
-        throw new Error(`Playable Hibachi switch delay ${delay} is not divisible by four`);
-      }
       player.memory.setU8(delayAddress,
-        delay / PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR);
+        Math.floor(delay / PLAYABLE_HIBACHI_SWITCH_DELAY_DIVISOR));
     }
     runtime.initialized = true;
     runtime.frames = 0;
     return true;
   }
 
+  let privateStopCalls = 0;
   const privateCtx = deriveProfileContext(ctx, {
     privateTargetRecord: target,
     privateA1StopHook: (script) => {
       if (script !== descriptor.gun) return false;
+      privateStopCalls++;
+      // Gun C opens every step by stopping its native scheduler-wide script.
+      // A private selectable sidecar absorbs that preamble, while the second
+      // stop reached by the finite body still retires the selected weapon.
+      if (descriptor.gun === 0x0c && privateStopCalls === 1) return true;
       runtime.retired = true;
       return true;
     },
@@ -1485,7 +1489,7 @@ export function importPlayableHibachiReplayState(state, external) {
   const deathPresentations = external.deathPresentations.map(validateDeathPresentation);
   const selectedGuns = validateSelectedGuns(external.selectedGuns);
   const ordinaryPatternCursors = validatePatternCursors(
-    external.ordinaryPatternCursors, 'ordinary', 5, 20,
+    external.ordinaryPatternCursors, 'ordinary', 5, 18,
   );
   const hyperPatternCursors = validatePatternCursors(
     external.hyperPatternCursors, 'hyper', 1, 4,
