@@ -52,15 +52,15 @@ const PRIOR_ROM = SKIP ? null : new RomWindows(PRIOR_TABLE.rom);
 const SCRIPT = 0x29109c;
 const SCRIPT_END = 0x2910f6;
 const VARIANT_2_LIST = 0x290f4e;
-const TABLE_HASH = 'af3dee2f75818bcbb32d5c024b50b0816837d319595bb71eaade5d136fcd2a69';
+const TABLE_HASH = 'c5429f67e9ff4da89bea27fa63afb8c4fac7fc8947b7a0146c8935c5fb981688';
 const W597_TABLE_HASH = '46064f29e4cde17e95d86b1a823e82d852346ca80325ed5ea9fbcbb6ddbda4c9';
 const PRIOR_TABLE_HASH = '706201adef09d00737f1fafc687e52d12ab81f437bc842690af229afab258445';
 const STORED_TABLE_HASH = '1b5e97385bc33328b5ce9b3e253b91f61576f4ffe2dd6311ef80542edfb1a6e9';
 const STORED_PRIOR_TABLE_HASH = '18fd1b8ac5c4b066e1d310d10da39d363f8a848e2a40b1894a040a0cd12a82c8';
 const SCRIPT_HASH = '16c0eea9d901d6fd6bc9a7fcaf19673282402c73fc70ef21e843a568f5597163';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
-const CHECKPOINT_RAM_HASH = 'a1868acf2e7836a6e2d7a0eb89bb0c7e69727f6e529b1613570fe084b21f6a7f';
-const CHECKPOINT_GAME_HASH = '9628f39948e2a4821066eabd518f052567568719058fc901ca9e706ab8ca3ef8';
+const CHECKPOINT_RAM_HASH = 'fdce9ab8ae1a37ef06c567c0250dd566adb00872f57a083fec26a430b1b1845d';
+const CHECKPOINT_GAME_HASH = 'a795d1f9cf6cdf2fe3dce9b61526344ed09c5168d7745acd1ff420492f5db375';
 const PAIR = Object.freeze({ ship: 0, style: 6 });
 const RAW = Object.freeze({
   stage: 0x813092, stageX2: 0x813094, stageX4: 0x813096, loop: 0x813098,
@@ -221,8 +221,8 @@ test('W596 exports only the exact variant-2 script and sole missing dependency',
       EXPECTED.nextFrontier.successful,
       EXPECTED.nextFrontier.raw.stage, EXPECTED.nextFrontier.raw.loop,
       EXPECTED.nextFrontier.address,
-    ], [151364, 4, 1, 0x291bae],
-    'the unchanged route stops in second-loop Stage 5 before type $800C name presentation');
+    ], [151196, 4, 1, 0x291bae],
+    'the current route stops in second-loop Stage 5 before type $800C name presentation');
     assert.deepEqual(tableBeforeW596(PRIOR_TABLE), PRIOR_TABLE,
       'the exact W595 reconstruction remains idempotent');
     const partial = clone(TABLE_JSON);
@@ -373,11 +373,11 @@ test('W596 fresh ship-0/style-6 route pins every cadence identity and stops at t
     const periodic = [];
     let firstFrontier = null;
     let nextFrontier = null;
-    for (let attempted = 1; attempted <= 151365; attempted++) {
+    for (let attempted = 1; attempted <= 151197; attempted++) {
       game.ram.setU8(RAM.player1 + P.invuln, 0xff);
       inputWord = round2Input(game, inputWord);
 
-      if (attempted === 150593) {
+      if (attempted === 150425) {
         const beforeIdentity = identity(game, exact, inputWord, attempted - 1);
         assert.deepEqual(beforeIdentity, EXPECTED.firstFrontier.beforeIdentity);
         const currentDocument = checkpointDocument(game, exact, {
@@ -401,7 +401,7 @@ test('W596 fresh ship-0/style-6 route pins every cadence identity and stops at t
         };
       }
 
-      if (attempted === 151365) {
+      if (attempted === 151197) {
         const beforeIdentity = identity(game, exact, inputWord, attempted - 1);
         assert.deepEqual(beforeIdentity, EXPECTED.nextFrontier.beforeIdentity);
         const currentDocument = checkpointDocument(game, exact, {
@@ -429,11 +429,11 @@ test('W596 fresh ship-0/style-6 route pins every cadence identity and stops at t
     }
 
     assert.deepEqual(firstFrontier, EXPECTED.firstFrontier,
-      'the exact post-W595 reconstruction faults at $29109C on attempted step 150593');
+      'the exact post-W595 reconstruction faults at $29109C on attempted step 150425');
     assert.deepEqual(periodic, EXPECTED.periodic,
       'every checkpointDocument identity through successful step 151000 is exact');
     assert.deepEqual(EXPECTED.checkpoint151000, [
-      151000, 153000, 163545, 4, 8, 16, 1, DOWN_SHOT,
+      151000, 153000, 163571, 4, 8, 16, 1, DOWN_SHOT,
       CHECKPOINT_RAM_HASH, CHECKPOINT_GAME_HASH,
     ]);
     assert.deepEqual(periodic.at(-1), EXPECTED.checkpoint151000);
@@ -442,5 +442,5 @@ test('W596 fresh ship-0/style-6 route pins every cadence identity and stops at t
     assert.deepEqual([
       nextFrontier.attempted, nextFrontier.logicFrame, nextFrontier.videoFrame,
       ...Object.values(nextFrontier.raw), nextFrontier.address,
-    ], [151365, 153364, 163910, 4, 8, 16, 1, 0x291bae]);
+    ], [151197, 153196, 163768, 4, 8, 16, 1, 0x291bae]);
   });

@@ -43,14 +43,15 @@ const RAW = Object.freeze({
 });
 const word = (...names) => portWordFromBits(names.map((name) => CONTROLS[name]));
 const DOWN_SHOT = word('DOWN', 'SHOT');
-const TOTAL_STEPS = 173697;
+const TOTAL_STEPS = 174029;
 const CADENCE = 500;
-const CURRENT_TABLE_HASH = 'af3dee2f75818bcbb32d5c024b50b0816837d319595bb71eaade5d136fcd2a69';
+const LIVE_TABLE_HASH = 'c5429f67e9ff4da89bea27fa63afb8c4fac7fc8947b7a0146c8935c5fb981688';
+const STORED_TABLE_HASH = 'af3dee2f75818bcbb32d5c024b50b0816837d319595bb71eaade5d136fcd2a69';
 const W595_TABLE_HASH = '706201adef09d00737f1fafc687e52d12ab81f437bc842690af229afab258445';
 const PRE_W595_TABLE_HASH = '83ffbc84cbaec6b527bf784e1e3b3ba8c9b893546252a135ca5db34a7c64a23d';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
-const TERMINAL_RAM_HASH = '25d2d190c871e63eb276bcebc02cbdc88437ffd83f8f61adb9f88f343192cc9c';
-const TERMINAL_GAME_HASH = '8e7467a53ed5cdba9dee9c2a057713b12f613d5e29913e18f9c8c502c082f9b7';
+const TERMINAL_RAM_HASH = '4eaab2742996ce173f13e7984aa356043005907632ff6bce8f9de9e4b8055bc7';
+const TERMINAL_GAME_HASH = '45c01bd14b2708fb0147fe8d73d881898c1f085cd21b057ebca517bbddd2dcf8';
 
 const canonicalHash = (value) => createHash('sha256')
   .update(JSON.stringify(value)).digest('hex');
@@ -94,7 +95,7 @@ test('W595 is one exact BIOS-window widening and reconstructs the $000BEC fault'
       canonicalHash(TABLE_JSON), TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0),
       overlappingPairs(windowShape(TABLE_JSON)),
-    ], [CURRENT_TABLE_HASH, ROM_WINDOW_COUNT, ROM_WINDOW_BYTES, ROM_OVERLAP_PAIRS]);
+    ], [LIVE_TABLE_HASH, ROM_WINDOW_COUNT, ROM_WINDOW_BYTES, ROM_OVERLAP_PAIRS]);
     assert.deepEqual([
       canonicalHash(w595), w595.rom.windows.length,
       w595.rom.windows.reduce((sum, window) => sum + window.len, 0),
@@ -106,7 +107,7 @@ test('W595 is one exact BIOS-window widening and reconstructs the $000BEC fault'
       overlappingPairs(windowShape(before)),
     ], [PRE_W595_TABLE_HASH, 907, 453749, 77]);
     assert.deepEqual(EXPECTED.tables, {
-      sha256: CURRENT_TABLE_HASH, windows: 1653, bytes: 642930, overlapPairs: 79,
+      sha256: STORED_TABLE_HASH, windows: 1653, bytes: 642930, overlapPairs: 79,
     });
     assert.deepEqual(EXPECTED.preW595Tables, {
       sha256: PRE_W595_TABLE_HASH, windows: 907, bytes: 453749,
@@ -154,9 +155,9 @@ test('W595 fresh ship-0/style-2 route pins both loops through terminal reset',
       startInputWord: DOWN_SHOT,
     });
     assert.deepEqual(EXPECTED.seed, { bytes: 131072, sha256: SEED_HASH });
-    assert.equal(EXPECTED.periodic.length, 347,
-      '173500 / 500 gives all 347 successful cadence identities');
-    assert.equal(EXPECTED.periodic.at(-1)[0], 173500);
+    assert.equal(EXPECTED.periodic.length, 348,
+      '174000 / 500 gives all 348 successful cadence identities');
+    assert.equal(EXPECTED.periodic.at(-1)[0], 174000);
     assert.notEqual(TOTAL_STEPS % CADENCE, 0, 'terminal is a distinct non-cadence identity');
 
     const exact = await bundle();
@@ -164,7 +165,7 @@ test('W595 fresh ship-0/style-2 route pins both loops through terminal reset',
       'the regenerated web bundle carries the exact W630 production table');
     assert.deepEqual([
       exact.seed.byteLength, byteHash(exact.seed), canonicalHash(exact.tables),
-    ], [131072, SEED_HASH, CURRENT_TABLE_HASH]);
+    ], [131072, SEED_HASH, LIVE_TABLE_HASH]);
 
     const game = new Game(exact.seed, exact.tables, {
       logicFrame: exact.cap.frames[0].lf,
@@ -208,18 +209,18 @@ test('W595 fresh ship-0/style-2 route pins both loops through terminal reset',
       'the shared real menu-input state machine has every exact edge');
     assert.deepEqual(frontiers, EXPECTED.frontiers,
       'all stage and loop frontiers have exact stepped/LF/VF/raw identities');
-    assert.deepEqual(frontiers[4], [80219, 82219, 86696, 4, 8, 16, 1],
-      'round 2 begins at LF82219');
+    assert.deepEqual(frontiers[4], [79841, 81841, 86381, 4, 8, 16, 1],
+      'round 2 begins at LF81841');
     assert.deepEqual(periodic, EXPECTED.periodic,
-      'all 347 checkpointDocument hash identities match at 500 successful-step cadence');
+      'all 348 checkpointDocument hash identities match at 500 successful-step cadence');
 
     const terminal = identity(game, exact, inputWord, TOTAL_STEPS);
     assert.deepEqual(terminal, EXPECTED.terminal,
       'the terminal non-cadence checkpointDocument identity is exact');
     assert.deepEqual(terminal, [
-      173697, 175697, 187099, 0, 0, 0, 0, DOWN_SHOT,
+      174029, 176029, 187542, 0, 0, 0, 0, DOWN_SHOT,
       TERMINAL_RAM_HASH, TERMINAL_GAME_HASH,
     ]);
-    assert.deepEqual(frontiers.at(-1), [173697, 175697, 187099, 0, 0, 0, 0],
-      'terminal reset occurs first on stepped frame 173697');
+    assert.deepEqual(frontiers.at(-1), [174029, 176029, 187542, 0, 0, 0, 0],
+      'terminal reset occurs first on stepped frame 174029');
   });
