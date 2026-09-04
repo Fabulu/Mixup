@@ -2177,9 +2177,9 @@ function grant2877B8(ram) {
  *
  *  W124 PORTED the body (was `unreached(0x2853dc)` since W62).  The body drains
  *  `$81B610` through the `$32/$64/$96` medal tiers, BCD-compounds `$81B616`, and
- *  when `$81B610` underflows `$FFFF -> $FFFE` the fall-through at `$285496
- *  bset #1,$8130F9` fires -- the SOLE producer of bit 1, which the result
- *  screen's F8 waits on.  Clearing DEV-1. */
+ *  when the final decrement produces a negative result without borrow, the
+ *  fall-through at `$285496 bset #1,$8130F9` fires -- the SOLE producer of bit
+ *  1, which the result screen's F8 waits on.  Clearing DEV-1. */
 function tally2853D2(ram, ctx) {
   if ((ram.u8(HUDRAM.flags9) & 0x08) === 0) return;     // $2853D2 btst #$3 / beq rts
   if ((ram.u8(HUDRAM.flags9) & 0x10) === 0) {           // $2853DC bset #$4 / bne body
@@ -2193,13 +2193,14 @@ function tally2853D2(ram, ctx) {
 
 /** `$285400..$285568` -- the tally body.  Needs `$8130F9` bit 2 (medal walk
  *  done, from `$28DE16`) and the absence of bit 1 (not yet complete).  Drains
- *  `$81B610` through the medal tiers and produces `$285496 bset #1` when
- *  `$81B610` underflows `$FFFF -> $FFFE`. */
+ *  `$81B610` through the medal tiers and produces `$285496 bset #1` when the
+ *  final decrement produces a negative result without borrow. */
 function tallyBody285400(ram, ctx) {
   if ((ram.u8(HUDRAM.flags9) & 0x04) === 0) return;     // $285400 btst #$2 / beq exit
   if ((ram.u8(HUDRAM.flags9) & 0x02) !== 0) return;     // $28540C btst #$1 (done)
-  if (tallyButton28556C(ram)) {                          // $285418 bsr $28556C
-    tallyFastDrain2854C8(ram); return;                   // $28541C bcs $2854C8
+  const fastD7 = tallyButton28556C(ram);                 // $285418 bsr $28556C
+  if (fastD7 !== null) {
+    tallyFastDrain2854C8(ram, fastD7); return;            // $28541C bcs $2854C8
   }
   const hold = u16(ram.u16(HUDRAM.tallyHold) - 1);       // $285420 subq.w #1
   ram.setU16(HUDRAM.tallyHold, hold);
@@ -2265,13 +2266,13 @@ function tallyAward28551E(ram, ctx) {
   ram.setU32(HUDRAM.tallyBonus, 0);                      // $285562
 }
 
-/** `$2854C8` -- the fast-drain / zero-count entry: set `$81B610 := $FFFF` and the
- *  hold/dir so the NEXT frame's `subq` makes `$FFFE` and trips `$285496`. */
-function tallyFastDrain2854C8(ram) {
+/** `$2854C8` -- the fast-drain / zero-count entry: set `$81B610 := $FFFF`,
+ *  seed the hold/dir tail, then compound the bonus with the caller's native D7. */
+function tallyFastDrain2854C8(ram, d7 = 0) {
   ram.setU16(HUDRAM.itemCount, 0xffff);                  // $2854C8
   ram.setU16(HUDRAM.itemDir, 0x17);                      // $2854D0 $81B60E
   ram.setU16(HUDRAM.tallyHold, 0x12);                    // $2854D8
-  tallyMedalDrain2854E0(ram, 0);
+  tallyMedalDrain2854E0(ram, d7);
 }
 
 /** `$2854E0..$28551A` -- the medal-tier BCD compound: add `$81B61A >> 8` into
@@ -2286,19 +2287,20 @@ function tallyMedalDrain2854E0(ram, d7) {
   }
 }
 
-/** `$28556C` -- the button read.  Returns true (C set) when a button (mask $70)
- *  is held, which fast-drains the tally.  Each live player reads its own raw
- *  mirror, `$803970` for P1 and `$803976` for P2, matching the
+/** `$28556C` -- the button read.  Returns native `D7 = oldCount - 1` when a
+ *  button (mask $70) is held, or null with carry clear. Each live player reads
+ *  its own raw mirror, `$803970` for P1 and `$803976` for P2, matching the
  *  `$23D16C`/`$23D17E` reads. */
 function tallyButton28556C(ram) {
   const ic = ram.u16(HUDRAM.itemCount);                  // $28556C
-  if ((ic & 0x8000) !== 0 || ic === 0) return false;     // $285572 subq/bpl (ic==0 -> C clear)
+  if ((ic & 0x8000) !== 0 || ic === 0) return null;      // $285572 subq/bpl (ic==0 -> C clear)
+  const d7 = u16(ic - 1);                                // $285570 subq.w #1,d7
   let d0 = 0;                                            // $28557A moveq #0
   if ((ram.u16(0x8103e6) & 0x8000) !== 0) d0 |= ram.u16(0x803970); // $28557C/$285584 P1
   if ((ram.u16(0x810448) & 0x8000) !== 0) d0 |= ram.u16(0x803976); // $28558A/$285592 P2
-  if ((d0 & 0x70) === 0) return false;                   // $28559C andi #$70 / beq
+  if ((d0 & 0x70) === 0) return null;                    // $28559C andi #$70 / beq
   ram.setU16(HUDRAM.itemCount, 0);                       // $2855AA clr $81B610
-  return true;                                           // $2855B0 ori #$1,sr (C set)
+  return d7;                                             // $2855B0 ori #$1,sr (C set)
 }
 
 /** `$28C6C6` -- the bonus-event sound cue (no arithmetic). WAVE A: now posts. */

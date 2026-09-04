@@ -896,6 +896,37 @@ test('W649 $28DC44 reads the P1 EDGE mirror, so a held raw button stays slow',
       'the ordinary path still credits two packed-BCD $50 steps');
   });
 
+test('W649 F6 advances each player cue throttle only once per scoring frame',
+  { skip: SKIP }, () => {
+    for (const side of ['p1', 'p2']) {
+      const bee = `${side}bee`, item = `${side}item`;
+      const timer = side === 'p1' ? 0x81df24 : 0x81df26;
+      const sounds = [];
+      const f = resultF6Fixture({ [bee]: 10, [item]: 10 });
+      f.ctx.soundPost = value => sounds.push(value);
+
+      resultF6Step(f);
+      assert.equal(f.ram.u16(timer), 3,
+        `${side} reloads its shared cue timer only once after both pools score`);
+      assert.deepEqual(sounds, [0x28c6c6]);
+
+      resultF6Step(f);
+      assert.equal(f.ram.u16(timer), 2,
+        `${side} spends its shared cue timer only once on the following frame`);
+      assert.deepEqual(sounds, [0x28c6c6],
+        `${side} does not post a second cue while the timer is live`);
+    }
+
+    const fast = resultF6Fixture({ p1bee: 10, p1item: 10 });
+    const sounds = [];
+    fast.ctx.soundPost = value => sounds.push(value);
+    fast.ram.setU16(RAM.p1edge, 0x10);
+    resultF6Step(fast);
+    assert.equal(fast.ram.u16(0x81df24), 0,
+      'the native accelerated award bypasses the ordinary cue throttle');
+    assert.deepEqual(sounds, []);
+  });
+
 test('W649 $28DCF0 gives P2 its own edge mirror and score ledger',
   { skip: SKIP }, () => {
     const f = resultF6Fixture({ p2bee: 5, p2item: 10 });

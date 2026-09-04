@@ -665,6 +665,48 @@ test('W649 $285592 reads P2 raw input without leaking P1 into a P2-only tally', 
     'without a P2 button the normal $285420 countdown runs');
 });
 
+test('W649 HUD fast drain preserves D7 and its exact 18-call tail', () => {
+  const { ram, ctx } = fresh();
+  ram.setU16(HUDRAM.aliveP1, 0xffff);
+  ram.setU16(HUDRAM.aliveP2, 0xffff);
+  ram.setU16(0x8103e6, 0x8000);
+  ram.setU16(0x810448, 0);
+  ram.setU16(0x803970, 0x10);
+  ram.setU16(HUDRAM.itemCount, 3);
+  ram.setU32(HUDRAM.tallyBonus, 0);
+  ram.setU32(HUDRAM.tallyMedalAcc, 0x00010000);
+  ram.setU8(HUDRAM.dfFlags, 0);
+  ram.setU8(HUDRAM.flags8, 0x08);
+  ram.setU8(HUDRAM.flags9, 0x08 | 0x04 | 0x10);
+
+  gates2844A6(ram, ctx);
+  assert.equal(ram.u16(HUDRAM.itemCount), 0xffff);
+  assert.equal(ram.u16(HUDRAM.tallyHold), 0x12);
+  assert.equal(ram.u32(HUDRAM.tallyBonus), 0x00001500,
+    'old count 3 preserves D7=2 and performs exactly 15 packed-BCD additions');
+
+  ram.setU16(0x803970, 0);
+  for (let call = 1; call <= 9; call++) gates2844A6(ram, ctx);
+  assert.equal(ram.u16(HUDRAM.tallyHold), 9);
+  assert.equal(ram.u32(HUDRAM.pendingP1), 0,
+    'the accelerated bonus is not awarded before hold reaches eight');
+  gates2844A6(ram, ctx);
+  assert.equal(ram.u16(HUDRAM.tallyHold), 8);
+  assert.equal(ram.u32(HUDRAM.pendingP1), 0x00000150,
+    'the tenth tail call awards the complete fast-drained bonus');
+  assert.equal(ram.u32(HUDRAM.tallyBonus), 0);
+
+  for (let call = 11; call <= 18; call++) gates2844A6(ram, ctx);
+  assert.equal(ram.u16(HUDRAM.tallyHold), 0);
+  assert.equal(ram.u8(HUDRAM.flags9) & 0x02, 0,
+    'all 18 countdown calls finish before the completion arm');
+  gates2844A6(ram, ctx);
+  assert.equal(ram.u8(HUDRAM.flags9) & 0x02, 0x02,
+    'the nineteenth post-acceleration call produces the completion handshake');
+  assert.equal(ram.u16(HUDRAM.itemCount), 0);
+  assert.equal(ram.u16(HUDRAM.tallyHold), 0);
+});
+
 test('W124 MUST-FAIL (a): with a non-zero item count + medal accumulator the '
   + 'tally AWARDS the stage-clear score to P1 before $285496 fires', () => {
   // The shipped seed has zero bonus (no bees/items/medals), so the bare seed

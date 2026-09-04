@@ -790,17 +790,20 @@ function f6BonusTick28DC2C(ram, ctx) {
       scoreByMask(ram, bonus, 0x10);                        // $28DC64 -> $28DCB0/$28DCB6
       credited = 1;
     } else {
+      let p1Credited = false;
       if (ram.u16(a6 + RF.p1bee) !== 0) {                   // $28DC68 tst/beq
         ram.setU16(a6 + RF.p1bee, u16(ram.u16(a6 + RF.p1bee) - 5)); // $28DC6E subq #5
         scoreByMask(ram, 0x50, 0x10);                       // $28DC74/$28DC7A jsr $286128
-        credited = 1;                                       // $28DC74 moveq #1,d7
-        throttledBonusCue(ram, ctx, CUE_TIMER.p1);           // $28DC80..$28DC9C
+        p1Credited = true;
       }
       if (ram.u16(a6 + RF.p1item) !== 0) {                  // $28DCA4 tst/beq
         ram.setU16(a6 + RF.p1item, u16(ram.u16(a6 + RF.p1item) - 5)); // $28DCAA
         scoreByMask(ram, 0x50, 0x10);                       // $28DCB6 jsr $286128
-        credited = 1;
-        throttledBonusCue(ram, ctx, CUE_TIMER.p1);           // $28DCC2..$28DCDE
+        p1Credited = true;
+      }
+      if (p1Credited) {
+        credited = 1;                                       // $28DC74/$28DCB0 moveq #1,d7
+        throttledBonusCue(ram, ctx, CUE_TIMER.p1);           // $28DC80..$28DCDE
       }
     }
   }
@@ -815,17 +818,20 @@ function f6BonusTick28DC2C(ram, ctx) {
       scoreByMask(ram, bonus, 0x08);                        // $28DD10 -> $28DD5C/$28DD62
       credited = 1;
     } else {
+      let p2Credited = false;
       if (ram.u16(a6 + RF.p2bee) !== 0) {                   // $28DD14 tst/beq
         ram.setU16(a6 + RF.p2bee, u16(ram.u16(a6 + RF.p2bee) - 5)); // $28DD1A
         scoreByMask(ram, 0x50, 0x08);                       // $28DD26 jsr $286128
-        credited = 1;
-        throttledBonusCue(ram, ctx, CUE_TIMER.p2);           // $28DD2C..$28DD48
+        p2Credited = true;
       }
       if (ram.u16(a6 + RF.p2item) !== 0) {                  // $28DD50 tst/beq
         ram.setU16(a6 + RF.p2item, u16(ram.u16(a6 + RF.p2item) - 5)); // $28DD56
         scoreByMask(ram, 0x50, 0x08);                       // $28DD62 jsr $286128
+        p2Credited = true;
+      }
+      if (p2Credited) {
         credited = 1;
-        throttledBonusCue(ram, ctx, CUE_TIMER.p2);           // $28DD6E..$28DD8A
+        throttledBonusCue(ram, ctx, CUE_TIMER.p2);           // $28DD2C..$28DD8A
       }
     }
   }
@@ -835,8 +841,8 @@ function f6BonusTick28DC2C(ram, ctx) {
   ram.setU16(a6 + RF.hold, ram.u16(0x81b610) !== 0 ? 0x08 : 0x01); // $28DD9A..$28DDAA
 }
 
-/** Result-screen bonus cue throttle shared by the four F6 drain caller sequences.
- *  The imported sound poster has no arithmetic; each caller already converted its BCD value. */
+/** Result-screen bonus cue throttle, updated once per credited player and frame.
+ *  The imported sound poster has no arithmetic; callers already credit their BCD values. */
 function throttledBonusCue(ram, ctx, timerAddr) {
   if (ram.u16(timerAddr) !== 0) {                           // tst.w/beq
     ram.setU16(timerAddr, u16(ram.u16(timerAddr) - 1));     // subq.w #1
