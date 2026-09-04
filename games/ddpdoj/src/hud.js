@@ -2287,15 +2287,15 @@ function tallyMedalDrain2854E0(ram, d7) {
 }
 
 /** `$28556C` -- the button read.  Returns true (C set) when a button (mask $70)
- *  is held, which fast-drains the tally.  The port reads the raw input mirror
- *  `$803970` for each live player (the gate holds fire, which is in the $70
- *  mask), matching the `$23D16C`/`$23D17E` reads. */
+ *  is held, which fast-drains the tally.  Each live player reads its own raw
+ *  mirror, `$803970` for P1 and `$803976` for P2, matching the
+ *  `$23D16C`/`$23D17E` reads. */
 function tallyButton28556C(ram) {
   const ic = ram.u16(HUDRAM.itemCount);                  // $28556C
   if ((ic & 0x8000) !== 0 || ic === 0) return false;     // $285572 subq/bpl (ic==0 -> C clear)
   let d0 = 0;                                            // $28557A moveq #0
   if ((ram.u16(0x8103e6) & 0x8000) !== 0) d0 |= ram.u16(0x803970); // $28557C/$285584 P1
-  if ((ram.u16(0x810448) & 0x8000) !== 0) d0 |= ram.u16(0x803970); // $28558A/$285592 P2
+  if ((ram.u16(0x810448) & 0x8000) !== 0) d0 |= ram.u16(0x803976); // $28558A/$285592 P2
   if ((d0 & 0x70) === 0) return false;                   // $28559C andi #$70 / beq
   ram.setU16(HUDRAM.itemCount, 0);                       // $2855AA clr $81B610
   return true;                                           // $2855B0 ori #$1,sr (C set)

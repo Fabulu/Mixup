@@ -83,6 +83,7 @@
 // `$25FD38`) has already happened in states 2 and 3.
 
 import { u16 } from './ram.js';
+import { RAM } from './machine.js';
 import { stageCreate, queueKill, objTableInit24107C, ALLOC } from './objalloc.js';
 import { clearItemPool, bcd242AC6 } from './items.js';
 import { resetAndInstallStage26331E } from './spawn.js';
@@ -771,43 +772,61 @@ function f4BonusPool28DB5E(ram, rom, ctx) {
 
 /** `$28DC2C..$28DDAE` -- F6 bee/item tick: drain the four pools by 5 each,
  *  credit `$50` per step via `$286128` (scoreByMask), throttle the bonus cue
- *  through `$81DF24`/`$81DF26`.  When all four are empty, set the local F6 bit
- *  and reload `$2c(a6) := 8` (or 1 if `$81B610 == 0`). */
+ *  through `$81DF24`/`$81DF26`. A fresh P1/P2 action-button edge converts that
+ *  side's remaining pools in one native packed-BCD award. When all four are
+ *  empty, set the local F6 bit and reload `$2c(a6) := 8` (or 1 if
+ *  `$81B610 == 0`). */
 function f6BonusTick28DC2C(ram, ctx) {
   const a6 = SE.result;
   let credited = 0;                                         // $28DC36 moveq #0,d7
   // ---- P1
   let d6 = u16(ram.u16(a6 + RF.p1bee) + ram.u16(a6 + RF.p1item)); // $28DC38/$28DC3C
   if (d6 !== 0) {                                           // $28DC40 beq P2
-    // $28DC44 jsr $23D186 (P1 buttons) -- the port does not model the result-
-    // screen button accelerate; treat as no-button (the normal per-frame drain).
-    if (ram.u16(a6 + RF.p1bee) !== 0) {                     // $28DC68 tst/beq
-      ram.setU16(a6 + RF.p1bee, u16(ram.u16(a6 + RF.p1bee) - 5)); // $28DC6E subq #5
-      scoreByMask(ram, 0x50, 0x10);                         // $28DC74/$28DC7A jsr $286128
-      credited = 1;                                         // $28DC74 moveq #1,d7
-      throttledBonusCue(ram, ctx, CUE_TIMER.p1);             // $28DC80..$28DC9C
-    }
-    if (ram.u16(a6 + RF.p1item) !== 0) {                    // $28DCA4 tst/beq
-      ram.setU16(a6 + RF.p1item, u16(ram.u16(a6 + RF.p1item) - 5)); // $28DCAA
-      scoreByMask(ram, 0x50, 0x10);                         // $28DCB6 jsr $286128
+    const input = ram.u16(RAM.p1edge);                      // $28DC44 jsr $23D186
+    if ((input & 0x70) !== 0) {                             // $28DC4A/$28DC4E
+      const bonus = (bcd242AC6(d6) << 4) >>> 0;             // $28DC50..$28DC5A
+      ram.setU16(a6 + RF.p1bee, 0);                         // $28DC5C
+      ram.setU16(a6 + RF.p1item, 0);                        // $28DC60
+      scoreByMask(ram, bonus, 0x10);                        // $28DC64 -> $28DCB0/$28DCB6
       credited = 1;
-      throttledBonusCue(ram, ctx, CUE_TIMER.p1);             // $28DCC2..$28DCDE
+    } else {
+      if (ram.u16(a6 + RF.p1bee) !== 0) {                   // $28DC68 tst/beq
+        ram.setU16(a6 + RF.p1bee, u16(ram.u16(a6 + RF.p1bee) - 5)); // $28DC6E subq #5
+        scoreByMask(ram, 0x50, 0x10);                       // $28DC74/$28DC7A jsr $286128
+        credited = 1;                                       // $28DC74 moveq #1,d7
+        throttledBonusCue(ram, ctx, CUE_TIMER.p1);           // $28DC80..$28DC9C
+      }
+      if (ram.u16(a6 + RF.p1item) !== 0) {                  // $28DCA4 tst/beq
+        ram.setU16(a6 + RF.p1item, u16(ram.u16(a6 + RF.p1item) - 5)); // $28DCAA
+        scoreByMask(ram, 0x50, 0x10);                       // $28DCB6 jsr $286128
+        credited = 1;
+        throttledBonusCue(ram, ctx, CUE_TIMER.p1);           // $28DCC2..$28DCDE
+      }
     }
   }
   // ---- P2
   d6 = u16(ram.u16(a6 + RF.p2bee) + ram.u16(a6 + RF.p2item));
   if (d6 !== 0) {                                           // $28DCEC beq done
-    if (ram.u16(a6 + RF.p2bee) !== 0) {                     // $28DD14 tst/beq
-      ram.setU16(a6 + RF.p2bee, u16(ram.u16(a6 + RF.p2bee) - 5)); // $28DD1A
-      scoreByMask(ram, 0x50, 0x08);                         // $28DD26 jsr $286128
+    const input = ram.u16(RAM.p2edge);                      // $28DCF0 jsr $23D18E
+    if ((input & 0x70) !== 0) {                             // $28DCF6/$28DCFA
+      const bonus = (bcd242AC6(d6) << 4) >>> 0;             // $28DCFC..$28DD06
+      ram.setU16(a6 + RF.p2bee, 0);                         // $28DD08
+      ram.setU16(a6 + RF.p2item, 0);                        // $28DD0C
+      scoreByMask(ram, bonus, 0x08);                        // $28DD10 -> $28DD5C/$28DD62
       credited = 1;
-      throttledBonusCue(ram, ctx, CUE_TIMER.p2);             // $28DD2C..$28DD48
-    }
-    if (ram.u16(a6 + RF.p2item) !== 0) {                    // $28DD50 tst/beq
-      ram.setU16(a6 + RF.p2item, u16(ram.u16(a6 + RF.p2item) - 5)); // $28DD56
-      scoreByMask(ram, 0x50, 0x08);                         // $28DD62 jsr $286128
-      credited = 1;
-      throttledBonusCue(ram, ctx, CUE_TIMER.p2);             // $28DD6E..$28DD8A
+    } else {
+      if (ram.u16(a6 + RF.p2bee) !== 0) {                   // $28DD14 tst/beq
+        ram.setU16(a6 + RF.p2bee, u16(ram.u16(a6 + RF.p2bee) - 5)); // $28DD1A
+        scoreByMask(ram, 0x50, 0x08);                       // $28DD26 jsr $286128
+        credited = 1;
+        throttledBonusCue(ram, ctx, CUE_TIMER.p2);           // $28DD2C..$28DD48
+      }
+      if (ram.u16(a6 + RF.p2item) !== 0) {                  // $28DD50 tst/beq
+        ram.setU16(a6 + RF.p2item, u16(ram.u16(a6 + RF.p2item) - 5)); // $28DD56
+        scoreByMask(ram, 0x50, 0x08);                       // $28DD62 jsr $286128
+        credited = 1;
+        throttledBonusCue(ram, ctx, CUE_TIMER.p2);           // $28DD6E..$28DD8A
+      }
     }
   }
   if (credited !== 0) return;                               // $28DD90 tst/bne rts

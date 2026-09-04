@@ -22,6 +22,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
+import { RAM } from '../src/machine.js';
 import { Unreached, UnportedLog } from '../src/unported.js';
 import { HANDLER_ADDRESSES } from '../src/handlers.js';
 import {
@@ -833,6 +834,131 @@ test('W125 MUST-FAIL (red half): with the P1/P2 live arms gated off, draw1 still
     draw1_28DED8(ram, ROM);
     assert.ok(ram.u16(ctr0) > 0, 'base panels went to bucket 0');
     assert.ok(ram.u16(ctr2) > 0, 'medal counters went to bucket 2');
+  });
+
+// ===========================================================================
+// W649: THE NATIVE F6 BUTTON ACCELERATOR
+// ===========================================================================
+
+const F6 = {
+  phase: 0x02, slide: 0x06,
+  p1bee: 0x1a, p1item: 0x1e,
+  p2bee: 0x24, p2item: 0x28,
+  hold: 0x2c,
+};
+
+function resultF6Fixture(pools = {}) {
+  const ram = new Ram();
+  ram.setU8(SE.result + F6.phase, 0x07);        // F0, F1 and F4 complete
+  ram.setU16(SE.result + F6.slide, 0xffff);    // F3 complete
+  ram.setU16(SE.result + F6.p1bee, pools.p1bee ?? 0);
+  ram.setU16(SE.result + F6.p1item, pools.p1item ?? 0);
+  ram.setU16(SE.result + F6.p2bee, pools.p2bee ?? 0);
+  ram.setU16(SE.result + F6.p2item, pools.p2item ?? 0);
+  ram.setU16(SE.result + F6.hold, 0);
+  return { ram, ctx: ctxOf(ram).ctx };
+}
+
+function resultF6Step(f) {
+  result28D9AA(f.ram, ROM, f.ctx, A5);
+}
+
+function pendingScore(ram, side) {
+  return ram.u32(LEDGER[side].pendingEnd - 4) >>> 0;
+}
+
+test('W649 $28DC44: a fresh P1 action edge converts both F6 pools at once',
+  { skip: SKIP }, () => {
+    const f = resultF6Fixture({ p1bee: 15, p1item: 40 });
+    f.ram.setU16(RAM.p1edge, 0x10);
+
+    resultF6Step(f);
+
+    assert.equal(f.ram.u16(SE.result + F6.p1bee), 0, '$28DC5C clears the bee pool');
+    assert.equal(f.ram.u16(SE.result + F6.p1item), 0, '$28DC60 clears the item pool');
+    assert.equal(pendingScore(f.ram, 'p1'), 0x550,
+      '$28DC50..$28DC5A converts the remaining 55 ticks into packed-BCD 550');
+    assert.equal(f.ram.u8(SE.result + F6.phase) & 0x08, 0,
+      '$28DD90 returns after credit; completion belongs to a later call');
+  });
+
+test('W649 $28DC44 reads the P1 EDGE mirror, so a held raw button stays slow',
+  { skip: SKIP }, () => {
+    const f = resultF6Fixture({ p1bee: 10, p1item: 20 });
+    f.ram.setU16(RAM.p1raw, 0x70);
+    f.ram.setU16(RAM.p1edge, 0);
+
+    resultF6Step(f);
+
+    assert.equal(f.ram.u16(SE.result + F6.p1bee), 5);
+    assert.equal(f.ram.u16(SE.result + F6.p1item), 15);
+    assert.equal(pendingScore(f.ram, 'p1'), 0x100,
+      'the ordinary path still credits two packed-BCD $50 steps');
+  });
+
+test('W649 $28DCF0 gives P2 its own edge mirror and score ledger',
+  { skip: SKIP }, () => {
+    const f = resultF6Fixture({ p2bee: 5, p2item: 10 });
+    f.ram.setU16(RAM.p1edge, 0);
+    f.ram.setU16(RAM.p2edge, 0x20);
+
+    resultF6Step(f);
+
+    assert.equal(f.ram.u16(SE.result + F6.p2bee), 0);
+    assert.equal(f.ram.u16(SE.result + F6.p2item), 0);
+    assert.equal(pendingScore(f.ram, 'p1'), 0, 'P1 remains untouched');
+    assert.equal(pendingScore(f.ram, 'p2'), 0x150, 'P2 receives packed-BCD 150');
+  });
+
+test('W649 $28DC4A/$28DCF6 use exactly the native $70 action mask',
+  { skip: SKIP }, () => {
+    for (const edge of [0x10, 0x20, 0x40, 0x70]) {
+      const f = resultF6Fixture({ p1bee: 10 });
+      f.ram.setU16(RAM.p1edge, edge);
+      resultF6Step(f);
+      assert.equal(f.ram.u16(SE.result + F6.p1bee), 0,
+        `action edge $${edge.toString(16)} accelerates`);
+    }
+    for (const edge of [0, 0x01, 0x02, 0x04, 0x08, 0x8000]) {
+      const f = resultF6Fixture({ p1bee: 10 });
+      f.ram.setU16(RAM.p1edge, edge);
+      resultF6Step(f);
+      assert.equal(f.ram.u16(SE.result + F6.p1bee), 5,
+        `non-action edge $${edge.toString(16)} stays on the slow path`);
+    }
+  });
+
+test('W649 F6 fast and slow paths conserve the same packed-BCD score',
+  { skip: SKIP }, () => {
+    const fast = resultF6Fixture({ p1bee: 15, p1item: 20 });
+    fast.ram.setU16(RAM.p1edge, 0x40);
+    resultF6Step(fast);
+
+    const slow = resultF6Fixture({ p1bee: 15, p1item: 20 });
+    for (let i = 0; i < 4; i++) resultF6Step(slow);
+
+    assert.equal(pendingScore(fast.ram, 'p1'), 0x350);
+    assert.equal(pendingScore(slow.ram, 'p1'), pendingScore(fast.ram, 'p1'));
+  });
+
+test('W649 F6 latches completion only on the later no-credit call and reloads hold',
+  { skip: SKIP }, () => {
+    const active = resultF6Fixture({ p1bee: 10 });
+    active.ram.setU16(RAM.p1edge, 0x10);
+    active.ram.setU16(0x81b610, 1);
+    resultF6Step(active);
+    assert.equal(active.ram.u8(SE.result + F6.phase), 0x07);
+    resultF6Step(active);
+    assert.equal(active.ram.u8(SE.result + F6.phase), 0x0f,
+      '$28DD94 sets F6 complete after all pools were already empty');
+    assert.equal(active.ram.u16(SE.result + F6.hold), 8,
+      '$28DD9A uses the native nonzero-tally hold');
+
+    const empty = resultF6Fixture();
+    resultF6Step(empty);
+    assert.equal(empty.ram.u8(SE.result + F6.phase), 0x0f);
+    assert.equal(empty.ram.u16(SE.result + F6.hold), 1,
+      '$28DDA6 uses the native empty-tally hold');
   });
 
 // ===========================================================================

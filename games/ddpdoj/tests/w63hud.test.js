@@ -635,6 +635,36 @@ test('W124 THE STAGE-CLEAR TALLY is PORTED (was a W63 throw): bit 3 runs the '
     'bit 1 is not produced until bit 2 lands and $81B610 underflows');
 });
 
+test('W649 $285592 reads P2 raw input without leaking P1 into a P2-only tally', () => {
+  function p2Only(rawP1, rawP2) {
+    const { ram, ctx } = fresh();
+    ram.setU16(HUDRAM.aliveP1, 0xffff);
+    ram.setU16(HUDRAM.aliveP2, 0xffff);
+    ram.setU16(0x8103e6, 0);                       // no live P1 at $28557C
+    ram.setU16(0x810448, 0x8000);                  // live P2 at $28558A
+    ram.setU16(0x803970, rawP1);                   // $23D16C P1 raw mirror
+    ram.setU16(0x803976, rawP2);                   // $23D17E P2 raw mirror
+    ram.setU16(HUDRAM.itemCount, 3);
+    ram.setU8(HUDRAM.dfFlags, 0);
+    ram.setU8(HUDRAM.flags8, 0x08);                // $284B5E tally gate
+    ram.setU8(HUDRAM.flags9, 0x08 | 0x04);         // slide and medal walk complete
+    gates2844A6(ram, ctx);
+    return ram;
+  }
+
+  const p2Pressed = p2Only(0, 0x10);
+  assert.equal(p2Pressed.u16(HUDRAM.itemCount), 0xffff,
+    '$2854C8 fast-drains from P2 raw input');
+  assert.equal(p2Pressed.u16(HUDRAM.itemDir), 0x17, '$2854D0 reloads $81B60E');
+  assert.equal(p2Pressed.u16(HUDRAM.tallyHold), 0x12, '$2854D8 reloads $81B614');
+
+  const onlyP1Pressed = p2Only(0x10, 0);
+  assert.equal(onlyP1Pressed.u16(HUDRAM.itemCount), 3,
+    'a non-live P1 button cannot accelerate P2');
+  assert.equal(onlyP1Pressed.u16(HUDRAM.tallyHold), 6,
+    'without a P2 button the normal $285420 countdown runs');
+});
+
 test('W124 MUST-FAIL (a): with a non-zero item count + medal accumulator the '
   + 'tally AWARDS the stage-clear score to P1 before $285496 fires', () => {
   // The shipped seed has zero bonus (no bees/items/medals), so the bare seed
