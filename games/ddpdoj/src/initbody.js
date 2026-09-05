@@ -123,6 +123,19 @@ function headingLongAddr(rom, table, heading) {
   return table + d1;
 }
 
+// `$242A80` / `$142DD0`: reflect X around $1C00 only when the enemy and its
+// selected player occupy the same half.  Keep the two unsigned subtraction
+// carries explicit because the cartridge tests those carries, not signed X.
+function typeBit5SpawnMirror(ram, a5, a6) {
+  const player = (ram.u8(a5 + 0x03) & 1) !== 0 ? 0x810448 : 0x8103e6;
+  const targetHigh = ram.u16(player + 0x04) >= 0x1c00;
+  let d6 = u16(ram.u16(a6 + 0x04) + 0x0800);
+  const selfHigh = d6 >= 0x2400;
+  d6 = u16(d6 - 0x2400);
+  if (targetHigh !== selfHigh) return;
+  ram.setU16(a6 + 0x04, u16(-d6 + 0x1c00));
+}
+
 // ------------------------------------------------- $24150A, from an init body
 //
 // **WAVE 92, AND IT IS THE SEAM W91 §5.1 NAMED RATHER THAN THE ANALYSIS.**  Ten
@@ -174,21 +187,25 @@ function damageFirstFamily(ram, rom, a5, a6, unported, p) {
   // makes the sub-record palette track the record's draw bucket.
   ram.setU8(a6 + S.palette, ram.u8(a5 + 0x2a));        // move.b ($2a,A5),($1d,A6)
   readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24 no-op)
-  // the heading-indexed BODY and ARM-B tables $269E48 / $269EC8.  W84: the
-  // second one is the family's second draw arm's DESCRIPTOR, not a bucket
-  // long -- see FAM.armBArt in handlers.js and the harvest row in export-web.
-  const d1q = (ram.u8(a6 + S.heading) & 0x3e) << 1;
-  const sp = headingLongAddr(rom, 0x269E48, ram.u8(a6 + S.heading));
+  // The two heading tables are edition-bound for the Type $07/$27 alias.
+  const sprite = p.sprite ?? 0x269e48;
+  const armBArt = p.armBArt ?? 0x269ec8;
+  const sp = headingLongAddr(rom, sprite, ram.u8(a6 + S.heading));
   ram.setU32(a6 + 0x0a, rom.u32(sp));                  // move.l (A0,D1.w),($a,A6)
-  const bp = headingLongAddr(rom, 0x269EC8, ram.u8(a6 + S.heading));
+  const bp = headingLongAddr(rom, armBArt, ram.u8(a6 + S.heading));
   ram.setU32(a5 + 0x2c, rom.u32(bp));                  // move.l (A0,D1.w),($2c,A5)
-  // $269C32: btst.b #$5, $c(A5) -- if the enemy's TYPE byte (record +$0C) bit 5
-  // is set, call $242A80 (an aim routine).  Not a done-when field; noted.
-  // (W23 review F3: was +$0D `classByte` -- off-by-one; the ROM tests +$0C.)
+  // `$26A264` / `$1692DC`: Type $27 mirrors its spawn X coordinate when it
+  // starts on the same side of the playfield as its selected player.  The
+  // helper uses the record's target byte directly and does not apply the live
+  // player fallback used by the later aim call.
   if ((ram.u8(a5 + R.typeByte) & 0x20) !== 0) {
-    unported?.note(0x242a80, `$242A80 aim (type-bit-5) in damage-first init `
-      + `$${p.initBody.toString(16).toUpperCase()} -- writes to record sprite `
-      + `fields, not a done-when stat`);
+    if (p.initAim?.translated === true) {
+      typeBit5SpawnMirror(ram, a5, a6);
+    } else {
+      unported?.note(0x242a80, `$242A80 aim (type-bit-5) in damage-first init `
+        + `$${p.initBody.toString(16).toUpperCase()} -- writes to record sprite `
+        + `fields, not a done-when stat`);
+    }
   }
   // the bespoke per-type extras (facing/HP), then the stage-kill tail.
   return p.tail(ram, rom, a5, a6, unported, stage);
@@ -288,17 +305,64 @@ function init10(ram, rom, a5, a6, unported) {
 // After the shared spine, each type writes its facing fields then a HP adjust
 // (`move.w $8130BA,D0 / subq #8 / sub.b D0,($18,A5)`) and a stage-kill tail.
 function dmgTailFacing(ram, a5, a6) {
-  // $07/$27/$08/$09/$0B: facing from heading+0x20 quantised, +$24202C result.
+  // $07/$27/$08/$09/$0B: facing from heading+0x20, quantised to 16 directions.
+  // Type $07/$27 follows this with its edition-bound target aim below.
   const d0 = (ram.u8(a6 + S.heading) + 0x20) & 0x3c;  // addi.b #$20; andi.b #$3c
   ram.setU8(a5 + R.rec22, d0);                          // move.b D0,($22,A5)
-  // $24202C sets D1 (carry clears it to the prior value); the body stores D1 to
-  // +$23.  $24202C is the aim-at-target routine (W20); at spawn (W24 position)
-  // we keep the prototype's +$23 -- noted, not a done-when field for HP/palette.
 }
 function hpAdjustBA(ram, a5) {
   // move.w $8130BA,D0 / subq.b #8,D0 / sub.b D0,($18,A5)
   const d0 = ((ram.u16(G.ba) & 0xff) - 8) & 0xff;
   ram.setU8(a5 + R.rec18, (ram.u8(a5 + R.rec18) - d0) & 0xff);
+}
+
+const TYPE07_AIM_TABLES = new WeakMap();
+function type07AimTables(rom, descriptor) {
+  let byDescriptor = TYPE07_AIM_TABLES.get(rom);
+  if (!byDescriptor) { byDescriptor = new Map(); TYPE07_AIM_TABLES.set(rom, byDescriptor); }
+  let tables = byDescriptor.get(descriptor);
+  if (!tables) {
+    const a = descriptor.aim64;
+    const lut64 = Uint8Array.from(rom.bytes(a.lut, a.entries));
+    const base64 = [], sub64 = [];
+    for (let i = 0; i < 8; i++) {
+      base64.push(rom.u16(a.base + i * 2));
+      const op = rom.u32(a.ops + i * 4);
+      if (op !== a.sub && op !== a.add) {
+        unreached(a.ops + i * 4, 'invalid damage-first aim64 operation');
+      }
+      sub64.push(op === a.sub);
+    }
+    tables = { lut64, base64: Object.freeze(base64), sub64: Object.freeze(sub64) };
+    byDescriptor.set(descriptor, tables);
+  }
+  return tables;
+}
+
+function init07(ram, rom, a5, a6, unported, descriptor) {
+  return damageFirstFamily(ram, rom, a5, a6, unported, {
+    subTab: descriptor.subPrototype,
+    recTab: descriptor.recordPrototype,
+    recD0: 0x0a,
+    initBody: descriptor.initBody,
+    sprite: descriptor.sprite,
+    armBArt: descriptor.armBArt,
+    initAim: descriptor.initAim,
+    killStages: [[1, G.d8], [2, G.f6]],
+    tail(ram, rom, a5, a6, unported, stage) {
+      dmgTailFacing(ram, a5, a6);
+      if (descriptor.initAim.translated) {
+        const aimed = aim64AtTarget(
+          () => type07AimTables(rom, descriptor), ram, a5, a6,
+        );
+        ram.setU8(a5 + R.rec23, aimed.carry ? 0x20 : aimed.dir);
+      } else {
+        ram.setU8(a5 + R.rec23, 0x20);
+      }
+      hpAdjustBA(ram, a5);
+      if (stage === 2) ram.setU8(a5 + R.rec18, 0x0a);
+    },
+  });
 }
 
 // =========================================================== the dispatch table
@@ -321,19 +385,8 @@ BODY.set(0x269BCE, (ram, rom, a5, a6, unported) => damageFirstFamily(ram, rom, a
   },
 }));
 // --- type $07 / $27 ($26A1EA, alias pair): killStages [(1,d8),(2,f6)]; tail.
-BODY.set(0x26A1EA, (ram, rom, a5, a6, unported) => damageFirstFamily(ram, rom, a5, a6, unported, {
-  subTab: 0x26A2C6, recTab: 0x26A2B0, recD0: 0x0a, initBody: 0x26A1EA,
-  killStages: [[1, G.d8], [2, G.f6]],
-  tail(ram, rom, a5, a6, unported, stage) {
-    dmgTailFacing(ram, a5, a6);
-    // $24202C stores D1 -> +$23 (aim; noted in the spine).  We mirror the ROM's
-    // default-arm: D1 := $20 if the aim carried (bcc not taken).
-    ram.setU8(a5 + R.rec23, 0x20);                      // $26A28A moveq #$20,D1 (the bcc-taken arm)
-    hpAdjustBA(ram, a5);
-    // $26A29C: stage-2 -> HP byte +$18 := $0A.
-    if (stage === 2) ram.setU8(a5 + R.rec18, 0x0a);     // move.b #$a,($18,A5)
-  },
-}));
+BODY.set(0x26A1EA, (ram, rom, a5, a6, unported) =>
+  init07(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x27]));
 // --- type $08 ($26A4BC): killStages [(1,d8),(2,f6)]; stage-4 kill ladder.
 BODY.set(0x26A4BC, (ram, rom, a5, a6, unported) => damageFirstFamily(ram, rom, a5, a6, unported, {
   subTab: 0x26A5C8, recTab: 0x26A5B2, recD0: 0x0a, initBody: 0x26A4BC,
@@ -2453,10 +2506,21 @@ BODY.set(0x27d404, (ram, rom, a5, a6, unported) => {
 // note back rather than a silently missing colour install.
 export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyTypes) {
   const map = new Map(BODY);
-  for (const descriptor of Object.values(typeDescriptors ?? {})) {
+  const descriptors = Object.values(typeDescriptors ?? {});
+  const ownedAlgorithms = new Set(descriptors.map(({ algorithm }) => algorithm));
+  for (const black of Object.values(BLACK_WORLD_RESOURCES.enemyTypes)) {
+    if (ownedAlgorithms.has(black.algorithm)
+        && !descriptors.some(({ initBody }) => initBody === black.initBody)) {
+      map.delete(black.initBody);
+    }
+  }
+  for (const descriptor of descriptors) {
     if (descriptor.algorithm === 'type11') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init11(ram, rom, a5, a6, unported, descriptor));
+    } else if (descriptor.algorithm === 'type07-family') {
+      map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
+        init07(ram, rom, a5, a6, unported, descriptor));
     }
   }
   return map;

@@ -351,8 +351,9 @@ function effectArmShared278320(ram, rom, ctx, a6, kind, site) {
  *  effect inherits the enemy's SPEED + 8 and its HEADING x 4, which is what
  *  makes the burst fly on the enemy's own vector. `($12,A0)` is NOT written, so
  *  `$289004`'s `$FFFF` stands and these never sub-spawn. */
-function effectArmFamily(ram, rom, ctx, a6, kind, site) {
-  const a0 = spawnEffect(ram, ctx, kind, site);
+function effectArmFamily(ram, rom, ctx, a6, kind, site,
+  resources = BLACK_WORLD_RESOURCES.enemyTypes[0x27].effects) {
+  const a0 = spawnEffect(ram, ctx, kind, site, resources);
   ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));           // $269D24
   ram.setU8(a0 + B.speed, (ram.u8(a6 + 0x1a) + 8) & 0xff);  // $269D2A/$269D2E
   ram.setU8(a0 + B.angle, (ram.u8(a6 + 0x1b) * 4) & 0xff);  // $269D34..$269D3A
@@ -509,17 +510,17 @@ function playerDist268018(ram, rom, a6, gate = FG) {
  * @returns {{carry:boolean}} carry SET = outside the box; every caller `bcs`
  *   past its fire.
  */
-function boxTest2425B2(ram, rom, a6) {
+function boxTest2425B2(ram, rom, a6, gate = FG) {
   const off = ram.u16(0x813096);                           // $2425B6 / $2425DE
   const rank = ram.u16(G.rank98) !== 0;                   // $2425C0 / $2425E8
   const pos = ram.u32(a6 + 0x02);                         // $2425D2 / $2425FA
   // FIRST: ($2,A6) -- the LONG axis -- against $242562 / $24258A.
-  const dA = rom.u32((rank ? FG.boxD3Rank : FG.boxD3) + off);   // $2425BC/$2425CA
+  const dA = rom.u32((rank ? gate.boxD3Rank : gate.boxD3) + off); // $2425BC/$2425CA
   if (u16((pos >>> 16) - (dA & 0xffff)) + ((dA >>> 16) & 0xffff) > 0xffff) {
     return { carry: true };                               // $2425DC bcs $242604
   }
   // SECOND: ($4,A6) -- the SHORT axis -- against $242576 / $24259E.
-  const dB = rom.u32((rank ? FG.boxD2Rank : FG.boxD2) + off);   // $2425E4/$2425F2
+  const dB = rom.u32((rank ? gate.boxD2Rank : gate.boxD2) + off); // $2425E4/$2425F2
   return { carry: u16((pos & 0xffff) - (dB & 0xffff))
     + ((dB >>> 16) & 0xffff) > 0xffff };                  // $242602 add.w -> rts
 }
@@ -1037,22 +1038,23 @@ function deathSeq10(ram, rom, a5, a6, ctx, d1) {
 // bytes against the board on every live record of the family.  Type `$11`'s
 // `$2688F2`/`$268900` really ARE `tst.w`/`move.w`, so the two are not a
 // copy-paste of each other and only this family moves.
-function damageFirstHead269CEA(ram, rom, a5, a6, ctx) {
+function damageFirstHead269CEA(ram, rom, a5, a6, ctx, descriptor) {
   const u = ctx.unported;
   // $269CEA/$26A2E2 entry: the damage/hit branch FIRST (before movement).
   if ((ram.u8(a6) & 0x5c) !== 0) {                     // $269CEA moveq #$5c / and.b
     const d1 = hitMask(ram, a6);
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $269CF2/$269CF6
-    scoreHit(ram, ctx, a6, d1);                        // $269CF8 jsr $286096 (W34)
+    scoreHit(ram, ctx, a6, d1, a6, descriptor?.score); // $269CF8 jsr $286096 (W34)
     // palette flash from +$2A/+2B (the bucket emitter pair XOR).
     const d0 = ram.u8(a5 + 0x2a) ^ ram.u8(a5 + 0x2b);  // $269CFE..$269D06 eor.b
     ram.setU8(a6 + S.palette, d0);                      // $269D08 move.b D0,$1d(A6)
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $269D0C tst.w $18 / bpl
-      scoreKill(ram, rom, ctx, 0x08, d1);              // $269D14/$269D16 jsr $28615E
+      scoreKill(ram, rom, ctx, 0x08, d1, descriptor?.score); // $269D14/$269D16
       // W54: SPAWNED.  $269D1C moveq #$2 / $269D1E jsr $289004, then
       // $269D24..$269D44's five writes -- no remap table, bucket 7 flat.
-      effectArmFamily(ram, rom, ctx, a6, 0x02, 0x269d1e);
-      ctx.soundPost?.(0x28c2a8);                       // WAVE A: SFX id=3, death burst      // jsr $28C2A8
+      effectArmFamily(ram, rom, ctx, a6, 0x02,
+        descriptor?.effectSite ?? 0x269d1e, descriptor?.effects);
+      ctx.soundPost?.(descriptor?.sound.death ?? 0x28c2a8);
       freeEnemy(ram, a5);                              // jmp $263762
       return null;
     }
@@ -1139,20 +1141,20 @@ function handler05(ram, rom, a5, ctx) {
  * of the per-frame heading step.  `state26A40C` is not a lookalike -- both
  * types branch to the SAME address, so it is literally shared.
  */
-function handler07(ram, rom, a5, ctx) {
+function handler07(ram, rom, a5, ctx, descriptor) {
   const { tables } = ctx;
   const a6 = ram.u32(a5 + 0x06);
-  if (damageFirstHead269CEA(ram, rom, a5, a6, ctx) === null) return;
+  if (damageFirstHead269CEA(ram, rom, a5, a6, ctx, descriptor) === null) return;
   // $26A36C `move.b ($23,A5),D1` comes BEFORE the freeze test, so the frozen
   // exit draws with the facing byte -- and it goes to $269E20, which rewrites
   // the sprite pointer, where $05's frozen exit goes to $269E16, which does
   // not.  Two handlers, two frozen exits, and the family shares neither.
   if (ram.u16(G.freeze) !== 0) {                       // $26A370 tst.w / bne.w $269E20
-    drawFamily269E20(ram, rom, a5, a6, ram.u8(a5 + R.rec23)); return;
+    drawFamily269E20(ram, rom, a5, a6, ram.u8(a5 + R.rec23), descriptor); return;
   }
   applyVelocityBody(ram, tables, a5);                  // $26A37A jsr $2417DE
   if (ram.u16(a5 + 0x26) !== 0) {                      // $26A380 tst.w ($26,A5) / bne
-    state26A40C(ram, rom, a5, a6);                     // $26A384 bne.w $26A40C
+    state26A40C(ram, rom, a5, a6, descriptor);         // $26A384 bne.w $26A40C
     return;
   }
   if (ram.u8(a6 + S.speed) !== 0) {                    // $26A388 tst.b ($1A,A6) / beq
@@ -1186,7 +1188,7 @@ function handler07(ram, rom, a5, ctx) {
     // $26A3E6 `jsr $24202C` with NO `bcs` -- the same carry-blind call
     // `$26A6CE` makes: when both players are dead D1 survives and the slew is
     // `slew64(x, x)`.
-    const r = aim64AtTarget(aimTables(rom), ram, a5, a6);  // $26A3E6
+    const r = aim64AtTarget(aimTables(rom, descriptor), ram, a5, a6); // $26A3E6
     const tgt = r.carry ? d1 : r.dir;
     d1 = slew64(ram.u8(a5 + R.rec23), tgt);            // $26A3EC/$26A3F0 jsr $242190
     ram.setU8(a5 + R.rec23, d1 & 0xff);                // $26A3F6 move.b D1,($23,A5)
@@ -1195,18 +1197,23 @@ function handler07(ram, rom, a5, ctx) {
   // $26A460..$26A4B0 -- byte for byte $26A738..$26A788, type $08's fire.
   const cd = ram.u8(a5 + R.cooldown);                  // $26A460 subq.b #$1,($18,A5)
   ram.setU8(a5 + R.cooldown, (cd - 1) & 0xff);
-  if (cd !== 0) { drawFamily269E20(ram, rom, a5, a6, d1); return; }  // $26A464 bcc.w
+  if (cd !== 0) {
+    drawFamily269E20(ram, rom, a5, a6, d1, descriptor); return;
+  }
   ram.setU8(a5 + R.cooldown,
     u16(0x58 - ram.u16(G.b4) + 2) & 0xff);             // $26A468/$26A46A/$26A470/$26A472
-  if (boxTest2425B2(ram, rom, a6).carry) {             // $26A476 jsr $2425B2 / bcs.w
-    drawFamily269E20(ram, rom, a5, a6, d1); return;
+  if (boxTest2425B2(ram, rom, a6, descriptor.fireGate).carry) {
+    drawFamily269E20(ram, rom, a5, a6, d1, descriptor); return;
   }
-  const r = aim64AtTarget(aimTables(rom), ram, a5, a6);   // $26A480 jsr $24202C
-  if (r.carry) { drawFamily269E20(ram, rom, a5, a6, d1); return; }   // $26A486 bcs.w
+  const r = aim64AtTarget(aimTables(rom, descriptor), ram, a5, a6); // $26A480
+  if (r.carry) {
+    drawFamily269E20(ram, rom, a5, a6, d1, descriptor); return;
+  }
   // $26A490 `move.b D1,D2` -- the MUZZLE index is $24202C's D1 here, unlike
   // $05's, which reads ($1B,A6).
-  fireFamily2814AC(ram, rom, a5, a6, ctx, r.dir, r.dir, 0x0003000d, 0x26a4aa);
-  drawFamily269E20(ram, rom, a5, a6, r.dir);           // $26A4B0 bra.w $269E20
+  fireFamily2814AC(ram, rom, a5, a6, ctx, r.dir, r.dir, 0x0003000d,
+    descriptor.bullet.site, descriptor, descriptor.bullet);
+  drawFamily269E20(ram, rom, a5, a6, r.dir, descriptor); // $26A4B0 bra.w $269E20
 }
 
 // ---- $274AF0..$274B64: TYPE $82's DEATH ARM ------------------------------
@@ -4383,24 +4390,24 @@ function handler20(ram, rom, a5, ctx) {
  *  record's ARM B descriptor (W84), then the per-record enqueue, then the draw.
  *  `d1` is the caller's D1: a BYTE moved into D1 in every caller, masked to
  *  `$3E` here, so only the low byte can matter. */
-function drawFamily269E20(ram, rom, a5, a6, d1) {
+function drawFamily269E20(ram, rom, a5, a6, d1, family = FAM) {
   const idx = u16((d1 & 0x3e) * 2);                    // $269E26 andi.w / $269E2A add.w
-  ram.setU32(a6 + S.sprite0a, rom.u32(FAM.sprite + idx));  // $269E2C move.l (A0,D1.w),($a,A6)
+  ram.setU32(a6 + S.sprite0a, rom.u32(family.sprite + idx)); // $269E2C move.l (A0,D1.w),($a,A6)
   // $269E38 move.l (A0,D1.w),($2c,A5)
-  ram.setU32(a5 + 0x2c, rom.u32(FAM.armBArt + idx));
-  drawFamily269E16(ram, rom, a5, a6);                  // $269E3E/$269E44 fall-through
+  ram.setU32(a5 + 0x2c, rom.u32(family.armBArt + idx));
+  drawFamily269E16(ram, rom, a5, a6, family);          // $269E3E/$269E44 fall-through
 }
 
 /** `$269E16..$269E1C` -- the enqueue and the draw, with the sprite pointer left
  *  exactly as it was.  `$269E20` falls into this; type `$05` enters it directly
  *  from seven places. */
-function drawFamily269E16(ram, rom, a5, a6) {
-  enqueueThroughStub(ram, rom, 0x23d852, a6);          // $269E16/$269E3E jsr $23D852
-  drawFamily269B3E(ram, rom, a5, a6);                  // $269E1C/$269E44 bra.w $269B3E
+function drawFamily269E16(ram, rom, a5, a6, family = FAM) {
+  enqueueThroughStub(ram, rom, family.emitters.record, a6); // $269E16/$269E3E
+  drawFamily269B3E(ram, rom, a5, a6, family);           // $269E1C/$269E44 bra.w $269B3E
 }
 
 /** `$269B3E..$269BB4` -- the two draw arms. */
-function drawFamily269B3E(ram, rom, a5, a6) {
+function drawFamily269B3E(ram, rom, a5, a6, family = FAM) {
   const pos = ram.u32(a6 + 0x02);
   if (ram.u16(G.mirror2) !== 0) {                      // $269B3E tst.w $80390C / beq
     // ARM A.  D1's halves are built around a `swap`, so neither `addi.w` may
@@ -4410,8 +4417,8 @@ function drawFamily269B3E(ram, rom, a5, a6) {
     const d2i = ram.u16(a5 + 0x20);                    // $269B60 move.w ($20,A5),D2
     // $269B64 `move.l ($269BB6,PC,D2.w),D2` -- FOUR longwords, and the index is
     // the cycling byte offset ($20,A5) below, so 0/4/8/$C only.
-    enqueueRegistersThroughStub(ram, rom, 0x23df86, d1,
-      rom.u32(FAM.anim4 + d2i),                        // $269B64
+    enqueueRegistersThroughStub(ram, rom, family.emitters.armA, d1,
+      rom.u32(family.animation + d2i),                        // $269B64
       0x828,                                           // $269B58 move.w #$828,D3
       ram.u16(a6 + S.f1c));                            // $269B5C move.w ($1C,A6),D4
     ram.setU16(a5 + 0x20, u16(ram.u16(a5 + 0x20) + 4) & 0x0f); // $269B6E/$269B72
@@ -4425,7 +4432,7 @@ function drawFamily269B3E(ram, rom, a5, a6) {
   // $269BA6 `move.w ($1C,A6),D4` and then $269BAA `move.b #$18,D4` -- the BYTE
   // move overwrites only D4's low byte, so D4 keeps ($1C,A6)'s HIGH byte.
   const d4 = ((ram.u16(a6 + S.f1c) & 0xff00) | 0x18);
-  enqueueRegistersThroughStub(ram, rom, 0x23df58, d1,
+  enqueueRegistersThroughStub(ram, rom, family.emitters.armB, d1,
     ram.u32(a5 + 0x2c),                                // $269B9E move.l ($2c,A5),D2
     0x410,                                             // $269BA2 move.w #$410,D3
     d4);                                               // $269BAE jmp $23DF58
@@ -4438,13 +4445,14 @@ const FAM = {
   // `$269E32 lea` loads ($2C,A5) from it, and its only reader in this family's
   // code is `$269B9E move.l ($2C,A5),D2` in ARM B of the draw block, where D2
   // is the DESCRIPTOR `$23DF58` writes into hardware words 2 and 3 -- the same
-  // slot arm A fills from `anim4`. [M] the board's own display list carries 54
+  // slot arm A fills from `animation`. [M] the board's own display list carries 54
   // of these addresses over the stage1-laser-hold ladder. The field is renamed
   // rather than re-commented because the old name is what kept 32 streams out
   // of the sprite sheet: `tools/export-web.mjs` cited it as the reason.
   armBArt: 0x269ec8,  // $269E32/$269DB6 lea -- ARM B's per-heading descriptor
-  anim4: 0x269bb6,    // $269B64 -- FOUR longwords, ($20,A5) cycling 0/4/8/$C
+  animation: 0x269bb6, // $269B64 -- FOUR longwords, ($20,A5) cycling 0/4/8/$C
   muzzle: 0x269f48,   // $269DEC/$26A762/$26A922/$26ADEC/$26AEB0 -- 32 longs
+  emitters: { record: 0x23d852, armA: 0x23df86, armB: 0x23df58 },
 };
 
 /**
@@ -4575,7 +4583,7 @@ function handler08(ram, rom, a5, ctx) {
  * `$26A40C..$26A45C` -- type `$08`'s SECOND state, entered once `($26,A5)` is
  * set.  It walks the heading toward `($22,A5)` and stops when it arrives.
  */
-function state26A40C(ram, rom, a5, a6) {
+function state26A40C(ram, rom, a5, a6, family = FAM) {
   if (ram.u8(a6 + S.speed) !== 0x1c) {                   // $26A40C cmpi.b #$1C / beq
     const c = ram.u8(a5 + 0x24);                       // $26A414 subq.b #$1,($24,A5)
     ram.setU8(a5 + 0x24, (c - 1) & 0xff);
@@ -4593,23 +4601,27 @@ function state26A40C(ram, rom, a5, a6) {
       const d1 = (ram.u8(a6 + S.heading) + ram.u8(a5 + 0x1f)) & 0x3c;
       ram.setU8(a6 + S.heading, d1);                   // $26A446
       if (d1 !== ram.u8(a5 + 0x22)) {                  // $26A44A cmp.b / bne $269E20
-        drawFamily269E20(ram, rom, a5, a6, d1); return;
+        drawFamily269E20(ram, rom, a5, a6, d1, family); return;
       }
       ram.setU16(a5 + 0x1c, 1);                        // $26A452 move.w #$1,($1C,A5)
     }
   }
-  drawFamily269E20(ram, rom, a5, a6, ram.u8(a6 + S.heading));  // $26A458/$26A45C
+  drawFamily269E20(ram, rom, a5, a6, ram.u8(a6 + S.heading), family); // $26A458/$26A45C
 }
 
 /** The family's one fire: `jsr $2814AC` with D2 = the muzzle vector + position.
  *  `dIdx` is the byte the ROM moves into D2 before the `addq.w #$1`, `dDir` the
  *  D1 the generator reads, and `d0` the packed speed/kind longword. */
-function fireFamily2814AC(ram, rom, a5, a6, ctx, dIdx, dDir, d0, site) {
+function fireFamily2814AC(ram, rom, a5, a6, ctx, dIdx, dDir, d0, site,
+  family = FAM, bulletResources = null) {
   // moveq #$0,D2 / move.b <src>,D2 / addq.w #$1,D2 / andi.w #$3E,D2 / add.w D2,D2
   const idx = u16((u16((dIdx & 0xff) + 1) & 0x3e) * 2);
-  const d2 = u32(rom.u32(FAM.muzzle + idx) + ram.u32(a6 + 0x02));  // add.l ($2,A6),D2
-  const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x2814ac,
-    { d0, d1: dDir & 0xffff, d2, d3: 0, d4: 0, d5: 0, a5 });
+  const d2 = u32(rom.u32(family.muzzle + idx) + ram.u32(a6 + 0x02));
+  const bulletCtx = { ram, rom, log: new WriteLog(ram) };
+  const regs = { d0, d1: dDir & 0xffff, d2, d3: 0, d4: 0, d5: 0, a5 };
+  const res = bulletResources
+    ? fireBulletWithResources(bulletCtx, bulletResources.entry, regs, bulletResources)
+    : fireBulletFan(bulletCtx, 0x2814ac, regs);
   ctx.bulletSpawn?.(site, res);
 }
 
@@ -8928,7 +8940,8 @@ const HANDLERS = new Map([
     handler11(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x11])],
   [0x268232, handler10],
   [0x269cea, handler05],
-  [0x26a2e2, handler07],
+  [0x26a2e2, (ram, rom, a5, ctx) =>
+    handler07(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x27])],
   [0x2747c6, handler82],
   [0x27687e, handler8B],
   [0x275914, handler85],   // W30: types $85 AND $86 share this one
@@ -11232,6 +11245,10 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x2688cc);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
         handler11(ram, rom, a5, ctx, descriptor));
+    } else if (descriptor.algorithm === 'type07-family') {
+      handlers.delete(0x26a2e2);
+      handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
+        handler07(ram, rom, a5, ctx, descriptor));
     }
   }
   RESOURCE_HANDLER_MAPS.set(resources, handlers);

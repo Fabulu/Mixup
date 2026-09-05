@@ -733,11 +733,19 @@
 // D's exact six-word kind table and ends at its init. The unrelated self-pointer
 // gaps remain unexported. Measured: 1683 -> 1686 windows,
 // 651,447 -> 651,517 bytes, and 79 -> 79 overlapping pairs.
+//
+// ---------------------------------------------------------------------------
+// PRIVATE WHITE TYPE $27 ADDED ELEVEN DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The Build A type-table row, init stub, two prototypes, three body-art tables,
+// muzzle table, and three emitter stubs add 508 exact bytes below $200000.
+// Measured: 1686 -> 1697 windows, 651,517 -> 652,025 bytes, and 79 -> 79
+// overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1686;
+export const ROM_WINDOW_COUNT = 1697;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 651517;
+export const ROM_WINDOW_BYTES = 652025;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -813,8 +821,8 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 734;
-const WHITE_LABEL_WINDOW_BYTES = 193938;
+const WHITE_LABEL_WINDOW_COUNT = 745;
+const WHITE_LABEL_WINDOW_BYTES = 194446;
 
 /** Remove the later embedded Version A window family before reconstructing any
  *  earlier Black Label ledger. The edition manifest is the identity list, so a

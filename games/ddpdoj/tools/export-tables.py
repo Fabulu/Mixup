@@ -11394,8 +11394,9 @@ WHITE_LABEL_WINDOWS = [
     (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
 ]
 
-# Task #253's private Stage 1 world slice. These are the bounded Build A data
-# windows read by the shared background, spawn, type-$11 and emitter algorithms.
+# Task #253's private Stage 1 world slice, extended by Task #265 for Type $27.
+# These are the bounded Build A data windows read by the shared background,
+# spawn, enemy, bullet, and emitter algorithms.
 WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x129FE0, 0x0004, "White A Pool-C rebased descriptor root $229FE0"),
     (0x12A044, 0x0004, "White A Pool-C rebased descriptor root $22A044"),
@@ -11405,7 +11406,10 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x12A238, 0x0004, "White A Pool-C rebased descriptor root $22A238"),
     (0x130C6C, 0x1964, "White A Stage 1 spawn, aux, and movement-script closure"),
     (0x13DAB0, 0x003C, "White A type-$11 record-convention sprite emitter"),
+    (0x13DBA0, 0x000E, "White A type-$27 record emitter"),
     (0x13E21C, 0x003C, "White A type-$11 register-convention sprite emitter"),
+    (0x13E2A6, 0x000E, "White A type-$27 ARM-B emitter"),
+    (0x13E2D4, 0x000E, "White A type-$27 ARM-A emitter"),
     (0x141094, 0x0014, "White A five-entry background tile-base table"),
     (0x1423E8, 0x00F9, "White A Aim64 operations, bases, and 129-byte LUT"),
     (0x14289C, 0x0050, "White A type-$11 normal and rank fire-gate boxes"),
@@ -11414,6 +11418,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x16137C, 0x0014, "White A five-entry background element table"),
     (0x1623B0, 0x0010, "White A Stage 1 spawn-table entry"),
     (0x166924, 0x0008, "White A low type-table entry $11"),
+    (0x1669D4, 0x0008, "White A low type-table entry $27"),
     (0x166FE8, 0x0008, "White A type-$11 initial emitter pair"),
     (0x167018, 0x0024, "White A type-$11 death, hit, and secondary remap rows"),
     (0x16711A, 0x000E, "White A type-$11 seven-stage fire-distance thresholds"),
@@ -11424,6 +11429,13 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x167B96, 0x0080, "White A type-$11 muzzle offsets"),
     (0x167C16, 0x0100, "White A type-$11 main sprite table"),
     (0x167D16, 0x0080, "White A type-$11 fire and art sprite table"),
+    (0x168C2E, 0x0010, "White A type-$27 body animation table"),
+    (0x168EC0, 0x0080, "White A type-$27 body sprite table"),
+    (0x168F40, 0x0080, "White A type-$27 ARM-B art table"),
+    (0x168FC0, 0x0080, "White A type-$27 muzzle table"),
+    (0x16925A, 0x0008, "White A type-$27 run-length init stub"),
+    (0x169328, 0x0016, "White A type-$27 enemy-record prototype"),
+    (0x16933E, 0x001C, "White A type-$27 sub-record prototype"),
     (0x18692E, 0x0008, "White A type-$11 score cap and refill tables"),
     (0x18892A, 0x0004, "White A Pool-C kind-$04 template pointer"),
     (0x188962, 0x001C, "White A Pool-C kind-$04 template and list pointers"),

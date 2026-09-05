@@ -11,7 +11,7 @@ import { ENEMY } from '../src/enemies.js';
 import { OBJ } from '../src/objdriver.js';
 import { WHITE_PLAYER } from '../src/white-player.js';
 import {
-  resetAndInstallStage26331E, runSpawnWalker,
+  resetAndInstallStage26331E, resolveMovementPtr, runSpawnWalker,
 } from '../src/spawn.js';
 import { BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES } from '../src/world-resources.js';
 import { createWhiteStage1Machine } from '../src/white-machine.js';
@@ -84,6 +84,51 @@ test('White Stage 1 native installer reaches exactly the three type-$11 records 
   }
   assert.equal(ram.u16(ENEMY.bandCommon + 3 * ENEMY.stride), 0);
   assert.equal(maxRead() < 0x200000, true, `highest cartridge read was $${maxRead().toString(16)}`);
+});
+
+test('White Stage 1 source record reaches native type $27 exactly at $0076', () => {
+  const { ram, rom, maxRead } = fixture();
+  const resources = WHITE_WORLD_RESOURCES;
+  const s = resources.spawn;
+  const source = 0x130d2c;
+  const descriptor = resources.enemyTypes[0x27];
+
+  resetAndInstallStage26331E(ram, rom, null, null, null, resources);
+  ram.setU32(s.liveCursor, source);
+  ram.setU16(s.distanceClock, 0x0075);
+  assert.deepEqual(runSpawnWalker(
+    ram, rom, null, null, null, null, null, resources,
+  ), { script: 0, deferred: 0 });
+  assert.equal(ram.u32(s.liveCursor), source);
+  assert.equal(ram.u16(ENEMY.bandCommon), 0);
+
+  assert.equal(rom.u16(source), 0x0076);
+  assert.equal(rom.u16(source + 2), 0x0005);
+  assert.equal(rom.u8(source + 4), 0x27);
+  assert.equal(rom.u16(source + 6) & 0x0fff, 0x0023);
+  assert.equal(resolveMovementPtr(ram, rom, source, null, resources), 0x131a16);
+  assert.equal(rom.u32(s.low.table + 0x27 * s.typeStride), descriptor.initStub);
+  assert.equal(rom.u32(s.low.table + 0x27 * s.typeStride + 4), descriptor.handler);
+  assert.deepEqual([
+    descriptor.initStub, descriptor.initBody, descriptor.handler,
+  ], [0x16925a, 0x169262, 0x16935a]);
+
+  ram.setU16(s.distanceClock, 0x0076);
+  assert.deepEqual(runSpawnWalker(
+    ram, rom, null, null, null, null, null, resources,
+  ), { script: 1, deferred: 0 });
+  const rec = ENEMY.bandCommon;
+  assert.equal(ram.u8(rec + 0x0c), 0x27);
+  assert.equal(ram.u16(rec + 0x0a), 0x0005);
+  assert.equal(ram.u16(rec + 0x04), rom.u16(descriptor.initStub + 2));
+  assert.equal(ram.u32(rec + 0x4c), descriptor.handler);
+  assert.equal(ram.u32(rec + 0x12), 0x131a1c,
+    'the native init consumes the first six movement-script bytes');
+  assert.equal(ram.u16(0x813098), 0,
+    'the private Stage 1 spawn does not force the second-loop word');
+  assert.equal(ram.u32(s.liveCursor), source + 8);
+  assert.equal(maxRead() < 0x200000, true,
+    `highest cartridge read was $${maxRead().toString(16)}`);
 });
 
 test('world resources are recursive constants and the private machine keeps Black rejected', () => {

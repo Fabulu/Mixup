@@ -356,7 +356,9 @@ export function aim64FromCaller(t, ram, a5, selfY, selfX, mut = null) {
 }
 
 /** `$24202C` -- aim64 at the record's target, SELF read from `($2,A6)`.
- *  37 call sites; the recon's 886 rows through it matched with NO offset. */
+ *  37 call sites; the recon's 886 rows through it matched with NO offset.
+ *  Accepts the same lazy table getter as `$24200A` so the native dead-player
+ *  return does not materialize cartridge tables the core never reads. */
 export function aim64AtTarget(t, ram, a5, a6) {
   const sel = targetSelect(ram, a5);                 // $24202C bsr $24270A
   if (sel.carry) return { dir: 0, carry: true };     // $242030 bcs
@@ -364,7 +366,8 @@ export function aim64AtTarget(t, ram, a5, a6) {
   const tx = ram.u16(sel.addr + 4);
   const sy = ram.u16(a6 + 2);                        // $242038 movem.w ($2,A6),D0-D1
   const sx = ram.u16(a6 + 4);
-  return { dir: aim64(t, sy, sx, ty, tx), carry: false };
+  const tables = typeof t === 'function' ? t() : t;
+  return { dir: aim64(tables, sy, sx, ty, tx), carry: false };
 }
 
 /** `$242178` -- `$24202C` + one slew step, STORED into `($1B,A6)`. 8 sites. */

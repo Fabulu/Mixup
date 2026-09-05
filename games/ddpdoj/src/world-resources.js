@@ -70,6 +70,47 @@ const white11 = {
   },
 };
 
+const black27 = {
+  type: 0x27, algorithm: 'type07-family',
+  initStub: 0x26a1e2, initBody: 0x26a1ea, handler: 0x26a2e2,
+  recordPrototype: 0x26a2b0, subPrototype: 0x26a2c6,
+  animation: 0x269bb6, sprite: 0x269e48, armBArt: 0x269ec8, muzzle: 0x269f48,
+  emitters: { record: 0x23d852, armA: 0x23df86, armB: 0x23df58 },
+  effectSite: 0x269d1e,
+  initAim: { typeBit5: 0x242a80, target: 0x24202c, translated: false },
+  aim64: {
+    ops: 0x2420c6, sub: 0x2420ae, add: 0x2420ba,
+    base: 0x2420e6, lut: 0x2420f6, entries: 129,
+  },
+  bullet: {
+    ...BLACK_BULLET_SPAWN_RESOURCES,
+    entry: 0x2814ac, semantic: 'bank-a-adaptive', site: 0x26a4aa,
+  },
+  score: black11.score,
+  effects: black11.effects,
+  fireGate: black11.fireGate,
+  sound: { death: 0x28c2a8 },
+};
+
+const white27 = {
+  type: 0x27, algorithm: 'type07-family',
+  initStub: 0x16925a, initBody: 0x169262, handler: 0x16935a,
+  recordPrototype: 0x169328, subPrototype: 0x16933e,
+  animation: 0x168c2e, sprite: 0x168ec0, armBArt: 0x168f40, muzzle: 0x168fc0,
+  emitters: { record: 0x13dba0, armA: 0x13e2d4, armB: 0x13e2a6 },
+  effectSite: 0x16938e,
+  initAim: { typeBit5: 0x142dd0, target: 0x142366, translated: true },
+  bullet: {
+    ...WHITE_BULLET_SPAWN_RESOURCES,
+    entry: 0x1804f8, semantic: 'bank-a-adaptive', site: 0x169522,
+  },
+  score: white11.score,
+  effects: white11.effects,
+  aim64: white11.aim64,
+  fireGate: white11.fireGate,
+  sound: { death: 0x18adce },
+};
+
 export const BLACK_WORLD_RESOURCES = deepFreeze({
   edition: 'black', objectDispatch: 0x240f62,
   background: {
@@ -87,7 +128,7 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
   },
   enemyFrame: { entry: 0x2634f4, walker: 0x2633be, driver: 0x263502 },
   movement: { entry: 0x241812, speedPointers: 0x200920, fold: 0x2418b4 },
-  enemyTypes: { 0x11: black11 },
+  enemyTypes: { 0x11: black11, 0x27: black27 },
   displayList: { filler: [0xfc00, 0x3800, 0, 0, 0x0201], coordinates: 'black' },
 });
 
@@ -108,6 +149,6 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
   },
   enemyFrame: { entry: 0x16256e, walker: 0x162438, driver: 0x162670 },
   movement: { entry: 0x141b60, speedPointers: 0x100920, fold: 0x141bee },
-  enemyTypes: { 0x11: white11 },
+  enemyTypes: { 0x11: white11, 0x27: white27 },
   displayList: { filler: [0xfbff, 0xfc00, 0, 0, 0x0201], coordinates: 'direct' },
 });

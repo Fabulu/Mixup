@@ -498,11 +498,11 @@ function runSpawnInit(ctx, regs, base, init, kind, resources) {
 const S = (n) => n * 0x10000;      // a speed bias, as it sits in D0's high word
 
 /** $28134E (bank A) / $281668 (bank B): two bullets, same angle, speed +0/+6. */
-function pair06(ctx, regs, bank) {
+function pair06(ctx, regs, bank, resources = BLACK_BULLET_SPAWN_RESOURCES) {
   const r = [];
-  r.push(spawnCore(ctx, regs, bank));
+  r.push(spawnCoreWithResources(ctx, regs, bank, resources));
   regs.d0 = (regs.d0 + S(6)) >>> 0;                   // addi.l #$60000,D0
-  r.push(spawnCore(ctx, regs, bank));
+  r.push(spawnCoreWithResources(ctx, regs, bank, resources));
   return r;
 }
 
@@ -532,16 +532,16 @@ const scaleAngle = (regs) => {
 
 /** $2813A6 -- bank A's adaptive/spread3 body: centre at speed +2, then -8, +8.
  *  It scales the angle ITSELF and then calls the BANK B core three times. */
-function spread3A(ctx, regs) {
+function spread3A(ctx, regs, resources = BLACK_BULLET_SPAWN_RESOURCES) {
   const r = [];
   scaleAngle(regs);                                   // $2813A6 add.b D1,D1 x2
   regs.d0 = (regs.d0 + S(2)) >>> 0;                   // $2813AA addi.l #$20000
-  r.push(spawnCore(ctx, regs, 'B'));                  // $2813B0 jsr $2817C2
+  r.push(spawnCoreWithResources(ctx, regs, 'B', resources)); // $2813B0 jsr $2817C2
   regs.d0 = (regs.d0 - S(2)) >>> 0;                   // $2813B6 subi.l #$20000
   angMinus8(regs);
-  r.push(spawnCore(ctx, regs, 'B'));
+  r.push(spawnCoreWithResources(ctx, regs, 'B', resources));
   angPlus16(regs);
-  r.push(spawnCore(ctx, regs, 'B'));
+  r.push(spawnCoreWithResources(ctx, regs, 'B', resources));
   return r;
 }
 
@@ -559,13 +559,13 @@ function spread2A(ctx, regs) {
 /** $2816C0 -- bank B's spread3: centre, -8, +8, ALL AT THE SAME SPEED.
  *  Note the difference from bank A's $2813A6, which biases the centre by +2.
  *  The two look like the same generator and are not. */
-function spread3B(ctx, regs) {
+function spread3B(ctx, regs, resources = BLACK_BULLET_SPAWN_RESOURCES) {
   const r = [];
-  r.push(spawnCore(ctx, regs, 'B'));
+  r.push(spawnCoreWithResources(ctx, regs, 'B', resources));
   angMinus8(regs);
-  r.push(spawnCore(ctx, regs, 'B'));
+  r.push(spawnCoreWithResources(ctx, regs, 'B', resources));
   angPlus16(regs);
-  r.push(spawnCore(ctx, regs, 'B'));
+  r.push(spawnCoreWithResources(ctx, regs, 'B', resources));
   return r;
 }
 
@@ -593,17 +593,20 @@ function spread2B(ctx, regs) {
  * the angle safe in the high half -- and the `movea.l ($6,A5),A0` on the taken
  * arm is a DEAD LOAD (the core saves and restores A0 itself).
  */
-function adaptive(ctx, regs, bank) {
+function adaptive(ctx, regs, bank, resources = BLACK_BULLET_SPAWN_RESOURCES) {
   const { ram } = ctx;
   const flags = ram.u8(regs.a5 + 0x0d);               // $281394 and.b ($d,A5),D1
   if ((0x81 & flags) !== 0) {                         // $281398 bne
-    return bank === 'A' ? pair06(ctx, regs, 'A') : pair06(ctx, regs, 'B');
+    return bank === 'A' ? pair06(ctx, regs, 'A', resources)
+      : pair06(ctx, regs, 'B', resources);
   }
   const sub = ram.u32(regs.a5 + 0x06);                // $28139C movea.l ($6,A5),A0
   if ((ram.u8(sub) & 0x02) === 0) {                   // $2813A0 btst #$1,(A0)
-    return bank === 'A' ? pair06(ctx, regs, 'A') : pair06(ctx, regs, 'B');
+    return bank === 'A' ? pair06(ctx, regs, 'A', resources)
+      : pair06(ctx, regs, 'B', resources);
   }
-  return bank === 'A' ? spread3A(ctx, regs) : spread3B(ctx, regs);
+  return bank === 'A' ? spread3A(ctx, regs, resources)
+    : spread3B(ctx, regs, resources);
 }
 
 /** Is the fan gate open?  `tst.w $813098`. */
@@ -623,13 +626,26 @@ function bankAPlus4(ctx, regs, resources) {
   return out;
 }
 
+function bankAAdaptive(ctx, regs, resources) {
+  if (!fanWithResources(ctx, resources)) {
+    return [spawnCoreWithResources(ctx, regs, 'A', resources)];
+  }
+  return restoreFan(regs, () => adaptive(ctx, regs, 'A', resources));
+}
+
 export function fireWithResources(ctx, entry, regs, resources) {
-  if (!resources || resources.semantic !== 'bank-a-plus4'
-      || entry !== resources.entry) {
+  if (!resources || entry !== resources.entry) {
     unreached(entry, `no resource-bound generator entry at $${entry.toString(16)
       .toUpperCase()}`);
   }
-  return bankAPlus4(ctx, regs, resources);
+  if (resources.semantic === 'bank-a-plus4') {
+    return bankAPlus4(ctx, regs, resources);
+  }
+  if (resources.semantic === 'bank-a-adaptive') {
+    return bankAAdaptive(ctx, regs, resources);
+  }
+  unreached(entry, `no resource-bound generator semantic ${String(resources.semantic)} at `
+    + `$${entry.toString(16).toUpperCase()}`);
 }
 
 /**
