@@ -559,11 +559,14 @@ test('type $10\'s death arm passes kind $4, NOT $7 -- $2681D6 is `moveq #$4,D0`'
   // The port's comment said $7 for BOTH from W25b until W54, so this assertion
   // is the one that would have caught it.
   const src = fs.readFileSync(path.join(HERE, '..', 'src', 'handlers.js'), 'utf8');
+  const resources = fs.readFileSync(path.join(HERE, '..', 'src', 'world-resources.js'), 'utf8');
   const kind10 = (b.readUInt16BE(0) & 0xff).toString(16).padStart(2, '0');
   const kind11 = (c.readUInt16BE(0) & 0xff).toString(16).padStart(2, '0');
-  assert.ok(src.includes(`effectArmNine(ram, rom, ctx, a6, 0x${kind10}, `
-    + 'REMAP.death267FA0, 0x2681dc)'),
-    `$2681DC's call must pass 0x${kind10}, the kind the cartridge holds`);
+  assert.ok(src.includes(`effectArmNine(ram, rom, ctx, a6, 0x${kind10}, descriptor.remaps.death,\n`
+    + '    descriptor.effectSites.death, descriptor.effects)'),
+    `$2681DC's descriptor-backed call must pass 0x${kind10}, the kind the cartridge holds`);
+  assert.ok(resources.includes('effectSites: { firstZero: 0x2682c0, death: 0x2681dc }'),
+    'Black type $10 must bind the descriptor-backed death call to native $2681DC');
   assert.ok(src.includes(`effectArmNine(ram, rom, ctx, a6, 0x${kind11}, `
     + 'descriptor.remaps.death,\n    descriptor.handler - 0x7a, descriptor.effects)'),
     `$268852's edition-aware call must pass 0x${kind11}`);

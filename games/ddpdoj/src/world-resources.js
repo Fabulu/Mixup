@@ -70,6 +70,37 @@ const white11 = {
   },
 };
 
+const black10 = {
+  type: 0x10, algorithm: 'type10', initStub: 0x2680b0, initBody: 0x2680b8,
+  handler: 0x268232, subPrototype: 0x2681b2, recordPrototype: 0x268192,
+  bucketTable: 0x267f70, palette: 0x268188, muzzle: 0x268494,
+  mainSprite: 0x268594, fireSprite: 0x268694,
+  turret: { block: 0x268376, aimSite: 0x268398, muzzleY: 0x0200 },
+  fireGate: black11.fireGate,
+  bullet: { site: 0x26848a, ...BLACK_BULLET_SPAWN_RESOURCES },
+  score: black11.score,
+  effects: black11.effects,
+  remaps: black11.remaps,
+  effectSites: { firstZero: 0x2682c0, death: 0x2681dc },
+  sound: { death: 0x28c25a },
+};
+
+const white10 = {
+  type: 0x10, algorithm: 'type10', initStub: 0x167128, initBody: 0x167130,
+  handler: 0x1672aa, subPrototype: 0x16722a, recordPrototype: 0x16720a,
+  bucketTable: 0x166fe8, palette: 0x167200, muzzle: 0x16750c,
+  mainSprite: 0x16760c, fireSprite: 0x16770c,
+  turret: { block: 0x1673ee, aimSite: 0x167410, muzzleY: 0x0200 },
+  aim64: white11.aim64,
+  fireGate: white11.fireGate,
+  bullet: { site: 0x167502, ...WHITE_BULLET_SPAWN_RESOURCES },
+  score: white11.score,
+  effects: white11.effects,
+  remaps: white11.remaps,
+  effectSites: { firstZero: 0x167338, death: 0x167254 },
+  sound: { death: 0x18ad80 },
+};
+
 const black27 = {
   type: 0x27, algorithm: 'type07-family',
   initStub: 0x26a1e2, initBody: 0x26a1ea, handler: 0x26a2e2,
@@ -128,7 +159,7 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
   },
   enemyFrame: { entry: 0x2634f4, walker: 0x2633be, driver: 0x263502 },
   movement: { entry: 0x241812, speedPointers: 0x200920, fold: 0x2418b4 },
-  enemyTypes: { 0x11: black11, 0x27: black27 },
+  enemyTypes: { 0x10: black10, 0x11: black11, 0x27: black27 },
   displayList: { filler: [0xfc00, 0x3800, 0, 0, 0x0201], coordinates: 'black' },
 });
 
@@ -149,6 +180,6 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
   },
   enemyFrame: { entry: 0x16256e, walker: 0x162438, driver: 0x162670 },
   movement: { entry: 0x141b60, speedPointers: 0x100920, fold: 0x141bee },
-  enemyTypes: { 0x11: white11, 0x27: white27 },
+  enemyTypes: { 0x10: white10, 0x11: white11, 0x27: white27 },
   displayList: { filler: [0xfbff, 0xfc00, 0, 0, 0x0201], coordinates: 'direct' },
 });

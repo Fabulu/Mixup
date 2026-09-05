@@ -261,9 +261,9 @@ function init11(ram, rom, a5, a6, unported, p) {
 
 // --------------------------------------------------------- type $10 (16 records)
 // $2680B8.  Same shape as $11 with the per-type palette/HP globals.
-function init10(ram, rom, a5, a6, unported) {
-  loadSubProto(ram, rom, a5, a6, 0x2681B2);            // $2680BE jsr $2637A2
-  loadRecordProto(ram, rom, a5, 0x268192, 0x0f);       // $2680CC jsr $26377A (D0=$F)
+function init10(ram, rom, a5, a6, unported, p) {
+  loadSubProto(ram, rom, a5, a6, p.subPrototype);        // $2680BE jsr $2637A2
+  loadRecordProto(ram, rom, a5, p.recordPrototype, 0x0f); // $2680CC jsr $26377A (D0=$F)
   // $2680D2: D0 = $813092; lsr.w #1; addq #2 -> record +$1C and +$1D.
   const stageHalf = (ram.u16(G.stage) >> 1) + 2;
   ram.setU8(a5 + R.rec1C, stageHalf & 0xff);           // move.b D0,($1c,A5)
@@ -281,7 +281,7 @@ function init10(ram, rom, a5, a6, unported) {
   if (ram.u16(G.stage) === 2) ram.setU8(a6 + S.f1f, 2);
   // $268120: bucket pair from $267F70 indexed by (sub +$1F)<<3.
   const f = ram.u8(a6 + S.f1f);
-  const btab = 0x267F70 + (f << 3);
+  const btab = p.bucketTable + (f << 3);
   ram.setU32(a5 + R.rec2A, rom.u32(btab));
   ram.setU32(a5 + R.rec2E, rom.u32(btab + 4));
   // $26813A..$268146: as in type $11, the bucket index in D1 survives when
@@ -292,10 +292,10 @@ function init10(ram, rom, a5, a6, unported) {
   // $26814A: re-fetch A6 (unchanged), heading -> record +$33, sprite from $268694.
   ram.setU8(a5 + R.rec33, ram.u8(a6 + S.heading));
   const d1 = (ram.u8(a6 + S.heading) + 1) & 0x3e;
-  ram.setU32(a5 + R.rec22, rom.u32(0x268694 + (d1 << 1)));
+  ram.setU32(a5 + R.rec22, rom.u32(p.fireSprite + (d1 << 1)));
   // $26816A: palette from $268188 indexed by $813094.
   const lp = ram.u16(G.stageX2);
-  const pal = 0x268188 + lp;
+  const pal = p.palette + lp;
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + R.rec34, rom.u8(pal));
   ram.setU8(a5 + R.rec35, rom.u8(pal + 1));
@@ -439,7 +439,8 @@ BODY.set(0x26ABA0, (ram, rom, a5, a6, unported) => damageFirstFamily(ram, rom, a
 // --- type $11 / $10 (defined above as named functions).
 BODY.set(0x26871C, (ram, rom, a5, a6, unported) =>
   init11(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x11]));
-BODY.set(0x2680B8, init10);
+BODY.set(0x2680B8, (ram, rom, a5, a6, unported) =>
+  init10(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x10]));
 
 // --- type $8A ($2766AE): scroll-locked ground gun.  Loaders, position, a small
 // anim/record fixup.  No bucket table.
@@ -2518,6 +2519,9 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
     if (descriptor.algorithm === 'type11') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init11(ram, rom, a5, a6, unported, descriptor));
+    } else if (descriptor.algorithm === 'type10') {
+      map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
+        init10(ram, rom, a5, a6, unported, descriptor));
     } else if (descriptor.algorithm === 'type07-family') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init07(ram, rom, a5, a6, unported, descriptor));

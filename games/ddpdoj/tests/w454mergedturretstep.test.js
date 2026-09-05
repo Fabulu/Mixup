@@ -326,9 +326,11 @@ test('SECTION 6: one production body serves all three handlers and preserves the
   assert.equal([...handlerSource.matchAll(/\bturretStep\s*\(/g)].length, 3,
     'the type $11, type $10 and type $3D production handlers share the helper');
   assert.match(handlerSource,
-    /turretStep\(\(\) => aimTables\(rom\), ram, rom, a5, a6, TURRET_11\)/);
+    /turretStep\(\(\) => aimTables\(rom, descriptor\), ram, rom, a5, a6,\s+turret11\(descriptor\)\)/);
   assert.match(handlerSource,
-    /turretStep\(\(\) => aimTables\(rom\), ram, rom, a5, a6, TURRET_10\)/);
+    /turretStep\(\(\) => aimTables\(rom, descriptor\), ram, rom, a5, a6,\s+turret10\(descriptor\)\)/);
+  assert.match(handlerSource,
+    /turretStep\(\(\) => aimTables\(rom\), ram, rom, a5, a6, TURRET_11\)/);
   assert.equal([...turretSource.matchAll(/export function turretStep\s*\(/g)].length, 1,
     'exactly one production implementation survives');
   assert.doesNotMatch(turretSource, /function turretHandler\s*\(/,

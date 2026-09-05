@@ -139,7 +139,7 @@ test('Type $27 descriptors keep the edition identities isolated and frozen', () 
   assert.equal(white.effects, white11.effects);
   assert.equal(white.aim64, white11.aim64);
   assert.equal(white.fireGate, white11.fireGate);
-  assert.deepEqual(white.bullet.supportedKinds, [13]);
+  assert.deepEqual(white.bullet.supportedKinds, [12, 13]);
   for (const descriptor of [black, white]) {
     assert.equal(Object.isFrozen(descriptor), true);
     assert.equal(Object.isFrozen(descriptor.initAim), true);

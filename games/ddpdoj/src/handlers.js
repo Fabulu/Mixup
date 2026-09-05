@@ -255,24 +255,6 @@ const MUZZLE_85 = 0x27327a;
  *  `((($33,A5)+2) & $3C) * 2`, so the ENTRIES ARE 8 BYTES APART and only the
  *  first longword of each is read.  Already inside W20's $268B10 window. */
 const MUZZLE_11 = 0x268b1e;
-// 16-direction sprite-pointer tables, by handler (ROM addresses, build B)
-const SPRITE_TAB = {
-  h11_main: 0x268b9e,   // $2689B6 lea (heading -> sub +$0A sprite)
-  h11_fire: 0x268c9e,   // $268A4E lea (facing -> record +$22 sprite, post-slew)
-  // W81.  TYPE $10's PAIR, and it is the SAME SHAPE ONE $100 LOWER.  `$26831E
-  // lea ($268594,PC),A0` indexed by `(($1A,A6) & $3E) * 4` (+4 on the mirror
-  // bit) is $268B9E's index instruction for instruction, and `$2683B6 lea
-  // ($268694,PC),A0` indexed by `((($33,A5)+1) & $3E) * 2` is $268C9E's.
-  // `tools/export-web.mjs` used to call $268594 "96 entries ... for a handler
-  // that does not exist"; it is 64 + 32, and this is the handler.
-  h10_main: 0x268594,   // $26831E lea (heading -> sub +$0A sprite),   64 entries
-  h10_fire: 0x268694,   // $2683B6 lea (facing -> record +$22 sprite), 32 entries
-};
-/** `$268494` -- type $10's muzzle table, `((($33,A5)+1) & $3E) * 2`, FOUR bytes
- *  an entry.  Type $11's `$268B1E` is eight, and reading one as the other puts
- *  every bullet at half the offset. */
-const MUZZLE_10 = 0x268494;
-
 // ---------------------------------------------------- the loud-counted notes
 //
 // W34 REPLACED `noteDamage` WITH THE ROUTINE ITSELF.  It used to read
@@ -588,6 +570,16 @@ function aimTables(rom, descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x11]) {
 const TURRET_10 = TURRET_HANDLERS.get(0x268232);
 const TURRET_11 = TURRET_HANDLERS.get(0x2688cc);
 
+function turret10(descriptor) {
+  if (descriptor.handler === 0x268232) return TURRET_10;
+  return {
+    type: descriptor.type, gfx: descriptor.fireSprite,
+    block: descriptor.turret.block, aimSite: descriptor.turret.aimSite,
+    muzzleY: descriptor.turret.muzzleY, init: descriptor.initBody,
+    recProto: descriptor.recordPrototype, subProto: descriptor.subPrototype,
+  };
+}
+
 function turret11(descriptor) {
   if (descriptor.handler === 0x2688cc) return TURRET_11;
   return {
@@ -806,7 +798,7 @@ function fireFan11(ram, rom, a5, a6, ctx, descriptor) {
 // bounds test (a draw-flag gate on +$32 and a $7600 compare).  Its death
 // sequence is the SHARED PROLOGUE at `$2681CE` (reached via `bmi $2681CE` from
 // `$26829E`).  flow.py TRUE span `$2681CE..$268490` (710 B, 183 insns).
-function handler10(ram, rom, a5, ctx) {
+function handler10(ram, rom, a5, ctx, descriptor) {
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   if (stepMovement(ram, rom, a5, tables, u)) return;   // $268232 jsr $2638A6
@@ -834,16 +826,19 @@ function handler10(ram, rom, a5, ctx) {
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $268282
     const pc = ram.u8(a5 + R.palCycle);                // $268286
     ram.setU8(a6 + S.palette, ram.u8(a6 + S.palette) ^ pc); // $26828A
-    scoreHit(ram, ctx, a6, d1);                        // $26828E jsr $286096 (W34)
+    scoreHit(ram, ctx, a6, d1, a6, descriptor.score);     // $26828E jsr $286096 (W34)
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $268294 tst.w $18 / bpl
-      if ((ram.u8(a5 + R.deathFlag) & 0x80) !== 0) { deathSeq10(ram, rom, a5, a6, ctx, d1); return; } // $26829E bmi $2681CE
+      if ((ram.u8(a5 + R.deathFlag) & 0x80) !== 0) {
+        deathSeq10(ram, rom, a5, a6, ctx, d1, descriptor); return;
+      } // $26829E bmi $2681CE
       ram.bclr8(a6, 1);                                // $2682A2 bclr #1,(A6)
       ram.setU16(a6 + S.hp, ram.u16(a5 + R.hpReload)); // $2682A6 reload HP
-      scoreKill(ram, rom, ctx, 0x08, d1);              // $2682AA/$2682AE
+      scoreKill(ram, rom, ctx, 0x08, d1, descriptor.score); // $2682AA/$2682AE
       ram.bset8(a5 + R.deathFlag, 7);                  // $2682B4 bset #7,$20
       // W54: SPAWNED.  $2682BA moveq #$3 / $2682BC lea ($267FAC,PC),A1 --
       // the HIT row, the same one $268954 uses -- / $2682C0 jsr $289004.
-      effectArmNine(ram, rom, ctx, a6, 0x03, REMAP.hit267FAC, 0x2682c0);
+      effectArmNine(ram, rom, ctx, a6, 0x03, descriptor.remaps.hit,
+        descriptor.effectSites.firstZero, descriptor.effects);
       // $2682F0 `bra.b $2682F8` -- NOT a return.  Type $10's first trip to zero
       // reloads, scores 8, marks itself and then RUNS ITS FIRE MACHINE on the
       // same frame, exactly as type $11's does.  W34: the `return` that used to
@@ -851,7 +846,7 @@ function handler10(ram, rom, a5, ctx) {
       // frame, which no run could see because no run had a damage frame.
     }
   }
-  fire10(ram, rom, a5, a6, ctx);                       // $2682F8
+  fire10(ram, rom, a5, a6, ctx, descriptor);             // $2682F8
 }
 
 // ---- $2682F8..$268490: TYPE $10's fire/state machine.  WIRED BY W81. --------
@@ -885,7 +880,7 @@ function handler10(ram, rom, a5, ctx) {
 // instructions plus `playerDist268018`, and its cost to this wave is ZERO
 // LINES.  Nothing here fakes a rank input: `$813092` and `$813098` are read
 // out of RAM exactly as `$268ABE`'s caller reads them.
-function fire10(ram, rom, a5, a6, ctx) {
+function fire10(ram, rom, a5, a6, ctx, descriptor) {
   if (ram.u16(G.freeze) === 0) {                       // $2682F8 tst.w $8130D2
     const d7 = ram.u16(a6 + S.speed);                  // $268300 move.w ($1A,A6),D7
     // $268304 moveq #$3E / and.w D7,D1 / add.w D1,D1 / add.w D1,D1 -- x4, so
@@ -893,7 +888,7 @@ function fire10(ram, rom, a5, a6, ctx) {
     let d1 = (d7 & 0x3e) << 2;
     if ((d7 & 0x40) === 0 && (ram.u8(G.mirror) & 0x04) !== 0)  // $26830C/$268312
       d1 = u16(d1 + 4);                                // $26831C addq.w #$4,D1
-    ram.setU32(a6 + S.sprite0a, rom.u32(SPRITE_TAB.h10_main + d1));  // $268324
+    ram.setU32(a6 + S.sprite0a, rom.u32(descriptor.mainSprite + d1)); // $268324
   }
   enqueueThroughStub(ram, rom, ram.u32(a5 + R.emitRec2A), a6);   // $26832E jsr (A0)
   if ((ram.u8(a5 + R.deathFlag) & 0x80) !== 0) {       // $268330 tst.b / bpl
@@ -912,13 +907,14 @@ function fire10(ram, rom, a5, a6, ctx) {
   // `$268376..$2683C2`: the same production block type $11 enters at $268A0E,
   // parameterised only by this type's `$268694` sprite table. Preserve its
   // cartridge exits: freeze and aim carry draw, all other arms reach fire.
-  const turret = turretStep(() => aimTables(rom), ram, rom, a5, a6, TURRET_10);
+  const turret = turretStep(() => aimTables(rom, descriptor), ram, rom, a5, a6,
+    turret10(descriptor));
   if (turret.next === 'draw') { draw10(ram, rom, a5, a6); return; }
   if ((ram.u8(a6) & 0x20) === 0) { draw10(ram, rom, a5, a6); return; } // $2683C2 btst #5
   const c = (ram.u8(a5 + R.fireCtr) - 1) & 0xff;       // $2683C8 subq.b #1,($28,A5)
   ram.setU8(a5 + R.fireCtr, c);
   if (c !== 0) { draw10(ram, rom, a5, a6); return; }    // $2683CC beq $2683EC
-  fireFan10(ram, rom, a5, a6, ctx);                    // $2683EC
+  fireFan10(ram, rom, a5, a6, ctx, descriptor);          // $2683EC
 }
 
 /** $2683CE: TYPE $10's COMMON DRAW -- the register-convention emitter through
@@ -933,19 +929,19 @@ function draw10(ram, rom, a5, a6) {
 
 /** $2683EC..$268490 -- type $10's kind-$C fan.  Note the KIND: `$268482 moveq
  *  #$C,D0`, where type $11's `$268AFA` is `#$D`. */
-function fireFan10(ram, rom, a5, a6, ctx) {
+function fireFan10(ram, rom, a5, a6, ctx, descriptor) {
   const u = ctx.unported;
   // $2683EC moveq #$18 / sub.w $8130BC,D0 / move.b D0,($28,A5)
   ram.setU8(a5 + R.fireCtr, u16(0x18 - ram.u16(G.bc)) & 0xff);
-  if (fireGate267FC6(u, ram, rom, a5, a6).carry) {     // $2683F8 jsr / $2683FC bcs
+  if (fireGate267FC6(u, ram, rom, a5, a6, descriptor.fireGate).carry) {
     draw10(ram, rom, a5, a6); return;
   }
   if (ram.u16(G.stage) === 1 && ram.u16(G.midbossD8) !== 0) { // $2683FE/$26840A
     draw10(ram, rom, a5, a6); return;
   }
   const selfY = ram.u16(a6 + 0x02), selfX = ram.u16(a6 + 0x04); // $268412 movem.w
-  const r = aim64FromCaller(aimTables(rom), ram, a5,
-    u16(selfY + 0x200), selfX);                        // $268418/$26841C jsr $24200A
+  const r = aim64FromCaller(aimTables(rom, descriptor), ram, a5,
+    u16(selfY + descriptor.turret.muzzleY), selfX);                        // $268418/$26841C jsr $24200A
   if (r.carry) { draw10(ram, rom, a5, a6); return; }   // $268422 bcs $2683CE
   // $268424..$268440: FIRE ONLY WHEN THE TURRET IS POINTING WHERE IT AIMS.
   // Both the fresh aim and the stored facing are rounded to $3C -- 16 sectors
@@ -969,30 +965,35 @@ function fireFan10(ram, rom, a5, a6, ctx) {
   const f = ram.u8(a5 + R.facing);                     // $268460 move.b ($33,A5),D1
   // $268464 move.w D1,D3 / addq.w #1,D3 / andi.w #$3E,D3 / add.w D3,D3 --
   // FOUR-byte entries here; type $11's $268B1E is eight.
-  const d2b = u32(rom.u32(MUZZLE_10 + u16(((f + 1) & 0x3e) * 2))
+  const d2b = u32(rom.u32(descriptor.muzzle + u16(((f + 1) & 0x3e) * 2))
     + ram.u32(a6 + 0x02));                             // $268474/$268478 add.l
   const d1b = (f + 2) & 0xff & 0x3c;                   // $26847C addq.b #2 / andi.w
   const regs = { d0: 0x0000000c, d1: d1b, d2: d2b,     // $268482 moveq #$C
     d3: 0x02000000, d4: 0, d5: 0, a5 };                // $268484 move.l #$2000000
-  const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281402, regs); // $26848A
-  ctx.bulletSpawn?.(0x26848a, res);
+  const bullet = descriptor.bullet;
+  const res = fireBulletWithResources(
+    { ram, rom, log: new WriteLog(ram) }, bullet.entry, regs, bullet,
+  ); // $26848A
+  ctx.bulletSpawn?.(bullet.site, res);
   draw10(ram, rom, a5, a6);                            // $268490 bra $2683CE
 }
 // $2681CE: SHARED DEATH SEQUENCE for $10 (the prologue).  Effects noted, then free.
 // Unlike $11's death seq, the $289AF4 here ($26821E) is UNCONDITIONAL in the ROM
 // (no preceding btst in $2681CE..$26822A), so the note is not gated (W25b F6).
-function deathSeq10(ram, rom, a5, a6, ctx, d1) {
+function deathSeq10(ram, rom, a5, a6, ctx, d1, descriptor) {
   const u = ctx.unported;
-  scoreKill(ram, rom, ctx, 0x10, d1);                  // $2681CE/$2681D0
+  scoreKill(ram, rom, ctx, 0x10, d1, descriptor.score);  // $2681CE/$2681D0
   // W54: SPAWNED -- **AND THE KIND IS $4, NOT $7.**  [M] $2681D6 is
   // `moveq #$4,D0`, and the note this line replaced said $7 since W25b.
   // Kind $4 is not even in `50-recon` 2.4's measured eight; it reached
   // 137 x $7 because type $11's death arm IS $7 and type $10's is not.
-  effectArmNine(ram, rom, ctx, a6, 0x04, REMAP.death267FA0, 0x2681dc);
+  effectArmNine(ram, rom, ctx, a6, 0x04, descriptor.remaps.death,
+    descriptor.effectSites.death, descriptor.effects);
   // $26820C..$26821E -- the same six instructions and the same secondary as the
   // type-$11 death above.
-  spawnPoolC289AF4(ram, rom, ctx, 0x04, a6, REMAP.secondary267FB8);
-  ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst
+  spawnPoolC289AF4(ram, rom, ctx, 0x04, a6, descriptor.remaps.secondary,
+    descriptor.effects);
+  ctx.soundPost?.(descriptor.sound.death);
   freeEnemy(ram, a5);                                  // jmp $263762
 }
 
@@ -8938,7 +8939,8 @@ const HANDLERS = new Map([
   [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
   [0x2688cc, (ram, rom, a5, ctx) =>
     handler11(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x11])],
-  [0x268232, handler10],
+  [0x268232, (ram, rom, a5, ctx) =>
+    handler10(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x10])],
   [0x269cea, handler05],
   [0x26a2e2, (ram, rom, a5, ctx) =>
     handler07(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x27])],
@@ -11245,6 +11247,10 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x2688cc);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
         handler11(ram, rom, a5, ctx, descriptor));
+    } else if (descriptor.algorithm === 'type10') {
+      handlers.delete(0x268232);
+      handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
+        handler10(ram, rom, a5, ctx, descriptor));
     } else if (descriptor.algorithm === 'type07-family') {
       handlers.delete(0x26a2e2);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>

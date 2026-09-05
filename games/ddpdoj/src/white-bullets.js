@@ -28,7 +28,7 @@ export const WHITE_BULLET_SPAWN_RESOURCES = Object.freeze({
   templatePtrs: 0x18093e,
   spawnInitPtrs: 0x180612,
   kinds: 36,
-  supportedKinds: Object.freeze([13]),
+  supportedKinds: Object.freeze([12, 13]),
 });
 
 export const WHITE_AIM256_RESOURCES = Object.freeze({
