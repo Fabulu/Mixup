@@ -10748,6 +10748,8 @@ def verify(t: dict) -> list[str]:
         bad.append("embedded Version A button2RuntimeWindows drifted from the exported ROM window list")
     if white.get("button2") != WHITE_BUTTON2_EXECUTABLE_IDENTITY:
         bad.append("embedded Version A Button 2 executable identity manifest drifted")
+    if white.get("stage1Type8A") != WHITE_STAGE1_TYPE8A_EXECUTABLE_IDENTITY:
+        bad.append("embedded Version A Stage 1 Type $8A executable identity manifest drifted")
     if any(address < 0 or address + length > 0x200000
            for address, length, _ in WHITE_BUTTON2_RUNTIME_WINDOWS):
         bad.append("embedded Version A Button 2 authority escaped the Build A cartridge region")
@@ -11437,6 +11439,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x13DB28, 0x003C, "White A Type-$85 cue selector-$0C sprite emitter"),
     (0x13DB64, 0x003C, "White A Type-$85 cue selector-$10 sprite emitter"),
     (0x13DBA0, 0x000E, "White A damage-first, Pool-B, and Type-$85 cue emitter"),
+    (0x13DF18, 0x007A, "White A collected-bee zooming-family sprite emitter"),
     (0x13E21C, 0x003C, "White A type-$10/$11 register-convention sprite emitter"),
     (0x13E2A6, 0x000E, "White A damage-first family ARM-B emitter"),
     (0x13E2D4, 0x000E, "White A damage-first family ARM-A emitter"),
@@ -11450,7 +11453,9 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x14322E, 0x0100, "White A shared Pool-A and Pool-D unmasked RNG table"),
     (0x14336A, 0x0100, "White A shared Pool-A and Pool-D signed RNG table"),
     (0x14359E, 0x0040, "White A shared Pool-A and Pool-D masked RNG table"),
+    (0x1548D8, 0x000A, "White A bee-earned hyper grant mode table"),
     (0x16067C, 0x02D8, "White A Stage 1 background script closure"),
+    (0x1612F4, 0x0004, "White A Stage 1 BGELEM id-$0C constructor pointer"),
     (0x16137C, 0x0014, "White A five-entry background element table"),
     (0x1623B0, 0x0010, "White A Stage 1 spawn-table entry"),
     (0x1668C4, 0x0008, "White A low type-table entry $05"),
@@ -11495,13 +11500,29 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x172976, 0x009E, "White A type-$80 palette, prototypes, and cue thresholds"),
     (0x174866, 0x0008, "White A type-$85 run-length init stub"),
     (0x1748E4, 0x0084, "White A type-$85 palette, prototypes, and cue thresholds"),
+    (0x175748, 0x0008, "White A type-$8A run-length init stub"),
+    (0x175782, 0x0006, "White A type-$8A enemy-record prototype"),
+    (0x175788, 0x001C, "White A type-$8A sub-record prototype"),
+    (0x17733A, 0x0048, "White A type-$8A 18-entry emitter dispatch"),
+    (0x1773BE, 0x000C, "White A type-$8A Pool-B bucket-remap row"),
     (0x17D4C4, 0x0008, "White A high type-table entry $80"),
     (0x17D4EC, 0x0008, "White A high type-table entry $85"),
+    (0x17D514, 0x0008, "White A high type-table entry $8A"),
     (0x17DAAA, 0x0004, "White A item kind-$00 dispatch pointer"),
     (0x17DACC, 0x0010, "White A item kind-$00 four-frame art table"),
     (0x17E532, 0x00CC, "White A item kind-$00 normal and at-max collection lists"),
     (0x17E7F8, 0x0004, "White A item kind-$00 template pointer"),
+    (0x17E804, 0x0004, "White A P1 hyper-item template pointer"),
+    (0x17E80C, 0x0004, "White A P2 hyper-item template pointer"),
     (0x17E818, 0x001A, "White A item kind-$00 template"),
+    (0x17EDA6, 0x0028, "White A bee base-score ladder"),
+    (0x17EDCE, 0x0028, "White A bee popup-selector ladder"),
+    (0x17EDF6, 0x009C, "White A flying-bee waypoint script"),
+    (0x17FED2, 0x0004, "White A Pool-A kind-$04 bee template pointer"),
+    (0x17FF0E, 0x0004, "White A Pool-A kind-$40 bee template pointer"),
+    (0x17FF34, 0x0016, "White A shared bee template"),
+    (0x17FFB8, 0x00A8, "White A bee collection presentation graph"),
+    (0x180358, 0x0014, "White A bee x2 popup tile table"),
     (0x180622, 0x0008, "White A enemy-bullet kinds $04/$05 spawn-init pointers"),
     (0x18065E, 0x0004, "White A enemy-bullet kind $13 spawn-init pointer"),
     (0x180A20, 0x0010, "White A enemy-bullet kind $04 complete template"),
@@ -11555,6 +11576,25 @@ WHITE_BUTTON2_RUNTIME_WINDOWS = [
     (0x188FA0, 0x00A2, "White A laser-bomb spark templates and lists"),
     (0x17E866, 0x001A, "White A pending hyper item template"),
 ]
+
+WHITE_STAGE1_TYPE8A_EXECUTABLE_IDENTITY = {
+    "backgroundConstructor": {
+        "start": "$1617D8", "end": "$1617F6",
+        "sha256": "6d0fc2b135583282b9ce00848f9d5e6e7ff662979e4340d55c4fcc7c151b8147",
+    },
+    "backgroundUpdate": {
+        "start": "$1617F6", "end": "$16182A",
+        "sha256": "77cf9cb0103e23cfd4074ab652927c2392d13bf8def0ff606397fbc4694f60ac",
+    },
+    "init": {
+        "start": "$175748", "end": "$1757A4",
+        "sha256": "65a63362dd3fba694a9d5ce0ef7b5e944a463d8ebe4511d82a98917d001c6d80",
+    },
+    "handler": {
+        "start": "$1757A4", "end": "$1758BE",
+        "sha256": "c6f145228d69b143d1056a1daaa03e3351f99b369c26bfcc824620b951974a5c",
+    },
+}
 
 WHITE_BUTTON2_EXECUTABLE_IDENTITY = {
     "button2": {"start": "$148EB2", "end": "$1491D0",
@@ -12018,6 +12058,7 @@ def white_label_tables(d: bytes) -> dict:
         "button2RuntimeWindows": [{"base": f"${address:06X}", "len": length}
                                   for address, length, _ in WHITE_BUTTON2_RUNTIME_WINDOWS],
         "button2": WHITE_BUTTON2_EXECUTABLE_IDENTITY,
+        "stage1Type8A": WHITE_STAGE1_TYPE8A_EXECUTABLE_IDENTITY,
         "playerWindows": [{"base": f"${address:06X}", "len": length}
                           for address, length, _ in WHITE_PLAYER_WINDOWS],
         "shotProducerWindows": [{"base": f"${address:06X}", "len": length}
@@ -12418,6 +12459,11 @@ def check_white_label_frontend_windows(d: bytes) -> None:
              "0b0c583a6ce259c528bc0a0fceec8305acb2d6ab9238c65bbaadb063b8f75ab6")):
         if hashlib.sha256(d[start:end]).hexdigest() != digest:
             raise SystemExit(f"White A {label} executable identity changed")
+    for label, identity in WHITE_STAGE1_TYPE8A_EXECUTABLE_IDENTITY.items():
+        start = int(identity["start"].lstrip("$"), 16)
+        end = int(identity["end"].lstrip("$"), 16)
+        if hashlib.sha256(d[start:end]).hexdigest() != identity["sha256"]:
+            raise SystemExit(f"White A Stage 1 Type $8A {label} executable identity changed")
     if d[0x1491D0:0x1492E2] != d[0x249B2C:0x249C3E]:
         raise SystemExit("White A shot-cadence prefix is no longer the exact Build B twin")
     white_cadence = bytearray(d[0x1491D0:0x1494F2])

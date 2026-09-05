@@ -15,7 +15,7 @@ import {
 } from '../src/spawn.js';
 import { BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES } from '../src/world-resources.js';
 import { createWhiteStage1Machine } from '../src/white-machine.js';
-import { BgVram } from '../src/background.js';
+import { BGRAM, BgVram, ESLOT } from '../src/background.js';
 import { DL } from '../src/displaylist.js';
 import { stageStart15F8DA } from '../src/white-rank.js';
 
@@ -170,6 +170,37 @@ test('White Stage 1 reaches Type $05 and resolves the native Type $07 alias', ()
   assert.equal(ram.u32(ENEMY.bandCommon + 0x12), 0x1324b2,
     'the initializer consumes the first eight native movement bytes');
   assert.equal(ram.u32(s.liveCursor), source + 8);
+  assert.equal(maxRead() < 0x200000, true,
+    `highest cartridge read was $${maxRead().toString(16)}`);
+});
+
+test('private machine reaches the first White BGELEM at clock $0090', () => {
+  const { ram, rom, maxRead } = fixture();
+  const machine = createWhiteStage1Machine(rom, null, new BgVram());
+  const events = [];
+  const ctx = { scrollEvent(event) { events.push(event); } };
+
+  machine.step(ram, ctx);
+  stageStart15F8DA(ram, rom, ctx, 0, 0);
+  while (ram.u16(BGRAM.clock) < 0x0090) machine.step(ram, ctx);
+  const frame = machine.step(ram, ctx);
+
+  const event = events.find((candidate) => candidate.kind === 'bgelem');
+  assert.deepEqual(event, {
+    op: 0x10, recTime: 0x0090, kind: 'bgelem', id: 0x0c,
+    handler: 0x1617d8, arg: event.arg,
+  });
+  assert.equal(event.arg >>> 16, 0x7000);
+  assert.equal(rom.u32(0x1612f4), 0x1617d8);
+
+  const slot = BGRAM.elemSlots;
+  assert.equal(ram.u8(slot + ESLOT.active), 0x80);
+  assert.equal(ram.u32(slot + ESLOT.update), 0x1617f6);
+  assert.equal(ram.u32(slot + ESLOT.data), 0x233f34);
+  assert.equal(ram.u16(slot + ESLOT.yPos), 0x0a50);
+  assert.equal(ram.u16(slot + ESLOT.kind), 0x0015);
+  assert.equal(frame.displayList.perBucketRecords[2], 1,
+    'the constructor is updated and stages one bucket-2 record on its spawn frame');
   assert.equal(maxRead() < 0x200000, true,
     `highest cartridge read was $${maxRead().toString(16)}`);
 });

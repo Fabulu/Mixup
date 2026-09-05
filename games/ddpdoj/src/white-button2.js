@@ -8,7 +8,9 @@ import {
 import {
   requireRuntimeCapability, resolveGameRuntime,
 } from './runtime-profile.js';
-import { bcd242AC6 } from './items.js';
+import {
+  bcd242AC6, spawnHyperItemWithResources, WHITE_HYPER_ITEM_RESOURCES,
+} from './items.js';
 import { endHyperWithResources } from './hyper.js';
 import { install24150A } from './palette.js';
 import { scoreByMask } from './score.js';
@@ -114,6 +116,7 @@ export const WHITE_BUTTON2_RESOURCES = Object.freeze({
     slots: 6,
     stride: 0x40,
   }),
+  hyperItem: WHITE_HYPER_ITEM_RESOURCES,
   palette: Object.freeze({ ordinary: 0x122a78, laser: 0x122ab8, bank: 6 }),
   soundRequestMap: Object.freeze({
     0x18b400: 0x28c8da,
@@ -160,6 +163,7 @@ function validateResources() {
       || r.sides.some((side, ownerIndex) => !Object.isFrozen(side)
         || side.ownerIndex !== ownerIndex)
       || !Object.isFrozen(r.ram) || !Object.isFrozen(r.item)
+      || !Object.isFrozen(r.hyperItem)
       || !Object.isFrozen(r.palette) || !Object.isFrozen(r.soundRequestMap)
       || !Object.isFrozen(r.cancel) || !Object.isFrozen(r.hyperModes)
       || r.soundRequestMap[r.entries.hyperSound] !== 0x28c8da
@@ -261,31 +265,11 @@ function armBombCancel(ram, ctx, side) {
 
 function spawnPendingItem(ram, rom, ctx, side, y, site) {
   const r = WHITE_BUTTON2_RESOURCES;
-  const base = side.ownerIndex === 0 ? r.item.p1Pool : r.item.p2Pool;
-  for (let index = 0; index < r.item.slots; index++) {
-    const slot = base + index * r.item.stride;
-    if (ram.u16(slot) !== 0) continue;
-    const template = r.item.template;
-    ram.setU16(slot, 0x8000 | side.kind);
-    ram.setU16(slot + 0x02, y);
-    ram.setU32(slot + 0x06, rom.u32(template));
-    ram.setU32(slot + 0x0a, rom.u32(template + 4));
-    ram.setU16(slot + 0x0e, 0xffff);
-    ram.setU16(slot + 0x10, rom.u16(template + 10));
-    ram.setU32(slot + 0x12, rom.u32(template + 12));
-    ram.setU32(slot + 0x16, rom.u32(template + 16));
-    ram.setU32(slot + 0x1a, rom.u32(template + 20));
-    ram.setU16(slot + 0x1e, ram.u16(r.ram.itemVariant));
-    ram.setU16(r.ram.itemCount, u16(ram.u16(r.ram.itemCount) + 1));
-    let variant = u16(ram.u16(r.ram.itemVariant) + 0x0c);
-    if (variant === 0x009c) variant = 0;
-    else if (variant === 0x00a2) variant = 6;
-    ram.setU16(r.ram.itemVariant, variant);
-    ctx?.itemSpawn?.(side.kind, site, slot);
-    return slot;
-  }
-  ctx?.whiteButton2Event?.('item-pool-full', site, side.ownerIndex);
-  return null;
+  const slot = spawnHyperItemWithResources(
+    ram, rom, ctx, side.kind, y, site, r.hyperItem,
+  );
+  if (slot === null) ctx?.whiteButton2Event?.('item-pool-full', site, side.ownerIndex);
+  return slot;
 }
 
 /** `$1860F2` / `$186154`: Build A pending hyper grant flush. */

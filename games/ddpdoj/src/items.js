@@ -119,9 +119,15 @@ import { dist242494 } from './bossscripts.js';
 import {
   BEAM, wipeSegmentPool, wipeSegmentPoolWithResources,
 } from './laser.js';
-import { BLACK_ITEM_RESOURCES, WHITE_ITEM_RESOURCES } from './item-resources.js';
+import {
+  BLACK_HYPER_ITEM_RESOURCES, BLACK_ITEM_RESOURCES,
+  WHITE_HYPER_ITEM_RESOURCES, WHITE_ITEM_RESOURCES,
+} from './item-resources.js';
 
-export { BLACK_ITEM_RESOURCES, WHITE_ITEM_RESOURCES };
+export {
+  BLACK_HYPER_ITEM_RESOURCES, BLACK_ITEM_RESOURCES,
+  WHITE_HYPER_ITEM_RESOURCES, WHITE_ITEM_RESOURCES,
+};
 
 // ============================== THE GEOMETRY ================================
 
@@ -337,26 +343,56 @@ export function spawnItem(ram, rom, ctx, d0, a6, siteAddr = undefined,
 
 /** `$27E912 -> $27F6E4`, the hyper grantor's position-driven allocator. */
 export function spawnHyperItem(ram, rom, ctx, d0, d6, siteAddr = ITEM.allocHyper) {
-  if (d0 !== 0x0c && d0 !== 0x14) {
-    unreached(ITEM.allocHyper, `$27E912 hyper allocator received kind $${d0
-      .toString(16).toUpperCase()} at $${siteAddr.toString(16).toUpperCase()}`);
+  return spawnHyperItemWithResources(
+    ram, rom, ctx, d0, d6, siteAddr, BLACK_HYPER_ITEM_RESOURCES,
+  );
+}
+
+export function spawnHyperItemWithResources(
+  ram, rom, ctx, d0, d6, siteAddr, resources,
+) {
+  if (!resources || !Object.isFrozen(resources)
+      || !Number.isInteger(resources.alloc) || !Number.isInteger(resources.fill)
+      || !Number.isInteger(resources.templateTable)
+      || !Object.isFrozen(resources.templatePointers)
+      || !Object.isFrozen(resources.pools)
+      || resources.slots !== 6 || resources.stride !== 0x40) {
+    throw new TypeError('hyper-item allocation needs a complete frozen edition resource graph');
   }
-  const pool = POOLS.find((p) => p.d0 === d0);
-  for (let n = 0; n <= pool.d2; n++) {
-    const a0 = pool.base + n * ITEM.stride;
+  if (d0 !== 0x0c && d0 !== 0x14) {
+    unreached(resources.alloc, `$${resources.alloc.toString(16).toUpperCase()} hyper allocator `
+      + `received kind $${d0.toString(16).toUpperCase()} at $${
+        siteAddr.toString(16).toUpperCase()}`);
+  }
+  const templateCell = resources.templateTable + d0;
+  const template = rom.u32(templateCell);
+  const expected = resources.templatePointers[d0];
+  if (template !== expected) {
+    unreached(templateCell, `${resources.edition} hyper-item template pointer is $${
+      template.toString(16).toUpperCase()}, expected $${expected.toString(16).toUpperCase()}`);
+  }
+  void rom.bytes(template, resources.templateLength);
+  const base = resources.pools[d0];
+  for (let n = 0; n < resources.slots; n++) {
+    const a0 = base + n * resources.stride;
     if (ram.u16(a0 + I.status) !== 0) continue;
-    fill27F6E4(ram, rom, a0, d0, d6);
+    fillHyperItemWithResources(ram, rom, a0, d0, d6, template, resources);
     ctx?.itemSpawn?.(d0, siteAddr, a0);
     return a0;
   }
-  note(ctx, 0x27e984, `$27E912 found no free kind-$${d0.toString(16)
-    .toUpperCase()} slot; the board silently loses this hyper item`);
+  note(ctx, resources.full, `$${resources.alloc.toString(16).toUpperCase()} found no free `
+    + `kind-$${d0.toString(16).toUpperCase()} slot; the board silently loses this hyper item`);
   return null;
 }
 
 /** `$27F6E4`, preserving the deliberately unwritten bytes at +$04/+0D/+19. */
 export function fill27F6E4(ram, rom, a0, d0, d6) {
-  const tmpl = TEMPLATES[d0 >> 2];
+  return fillHyperItemWithResources(
+    ram, rom, a0, d0, d6, TEMPLATES[d0 >> 2], BLACK_HYPER_ITEM_RESOURCES,
+  );
+}
+
+function fillHyperItemWithResources(ram, rom, a0, d0, d6, tmpl, resources) {
   ram.setU16(a0 + I.status, u16(d0 | 0x8000));
   ram.setU16(a0 + I.pos, d6);
   ram.setU32(a0 + 0x06, rom.u32(tmpl));
@@ -366,12 +402,12 @@ export function fill27F6E4(ram, rom, a0, d0, d6) {
   ram.setU32(a0 + 0x12, rom.u32(tmpl + 12));
   ram.setU32(a0 + 0x16, rom.u32(tmpl + 16));
   ram.setU32(a0 + 0x1a, rom.u32(tmpl + 20));
-  ram.setU16(a0 + 0x1e, ram.u16(ITEM.variant));
-  ram.setU16(ITEM.count, u16(ram.u16(ITEM.count) + 1));
-  let v = u16(ram.u16(ITEM.variant) + 0x0c);
+  ram.setU16(a0 + 0x1e, ram.u16(resources.variant));
+  ram.setU16(resources.count, u16(ram.u16(resources.count) + 1));
+  let v = u16(ram.u16(resources.variant) + 0x0c);
   if (v === 0x009c) v = 0;
   else if (v === 0x00a2) v = 6;
-  ram.setU16(ITEM.variant, v);
+  ram.setU16(resources.variant, v);
   return a0;
 }
 

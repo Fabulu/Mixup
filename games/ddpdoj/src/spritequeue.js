@@ -502,7 +502,7 @@ export const SCALE_TABLE = Object.freeze([
 // The `41FA <disp>` is checked to resolve to $23E54A, so a routine that merely
 // starts with the same four opcodes cannot pass as a member of the family.
 /** @returns {{bucket:number}} */
-export function resolveZoomStub(rom, stub) {
+export function resolveZoomStub(rom, stub, scaleTable = SCALE_TABLE_ROM) {
   const bad = (why) => unreached(stub, `$${stub.toString(16).toUpperCase()} was `
     + `called as a member of the ZOOMING enqueue family $23D9E2/$23DA5C/`
     + `$23DAD6/$23DB50/$23DBCA, and ${why}`);
@@ -512,9 +512,9 @@ export function resolveZoomStub(rom, stub) {
       rom.u16(stub).toString(16).toUpperCase()})`);
   }
   const scale = i16(rom.u16(stub + 2)) + stub + 2;   // 68000 PC-rel: PC = stub+2
-  if (scale !== SCALE_TABLE_ROM) {
+  if (scale !== scaleTable) {
     bad(`its PC-relative \`lea\` resolves to $${scale.toString(16).toUpperCase()
-    } and not to the scale table $${SCALE_TABLE_ROM.toString(16).toUpperCase()}`);
+    } and not to the edition scale table $${scaleTable.toString(16).toUpperCase()}`);
   }
   const at = stub + 0x3c;
   if (rom.u16(at) !== 0x41f9 || rom.u16(at + 6) !== 0xd0f9) {
@@ -532,8 +532,10 @@ export function resolveZoomStub(rom, stub) {
 }
 
 /** Run a zooming enqueue read out of a ROM address (W81). */
-export function enqueueZoomedThroughStub(ram, rom, stub, rec, flags) {
-  return enqueueZoomedRequest(ram, rec, flags, resolveZoomStub(rom, stub).bucket);
+export function enqueueZoomedThroughStub(
+  ram, rom, stub, rec, flags, scaleTable = SCALE_TABLE_ROM,
+) {
+  return enqueueZoomedRequest(ram, rec, flags, resolveZoomStub(rom, stub, scaleTable).bucket);
 }
 
 /**

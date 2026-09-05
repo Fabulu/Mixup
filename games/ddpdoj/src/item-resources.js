@@ -91,3 +91,63 @@ export const WHITE_ITEM_RESOURCES = deepFreeze({
     dispatchLookup: 0x17da94, templateLookup: 0x17e76a, artLookup: 0x17db68,
   },
 });
+
+export const BLACK_HYPER_ITEM_RESOURCES = deepFreeze({
+  edition: 'black', alloc: 0x27e912, fill: 0x27f6e4,
+  templateTable: 0x27f746,
+  templatePointers: { 0x0c: 0x27f7b4, 0x14: 0x27f7b4 },
+  templateLength: 0x1a,
+  pools: { 0x0c: 0x816e7a, 0x14: 0x816ffa },
+  slots: 6, stride: 0x40, count: 0x8171ba, variant: 0x8171bc,
+  full: 0x27e984,
+});
+
+export const BLACK_HYPER_GRANT_RESOURCES = deepFreeze({
+  edition: 'black', threshold: 0x095f, stockCap: 5, pendingCap: 4,
+  gate: 0x81b6e4, arm: 0x81b410, mode: 0x81b412,
+  sides: [
+    {
+      who: 1, kind: 0x0c, player: 0x8103e6, set: 0x81040a,
+      active: 0x81b63e, earn: 0x81b64a, stock: 0x81b65c, pending: 0x81b6e0,
+      entry: 0x287682, immediateSite: 0x28770c,
+      modeTable: 0x25531c, modeBase: 0x20, modeAtFive: 0x2c,
+    },
+    {
+      who: 2, kind: 0x14, player: 0x810448, set: 0x81046c,
+      active: 0x81b640, earn: 0x81b64c, stock: 0x81b65e, pending: 0x81b6e2,
+      entry: 0x287722, immediateSite: 0x2877ac,
+      modeTable: 0x25531c, modeBase: 0x30, modeAtFive: 0x3c,
+    },
+  ],
+  item: BLACK_HYPER_ITEM_RESOURCES,
+});
+
+export const WHITE_HYPER_ITEM_RESOURCES = deepFreeze({
+  edition: 'white', alloc: 0x17d9c4, fill: 0x17e796,
+  templateTable: 0x17e7f8,
+  templatePointers: { 0x0c: 0x17e866, 0x14: 0x17e866 },
+  templateLength: 0x1a,
+  pools: { 0x0c: 0x816e7a, 0x14: 0x816ffa },
+  slots: 6, stride: 0x40, count: 0x8171ba, variant: 0x8171bc,
+  full: 0x17da36,
+});
+
+export const WHITE_HYPER_GRANT_RESOURCES = deepFreeze({
+  edition: 'white', threshold: 0x095f, stockCap: 5, pendingCap: 4,
+  gate: 0x81b6e4, arm: 0x81b410, mode: 0x81b412,
+  sides: [
+    {
+      who: 1, kind: 0x0c, player: 0x8103e6, set: 0x81040a,
+      active: 0x81b63e, earn: 0x81b64a, stock: 0x81b65c, pending: 0x81b6e0,
+      entry: 0x1861c0, immediateSite: 0x18624a,
+      modeTable: 0x1548d8, modeBase: 0x20, modeAtFive: 0x2c,
+    },
+    {
+      who: 2, kind: 0x14, player: 0x810448, set: 0x81046c,
+      active: 0x81b640, earn: 0x81b64c, stock: 0x81b65e, pending: 0x81b6e2,
+      entry: 0x186260, immediateSite: 0x1862ea,
+      modeTable: 0x1548d8, modeBase: 0x30, modeAtFive: 0x3c,
+    },
+  ],
+  item: WHITE_HYPER_ITEM_RESOURCES,
+});

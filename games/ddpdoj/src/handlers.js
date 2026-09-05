@@ -320,11 +320,12 @@ function effectArmNine(ram, rom, ctx, a6, kind, row, site, resources) {
  *  -- the OTHER shared prologue: position, then the bucket remapped through
  *  `$278320` with a WORD index DOUBLED (`move.w ($1e,A6),D0 / add.w D0,D0`),
  *  not the byte offset the `$267Fxx` arms use.  Callers add their own tail. */
-function effectArmShared278320(ram, rom, ctx, a6, kind, site) {
-  const a0 = spawnEffect(ram, ctx, kind, site);
+function effectArmShared278320(ram, rom, ctx, a6, kind, site,
+  row = REMAP.shared278320, resources) {
+  const a0 = spawnEffect(ram, ctx, kind, site, resources);
   ram.setU32(a0 + B.pos, ram.u32(a6 + 0x02));
   const d0 = u16(ram.u16(a6 + 0x1e) * 2);
-  ram.setU16(a0 + B.bucket, remapBucket(rom, REMAP.shared278320, d0, site));
+  ram.setU16(a0 + B.bucket, remapBucket(rom, row, d0, site));
   return a0;
 }
 
@@ -4228,18 +4229,48 @@ function retire80(ram, a5, descriptor) {
 // 1c).  For this type the prototype leaves that word 0, i.e. `$23D762`, i.e.
 // BUCKET 0 -- the bucket W28 measured at 87,545 sprite pixels (72.1 % of the
 // whole picture) with NO PRODUCER.  This is its first one.
-function handler8A(ram, rom, a5, ctx) {
+function scrollCompensate8A(ram, a5, descriptor) {
+  if (!Number.isInteger(descriptor.scrollCompensation)) {
+    unreached(descriptor.handler, 'type-$8A requires edition-bound scroll compensation');
+  }
+  scrollCompensate(ram, a5);
+}
+
+function requireType8AResources(descriptor) {
+  const pool = descriptor.poolA;
+  const bee = pool?.bee;
+  if (descriptor.retirement?.semantic !== 'freeEnemy'
+      || !descriptor.emitter || !descriptor.score || !descriptor.effects
+      || !descriptor.effect || !pool || !bee
+      || !Object.isFrozen(pool) || !Object.isFrozen(bee)
+      || pool.allocator !== bee.allocator || !Object.isFrozen(bee.supportedKinds)
+      || !Object.isFrozen(bee.grant)) {
+    unreached(descriptor.handler, 'type-$8A requires complete edition-bound resources');
+  }
+}
+
+function retire8A(ram, a5, descriptor) {
+  requireType8AResources(descriptor);
+  freeEnemy(ram, a5);
+}
+
+function handler8A(ram, rom, a5, ctx, descriptor) {
+  requireType8AResources(descriptor);
   const { unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   // $276702 tst.b $8130F8 / bmi -- the same stage-kill gate type $8B has.
-  if ((ram.u8(0x8130f8) & 0x80) !== 0) { freeEnemy(ram, a5); return; } // $276736
-  scrollCompensate(ram, a5);                           // $27670A jsr $24179E
+  if ((ram.u8(0x8130f8) & 0x80) !== 0) {
+    retire8A(ram, a5, descriptor); return;
+  } // $276736
+  scrollCompensate8A(ram, a5, descriptor);               // $27670A jsr scroll compensation
   // $276710..$27672E: bounds.  Y += $C00 + scroll + $B000; X += $400 + $8C00.
   const pos = ram.u32(a6 + 0x02);
   let off = u16(u16((pos & 0xffff) + 0xc00) + ram.u16(G.scroll)) + 0xb000 > 0xffff;
   if (!off) off = u16((pos >>> 16) + 0x400) + 0x8c00 > 0xffff;   // $276726/$27672A
   if (off) {                                           // $27672E bcc $27673E
-    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // $276736
+    if (ram.u8(a5 + R.onScreen) !== 0) {
+      retire8A(ram, a5, descriptor); return;
+    } // $276736
   } else {
     ram.setU8(a5 + R.onScreen, 1);                     // $27673E
   }
@@ -4249,13 +4280,13 @@ function handler8A(ram, rom, a5, ctx) {
     const d1 = hitMask(ram, a6);
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $27674A andi.b #$a3,(A6)
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $27674E tst.w / $276752 bmi
-      deathSeq8A(ram, rom, a5, ctx, d1); return;       // $2767D0
+      deathSeq8A(ram, rom, a5, ctx, d1, descriptor); return; // $2767D0
     }
   }
   // $276756 tst.w $811F72 / bne $2767A6 -- while the mover's freeze word is set
   // the PROXIMITY test is skipped and the counter runs down anyway.
   if (ram.u16(0x811f72) === 0) {
-    const live = playersAlive242884(ram);              // $27675E jsr $242884
+    const live = playersAliveType8A(ram, descriptor);    // $27675E jsr players-alive
     if (live === 0) return;                            // $276764 tst.w / beq $2767CE
     // $276768..$27679E: is either LIVE player within $240 on the SHORT axis?
     // The two arms are not symmetric: P1's is `bcs -> reload` (near) and P2's is
@@ -4287,14 +4318,14 @@ function handler8A(ram, rom, a5, ctx) {
   // $2767BA..$2767CC: `move.w ($1E,A6),D0 / add.w D0,D0 / add.w D0,D0 /
   // lea $27829C(pc),A0 / movea.l (A0,D0.w),A0 / jsr (A0)`.
   const idx = u16(ram.u16(a6 + S.anim) * 4);           // $2767BA/$2767BE/$2767C0
-  if (idx >= EMIT_TABLE.entries27829C * 4) {
-    unreached(EMIT_TABLE.dispatch27829C + idx, `type $8A's emitter dispatch `
-      + `$2767C8 indexed $27829C with ($1E,A6) = $${ram.u16(a6 + S.anim)
-        .toString(16).toUpperCase()}, i.e. byte offset $${idx.toString(16)
-        .toUpperCase()}. The table has ${EMIT_TABLE.entries27829C} longwords `
-      + `($27829C..$2782E3); $2782E4 begins the separate register table`);
+  if (idx >= descriptor.emitter.entries * 4) {
+    unreached(descriptor.emitter.dispatch + idx, `type $8A's emitter dispatch `
+      + `$${descriptor.handler.toString(16).toUpperCase()} indexed $$${
+        descriptor.emitter.dispatch.toString(16).toUpperCase()} with ($1E,A6) = $$${
+        ram.u16(a6 + S.anim).toString(16).toUpperCase()}, i.e. byte offset $$${
+        idx.toString(16).toUpperCase()}. The table has ${descriptor.emitter.entries} longwords`);
   }
-  enqueueThroughStub(ram, rom, rom.u32(EMIT_TABLE.dispatch27829C + idx), a6);
+  enqueueThroughStub(ram, rom, rom.u32(descriptor.emitter.dispatch + idx), a6);
   void u;
 }
 
@@ -4305,6 +4336,13 @@ function handler8A(ram, rom, a5, ctx) {
 //   242894: move.b $810448,D1 / bpl / btst #$0,D1 / bne / addq.w #$2,D0
 // The first `btst` uses D0 as the bit number and D0 is 0 there, so both are
 // bit 0 -- a detail that reads like a bug and is not one.
+function playersAliveType8A(ram, descriptor) {
+  if (!Number.isInteger(descriptor.playersAlive)) {
+    unreached(descriptor.handler, 'type-$8A requires an edition-bound players-alive helper');
+  }
+  return playersAlive242884(ram);
+}
+
 function playersAlive242884(ram) {
   let d0 = 0;                                          // $242884 moveq #$0,D0
   const p1 = ram.u8(AIM.selP1);                        // $242886 move.b $8103E6,D1
@@ -4316,11 +4354,10 @@ function playersAlive242884(ram) {
 
 // $2767D0..$276814 -- the death arm.  Two effect spawns and `$27F92A`, then the
 // field writes into the record `$289004` would have returned; all noted.
-function deathSeq8A(ram, rom, a5, ctx, d1) {
-  const u = ctx.unported;
+function deathSeq8A(ram, rom, a5, ctx, d1, descriptor) {
   const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
-  scoreKill(ram, rom, ctx, 0x01, d1);                  // $2767D0/$2767D2
-  ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst          // $2767D8
+  scoreKill(ram, rom, ctx, 0x01, d1, descriptor.score);
+  ctx.soundPost?.(descriptor.sound.death);
   // $2767DE move.w ($1A,A5),D0 -- the bee kind index ($0004 = kind 1).
   // $2767E2 move.b ($1F,A6),D2 -- the display LAYER byte.
   // $2767E6 jsr $27F92A -- allocate one bee from the reserved ten and fill it.
@@ -4328,18 +4365,21 @@ function deathSeq8A(ram, rom, a5, ctx, d1) {
   {
     const kind = ram.u16(a5 + 0x1a);                   // $2767DE D0 = ($1A,A5)
     const layer = ram.u8(a6 + S.f1f);                  // $2767E2 D2 = ($1F,A6)
-    allocBee27F92A(ram, rom, ctx, kind, layer, a6);    // $2767E6 jsr $27F92A
+    allocBee27F92A(ram, rom, ctx, kind, layer, a6, descriptor.poolA);
   }
   // W54: SPAWNED.  $2767EC moveq #$C / $2767EE jsr $289004, then
   // $2767F4..$276810 -- the $278320 remap and the $24179E hook.
   {
-    const e = effectArmShared278320(ram, rom, ctx, a6, 0x0c, 0x2767ee);
-    ram.setU16(e + B.hook, 1);                         // $27680C/$276810
+    const e = effectArmShared278320(
+      ram, rom, ctx, a6, descriptor.effect.kind, descriptor.effect.site,
+      descriptor.effect.remap, descriptor.effects,
+    );
+    ram.setU16(e + B.hook, descriptor.effect.hook);
   }
   // $2767FA..$276810: `move.w ($1E,A6),D0 / add.w D0,D0 / lea $278320(pc),A1 /
   // move.w (A1,D0.w),($1E,A0)` and `move.w #$1,($10,A0)` -- writes into the
   // record the allocation did not make, so they are inside the same gap.
-  freeEnemy(ram, a5);                                  // $276814 jmp $263762
+  retire8A(ram, a5, descriptor);                        // jmp edition freeEnemy
 }
 
 // ==================================================================== W33
@@ -9059,7 +9099,9 @@ const HANDLERS = new Map([
   [0x2739c0, (ram, rom, a5, ctx) => handler80(
     ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x80],
   )],                       // W30: type $80
-  [0x276702, handler8A],   // W30: type $8A
+  [0x276702, (ram, rom, a5, ctx) => handler8A(
+    ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x8a],
+  )],                       // W30: type $8A
   // W31: type $0D, THE MIDBOSS.  It lives in its own module because it is
   // four routines and five data tables (see src/midboss.js's header), and
   // it was the FOURTH and last of the gate blockers W29 uncovered.
@@ -11361,6 +11403,10 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x2739c0);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
         handler80(ram, rom, a5, ctx, descriptor));
+    } else if (descriptor.algorithm === 'type8A') {
+      handlers.delete(0x276702);
+      handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
+        handler8A(ram, rom, a5, ctx, descriptor));
     } else if (descriptor.algorithm === 'type85') {
       handlers.delete(0x275914);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>

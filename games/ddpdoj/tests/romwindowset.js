@@ -780,10 +780,19 @@
 // Measured: 1757 -> 1773 windows, 657,353 -> 658,833 bytes, and 79 -> 79
 // overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1773;
+// ---------------------------------------------------------------------------
+// PRIVATE WHITE BGELEM AND TYPE $8A ADDED NINETEEN DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The Build A BGELEM route, Type $8A initialization, carrier data, bee
+// lifecycle, collection presentation, and hyper grant tables add 732 exact
+// bytes below $200000. No new pair overlaps.
+// Measured: 1773 -> 1792 windows, 658,833 -> 659,565 bytes, and 79 -> 79
+// overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 1792;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 658833;
+export const ROM_WINDOW_BYTES = 659565;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -859,8 +868,8 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 820;
-const WHITE_LABEL_WINDOW_BYTES = 201234;
+const WHITE_LABEL_WINDOW_COUNT = 839;
+const WHITE_LABEL_WINDOW_BYTES = 201966;
 
 /** Remove the later embedded Version A window family before reconstructing any
  *  earlier Black Label ledger. The edition manifest is the identity list, so a

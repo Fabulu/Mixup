@@ -435,6 +435,16 @@ function init80(ram, rom, a5, a6, unported, descriptor) {
   ram.setU8(a5 + R.rec1D, rom.u8(pal + 1));
 }
 
+function init8A(ram, rom, a5, a6, unported, descriptor) {
+  loadSubProto(ram, rom, a5, a6, descriptor.subPrototype);
+  loadRecordProto(ram, rom, a5, descriptor.recordPrototype, 0x02);
+  readInitPosition(ram, rom, a5, unported);
+  if (ram.u8(a6 + S.anim) !== 0) {
+    ram.setU8(a6 + S.anim, 0);
+    ram.setU16(a5 + R.rec1A, 0x40);
+  }
+}
+
 // =========================================================== the dispatch table
 // init+8 address -> body function.  Built bottom-up; the damage-first family
 // shares `damageFirstFamily` with per-type parameters.
@@ -501,18 +511,10 @@ BODY.set(0x26871C, (ram, rom, a5, a6, unported) =>
 BODY.set(0x2680B8, (ram, rom, a5, a6, unported) =>
   init10(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x10]));
 
-// --- type $8A ($2766AE): scroll-locked ground gun.  Loaders, position, a small
-// anim/record fixup.  No bucket table.
-BODY.set(0x2766AE, (ram, rom, a5, a6, unported) => {
-  loadSubProto(ram, rom, a5, a6, 0x2766E6);            // jsr $2637A2
-  loadRecordProto(ram, rom, a5, 0x2766E0, 0x02);       // moveq #$2,D0; jsr $26377A
-  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
-  // $2766CE: if sub anim (+$1E) != 0, clear it and set record +$1A := $40.
-  if (ram.u8(a6 + S.anim) !== 0) {
-    ram.setU8(a6 + S.anim, 0);                          // clr.b ($1e,A6)
-    ram.setU16(a5 + R.rec1A, 0x40);                     // move.w #$40,($1a,A5)
-  }
-});
+// --- type $8A ($2766AE): scroll-locked ground gun. Loaders, position, a small
+// anim/record fixup. No bucket table.
+BODY.set(0x2766AE, (ram, rom, a5, a6, unported) =>
+  init8A(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x8a]));
 
 // --- type $8B ($276824): scroll-locked ground gun.  Stage/clock gate that may
 // clear the sub-record flags word (a draw disable).
@@ -2577,6 +2579,9 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
     } else if (descriptor.algorithm === 'type80') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init80(ram, rom, a5, a6, unported, descriptor));
+    } else if (descriptor.algorithm === 'type8A') {
+      map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
+        init8A(ram, rom, a5, a6, unported, descriptor));
     } else if (descriptor.algorithm === 'type85') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init85Or86(ram, rom, a5, a6, unported, descriptor));

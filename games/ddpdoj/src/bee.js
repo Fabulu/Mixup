@@ -97,7 +97,9 @@ import { unreached } from './unported.js';
 import { enqueueThroughStub, enqueueZoomedThroughStub, enqueueRegisters } from './spritequeue.js';
 import { scoreByMask } from './score.js';
 import { bcd242AC6 } from './items.js';
-import { grantHyper287682 } from './hyper.js';
+import { grantHyperWithResources } from './hyper.js';
+import { BLACK_POOL_A_RESOURCES } from './pool-a-resources.js';
+export { BLACK_POOL_A_RESOURCES };
 import {
   drawByte242B3C, drawByte2431F4, drawByte242E24, drawSigned242FDE,
   drawWord242EC2, drawByteWithResources, drawSignedByteWithResources,
@@ -361,7 +363,32 @@ export function clearPoolA(ram) {
  * @returns {number|null} the slot address, or `null` if the pool was full or
  *   the spawn position was off-screen (the ROM sets carry; callers ignore it).
  */
-export function allocBee27F92A(ram, rom, ctx, kind, layer, carrierA6) {
+export function allocBee27F92A(
+  ram, rom, ctx, kind, layer, carrierA6, resources = BLACK_POOL_A_RESOURCES,
+) {
+  return allocBeeWithResources(ram, rom, ctx, kind, layer, carrierA6, resources);
+}
+
+export function allocBeeWithResources(ram, rom, ctx, kind, layer, carrierA6, resources) {
+  const bee = resources?.bee;
+  if (!bee || !Object.isFrozen(bee) || resources.allocator !== bee.allocator
+      || bee.slots <= 0 || !Number.isInteger(bee.scanBase)) {
+    throw new TypeError('bee allocation needs a complete frozen edition Pool-A resource graph');
+  }
+  if (resources === BLACK_POOL_A_RESOURCES) {
+    return allocBeeBlack(ram, rom, ctx, kind, layer, carrierA6);
+  }
+  if (!bee.supportedKinds?.includes(kind)) {
+    throw new TypeError('bee allocation needs a complete frozen edition Pool-A resource graph');
+  }
+  if (bee.allocation !== 'general-seventy' || bee.scanBase !== resources.base
+      || bee.slots !== resources.generalSlots) {
+    unreached(bee.allocator, 'edition bee allocator does not match its general Pool-A scan');
+  }
+  return allocPoolAEdition(ram, rom, ctx, kind, 0, layer, carrierA6, resources);
+}
+
+function allocBeeBlack(ram, rom, ctx, kind, layer, carrierA6) {
   // --------------------------------------------------- Â§THE REFUSAL (header)
   if (kind !== KIND.bee && kind !== KIND.beeFlying) {
     unreached(POOL_A.alloc, `$27F92A -- the caller passed kind index $${
@@ -743,6 +770,10 @@ function fillPoolAEdition(
   ram.setU32(slot + B.layerEmitter, emitter);
 
   const hookKind = resources.fillHookDispatch[hook];
+  if (hookKind === 'bee') {
+    ram.setU16(slot + B.hitCount, 0x9601);
+    return slot;
+  }
   if (hookKind === 'hyper') {
     ram.setU32(slot + resources.ownerAt, resources.ownerByKind[kind]);
     ram.setU8(slot + B.speed, d7 & 0x0f);
@@ -1078,6 +1109,7 @@ export function runPoolADriverWithResources(ram, rom, ctx, resources) {
   }
   preflightPoolADispatch(rom, resources);
   const scoped = ctx?.poolAResources === resources ? ctx : { ...(ctx ?? {}), poolAResources: resources };
+  requireBeeResources(scoped);
   let d7 = ram.u16(resources.liveCount);
   const t = { live: 0, emitted: 0, freed: 0, collected: 0, walked: 0, scrolled: 0 };
   if (d7 === 0) return t;
@@ -1108,7 +1140,7 @@ export function runPoolADriverWithResources(ram, rom, ctx, resources) {
       if (!resources.collectedImpact) {
         unreached(resources.driver, 'this edition capability has no collected Pool-A arm');
       }
-      const result = collectedImpact2810CA(ram, rom, a6);
+      const result = collectedImpact2810CA(ram, rom, scoped, a6);
       if (result?.emitted) t.emitted++;
       if (result?.freed) t.freed++;
       if (result?.collected) t.collected++;
@@ -1218,7 +1250,7 @@ function poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining) {
   ram.setU16(a6 + B.posX, u16(ram.u16(a6 + B.posX) + ram.u16(a6 + 0x22)));
   ram.setU16(a6 + B.pos, u16(ram.u16(a6 + B.pos) + ram.u16(a6 + 0x20)));
   if ((ram.u16(a6 + B.pos) & 0x8000) !== 0) {             // $27FA96 bmi
-    return freePoolA(ram, a6);                            // $27FABC..$27FAC4
+    return freePoolA(ram, a6, resources);                   // $27FABC..$27FAC4
   }
   // $27FA98 -- busy pool: draw on alternating walk positions instead of dropping.
   if (ram.u16(resources.liveCount) >= resources.kind0Threshold
@@ -1569,31 +1601,23 @@ const HYPER_STAR = Object.freeze({
 const HYPER_STAR_BY_BODY = new Map(
   Object.values(HYPER_STAR).map((s) => [s.site, s]));
 
-export const BLACK_POOL_A_RESOURCES = Object.freeze({
-  alloc: 0x27f8f0,
-  driver: POOL_A.driver,
-  dispatch: POOL_A.dispatch,
-  dispatchEntries: DISPATCH,
-  validateDispatch: false,
-  bodyDispatch: null,
-  base: POOL_A.base,
-  liveCount: POOL_A.liveCount,
-  stride: POOL_A.stride,
-  generalSlots: POOL_A.generalSlots,
-  totalSlots: POOL_A.totalSlots,
-  scrollShort: POOL_A.scrollShort,
-  ownerAt: POOL_A.ownerAt,
-  collectedImpact: true,
-  kind0Collect: true,
-  kind0Body: 0x27fa30,
-  kind0Threshold: 0x3c,
-  hyperThreshold: 0x28,
-  ownerDistance: 0x600,
-  presentationStub: 0x23eba0,
-  aim: BLACK_AIM256_RESOURCES,
-  hyperByBody: null,
-  soundRequestMap: null,
-});
+function requireBeeResources(ctx) {
+  const pool = ctx?.poolAResources ?? BLACK_POOL_A_RESOURCES;
+  const bee = pool?.bee;
+  if (!bee || !Object.isFrozen(bee) || !Object.isFrozen(bee.supportedKinds)
+      || !Object.isFrozen(bee.bounceRng) || !Object.isFrozen(bee.grant)
+      || (bee.vector && !Object.isFrozen(bee.vector))
+      || !Number.isInteger(bee.baseLadder) || !Number.isInteger(bee.popupLadder)
+      || !Number.isInteger(bee.waypoint) || !Number.isInteger(bee.collectionTable)
+      || !Number.isInteger(bee.collectionSelectors)
+      || !Number.isInteger(bee.collectionSpriteEntries)
+      || !Number.isInteger(bee.x2Table) || !Number.isInteger(bee.sound)
+      || !Number.isInteger(bee.ordinaryEmitter) || !Number.isInteger(bee.collectedEmitter)
+      || !Number.isInteger(bee.zoomScaleTable)) {
+    throw new TypeError('bee lifecycle needs a complete frozen edition resource graph');
+  }
+  return { pool, bee };
+}
 
 const AIM_TABLES = new WeakMap();
 const EDITION_AIM_TABLES = new WeakMap();
@@ -1656,7 +1680,7 @@ function hyperStarBody280252(ram, rom, ctx, a6, d1, spec, remaining) {
     ram.setU32(a6 + B.hitLongA, spec.selector);
     scoreByMask(ram, spec.score, ram.u8(a6 + B.status)); // $280274/$280276/$280278
     ctx.soundPost?.(resources.soundRequestMap?.[spec.sound] ?? spec.sound);
-    return { ...offscreenFree27FC7C(ram, a6), collected: true };  // $280284..$280292
+    return { ...offscreenFree27FC7C(ram, a6, resources), collected: true };  // $280284..$280292
   }
 
   // $280294 tst.b ($1E,A6) / bne -- the fill hook cleared it, so this runs once.
@@ -1672,7 +1696,7 @@ function hyperStarBody280252(ram, rom, ctx, a6, d1, spec, remaining) {
   if (((ram.u16(POOL_A.pause) & 0xff) & ram.u8(a6 + B.speed)) === 0) {
     const owner = ram.u32(a6 + POOL_A.ownerAt);           // $2802C4 movea.l ($24,A6),A0
     if ((ram.u16(owner) & 0x8000) === 0) {                // $2802C8 tst.w (A0) / bmi
-      return offscreenFree27FC7C(ram, a6);                // $2802CC..$2802DA
+      return offscreenFree27FC7C(ram, a6, resources);       // $2802CC..$2802DA
     }
     const dir = aim256FromA0242296(rom, ram, a6,
       ram.u16(owner + 0x02), ram.u16(owner + 0x04), ctx.poolAResources);
@@ -1744,10 +1768,10 @@ function runBody(ram, rom, ctx, a6, d1, body, remaining, authentic = body) {
       d1.toString(16).toUpperCase()}`);
 }
 
-function freePoolA(ram, a6) {
+function freePoolA(ram, a6, resources = BLACK_POOL_A_RESOURCES) {
   ram.setU16(a6 + B.status, 0);
   ram.setU16(a6 + B.pos, 0);
-  ram.setU16(POOL_A.liveCount, u16(ram.u16(POOL_A.liveCount) - 1));
+  ram.setU16(resources.liveCount, u16(ram.u16(resources.liveCount) - 1));
   return { freed: true };
 }
 
@@ -1782,23 +1806,18 @@ function freePoolA(ram, a6) {
 // FOUR selector VALUES exist in the 6 MB image -- $00050000, $00050004, $00010008
 // and $00010004 -- but only THREE distinct LOW words (0, 4, 8), and the low word is
 // what indexes the pointer run.  W422 measured the fourth; see `collectSelectors`.
-function collectTransform280FDC(rom, selector) {
+function collectTransform280FDC(rom, selector, bee) {
   const idx = selector & 0xffff;                          // $280FE4 (A0,D0.w)
-  if ((idx & 3) !== 0 || idx >= POOL_A.collectSelectors * 4) {
-    unreached(0x280fe4, `$280FE4 movea.l (A0,D0.w),A0 -- the selector at ($10,A6) `
-      + `is $${(selector >>> 0).toString(16).toUpperCase()}, whose low word $${
-        idx.toString(16).toUpperCase()} is not one of the THREE longword offsets `
-      + `$280F34 holds (0, 4, 8). Every collect arm in the image writes $00050000, `
-      + `$00050004 or $00010008; a fourth one means a collect arm this port has not read`);
+  if ((idx & 3) !== 0 || idx >= bee.collectionSelectors * 4) {
+    unreached(bee.transform, `collected transform selector $${(selector >>> 0).toString(16)
+      .toUpperCase()} has unsupported low-word offset $${idx.toString(16).toUpperCase()}`);
   }
-  const rec = rom.u32(POOL_A.collectTable + idx);         // the 12-byte descriptor
+  const rec = rom.u32(bee.collectionTable + idx);         // the 12-byte descriptor
   const base = rom.u32(rec);                              // $280FEE movea.l (A0)+,A2
   const d0 = u16(((selector >>> 16) & 0xffff) * 4);       // $280FE8 swap / add / add
-  if (d0 >= POOL_A.collectSpriteEntries * 4) {
-    unreached(0x280ffe, `$280FFE move.l (0,A2,D0.w),(A1)+ -- the selector's high word `
-      + `$${((selector >>> 16) & 0xffff).toString(16).toUpperCase()} indexes past the `
-      + `${POOL_A.collectSpriteEntries} longwords of the sprite table at $${
-        base.toString(16).toUpperCase()}`);
+  if (d0 >= bee.collectionSpriteEntries * 4) {
+    unreached(bee.transform, `collected transform selector $${(selector >>> 0).toString(16)
+      .toUpperCase()} indexes past its ${bee.collectionSpriteEntries}-sprite table`);
   }
   return {
     sprite: rom.u32(base + d0),                           // $280FFE
@@ -1811,7 +1830,8 @@ function collectTransform280FDC(rom, selector) {
 /** `$280FDC` -- the shared collected transform, everything after the per-kind
  *  counter, score, cue and `move.b #$84,($1,A6)`. */
 function collectedTransform280FDC(ram, rom, ctx, a6) {
-  const t = collectTransform280FDC(rom, ram.u32(a6 + B.hitLongA));
+  const { pool, bee } = requireBeeResources(ctx);
+  const t = collectTransform280FDC(rom, ram.u32(a6 + B.hitLongA), bee);
   ram.setU16(a6 + B.status, ram.u16(a6 + B.status) & 0xf8df);   // $280FF2
   ram.setU32(a6 + B.pos, (ram.u32(a6 + B.pos) + 0x06000000) >>> 0); // $280FF6
   ram.setU32(a6 + B.spriteOff, t.off);                    // $280FFC
@@ -1824,14 +1844,21 @@ function collectedTransform280FDC(ram, rom, ctx, a6) {
   ram.setU8(a6 + B.blinkTimer + 1, 0x0f);                 // $28101A
   ram.setU16(a6 + B.tpl1C, 0x001d);                       // $281020
 
-  const position = u16(ram.u16(POOL_A.scrollShort) + ram.u16(a6 + B.posX)); // $281026
+  const position = u16(ram.u16(pool.scrollShort) + ram.u16(a6 + B.posX)); // $281026
   const direction = position >= 0x1c00 ? 0x30 : 0x10;     // $281030..$281038
-  let speed = drawByte242B3C(ram, rom);                   // $28103A
+  let speed = bee.bounceRng.table === 0x242bac
+    ? drawByte242B3C(ram, rom)
+    : drawUnmaskedByteWithResources(ram, rom, bee.bounceRng);
   speed = (speed << 24) >> 24;
   if (speed < 0) speed = -speed;                          // $281040 bpl / $281042 neg.b
   speed = (speed & 6) + 6;                                // $281044/$281048
-  const v = ctx.tables.vector(speed, direction);          // $28104A jsr $241812
-  ram.setU16(a6 + B.speed, v.dx);                         // $281050 move.w D3,($1A,A6)
+  if (bee.vector) {
+    const v = velocityWithResources(rom, speed, direction, bee.vector);
+    ram.setU16(a6 + B.speed, v.dB);                        // $281050 move.w D3,($1A,A6)
+  } else {
+    const v = ctx.tables.vector(speed, direction);         // $28104A jsr $241812
+    ram.setU16(a6 + B.speed, v.dx);                        // $281050 move.w D3,($1A,A6)
+  }
 }
 
 /**
@@ -1942,7 +1969,8 @@ function stage4ImpactBody(ram, rom, ctx, a6, d1, spec, remaining) {
   return undefined;
 }
 
-function collectedImpact2810CA(ram, rom, a6) {
+function collectedImpact2810CA(ram, rom, ctx, a6) {
+  const { pool, bee } = requireBeeResources(ctx);
   ram.setU16(a6 + B.posX, ram.u16(a6 + B.posX) + ram.u16(a6 + B.speed));
   const timer = u16(ram.u8(a6 + B.hitShortA) - 1) & 0xff;
   ram.setU8(a6 + B.hitShortA, timer);
@@ -1951,7 +1979,7 @@ function collectedImpact2810CA(ram, rom, a6) {
     const step = ram.u16(a6 + B.hitShortB);
     const life = u16(ram.u8(a6 + B.blinkTimer + 1) - 1) & 0xff;
     ram.setU8(a6 + B.blinkTimer + 1, life);
-    if (life === 0) return freePoolA(ram, a6);
+    if (life === 0) return freePoolA(ram, a6, pool);
     const phase = u16(ram.u8(a6 + B.blinkTimer) - 1) & 0xff;
     ram.setU8(a6 + B.blinkTimer, phase);
     if (phase === 0) ram.setU8(a6 + B.hitShortA, 0x28);
@@ -1959,7 +1987,9 @@ function collectedImpact2810CA(ram, rom, a6) {
       ? (ram.u32(a6 + B.sprite) - step) >>> 0
       : (ram.u32(a6 + B.sprite) + step) >>> 0);
   }
-  enqueueZoomedThroughStub(ram, rom, 0x23dbca, a6, 0x40004000);
+  enqueueZoomedThroughStub(
+    ram, rom, bee.collectedEmitter, a6, 0x40004000, bee.zoomScaleTable,
+  );
   return { emitted: true, collected: true };
 }
 
@@ -1989,13 +2019,13 @@ function popupDigits2811BE(ram, d1) {
  *  comes from `$2812D4` indexed by `($12,A6)`, which runs `$10` down to 0 in
  *  fours and reloads `$10` on the borrow -- five entries, and that cursor is what
  *  bounds the table. */
-function popupX2_28129E(ram, rom, a6, d1) {
+function popupX2_28129E(ram, rom, a6, d1, bee) {
   let d = d1AddLo(d1, 0x0400);                             // $28129E addi.w #$400
   d = d1Swap(d);                                           // $2812A2
   d = d1AddLo(d, 0x0040);                                  // $2812A4 addi.w #$40
   d = d1Swap(d);                                           // $2812A8
   const cursor = ram.u16(a6 + B.hitLongB);                 // $2812AA move.w ($12,A6)
-  const tile = rom.u32(0x2812d4 + cursor);                 // $2812B6 move.l (A0),D2
+  const tile = rom.u32(bee.x2Table + cursor);               // $2812B6 move.l (A0),D2
   enqueueRegisters(ram, 8, d, tile, 0x0420, 0x001d);       // $2812B8..$2812C0
   // $2812C6 subq.w #$4 / bcc -- the borrow reloads, so the five tiles cycle.
   const next = u16(cursor - 4);
@@ -2015,6 +2045,7 @@ function popupX2_28129E(ram, rom, a6, d1) {
  * plus three things: the flicker at its head, the digits, and the x2 arm.
  */
 function beeCollected28112C(ram, rom, ctx, a6, d1) {
+  const { bee } = requireBeeResources(ctx);
   // $28112C btst #$D,D1 / beq -- bit 13 of the status word is the x2 flag (see
   // the collect arm), and $281132 gates the toggle on the $80390C phase, so an x2
   // popup FLICKERS one frame on and one off. $1D is the low byte of the attribute
@@ -2022,7 +2053,7 @@ function beeCollected28112C(ram, rom, ctx, a6, d1) {
   if ((d1 & 0x2000) !== 0 && ram.u16(0x80390c) !== 0) {     // $28112C/$281132
     ram.setU8(a6 + 0x1d, ram.u8(a6 + 0x1d) ^ 0x10);         // $28113A eori.b #$10
   }
-  const r = collectedImpact2810CA(ram, rom, a6);            // $281140..$281186
+  const r = collectedImpact2810CA(ram, rom, ctx, a6);       // $281140..$281186
   if (r.freed) return r;                                    // $2811AE, freePoolA
   // $281188 cmpi.b #$3,($14,A6) / bcs $2811AC -- no digits below the timer floor.
   if (ram.u8(a6 + B.hitShortA) < 3) return r;
@@ -2036,7 +2067,7 @@ function beeCollected28112C(ram, rom, ctx, a6, d1) {
   d = popupDigits2811BE(ram, d);                            // $2811A0 bsr
   // $2811A2 btst #$5,(A6) -- the BYTE at +0, so bit 13 of the status word again.
   if ((ram.u8(a6 + B.status) & 0x20) !== 0) {               // $2811A2/$2811A6
-    popupX2_28129E(ram, rom, a6, d);                        // $2811A8 bra $28129E
+    popupX2_28129E(ram, rom, a6, d, bee);                   // $2811A8 bra $28129E
   }
   return r;
 }
@@ -2083,6 +2114,7 @@ function beeBody27FACC(ram, rom, ctx, a6, d1) {
 //   $27FC72  ori.b #$1,($1,A6)          <- set "already collected" bit
 
 function collectArm(ram, rom, ctx, a6, player) {
+  const { bee } = requireBeeResources(ctx);
   const isP1 = player === 1;
   // D3 = no-miss counter, D4 = chain meter, D5 = chain hit count.
   const d3 = ram.u16(isP1 ? POOL_A.noMissP1 : POOL_A.noMissP2); // $27FB6C/$27FAE6
@@ -2118,7 +2150,7 @@ function collectArm(ram, rom, ctx, a6, player) {
     if (BEE_MUTATE.value !== 'drop-rank-feed') {
       const earn = isP1 ? POOL_A.rankP1 : POOL_A.rankP2;
       ram.setU16(earn, u16(ram.u16(earn) + gain));         // $27FBDE/$27FB58
-      grantHyper287682(ram, rom, ctx, !isP1);             // $27FBE4/$27FB5E
+      grantHyperWithResources(ram, rom, ctx, !isP1, bee.grant); // $27FBE4/$27FB5E
     }
   }
 
@@ -2143,6 +2175,7 @@ function packedBcdWordToBinary(v) {
  * BCD long), transcribed faithfully, NOT "fixed".
  */
 function scoreAward27FBEE(ram, rom, ctx, a6, d3, d4, d5) {
+  const { bee } = requireBeeResources(ctx);
   const d1cursor = ram.u16(POOL_A.cursor);                // $27FBEE D1 = cursor
   // $27FBF4: bump per-stage bee count.
   ram.setU16(POOL_A.beeCount, u16(ram.u16(POOL_A.beeCount) + 1)); // $27FBF4
@@ -2166,10 +2199,10 @@ function scoreAward27FBEE(ram, rom, ctx, a6, d3, d4, d5) {
 
   // $27FC12..$27FC18: D0 = base_ladder[cursor].  The ladder is 10 BCD longs;
   // the cursor is a byte offset (0, 4, 8, ...).
-  const ladderIdx = (d1cursor >> 2);
-  let d0 = ladderIdx < BASE_LADDER.length
-    ? BASE_LADDER[ladderIdx]                              // $27FC18 move.l (A0,D1),D0
-    : BASE_LADDER[BASE_LADDER.length - 1];
+  const ladderIdx = Math.min(d1cursor >> 2, 9);
+  let d0 = bee.baseValues
+    ? bee.baseValues[ladderIdx]
+    : rom.u32(bee.baseLadder + ladderIdx * 4);             // $27FC18 move.l (A0,D1),D0
 
   // $27FC1C/$27FC22: the x2.  `add.l D0,D0` is a BINARY double on a packed BCD
   // longword: BCD $0500 doubles to $0A00 (binary), which reads as "A00" -- the
@@ -2184,7 +2217,7 @@ function scoreAward27FBEE(ram, rom, ctx, a6, d3, d4, d5) {
   // no routine in the collected arm reads ($10,A6) back and `enqueueZoomedRequest`
   // does not either (it reads +$2/$4/$6/$8, +$a/$c, +$e and +$1c), so nothing
   // here asserts a meaning for the field beyond the two instructions.
-  ram.setU32(a6 + B.hitLongA, rom.u32(POOL_A.popupLadder + d1cursor));
+  ram.setU32(a6 + B.hitLongA, rom.u32(bee.popupLadder + d1cursor));
 
   // $27FC30..$27FC38: chain gate.  D4 (meter) and D5 (hits) must both be
   // non-zero and D5 positive for the digit-multiply; otherwise the flat path.
@@ -2218,7 +2251,7 @@ function scoreAward27FBEE(ram, rom, ctx, a6, d3, d4, d5) {
   }
 
   // $27FC6C: sound cue.  Noted (sound subsystem deferred).
-  ctx.soundPost?.(0x28c62a);  // WAVE A: BGM id=$1F, bee-collect sound ($27FC6C)
+  ctx.soundPost?.(bee.sound);
 
   // $27FC72: set "already collected" bit (bit 0 of the low byte = bit 0 of the
   // status word), then `$27FC78 bra.w $280FDC` converts this same record into
@@ -2237,6 +2270,7 @@ function scoreAward27FBEE(ram, rom, ctx, a6, d3, d4, d5) {
  * applies the long-axis scroll, and emits through the layer stub.
  */
 function idleStep27FC8C(ram, rom, ctx, a6, d1) {
+  const { pool, bee } = requireBeeResources(ctx);
   // $27FC8C: sprite = frame A ($1BCA34).
   ram.setU32(a6 + B.sprite, 0x001bca34);                  // $27FC8C move.l #$1BCA34,($A,A6)
   // $27FC94: decrement blink timer.  On borrow (timer was 0): reload to 2 and
@@ -2257,10 +2291,10 @@ function idleStep27FC8C(ram, rom, ctx, a6, d1) {
   let py = u16((pos & 0xffff) + 0x1c00);                  // $27FCAC addi.w #$1C00
   py = u16(py + ram.u16(0x813172));                       // $27FCB0 add.w $813172
   py = u16(py + 0x9000);                                  // $27FCB6 addi.w #-$7000
-  if (py < 0x9000) return offscreenFree27FC7C(ram, a6);   // $27FCBA bcs
+  if (py < 0x9000) return offscreenFree27FC7C(ram, a6, pool); // $27FCBA bcs
   let px = u16((pos >>> 16) + 0x0800);                    // $27FCBE addi.w #$800
   px = u16(px + 0x7800);                                  // $27FCC2 addi.w #$7800
-  if (px < 0x7800) return offscreenFree27FC7C(ram, a6);   // $27FCC6 bcs
+  if (px < 0x7800) return offscreenFree27FC7C(ram, a6, pool); // $27FCC6 bcs
 
   // $27FCC8..$27FCCE: kind fork.  `moveq #$4,D0 / and.w D0,D1 / eor.w D0,D1`:
   // kind 1 (bit 2 set in status) -> eor makes D1 = 0 -> beq falls through to
@@ -2278,7 +2312,7 @@ function idleStep27FC8C(ram, rom, ctx, a6, d1) {
     // word followed by signed long-axis and short-axis velocity words.
     if (tick === 0) {
       const cursor = ram.u8(a6 + B.hitCount);
-      const row = POOL_A.kind16Waypoint + cursor;
+      const row = bee.waypoint + cursor;
       ram.setU16(a6 + B.hitCount, rom.u16(row));
       ram.setU32(a6 + B.waypoint, rom.u32(row + 2));
     }
@@ -2289,7 +2323,7 @@ function idleStep27FC8C(ram, rom, ctx, a6, d1) {
       u16(ram.u16(a6 + B.pos) + ram.u16(a6 + B.waypoint)));
     ram.setU16(a6 + B.posX,
       u16(ram.u16(a6 + B.posX) + ram.u16(a6 + B.waypoint + 2)));
-    enqueueThroughStub(ram, rom, 0x23eba0, a6);
+    enqueueThroughStub(ram, rom, bee.ordinaryEmitter, a6);
     return { emitted: true };
   }
 
@@ -2310,9 +2344,9 @@ function idleStep27FC8C(ram, rom, ctx, a6, d1) {
 /** `$27FC7C` -- free an off-screen slot: clear status and position, decrement
  *  the live count, return.  (The `rts` here exits the body AND the driver loop
  *  iteration.) */
-function offscreenFree27FC7C(ram, a6) {
+function offscreenFree27FC7C(ram, a6, resources = BLACK_POOL_A_RESOURCES) {
   ram.setU16(a6 + B.status, 0);                           // $27FC7E move.w D0,(A6)
   ram.setU16(a6 + B.pos, 0);                              // $27FC80 move.w D0,($2,A6)
-  ram.setU16(POOL_A.liveCount, u16(ram.u16(POOL_A.liveCount) - 1)); // $27FC84
+  ram.setU16(resources.liveCount, u16(ram.u16(resources.liveCount) - 1)); // $27FC84
   return { freed: true };
 }

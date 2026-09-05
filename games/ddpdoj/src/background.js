@@ -743,13 +743,36 @@ export const BGELEM_HANDLERS = [
   { stage: 4, id: 2, ctor: 0x263278, upd: 0x263296, data: 0x307388, yPos: 0x1250, kind: 0x17, thr: 0x2400, v: 'lbge', gate: false, emit: 0x23DEFC },
   { stage: 4, id: 3, ctor: 0x2632CA, upd: 0x2632E8, data: 0x31975C, yPos: 0x1B20, kind: 0x17, thr: 0x3400, v: 'lbge', gate: false, emit: 0x23DEFC },
 ];
-const BGELEM_BY_CTOR = new Map(BGELEM_HANDLERS.map((h) => [h.ctor, h]));
-const BGELEM_BY_UPD = new Map(BGELEM_HANDLERS.map((h) => [h.upd, h]));
+const BLACK_BGELEM_BY_CTOR = new Map(BGELEM_HANDLERS.map((h) => [h.ctor, h]));
+const BLACK_BGELEM_BY_UPD = new Map(BGELEM_HANDLERS.map((h) => [h.upd, h]));
+const BGELEM_MAPS = new WeakMap();
+
+function bgelemMaps(resources) {
+  const rows = resources.background.elements;
+  if (!rows) {
+    return {
+      rows: BGELEM_HANDLERS,
+      byCtor: BLACK_BGELEM_BY_CTOR,
+      byUpd: BLACK_BGELEM_BY_UPD,
+    };
+  }
+  let maps = BGELEM_MAPS.get(rows);
+  if (!maps) {
+    maps = {
+      rows,
+      byCtor: new Map(rows.map((h) => [h.ctor, h])),
+      byUpd: new Map(rows.map((h) => [h.upd, h])),
+    };
+    BGELEM_MAPS.set(rows, maps);
+  }
+  return maps;
+}
 
 /** `$262366` -- the spawner. D0 = id, D1 = the op-$10 arg. Finds the first
  *  free slot, marks it live, stores the arg, and calls the constructor the
  *  per-stage handler table names. */
-function elemSpawn(ram, rom, ctx, id, arg, mut) {
+function elemSpawn(ram, rom, ctx, id, arg, mut, resources) {
+  const maps = bgelemMaps(resources);
   for (let s = 0; s < 8; s++) {
     const slot = BGRAM.elemSlots + s * 0x20;
     if (ram.u8(slot + ESLOT.active) !== 0) continue;        // $262372 tst.b/bne
@@ -758,10 +781,10 @@ function elemSpawn(ram, rom, ctx, id, arg, mut) {
     const tab = ram.u32(BGRAM.elemTable);                   // $262380 $8132C8
     // $262386/$262388 add.w D0,D0 twice -> id*4; $26238A adda; $26238C (A1)
     const ctorAddr = rom.u32(tab + (id & 0xffff) * 4);
-    const h = BGELEM_BY_CTOR.get(ctorAddr);
+    const h = maps.byCtor.get(ctorAddr);
     if (!h) {
       unreached(ctorAddr, `$${ctorAddr.toString(16).toUpperCase()} is not one `
-        + `of the ${BGELEM_HANDLERS.length} ported BGELEM `
+        + `of the ${maps.rows.length} ported ${resources.edition} BGELEM `
         + `constructors (id ${id})`);
       return;
     }
@@ -801,14 +824,15 @@ function elemConstruct(ram, slot, h, mut) {
 
 /** `$26233A` -- the 8-slot driver, run once per frame from `$2613A0` (after
  *  `$240C22`, before `$260EC8`), AND from the `$8130D2` frozen branch. */
-function elemDriver(ram, rom, ctx) {
+function elemDriver(ram, rom, ctx, resources) {
+  const maps = bgelemMaps(resources);
   const d0 = ram.u16(BGRAM.scrollDelta);                    // $262348 $813176
   for (let s = 0; s < 8; s++) {
     const slot = BGRAM.elemSlots + s * 0x20;
     if (ram.u8(slot + ESLOT.active) === 0) continue;        // $262342 tst.b/beq
     ram.setU16(slot + 0x04, u16(ram.u16(slot + 0x04) - d0));// $26234E sub.w D0
     const updAddr = ram.u32(slot + ESLOT.update);           // $262352 movea.l
-    const h = BGELEM_BY_UPD.get(updAddr);
+    const h = maps.byUpd.get(updAddr);
     if (!h) {
       unreached(updAddr, `element updater $${updAddr.toString(16)
         .toUpperCase()} is not one of the ported BGELEM handlers`);
@@ -1193,7 +1217,7 @@ function runOpcode(ram, rom, ctx, a5, blk, d6, op, a1, recTime, mut, resources) 
         note(0x262366, `$262366 background-element spawn (id ${id}, handler `
           + `$${handler.toString(16).toUpperCase()}, arg $${arg.toString(16)
             .toUpperCase().padStart(8, '0')}) -- W18`);
-        elemSpawn(ram, rom, ctx, id, arg, mut);            // $262178 jsr $262366
+        elemSpawn(ram, rom, ctx, id, arg, mut, resources); // $262178 jsr $262366
         ctx.scrollEvent?.({ op, recTime, kind: 'bgelem', id, handler, arg });
       }
       return a1;
@@ -1557,7 +1581,7 @@ export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {},
   resources = BLACK_WORLD_RESOURCES) {
   if (ram.u16(BGRAM.bgFreeze) !== 0) {                     // $2612A0 tst/bne
     // $2613A0 -- the element driver and the shake still run on a frozen frame.
-    elementDriverAndShake(ram, rom, ctx);
+    elementDriverAndShake(ram, rom, ctx, resources);
     return;
   }
   if (ram.u16(BGRAM.extSpeed) !== 0) {                     // $2612AA
@@ -1599,7 +1623,7 @@ export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {},
   // free-run holds the boss-lock freeze from frame 7,317 and still advances
   // $80B012 by $162B00 and writes 710 more map columns by frame 13,000.
   if (mut === 'freeze-stops-the-scroll' && ram.u16(a5 + BGO.frozen) !== 0) {
-    elementDriverAndShake(ram, rom, ctx);
+    elementDriverAndShake(ram, rom, ctx, resources);
     return;
   }
   const d6 = ram.u16(a5 + BGO.speedBg);                    // $2612FE ($1c,A5)
@@ -1636,13 +1660,13 @@ export function backgroundFrame(ram, rom, vram, ctx, a5, mut, o = {},
   ram.setU16(BGRAM.colAccum, ram.u16(a5 + BGO.accCol));    // $261382
   camTxAccumulate(ram, ram.u16(a5 + BGO.speedTx),          // $26138A..$26139A
     ram.u16(BGRAM.crossDelta), mut);
-  elementDriverAndShake(ram, rom, ctx);
+  elementDriverAndShake(ram, rom, ctx, resources);
 }
 
 /** `$2613A0 jsr $26233A` + `$2613A6 jsr $260EC8` -- the element driver then
  *  the screen shake, run last in `$2612A0` and first in its frozen branch. */
-function elementDriverAndShake(ram, rom, ctx) {
-  elemDriver(ram, rom, ctx);                               // $2613A0 -> $26233A
+function elementDriverAndShake(ram, rom, ctx, resources) {
+  elemDriver(ram, rom, ctx, resources);                    // $2613A0 -> $26233A
   screenShake260EC8(ram, rom, ctx);
 }
 

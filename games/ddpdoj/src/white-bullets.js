@@ -3,6 +3,7 @@
 import { WHITE_LABEL_PROFILE, resolveGameProfile } from './profiles.js';
 import { requireRuntimeCapability, resolveGameRuntime } from './runtime-profile.js';
 import { runPoolADriverWithResources } from './bee.js';
+import { WHITE_HYPER_GRANT_RESOURCES } from './item-resources.js';
 import { BLACK_BULLET_SPAWN_RESOURCES } from './bullets.js';
 import {
   runBulletDriverWithResources, runClearTimerWithResources, runScreenClearWithResources,
@@ -57,20 +58,25 @@ const WHITE_LAYER_EMITTERS = Object.freeze([
 ]);
 const WHITE_TEMPLATE_POINTERS = Object.freeze({
   0x00: 0x17ff1e,
+  0x04: 0x17ff34,
   0x20: 0x17ff1e,
   0x2c: 0x17ffa2,
   0x30: 0x17ff1e,
   0x3c: 0x17ffa2,
+  0x40: 0x17ff34,
 });
 const WHITE_FILL_HOOKS = Object.freeze({
   0x00: 0x17fce2,
+  0x04: 0x17fd72,
   0x20: 0x17fdfa,
   0x2c: 0x17fe0c,
   0x30: 0x17fdc2,
   0x3c: 0x17fdec,
+  0x40: 0x17fd72,
 });
 const WHITE_FILL_HOOK_DISPATCH = Object.freeze({
   0x17fce2: 'kind0',
+  0x17fd72: 'bee',
   0x17fdfa: 'hyper',
   0x17fe0c: 'hyper',
   0x17fdc2: 'hyper',
@@ -85,6 +91,7 @@ const WHITE_HOOK_DATA = Object.freeze({
 });
 const WHITE_BODY_DISPATCH = Object.freeze({
   0x17eab4: 0x27fa30,
+  0x17eb50: 0x27facc,
   0x17f2d6: 0x280252,
   0x17f626: 0x2805a2,
   0x17f742: 0x2806be,
@@ -106,6 +113,8 @@ const WHITE_HYPER_BY_BODY = Object.freeze({
 });
 
 export const WHITE_POOL_A_RESOURCES = Object.freeze({
+  allocator: 0x17e9a0,
+  allocation: 'general-seventy',
   alloc: 0x17e9aa,
   fill: 0x17fbc2,
   driver: 0x17e9de,
@@ -132,7 +141,7 @@ export const WHITE_POOL_A_RESOURCES = Object.freeze({
   vectors: WHITE_VECTOR_RESOURCES,
   hyperByBody: WHITE_HYPER_BY_BODY,
   soundRequestMap: Object.freeze({ 0x18b10a: 0x28c5e4 }),
-  supportedKinds: Object.freeze([0x00, 0x20, 0x2c, 0x30, 0x3c]),
+  supportedKinds: Object.freeze([0x00, 0x04, 0x20, 0x2c, 0x30, 0x3c, 0x40]),
   templateTable: 0x17fece,
   templatePointers: WHITE_TEMPLATE_POINTERS,
   fillHookTable: 0x17fc52,
@@ -150,6 +159,27 @@ export const WHITE_POOL_A_RESOURCES = Object.freeze({
     phase: Object.freeze({ table: 0x14322e, entries: 256 }),
     spread: Object.freeze({ table: 0x14336a, entries: 256 }),
     speed: Object.freeze({ table: 0x14359e, entries: 64 }),
+  }),
+  bee: Object.freeze({
+    allocator: 0x17e9a0, allocation: 'general-seventy',
+    scanBase: 0x8171be, slots: 70,
+    supportedKinds: Object.freeze([0x04, 0x40]),
+    body: 0x17eb50, canonicalBody: 0x27facc,
+    templatePointers: Object.freeze({ 0x04: 0x17ff34, 0x40: 0x17ff34 }),
+    fillHooks: Object.freeze({ 0x04: 0x17fd72, 0x40: 0x17fd72 }),
+    baseLadder: 0x17eda6, baseValues: null,
+    popupLadder: 0x17edce,
+    waypoint: 0x17edf6,
+    collectionTable: 0x17ffb8,
+    collectionSelectors: 3,
+    collectionSpriteEntries: 10,
+    collectedBody: 0x1801b0, transform: 0x180060,
+    ordinaryEmitter: 0x13eeee, collectedEmitter: 0x13df18,
+    zoomScaleTable: 0x13e898,
+    x2Table: 0x180358, sound: 0x18b150,
+    bounceRng: Object.freeze({ table: 0x142efc, entries: 256 }),
+    vector: Object.freeze({ ...WHITE_VECTOR_RESOURCES, entry: 0x141b4c, fold: 0x141bee }),
+    grant: WHITE_HYPER_GRANT_RESOURCES,
   }),
 });
 

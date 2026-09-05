@@ -3,7 +3,11 @@
 
 import { i16, u16 } from './ram.js';
 import { RAM, P } from './machine.js';
-import { spawnHyperItem } from './items.js';
+import {
+  BLACK_HYPER_ITEM_RESOURCES, spawnHyperItem, spawnHyperItemWithResources,
+} from './items.js';
+import { BLACK_HYPER_GRANT_RESOURCES } from './item-resources.js';
+export { BLACK_HYPER_GRANT_RESOURCES };
 import { beamReset25270C } from './items.js';
 import { enqueueRegisters } from './spritequeue.js';
 
@@ -252,30 +256,49 @@ export function drawHyperStockAnimations252A52(ram) {
     + drawHyperStockAnimationSide(ram, HYPER.p2, true);
 }
 
+function requireHyperGrantResources(resources) {
+  if (!resources || !Object.isFrozen(resources) || !Object.isFrozen(resources.sides)
+      || resources.sides.length !== 2 || !Object.isFrozen(resources.item)
+      || resources.threshold !== 0x095f || resources.stockCap !== 5
+      || resources.pendingCap !== 4 || !Number.isInteger(resources.gate)
+      || !Number.isInteger(resources.arm) || !Number.isInteger(resources.mode)) {
+    throw new TypeError('hyper grant needs a complete frozen edition resource graph');
+  }
+  return resources;
+}
+
 /** `$287682/$287722`, threshold, refusal, immediate spawn, or pending bank. */
 export function grantHyper287682(ram, rom, ctx, p2 = false) {
-  const h = side(p2);
-  if (ram.u16(h.earn) <= 0x095f) return 'below-threshold';
-  if (ram.u16(h.stock) === 5 || ram.u16(h.pending) === 4) {
-    ram.setU16(h.earn, 0x095f);
+  return grantHyperWithResources(ram, rom, ctx, p2, BLACK_HYPER_GRANT_RESOURCES);
+}
+
+export function grantHyperWithResources(ram, rom, ctx, p2 = false, suppliedResources) {
+  const resources = requireHyperGrantResources(suppliedResources);
+  const h = resources.sides[p2 ? 1 : 0];
+  if (ram.u16(h.earn) <= resources.threshold) return 'below-threshold';
+  if (ram.u16(h.stock) === resources.stockCap
+      || ram.u16(h.pending) === resources.pendingCap) {
+    ram.setU16(h.earn, resources.threshold);
     return 'refused';
   }
   ram.setU16(h.earn, 0);
   let bank = false;
-  if (ram.u16(HYPER.gate) !== 0) {
+  if (ram.u16(resources.gate) !== 0) {
     bank = (ram.u16(h.player) & 0x8000) === 0 || ram.u8(h.set) !== 0;
   }
   if (ram.u16(h.active) !== 0) bank = true;
   if (!bank) {
-    spawnHyperItem(ram, rom, ctx, h.kind, 0x7000, p2 ? 0x2877ac : 0x28770c);
+    spawnHyperItemWithResources(
+      ram, rom, ctx, h.kind, 0x7000, h.immediateSite, resources.item,
+    );
     ctx?.hyperEvent?.('spawn', h.who, ram.u16(h.stock));
     return 'spawned';
   }
   ram.setU16(h.pending, u16(ram.u16(h.pending) + 1));
   if ((ram.u16(h.player) & 0x8000) !== 0) {
     const n = ram.u16(h.pending);
-    ram.setU16(HYPER.arm, rom.u16(0x25531c + (n - 1) * 2));
-    ram.setU16(HYPER.mode, n === 5 ? (p2 ? 0x3c : 0x2c) : (p2 ? 0x30 : 0x20));
+    ram.setU16(resources.arm, rom.u16(h.modeTable + (n - 1) * 2));
+    ram.setU16(resources.mode, n === 5 ? h.modeAtFive : h.modeBase);
   }
   ctx?.hyperEvent?.('pending', h.who, ram.u16(h.pending));
   return 'pending';
