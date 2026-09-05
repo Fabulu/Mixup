@@ -46,11 +46,11 @@ const W571_TABLE = SKIP ? null : tableBeforeW572(TABLE_JSON);
 const W570_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const AIM_TABLES = SKIP ? null : new AimTables(ROM);
-const LIVE_TABLE_HASH = '5936aa3c3d36f0d5a10020438d82bd4172681f3680a98029c0c88529f9ba5f32';
-const ASSET_TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
-const TABLE_HASH = '0f5e8c092c2d16abe958ba0edaa5ea681fd5b296a0b110e10f91d2c6aa1a6ba9';
-const W571_HASH = '5c998537267ec18c9392305350a1dd7b3e4f60bfe5825bb238156864cfacca75';
-const W570_HASH = '0ec146c509a74bf3d75e585fdf2cd268fab86948924fd6c331a45ccce5ec12cc';
+const LIVE_TABLE_HASH = '59fb568dd4b5feb54279f8d0e15283d9f447427483a40ff84efb28ad38f973e9';
+const ASSET_TABLE_HASH = 'bc4c8b3e47ebbd93dab351d9a6cfe9e6f091c0489e29ca337cd2f9790cdf5ce3';
+const TABLE_HASH = 'f8d0c1a64925896199f433120013a07fe07e310c78a24ecee7dbca248b49f356';
+const W571_HASH = '04da9a4eae37833036fd4858275a39e88c14a9387f8dd78d68105d30ce79e3a2';
+const W570_HASH = 'f27ba769e37e62f786d8e46f191e7a38d2b16f381adc71d75e339aa2c2a96599';
 const STORED_TABLE_HASH = 'f5bb751cefe855badec1a91c26182b756746857b878a7070a18c1e8d5b254d65';
 const TEMPLATE = Object.freeze([
   0x2080, 0x0b0b, 0x1111, 0x0208, 0x0003, 0x0013,
@@ -139,19 +139,19 @@ async function bundle() {
 
 test('W572 adds one strict template window and reconstructs W571 and W570',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 1706);
-    assert.equal(TABLE_JSON.rom.windows.length, 1706);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 652639);
+    assert.equal(ROM_WINDOW_COUNT, 1757);
+    assert.equal(TABLE_JSON.rom.windows.length, 1757);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 657353);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
-    assert.equal(W572_TABLE.rom.windows.length, 846);
-    assert.equal(W572_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452375);
+    assert.equal(W572_TABLE.rom.windows.length, 847);
+    assert.equal(W572_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452395);
     assert.equal(canonicalHash(W572_TABLE), TABLE_HASH,
       'removing only W573 preserves strict historical W572');
-    assert.equal(W571_TABLE.rom.windows.length, 845);
-    assert.equal(W571_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452351);
+    assert.equal(W571_TABLE.rom.windows.length, 846);
+    assert.equal(W571_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452371);
     assert.equal(canonicalHash(W571_TABLE), W571_HASH,
       'removing only W572 reconstructs strict W571 byte for byte');
-    assert.equal(W570_TABLE.rom.windows.length, 844);
+    assert.equal(W570_TABLE.rom.windows.length, 845);
     assert.equal(canonicalHash(W570_TABLE), W570_HASH,
       'the older reconstruction composes through tableBeforeW572');
 

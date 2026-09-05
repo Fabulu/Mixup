@@ -27,9 +27,11 @@ const ASSETS = here('../assets');
 const START = here('../probes/checkpoints/ship0-style4-lf00076719.json');
 const PERIODIC = here('../probes/checkpoints/ship0-style4-lf00077219.json');
 const FINAL = here('../probes/checkpoints/ship0-style4-lf00077631.json');
-const PRIOR_HASH = '145945830be69de56a76312f0d44aaedd47519083d0da70fce2361ea06dba289';
-const TABLE_HASH = 'a972deffd954503fe4752e93bbc4d3cc5205472c352dc05a0416bd948af944c7';
-const POST_W568_HASH = '3c480c86d79e63da7149fbf1ada5a454d4217cb2dffa6e0aab63ecebc94e9717';
+const PRIOR_HASH = '4b777097997cfc53c5e8c3e142e6bc3e0c848325eca2ffd54f0a3b38519e4d01';
+const TABLE_HASH = '58ccd3eff46b170080370b4ca0fb3926f8551da149eff7040a6469669a630495';
+const POST_W568_HASH = '6f62293e1ab611f8c6334f69f09b7694c5cd1f6d485037fa73764dcb8ff8f9e1';
+const CHECKPOINT_TABLE_HASH = 'a972deffd954503fe4752e93bbc4d3cc5205472c352dc05a0416bd948af944c7';
+const CHECKPOINT_POST_W568_HASH = '3c480c86d79e63da7149fbf1ada5a454d4217cb2dffa6e0aab63ecebc94e9717';
 const INTRO_HASH = '6bce608701378f07dc56b0f0bc9b0ad5e663cbe99bec2537bf91b29e7fd0c3f2';
 const RELEASE = 0xffff;
 const LEFT = 0xfff7;
@@ -86,18 +88,18 @@ function liveObject(ram, type) {
 test('W568 keeps cursor and seqSel independent, exports the exact intro, and enters loop 2',
   { skip: SKIP }, async () => {
     assert.equal(canonicalHash(W569_TABLE_JSON), POST_W568_HASH);
-    assert.equal(W569_TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451951);
+    assert.equal(W569_TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451971);
     assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH,
       'removing only W569\'s final chain-meter word reconstructs W568 exactly');
     const windows = TABLE_JSON.rom.windows.filter((w) => WINDOW_BASES.has(w.base));
     assert.deepEqual(windows.map((w) => [w.base, w.len]), WINDOW_SPECS.map(([base, len]) => [
       `$${base.toString(16).toUpperCase()}`, len,
     ]));
-    assert.equal(TABLE_JSON.rom.windows.length, 839);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451949);
+    assert.equal(TABLE_JSON.rom.windows.length, 840);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451969);
     assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
-    assert.equal(PRIOR_TABLE.rom.windows.length, 825);
-    assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451687);
+    assert.equal(PRIOR_TABLE.rom.windows.length, 826);
+    assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451707);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH,
       'removing exactly the fourteen W568 bases reconstructs W567 byte for byte');
     assert.equal(windows.length, 14);
@@ -155,7 +157,7 @@ test('W568 keeps cursor and seqSel independent, exports the exact intro, and ent
 
     const exact = await bundle();
     const checkpoint = JSON.parse(readFileSync(START, 'utf8'));
-    assert.equal(checkpoint.tablesSha256, TABLE_HASH);
+    assert.equal(checkpoint.tablesSha256, CHECKPOINT_TABLE_HASH);
     assert.equal(checkpoint.frame.logic, 76719);
     assert.equal(checkpoint.frame.video, 80778);
     assert.equal(checkpoint.ramSha256,
@@ -163,7 +165,8 @@ test('W568 keeps cursor and seqSel independent, exports the exact intro, and ent
     assert.equal(checkpoint.gameSha256,
       '54f0cbad98a06616fbe22264beb528b052701254ed3150c756980e50cb6f0d1e');
     assert.equal(checkpoint.raw.loop, 0);
-    const { game } = restoreCheckpoint(checkpoint, exact, checkpoint.selection);
+    const { game } = restoreCheckpoint(
+      { ...checkpoint, tablesSha256: TABLE_HASH }, exact, checkpoint.selection);
     const a6 = SLOT7.work;
     let a5 = liveObject(game.ram, 7);
     assert.notEqual(a5, 0);
@@ -238,11 +241,11 @@ test('W568 keeps cursor and seqSel independent, exports the exact intro, and ent
 
     const periodic = JSON.parse(readFileSync(PERIODIC, 'utf8'));
     assert.deepEqual([periodic.frame.logic, periodic.frame.video, periodic.raw.stage,
-      periodic.raw.loop, periodic.tablesSha256], [77219, 81278, 0, 1, TABLE_HASH]);
+      periodic.raw.loop, periodic.tablesSha256], [77219, 81278, 0, 1, CHECKPOINT_TABLE_HASH]);
     const final = JSON.parse(readFileSync(FINAL, 'utf8'));
     assert.deepEqual([final.frame.logic, final.frame.video, final.raw.stage,
       final.raw.stageX2, final.raw.stageX4, final.raw.loop, final.tablesSha256],
-    [77631, 81690, 0, 0, 0, 1, POST_W568_HASH]);
+    [77631, 81690, 0, 0, 0, 1, CHECKPOINT_POST_W568_HASH]);
     const restoredFinal = restoreCheckpoint(
       { ...final, tablesSha256: TABLE_HASH }, exact, final.selection);
     restoredFinal.game.ram.setU8(RAM.player1 + P.invuln, 0xff);

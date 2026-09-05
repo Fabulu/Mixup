@@ -316,6 +316,26 @@ function hpAdjustBA(ram, a5) {
   ram.setU8(a5 + R.rec18, (ram.u8(a5 + R.rec18) - d0) & 0xff);
 }
 
+function init05(ram, rom, a5, a6, unported, descriptor) {
+  return damageFirstFamily(ram, rom, a5, a6, unported, {
+    subTab: descriptor.subPrototype,
+    recTab: descriptor.recordPrototype,
+    recD0: 0x0c,
+    initBody: descriptor.initBody,
+    sprite: descriptor.sprite,
+    armBArt: descriptor.armBArt,
+    killStages: [[1, G.d8]],
+    tail(ram, rom, a5, a6, unported, stage) {
+      hpAdjustBA(ram, a5);
+      if (stage === 4) {
+        for (const g of [G.da, G.dc, G.de, G.e0, G.e2]) {
+          if (ram.u16(g) !== 0) { freeEnemy(ram, a5); return FREED; }
+        }
+      }
+    },
+  });
+}
+
 const TYPE07_AIM_TABLES = new WeakMap();
 function type07AimTables(rom, descriptor) {
   let byDescriptor = TYPE07_AIM_TABLES.get(rom);
@@ -371,19 +391,8 @@ function init07(ram, rom, a5, a6, unported, descriptor) {
 const BODY = new Map();
 
 // --- type $05 ($269BCE): killStages [(1,$8130D8),(4,...ladder)]; HP adjust.
-BODY.set(0x269BCE, (ram, rom, a5, a6, unported) => damageFirstFamily(ram, rom, a5, a6, unported, {
-  subTab: 0x269CCE, recTab: 0x269CB4, recD0: 0x0c, initBody: 0x269BCE,
-  killStages: [[1, G.d8]],
-  tail(ram, rom, a5, a6, unported, stage) {
-    hpAdjustBA(ram, a5);
-    // $269C4C: stage-4 kill ladder on $8130DA/$8130DC/$8130DE/$8130E0/$8130E2.
-    if (stage === 4) {
-      for (const g of [G.da, G.dc, G.de, G.e0, G.e2]) {
-        if (ram.u16(g) !== 0) { freeEnemy(ram, a5); return FREED; }
-      }
-    }
-  },
-}));
+BODY.set(0x269BCE, (ram, rom, a5, a6, unported) =>
+  init05(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x05]));
 // --- type $07 / $27 ($26A1EA, alias pair): killStages [(1,d8),(2,f6)]; tail.
 BODY.set(0x26A1EA, (ram, rom, a5, a6, unported) =>
   init07(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x27]));
@@ -2547,7 +2556,10 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
     for (const foreignBody of descriptor.foreignInitBodies ?? []) {
       map.delete(foreignBody);
     }
-    if (descriptor.algorithm === 'type11') {
+    if (descriptor.algorithm === 'type05') {
+      map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
+        init05(ram, rom, a5, a6, unported, descriptor));
+    } else if (descriptor.algorithm === 'type11') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init11(ram, rom, a5, a6, unported, descriptor));
     } else if (descriptor.algorithm === 'type10') {

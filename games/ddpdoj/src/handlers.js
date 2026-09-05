@@ -1039,24 +1039,32 @@ function deathSeq10(ram, rom, a5, a6, ctx, d1, descriptor) {
 // bytes against the board on every live record of the family.  Type `$11`'s
 // `$2688F2`/`$268900` really ARE `tst.w`/`move.w`, so the two are not a
 // copy-paste of each other and only this family moves.
+function retireDamageFirst(ram, a5, descriptor) {
+  if (descriptor.retirement?.semantic !== 'freeEnemy') {
+    unreached(descriptor.retirement?.entry ?? descriptor.handler,
+      'damage-first family requires ordinary freeEnemy retirement');
+  }
+  freeEnemy(ram, a5);
+}
+
 function damageFirstHead269CEA(ram, rom, a5, a6, ctx, descriptor) {
   const u = ctx.unported;
   // $269CEA/$26A2E2 entry: the damage/hit branch FIRST (before movement).
   if ((ram.u8(a6) & 0x5c) !== 0) {                     // $269CEA moveq #$5c / and.b
     const d1 = hitMask(ram, a6);
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $269CF2/$269CF6
-    scoreHit(ram, ctx, a6, d1, a6, descriptor?.score); // $269CF8 jsr $286096 (W34)
+    scoreHit(ram, ctx, a6, d1, a6, descriptor.score); // $269CF8 jsr $286096 (W34)
     // palette flash from +$2A/+2B (the bucket emitter pair XOR).
     const d0 = ram.u8(a5 + 0x2a) ^ ram.u8(a5 + 0x2b);  // $269CFE..$269D06 eor.b
     ram.setU8(a6 + S.palette, d0);                      // $269D08 move.b D0,$1d(A6)
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $269D0C tst.w $18 / bpl
-      scoreKill(ram, rom, ctx, 0x08, d1, descriptor?.score); // $269D14/$269D16
+      scoreKill(ram, rom, ctx, 0x08, d1, descriptor.score); // $269D14/$269D16
       // W54: SPAWNED.  $269D1C moveq #$2 / $269D1E jsr $289004, then
       // $269D24..$269D44's five writes -- no remap table, bucket 7 flat.
       effectArmFamily(ram, rom, ctx, a6, 0x02,
-        descriptor?.effectSite ?? 0x269d1e, descriptor?.effects);
-      ctx.soundPost?.(descriptor?.sound.death ?? 0x28c2a8);
-      freeEnemy(ram, a5);                              // jmp $263762
+        descriptor.effectSite, descriptor.effects);
+      ctx.soundPost?.(descriptor.sound.death);
+      retireDamageFirst(ram, a5, descriptor);           // jmp edition freeEnemy
       return null;
     }
   } else {
@@ -1064,7 +1072,9 @@ function damageFirstHead269CEA(ram, rom, a5, a6, ctx, descriptor) {
   }
   // $269D5A/$26A352: the onscreen test $242684 -> free if off-screen-after-on.
   if (offScreen242684(ram, a6)) {                       // jsr $242684 / bcc
-    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return null; } // tst.b/jmp
+    if (ram.u8(a5 + R.onScreen) !== 0) {
+      retireDamageFirst(ram, a5, descriptor); return null;
+    } // tst.b/jmp
   } else {
     ram.setU8(a5 + R.onScreen, 1);                     // move.b #$1,$16(A5)
   }
@@ -1084,12 +1094,12 @@ function applyVelocityBody(ram, tables, a5) {
  * instruction of the block and `$269E20` is the NEXT routine, reached only by
  * the other five members of the family.
  */
-function handler05(ram, rom, a5, ctx) {
+function handler05(ram, rom, a5, ctx, descriptor) {
   const { tables } = ctx;
   const a6 = ram.u32(a5 + 0x06);
-  if (damageFirstHead269CEA(ram, rom, a5, a6, ctx) === null) return;
+  if (damageFirstHead269CEA(ram, rom, a5, a6, ctx, descriptor) === null) return;
   if (ram.u16(G.freeze) !== 0) {                       // $269D74 tst.w / bne.w $269E16
-    drawFamily269E16(ram, rom, a5, a6); return;
+    drawFamily269E16(ram, rom, a5, a6, descriptor); return;
   }
   applyVelocityBody(ram, tables, a5);                  // $269D7E jsr $2417DE (W24)
   // $269D84: the SLEW clock.  ($28,A5) is a countdown of turns REMAINING and
@@ -1104,34 +1114,35 @@ function handler05(ram, rom, a5, ctx) {
     if (c === 0) {                                     // $269D8E bcc.b $269DC2
       ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x1b));         // $269D90
       ram.setU16(a5 + 0x28, u16(ram.u16(a5 + 0x28) - 1));  // $269D96 subq.w #$1
-      const r = aim64TurnStore(aimTables(rom), ram, a5, a6); // $269D9A jsr $242178
-      if (r.carry) { drawFamily269E16(ram, rom, a5, a6); return; } // $269DA0 bcs.w
+      const r = aim64TurnStore(aimTables(rom, descriptor), ram, a5, a6); // $269D9A
+      if (r.carry) { drawFamily269E16(ram, rom, a5, a6, descriptor); return; }
       // $269DA4 lea $269E48 / andi.w #$3E,D1 / add.w D1,D1 -- the SAME two
       // tables `$269E20` reads, indexed by the SLEWED heading rather than by a
       // caller's D1.
       const idx = u16((r.dir & 0x3e) * 2);             // $269DAA/$269DAE
-      ram.setU32(a6 + S.sprite0a, rom.u32(FAM.sprite + idx));  // $269DB0
-      ram.setU32(a5 + 0x2c, rom.u32(FAM.armBArt + idx));      // $269DB6/$269DBC
+      ram.setU32(a6 + S.sprite0a, rom.u32(descriptor.sprite + idx)); // $269DB0
+      ram.setU32(a5 + 0x2c, rom.u32(descriptor.armBArt + idx)); // $269DB6/$269DBC
     }
   }
   // $269DC2: the fire cooldown, then RANK's reload ($58 - $8130B4 + 2, low byte).
   const cd = ram.u8(a5 + R.cooldown);                  // $269DC2 subq.b #$1,($18,A5)
   ram.setU8(a5 + R.cooldown, (cd - 1) & 0xff);
-  if (cd !== 0) { drawFamily269E16(ram, rom, a5, a6); return; }  // $269DC6 bcc.w
+  if (cd !== 0) { drawFamily269E16(ram, rom, a5, a6, descriptor); return; }
   ram.setU8(a5 + R.cooldown,
     u16(0x58 - ram.u16(G.b4) + 2) & 0xff);             // $269DCA/$269DCC/$269DD2/$269DD4
-  if (boxTest2425B2(ram, rom, a6).carry) {             // $269DD8 jsr $2425B2 / bcs.w
-    drawFamily269E16(ram, rom, a5, a6); return;
+  if (boxTest2425B2(ram, rom, a6, descriptor.fireGate).carry) {
+    drawFamily269E16(ram, rom, a5, a6, descriptor); return;
   }
-  const r = aim64AtTarget(aimTables(rom), ram, a5, a6); // $269DE2 jsr $24202C
-  if (r.carry) { drawFamily269E16(ram, rom, a5, a6); return; }   // $269DE8 bcs.w
+  const r = aim64AtTarget(aimTables(rom, descriptor), ram, a5, a6); // $269DE2
+  if (r.carry) { drawFamily269E16(ram, rom, a5, a6, descriptor); return; }
   // $269DEC..$269E10.  The muzzle index is ($1B,A6) -- the heading `$242178`
   // just stored -- and NOT D1; D1 is $24202C's raw aim and is what the
   // generator reads.  The two are different numbers on any frame the slew has
   // not caught up, so the pair is passed separately.
   fireFamily2814AC(ram, rom, a5, a6, ctx,
-    ram.u8(a6 + S.heading), r.dir, 0x0003000d, 0x269e10);
-  drawFamily269E16(ram, rom, a5, a6);                  // $269E16 fall-through
+    ram.u8(a6 + S.heading), r.dir, 0x0003000d, descriptor.bullet.site,
+    descriptor, descriptor.bullet);
+  drawFamily269E16(ram, rom, a5, a6, descriptor);      // edition draw tail
 }
 
 /**
@@ -8973,7 +8984,8 @@ const HANDLERS = new Map([
     handler11(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x11])],
   [0x268232, (ram, rom, a5, ctx) =>
     handler10(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x10])],
-  [0x269cea, handler05],
+  [0x269cea, (ram, rom, a5, ctx) =>
+    handler05(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x05])],
   [0x26a2e2, (ram, rom, a5, ctx) =>
     handler07(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x27])],
   [0x2747c6, handler82],
@@ -11276,7 +11288,11 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
   if (handlers) return handlers;
   handlers = new Map(HANDLERS);
   for (const descriptor of Object.values(resources.enemyTypes ?? {})) {
-    if (descriptor.algorithm === 'type11') {
+    if (descriptor.algorithm === 'type05') {
+      handlers.delete(0x269cea);
+      handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
+        handler05(ram, rom, a5, ctx, descriptor));
+    } else if (descriptor.algorithm === 'type11') {
       handlers.delete(0x2688cc);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
         handler11(ram, rom, a5, ctx, descriptor));

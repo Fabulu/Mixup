@@ -46,10 +46,10 @@ const PRE_W627_TABLE = SKIP ? null : tableBeforeW627(TABLE_JSON);
 const W575_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '5936aa3c3d36f0d5a10020438d82bd4172681f3680a98029c0c88529f9ba5f32';
-const PRE_W627_TABLE_HASH = '02c3aea71c84407cdb17bfa454ddc3abac4a62171ec59c627f4d99f3cb9f439e';
-const W587_TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
-const W575_TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
+const LIVE_TABLE_HASH = '59fb568dd4b5feb54279f8d0e15283d9f447427483a40ff84efb28ad38f973e9';
+const PRE_W627_TABLE_HASH = 'bdfb0f2e7bfe5611cbb75d1268a8ed3b033a0fe942155464640c1dd45405da3b';
+const W587_TABLE_HASH = 'a410f3af26547bb3122e54b18d2d11c294d432a264a490ee6936865bcb43cd99';
+const W575_TABLE_HASH = 'bc4c8b3e47ebbd93dab351d9a6cfe9e6f091c0489e29ca337cd2f9790cdf5ce3';
 const STORED_W575_TABLE_HASH = 'cdce48388d34b89a09ce5d2b8a21ea7dad807bb1fe42468cf8ff3fe44387f30f';
 const REC = 0x810c00;
 const SUB = 0x814800;
@@ -120,22 +120,22 @@ test('W576 pins both raw code, NOP, and data boundaries with exactly two windows
 
 test('W576 table migration is strict, additive, identity-pinned, and composed for history',
   { skip: SKIP }, () => {
-    assert.deepEqual([ROM_WINDOW_COUNT, ROM_WINDOW_BYTES], [1706, 652639]);
+    assert.deepEqual([ROM_WINDOW_COUNT, ROM_WINDOW_BYTES], [1757, 657353]);
     assert.deepEqual([
       TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(TABLE_JSON),
-    ], [1706, 652639, LIVE_TABLE_HASH]);
+    ], [1757, 657353, LIVE_TABLE_HASH]);
     assert.deepEqual([
       PRE_W627_TABLE.rom.windows.length,
       PRE_W627_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(PRE_W627_TABLE),
-    ], [942, 457067, PRE_W627_TABLE_HASH]);
+    ], [943, 457087, PRE_W627_TABLE_HASH]);
     assert.deepEqual([
       W575_TABLE.rom.windows.length,
       W575_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(W575_TABLE),
-    ], [848, 452455, W575_TABLE_HASH]);
+    ], [849, 452475, W575_TABLE_HASH]);
 
     const withoutAdded = tableBeforeW584(TABLE_JSON).rom.windows.filter((window) =>
       !window.why.startsWith('W576:'));

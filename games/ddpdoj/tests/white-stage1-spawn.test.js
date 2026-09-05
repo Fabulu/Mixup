@@ -131,6 +131,49 @@ test('White Stage 1 source record reaches native type $27 exactly at $0076', () 
     `highest cartridge read was $${maxRead().toString(16)}`);
 });
 
+test('White Stage 1 reaches Type $05 and resolves the native Type $07 alias', () => {
+  const { ram, rom, maxRead } = fixture();
+  const resources = WHITE_WORLD_RESOURCES;
+  const s = resources.spawn;
+  const source = 0x130dd4;
+  const descriptor = resources.enemyTypes[0x05];
+  const alias = resources.enemyTypes[0x07];
+
+  resetAndInstallStage26331E(ram, rom, null, null, null, resources);
+  ram.setU32(s.liveCursor, source);
+  ram.setU16(s.distanceClock, 0x009c);
+  assert.deepEqual(runSpawnWalker(
+    ram, rom, null, null, null, null, null, resources,
+  ), { script: 0, deferred: 0 });
+  assert.equal(ram.u32(s.liveCursor), source);
+
+  assert.deepEqual(Array.from(rom.bytes(source, 8)), [
+    0x00, 0x9d, 0x00, 0x19, 0x05, 0x00, 0x00, 0x97,
+  ]);
+  assert.equal(resolveMovementPtr(ram, rom, source, null, resources), 0x1324aa);
+  assert.deepEqual([
+    rom.u32(s.low.table + 0x05 * s.typeStride),
+    rom.u32(s.low.table + 0x05 * s.typeStride + 4),
+  ], [descriptor.initStub, descriptor.handler]);
+  assert.equal(alias, resources.enemyTypes[0x27]);
+  assert.deepEqual([
+    rom.u32(s.low.table + 0x07 * s.typeStride),
+    rom.u32(s.low.table + 0x07 * s.typeStride + 4),
+  ], [alias.initStub, alias.handler]);
+
+  ram.setU16(s.distanceClock, 0x009d);
+  assert.deepEqual(runSpawnWalker(
+    ram, rom, null, null, null, null, null, resources,
+  ), { script: 1, deferred: 0 });
+  assert.equal(ram.u8(ENEMY.bandCommon + 0x0c), 0x05);
+  assert.equal(ram.u16(ENEMY.bandCommon + 0x0a), 0x0019);
+  assert.equal(ram.u32(ENEMY.bandCommon + 0x12), 0x1324b2,
+    'the initializer consumes the first eight native movement bytes');
+  assert.equal(ram.u32(s.liveCursor), source + 8);
+  assert.equal(maxRead() < 0x200000, true,
+    `highest cartridge read was $${maxRead().toString(16)}`);
+});
+
 test('world resources are recursive constants and the private machine keeps Black rejected', () => {
   const visit = (value) => {
     if (value === null || typeof value !== 'object') return;

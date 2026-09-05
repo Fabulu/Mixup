@@ -45,10 +45,10 @@ const word = (...names) => portWordFromBits(names.map((name) => CONTROLS[name]))
 const DOWN_SHOT = word('DOWN', 'SHOT');
 const TOTAL_STEPS = 174029;
 const CADENCE = 500;
-const LIVE_TABLE_HASH = '5936aa3c3d36f0d5a10020438d82bd4172681f3680a98029c0c88529f9ba5f32';
+const LIVE_TABLE_HASH = '59fb568dd4b5feb54279f8d0e15283d9f447427483a40ff84efb28ad38f973e9';
 const STORED_TABLE_HASH = 'af3dee2f75818bcbb32d5c024b50b0816837d319595bb71eaade5d136fcd2a69';
-const W595_TABLE_HASH = '706201adef09d00737f1fafc687e52d12ab81f437bc842690af229afab258445';
-const PRE_W595_TABLE_HASH = '83ffbc84cbaec6b527bf784e1e3b3ba8c9b893546252a135ca5db34a7c64a23d';
+const W595_TABLE_HASH = 'ff2c30f555ef96f4687a27a663a9c8dd7626902773cb9edaba7e0520594389f7';
+const PRE_W595_TABLE_HASH = '02abccda19f3e2914759b3de5c4db13dcb7306e03d4bbe692ef2477a639787b3';
 const SEED_HASH = '6886bc97b999e3dc0263b8e2d2cdf1df701be09b3039d9de46cdfbe870f9c0fb';
 const TERMINAL_RAM_HASH = '535c067ad815d0d72947a4c0627c4fb7f099ebe375b82893a27787beab1deb12';
 const TERMINAL_GAME_HASH = '2a9860da1907a9f0ed466424dcd467f9cffda49679926602ebb9e84401195380';
@@ -100,17 +100,17 @@ test('W595 is one exact BIOS-window widening and reconstructs the $000BEC fault'
       canonicalHash(w595), w595.rom.windows.length,
       w595.rom.windows.reduce((sum, window) => sum + window.len, 0),
       overlappingPairs(windowShape(w595)),
-    ], [W595_TABLE_HASH, 907, 453765, 77]);
+    ], [W595_TABLE_HASH, 908, 453785, 77]);
     assert.deepEqual([
       canonicalHash(before), before.rom.windows.length,
       before.rom.windows.reduce((sum, window) => sum + window.len, 0),
       overlappingPairs(windowShape(before)),
-    ], [PRE_W595_TABLE_HASH, 907, 453749, 77]);
+    ], [PRE_W595_TABLE_HASH, 908, 453769, 77]);
     assert.deepEqual(EXPECTED.tables, {
       sha256: STORED_TABLE_HASH, windows: 1653, bytes: 642930, overlapPairs: 79,
     });
     assert.deepEqual(EXPECTED.preW595Tables, {
-      sha256: PRE_W595_TABLE_HASH, windows: 907, bytes: 453749,
+      sha256: PRE_W595_TABLE_HASH, windows: 908, bytes: 453769,
       overlapPairs: 77, faultAddress: 0x000bec,
     });
 

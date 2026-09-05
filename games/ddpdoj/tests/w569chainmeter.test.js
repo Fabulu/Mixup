@@ -26,8 +26,9 @@ const EXPORTER = here('../tools/export-tables.py');
 const ASSETS = here('../assets');
 const MIGRATED = here('../probes/checkpoints/ship0-style4-lf00077631.json');
 const FRONTIER = here('../probes/checkpoints/ship0-style4-lf00144631.json');
-const PRIOR_HASH = 'a972deffd954503fe4752e93bbc4d3cc5205472c352dc05a0416bd948af944c7';
-const TABLE_HASH = '3c480c86d79e63da7149fbf1ada5a454d4217cb2dffa6e0aab63ecebc94e9717';
+const PRIOR_HASH = '58ccd3eff46b170080370b4ca0fb3926f8551da149eff7040a6469669a630495';
+const TABLE_HASH = '6f62293e1ab611f8c6334f69f09b7694c5cd1f6d485037fa73764dcb8ff8f9e1';
+const CHECKPOINT_TABLE_HASH = '3c480c86d79e63da7149fbf1ada5a454d4217cb2dffa6e0aab63ecebc94e9717';
 const POST_W569_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
 const required = [TABLES, IMAGE, EXPORTER, MIGRATED, FRONTIER,
   path.join(ASSETS, 'seed.bin.gz'), path.join(ASSETS, 'player.tables.json.gz')];
@@ -64,11 +65,11 @@ test('W569 widens only the inclusive loop-2 meter word and preserves W568 exactl
     });
     assert.equal(WINDOW.hex.slice(-4), '0000');
     assert.equal(IMG.readUInt16BE(0x2881ce), 0x0000);
-    assert.equal(TABLE_JSON.rom.windows.length, 839);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451951);
+    assert.equal(TABLE_JSON.rom.windows.length, 840);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 451971);
     assert.equal(canonicalHash(TABLE_JSON), TABLE_HASH);
-    assert.equal(PRIOR_TABLE.rom.windows.length, 839);
-    assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451949);
+    assert.equal(PRIOR_TABLE.rom.windows.length, 840);
+    assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451969);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH,
       'removing only the final word and restoring prior metadata reconstructs W568 exactly');
     assert.equal(overlappingPairs(TABLE_JSON.rom.windows.map((w) => [
@@ -114,11 +115,12 @@ test('W569 migrates the exact frontier, clears loop-2 stages 1 to 4, and reaches
       migrated.raw.stage, migrated.raw.stageX2, migrated.raw.stageX4, migrated.raw.loop,
       migrated.ramSha256, migrated.gameSha256,
     ], [
-      TABLE_HASH, 77631, 81690, 0, 0, 0, 1,
+      CHECKPOINT_TABLE_HASH, 77631, 81690, 0, 0, 0, 1,
       'b428d44c8c4a50453856297ccf4ca2991f0eeefd653e14de697c65aae5a038e7',
       '27439f74298a6171da242bc5ec5b378bcb5baafeeafe3ba2cd740b964f71ef13',
     ]);
-    restoreCheckpoint(migrated, exact, migrated.selection);
+    restoreCheckpoint(
+      { ...migrated, tablesSha256: TABLE_HASH }, exact, migrated.selection);
     const historical = { ...exact, tables: PRIOR_TABLE };
     restoreCheckpoint({ ...migrated, tablesSha256: PRIOR_HASH }, historical, migrated.selection);
 

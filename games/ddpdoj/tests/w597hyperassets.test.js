@@ -35,8 +35,8 @@ const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW597(TABLE_JSON);
 const PRIOR_ROM = SKIP ? null : new RomWindows(PRIOR_TABLE.rom);
 
-const CURRENT_HASH = '5936aa3c3d36f0d5a10020438d82bd4172681f3680a98029c0c88529f9ba5f32';
-const W596_HASH = '919c9b20ee1a40068ef808694fb8b9fb5e503e9fd41ccbf7c613630bba720047';
+const CURRENT_HASH = '59fb568dd4b5feb54279f8d0e15283d9f447427483a40ff84efb28ad38f973e9';
+const W596_HASH = 'cfc5cc76a2a669248ce987104d45408f13b0b92d680afd8309e00faae4b47888';
 const canonicalHash = (value) => createHash('sha256')
   .update(JSON.stringify(value)).digest('hex');
 const u16 = (at) => IMG.readUInt16BE(at);
@@ -109,7 +109,7 @@ test('W597 is five strict hyper-data widenings plus three exact additions',
       canonicalHash(PRIOR_TABLE), PRIOR_TABLE.rom.windows.length,
       PRIOR_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       overlappingPairs(windowShape(PRIOR_TABLE)),
-    ], [W596_HASH, 909, 453859, 77]);
+    ], [W596_HASH, 910, 453879, 77]);
 
     const windows = TABLE_JSON.rom.windows.filter((window) => window.why.startsWith('W597'));
     assert.deepEqual(windows.map((window) => [

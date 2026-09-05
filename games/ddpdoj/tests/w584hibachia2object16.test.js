@@ -48,11 +48,11 @@ const W584_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const W583_TABLE = SKIP ? null : tableBeforeW584(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(W584_TABLE.rom);
 const MT = SKIP ? null : new MoveTables(W584_TABLE, ROM);
-const LIVE_TABLE_HASH = '5936aa3c3d36f0d5a10020438d82bd4172681f3680a98029c0c88529f9ba5f32';
-const PRE_W627_TABLE_HASH = '02c3aea71c84407cdb17bfa454ddc3abac4a62171ec59c627f4d99f3cb9f439e';
-const TABLE_HASH = 'ba6dfc5a6d50f7f5303452fa8341c6139fe99d4cc6a944e23182144a9c7a8741';
+const LIVE_TABLE_HASH = '59fb568dd4b5feb54279f8d0e15283d9f447427483a40ff84efb28ad38f973e9';
+const PRE_W627_TABLE_HASH = 'bdfb0f2e7bfe5611cbb75d1268a8ed3b033a0fe942155464640c1dd45405da3b';
+const TABLE_HASH = 'a410f3af26547bb3122e54b18d2d11c294d432a264a490ee6936865bcb43cd99';
 const STORED_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
-const W583_TABLE_HASH = '86d0344a005779abefbb12f51c8f627b65bde0cd8a8438a346e8801741c4310a';
+const W583_TABLE_HASH = '1cb91a0d4426f2c80e726fb523adeb8d41004e69aa3fd03eb17ad83a64cdb4dc';
 const REC = 0x810c00;
 const SUB = 0x814800;
 const RNG_STATE = 0x803916;
@@ -158,22 +158,22 @@ test('W584 table migration is strict, additive, ordered, and identity-pinned',
       TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(TABLE_JSON),
-    ], [1706, 652639, 79, 1706, 652639, LIVE_TABLE_HASH]);
+    ], [1757, 657353, 79, 1757, 657353, LIVE_TABLE_HASH]);
     assert.deepEqual([
       PRE_W627_TABLE.rom.windows.length,
       PRE_W627_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(PRE_W627_TABLE),
-    ], [942, 457067, PRE_W627_TABLE_HASH]);
+    ], [943, 457087, PRE_W627_TABLE_HASH]);
     assert.deepEqual([
       W584_TABLE.rom.windows.length,
       W584_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(W584_TABLE),
-    ], [852, 452697, TABLE_HASH]);
+    ], [853, 452717, TABLE_HASH]);
     assert.deepEqual([
       W583_TABLE.rom.windows.length,
       W583_TABLE.rom.windows.reduce((sum, window) => sum + window.len, 0),
       canonicalHash(W583_TABLE),
-    ], [850, 452611, W583_TABLE_HASH]);
+    ], [851, 452631, W583_TABLE_HASH]);
 
     const withoutAdded = W584_TABLE.rom.windows.filter((window) =>
       window.base !== '$23FE5C' && window.base !== '$2A4D3E');

@@ -42,10 +42,10 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W570_TABLE = SKIP ? null : tableBeforeW571(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW570(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
-const CURRENT_HASH = '5936aa3c3d36f0d5a10020438d82bd4172681f3680a98029c0c88529f9ba5f32';
-const ASSET_TABLE_HASH = 'bdf8d655d3ba484166eadbe73ba29ad59bed36507695dd6a79db8a09b4b4def0';
-const TABLE_HASH = '0ec146c509a74bf3d75e585fdf2cd268fab86948924fd6c331a45ccce5ec12cc';
-const PRIOR_HASH = 'e1184c944c19acf60672d7ed50541f1ee31cdaee46813546ca46e795edb0a14c';
+const CURRENT_HASH = '59fb568dd4b5feb54279f8d0e15283d9f447427483a40ff84efb28ad38f973e9';
+const ASSET_TABLE_HASH = 'bc4c8b3e47ebbd93dab351d9a6cfe9e6f091c0489e29ca337cd2f9790cdf5ce3';
+const TABLE_HASH = 'f27ba769e37e62f786d8e46f191e7a38d2b16f381adc71d75e339aa2c2a96599';
+const PRIOR_HASH = '46db5c3bb60c3d685f3bc90c5a5ff53a57021d228a35c7f86d0ec228e79a4dbb';
 const STORED_TABLE_HASH = '9c9a021c431dce64e533d2678e955743401453abc3404ee514842fa1bd678221';
 const A5 = 0x810c00;
 const A6 = 0x814800;
@@ -93,16 +93,16 @@ async function bundle() {
 
 test('W570 adds exactly four disjoint gun-0 windows and reconstructs W569',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 1706);
-    assert.equal(TABLE_JSON.rom.windows.length, 1706);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 652639);
+    assert.equal(ROM_WINDOW_COUNT, 1757);
+    assert.equal(TABLE_JSON.rom.windows.length, 1757);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 657353);
     assert.equal(canonicalHash(TABLE_JSON), CURRENT_HASH);
-    assert.equal(W570_TABLE.rom.windows.length, 844);
-    assert.equal(W570_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452321);
+    assert.equal(W570_TABLE.rom.windows.length, 845);
+    assert.equal(W570_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 452341);
     assert.equal(canonicalHash(W570_TABLE), TABLE_HASH,
       'removing the W573, W572, and W571 windows reconstructs W570 byte for byte');
-    assert.equal(PRIOR_TABLE.rom.windows.length, 840);
-    assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451959);
+    assert.equal(PRIOR_TABLE.rom.windows.length, 841);
+    assert.equal(PRIOR_TABLE.rom.windows.reduce((n, w) => n + w.len, 0), 451979);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH,
       'removing only the four W570 windows reconstructs W569 byte for byte');
 
