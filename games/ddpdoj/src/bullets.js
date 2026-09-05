@@ -441,7 +441,9 @@ function emitRecord(ctx, regs, bank, base, entry, resources, speedTransform = nu
  */
 function runSpawnInit(ctx, regs, base, init, kind, resources) {
   const { ram, log } = ctx;
-  switch (init) {
+  const dispatch = resources.spawnInitDispatch;
+  const normalizedInit = dispatch?.[init] ?? init;
+  switch (normalizedInit) {
     case 0x2818ac:                                    // 20 kinds: nothing
       return;
     case 0x2818b4:                                    // kinds 3,4,5,6,35
@@ -633,6 +635,27 @@ function bankAAdaptive(ctx, regs, resources) {
   return restoreFan(regs, () => adaptive(ctx, regs, 'A', resources));
 }
 
+function bankBAdaptive(ctx, regs, resources) {
+  if (!fanWithResources(ctx, resources)) {
+    return [spawnCoreWithResources(ctx, regs, 'B', resources)];
+  }
+  return restoreFan(regs, () => adaptive(ctx, regs, 'B', resources));
+}
+
+function bankBSpreadThree(ctx, regs, resources) {
+  if (!fanWithResources(ctx, resources)) {
+    return [spawnCoreWithResources(ctx, regs, 'B', resources)];
+  }
+  return restoreFan(regs, () => spread3B(ctx, regs, resources));
+}
+
+function bankASpreadThree(ctx, regs, resources) {
+  if (!fanWithResources(ctx, resources)) {
+    return [spawnCoreWithResources(ctx, regs, 'A', resources)];
+  }
+  return restoreFan(regs, () => spread3A(ctx, regs, resources));
+}
+
 export function fireWithResources(ctx, entry, regs, resources) {
   if (!resources || entry !== resources.entry) {
     unreached(entry, `no resource-bound generator entry at $${entry.toString(16)
@@ -643,6 +666,15 @@ export function fireWithResources(ctx, entry, regs, resources) {
   }
   if (resources.semantic === 'bank-a-adaptive') {
     return bankAAdaptive(ctx, regs, resources);
+  }
+  if (resources.semantic === 'bank-b-adaptive') {
+    return bankBAdaptive(ctx, regs, resources);
+  }
+  if (resources.semantic === 'bank-b-spread-three') {
+    return bankBSpreadThree(ctx, regs, resources);
+  }
+  if (resources.semantic === 'bank-a-spread-three') {
+    return bankASpreadThree(ctx, regs, resources);
   }
   unreached(entry, `no resource-bound generator semantic ${String(resources.semantic)} at `
     + `$${entry.toString(16).toUpperCase()}`);

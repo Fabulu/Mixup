@@ -19,12 +19,12 @@
 // rank/loop/stage branch.  Cited by ROM address on every non-obvious line.
 //
 // ===================== WHAT THROWS, AND WHY (named) ========================
-// `$263808` -- the movement-script INITIAL-position reader -- is a deliberate
-// no-op NOTE: it reads resource #$1F (resolved through the IGS027A protection
-// at `$246CAC`, not portable without the resource base, W24).  Position
-// (+$02/+$04) is NOT a done-when field.  For the five aim->bucket types
-// ($80/$82/$85/$88/$89) the spawn-time BUCKET depends on the spawn position
-// through the aim; that bucket field is a NAMED W24 gap, not a silence.
+// `$263808` -- the movement-script initial-position reader -- is ported in
+// `movement.js`. It resolves resource #$1F through the spawn walker's movement
+// pointer, consumes the stream prefix, and leaves the first heading installed.
+// Spawn-time aim calls remain edition-bound data reads. Type $80's two turret
+// aims are translated below; any body whose aim is not translated records its
+// exact call site instead of inventing a sprite or bucket.
 // `$259554` (the boss state machine, W30) and `$24150A` (a resource-data
 // install) are noted, not thrown, because they do not touch the done-when
 // fields at spawn.
@@ -186,7 +186,7 @@ function damageFirstFamily(ram, rom, a5, a6, unported, p) {
   // +$2A holds the bucket emitter low bits AND the default palette byte; this
   // makes the sub-record palette track the record's draw bucket.
   ram.setU8(a6 + S.palette, ram.u8(a5 + 0x2a));        // move.b ($2a,A5),($1d,A6)
-  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24 no-op)
+  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
   // The two heading tables are edition-bound for the Type $07/$27 alias.
   const sprite = p.sprite ?? 0x269e48;
   const armBArt = p.armBArt ?? 0x269ec8;
@@ -383,6 +383,56 @@ function init07(ram, rom, a5, a6, unported, descriptor) {
       if (stage === 2) ram.setU8(a5 + R.rec18, 0x0a);
     },
   });
+}
+
+function init80(ram, rom, a5, a6, unported, descriptor) {
+  // Both builds' run-length stub loads two long-form sub-records. The loader's
+  // returned cursor is therefore the cue script, at Black $273986 or White
+  // $1729DA, rather than the second prototype's flags word.
+  const cues80 = loadSubProto(
+    ram, rom, a5, a6, descriptor.subPrototype,
+  );
+  ram.setU32(a5 + R.rec44, cues80);
+  loadRecordProto(ram, rom, a5, descriptor.recordPrototype, 0x10);
+  readInitPosition(ram, rom, a5, unported);
+  if (ram.u16(G.rank98) !== 0) {
+    ram.setU16(a6 + S.hp, 0x1200);
+    ram.setU16(a6 + S.f38, 0x1200);
+  }
+
+  const translateAim = descriptor.initAim?.translated === true;
+  if (!translateAim) {
+    unported?.note(descriptor.initAim?.site ?? descriptor.initBody,
+      `$24200A aim in type $80 init -- bucket field tracks `
+        + `the W24 spawn position through the aim`);
+  }
+  const tables = () => type07AimTables(rom, descriptor);
+  const left = translateAim ? aim64FromCaller(tables, ram, a5,
+    u16(ram.u16(a6 + S.posX) + 0x0680),
+    u16(ram.u16(a6 + S.posY) + 0x0500)) : null;
+  let d1 = left?.carry === false ? left.dir : ram.u8(a6 + S.heading);
+  ram.setU8(a5 + R.rec2D, d1);
+  ram.setU32(a5 + R.rec28,
+    rom.u32(descriptor.aimSprite + ((d1 & 0x3e) << 1)));
+
+  const right = translateAim ? aim64FromCaller(tables, ram, a5,
+    u16(ram.u16(a6 + S.posX) + 0x0680),
+    u16(ram.u16(a6 + S.posY) + 0xfb00)) : null;
+  d1 = right?.carry === false ? right.dir : ram.u8(a6 + S.heading);
+  ram.setU8(a5 + R.rec33, d1);
+  ram.setU32(a5 + R.rec2E,
+    rom.u32(descriptor.aimSprite + ((d1 & 0x3e) << 1)));
+
+  ram.setU8(a5 + R.rec34, 0x10);
+  ram.setU8(a5 + R.rec35, 0x04);
+  const d0 = ram.u16(G.ba) & 0xff;
+  ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);
+  ram.setU8(a5 + R.rec22,
+    (ram.u8(a5 + R.rec22) - ((d0 - 8) & 0xff)) & 0xff);
+  const pal = descriptor.palette + ram.u16(G.stageX2);
+  ram.setU8(a6 + S.palette, rom.u8(pal));
+  ram.setU8(a5 + R.rec1C, rom.u8(pal));
+  ram.setU8(a5 + R.rec1D, rom.u8(pal + 1));
 }
 
 // =========================================================== the dispatch table
@@ -897,58 +947,14 @@ BODY.set(0x269754, (ram, rom, a5, a6, unported, tables, palette) => {
     0x2697A8, 'type $31\'s second install, bank from $2697BA[$813094]');
 });
 
-// --- the aim->bucket types.  Each calls $24200A (or $24202C) with a per-site
-// muzzle offset, stores the aim direction to a record sprite field, and reads
-// the bucket emitter from a 16-long table indexed by the quantised direction.
-// Because $263808 is a W24 no-op, the position (and thus the aim direction) is
-// the pool default; the bucket field tracks a W24 position (NAMED gap).
+// --- the aim-indexed types. Type $80 performs both authentic aim64 calls and
+// stores the two turret art pointers through its edition descriptor. The static
+// bodies below keep any still-untranslated call as an address-cited note rather
+// than inventing a direction from the prototype.
 
-// type $80 ($273802): runLen 1, sprite/bucket from $272F7A, palette $273922.
-BODY.set(0x273802, (ram, rom, a5, a6, unported) => {
-  // W428. `$27380E move.l A0,($44,A5)` stores THE LOADER'S CURSOR, and the init
-  // stub `$2737FA move.w #$1,($4,A5)` makes that TWO long-form sub-records, so
-  // the cursor is $27394E + 2*28 = $273986. This site used to hard-code
-  // `$27394E + 28` = $27396A, which is the SECOND sub prototype's own flags word
-  // ($A001). `$28AC72` reads that as a threshold, sees bit 15, and breaks on its
-  // first iteration -- so a JS-spawned type $80 installed ZERO of its four
-  // damage cues, silently, and no test read the pointer. Take the return value.
-  const cues80 = loadSubProto(ram, rom, a5, a6, 0x27394E);   // jsr $2637A2
-  ram.setU32(a5 + R.rec44, cues80);                    // $27380E move.l A0,($44,A5)
-  loadRecordProto(ram, rom, a5, 0x27392C, 0x10);       // moveq #$10,D0; jsr $26377A
-  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
-  if (ram.u16(G.rank98) !== 0) {                        // $273826 tst.w $813098
-    ram.setU16(a6 + S.hp, 0x1200);                      // move.w #$1200,($18,A6)
-    ram.setU16(a6 + S.f38, 0x1200);                     // move.w #$1200,($38,A6)
-  }
-  unported?.note(0x24200a, `$24200A aim in type $80 init -- bucket field tracks `
-    + `the W24 spawn position through the aim`);
-  // `$27383A..$27388E` seeds BOTH independent turret arms before the first draw.
-  // The second arm uses the opposite short-axis bias and owns +$33/+2E.  Until
-  // this was ported, +$2E retained the prototype's null longword and emitted a
-  // 3x40 offset-zero sprite for the arm's first aim cadence.
-  let d1 = ram.u8(a6 + S.heading);                       // bcc not taken (aim W24)
-  ram.setU8(a5 + R.rec2D, d1);                           // $27385A
-  d1 = (d1 & 0x3e) << 1;
-  ram.setU32(a5 + R.rec28, rom.u32(0x272F7A + d1));      // $273864
-  d1 = ram.u8(a6 + S.heading);                           // $27387E bcc / fallback
-  ram.setU8(a5 + R.rec33, d1);                           // $273884
-  d1 = (d1 & 0x3e) << 1;
-  ram.setU32(a5 + R.rec2E, rom.u32(0x272F7A + d1));      // $27388E
-  // $273894: +$34 := $10, +$35 := $04 (stage>1 keeps the same here).
-  ram.setU8(a5 + R.rec34, 0x10);
-  ram.setU8(a5 + R.rec35, 0x04);
-  // $2738B6: stage-4 bespoke block (a draw-state override) -- not done-when.
-  // $2738F0: D0 = $8130BA; sub.b D0,($1e,A5); then $8130BA-8 -> +$22.
-  let d0 = ram.u16(G.ba) & 0xff;
-  ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);
-  ram.setU8(a5 + R.rec22, (ram.u8(a5 + R.rec22) - ((d0 - 8) & 0xff)) & 0xff);
-  // $273906: palette from $273922 indexed by $813094.
-  const lp = ram.u16(G.stageX2);
-  const pal = 0x273922 + lp;
-  ram.setU8(a6 + S.palette, rom.u8(pal));
-  ram.setU8(a5 + R.rec1C, rom.u8(pal));
-  ram.setU8(a5 + R.rec1D, rom.u8(pal + 1));
-});
+// type $80 ($273802): runLen 1, sprite table $272F7A, palette $273922.
+BODY.set(0x273802, (ram, rom, a5, a6, unported) =>
+  init80(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x80]));
 
 // type $82 ($27462A): runLen 1, sprite/bucket from $272DFA, palette $27474A.
 BODY.set(0x27462A, (ram, rom, a5, a6, unported) => {
@@ -2568,6 +2574,9 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
     } else if (descriptor.algorithm === 'type07-family') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init07(ram, rom, a5, a6, unported, descriptor));
+    } else if (descriptor.algorithm === 'type80') {
+      map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
+        init80(ram, rom, a5, a6, unported, descriptor));
     } else if (descriptor.algorithm === 'type85') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init85Or86(ram, rom, a5, a6, unported, descriptor));

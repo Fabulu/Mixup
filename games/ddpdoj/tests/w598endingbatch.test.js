@@ -51,7 +51,7 @@ const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW598(TABLE_JSON);
 
-const CURRENT_HASH = '59fb568dd4b5feb54279f8d0e15283d9f447427483a40ff84efb28ad38f973e9';
+const CURRENT_HASH = '41557fca0aa2251133792a2b4f061a340bcc2eed6fa3bad649e6d6c411cee6f7';
 const W597_HASH = 'e2d81324c2e6d2a7c0e2be244caef00b389142564c2d70fe497ca34ef07dae68';
 const STORED_CHECKPOINT_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const OPCODE_WIDTHS = new Map([

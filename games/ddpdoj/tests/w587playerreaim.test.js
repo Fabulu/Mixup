@@ -40,7 +40,7 @@ const W588_TABLE = SKIP ? null : tableBeforeW589(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const PRIOR_ROM = SKIP ? null : new RomWindows(PRIOR_TABLE.rom);
-const LIVE_TABLE_HASH = '59fb568dd4b5feb54279f8d0e15283d9f447427483a40ff84efb28ad38f973e9';
+const LIVE_TABLE_HASH = '41557fca0aa2251133792a2b4f061a340bcc2eed6fa3bad649e6d6c411cee6f7';
 const W588_TABLE_HASH = '6ba6ed93f3b995ed1baf60fc757808379e548adb2919e040ac95f8d0e17081aa';
 const TABLE_HASH = 'a410f3af26547bb3122e54b18d2d11c294d432a264a490ee6936865bcb43cd99';
 const STORED_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
@@ -76,11 +76,11 @@ test('W587 pins the raw target selection, mid-entry aim, and kind-28 split arm',
 
 test('W587 adds no ROM window; W597 live, W588, and W587 tables stay exact',
   { skip: SKIP }, () => {
-    assert.equal(ROM_WINDOW_COUNT, 1757);
+    assert.equal(ROM_WINDOW_COUNT, 1773);
     assert.equal(ROM_OVERLAP_PAIRS, 79);
-    assert.equal(TABLE_JSON.rom.windows.length, 1757);
+    assert.equal(TABLE_JSON.rom.windows.length, 1773);
     assert.equal(TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0),
-      657353);
+      658833);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.deepEqual([
       W588_TABLE.rom.windows.length,

@@ -73,6 +73,15 @@ export const AIM = {
   selP2: 0x810448,           // $242710 lea $810448,A1   -- P2's record
 };
 
+export const BLACK_AIM64_RESOURCES = Object.freeze({
+  ops: AIM.ops64,
+  sub: AIM.opSub64,
+  add: AIM.opAdd64,
+  base: AIM.base64,
+  lut: AIM.lut64,
+  entries: 129,
+});
+
 export const BLACK_AIM256_RESOURCES = Object.freeze({
   entry: AIM.core256,
   lut: AIM.lut256,

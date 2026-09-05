@@ -770,10 +770,20 @@
 // Measured: 1752 -> 1757 windows, 657,275 -> 657,353 bytes, and 79 -> 79
 // overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1757;
+// ---------------------------------------------------------------------------
+// PRIVATE WHITE TYPE $80 ADDED SIXTEEN DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The Build A high type-table row, init data, aiming art, fan vectors, bullet
+// templates and init pointers, plus Pool-B kind $0D/$85 scripts add 1,480 exact
+// bytes below $200000. The shared mirror art and aiming cores were already
+// present. No new pair overlaps.
+// Measured: 1757 -> 1773 windows, 657,353 -> 658,833 bytes, and 79 -> 79
+// overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 1773;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 657353;
+export const ROM_WINDOW_BYTES = 658833;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -849,8 +859,8 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 804;
-const WHITE_LABEL_WINDOW_BYTES = 199754;
+const WHITE_LABEL_WINDOW_COUNT = 820;
+const WHITE_LABEL_WINDOW_BYTES = 201234;
 
 /** Remove the later embedded Version A window family before reconstructing any
  *  earlier Black Label ledger. The edition manifest is the identity list, so a

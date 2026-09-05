@@ -104,7 +104,7 @@ import {
 import { dist242494 } from './bossscripts.js';
 import { slew64FromRecord } from './aim.js';
 import { bigBurst28B4BE } from './boss.js';
-import { AimTables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
+import { AimTables, Aim256Tables, AIM, aim64, aim256, aim64FromCaller, aim64AtTarget,
   aim256AtTarget, aim64TurnStore, aim256FromCaller, slew64, targetSelect } from './aim.js';
 import { TURRET_HANDLERS, turretStep } from './turret.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
@@ -547,24 +547,46 @@ function offScreen2426A4(ram, a6) {
 // cache is keyed on the ROM OBJECT, so it is a pure derivation of immutable
 // input -- NOT per-Game mutable state, which `NOTES-replay.md` §2 forbids.
 const AIM_TABLES = new WeakMap();
-function aimTables(rom, descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x11]) {
+const LEGACY_AIM_TABLES = Symbol('legacyAimTables');
+function aimTables(rom, descriptor) {
+  const allowLegacyDefault = descriptor === undefined;
+  descriptor ??= BLACK_WORLD_RESOURCES.enemyTypes[0x11];
+  const cacheKey = allowLegacyDefault ? LEGACY_AIM_TABLES : descriptor;
   let byDescriptor = AIM_TABLES.get(rom);
   if (!byDescriptor) { byDescriptor = new Map(); AIM_TABLES.set(rom, byDescriptor); }
-  let t = byDescriptor.get(descriptor);
-  if (!t && descriptor.aim64) {
-    const a = descriptor.aim64;
-    const lut64 = Uint8Array.from(rom.bytes(a.lut, a.entries));
-    const base64 = [], sub64 = [];
-    for (let i = 0; i < 8; i++) {
-      base64.push(rom.u16(a.base + i * 2));
-      const op = rom.u32(a.ops + i * 4);
-      if (op !== a.sub && op !== a.add) unreached(a.ops + i * 4, 'invalid aim64 operation');
-      sub64.push(op === a.sub);
+  let t = byDescriptor.get(cacheKey);
+  if (!t && allowLegacyDefault) t = new AimTables(rom);
+  if (!t && (descriptor.aim64 || descriptor.aim256)) {
+    t = {};
+    if (descriptor.aim64) {
+      const a = descriptor.aim64;
+      const lut64 = Uint8Array.from(rom.bytes(a.lut, a.entries));
+      const base64 = [], sub64 = [];
+      for (let i = 0; i < 8; i++) {
+        base64.push(rom.u16(a.base + i * 2));
+        const op = rom.u32(a.ops + i * 4);
+        if (op !== a.sub && op !== a.add) unreached(a.ops + i * 4, 'invalid aim64 operation');
+        sub64.push(op === a.sub);
+      }
+      Object.assign(t, {
+        lut64, base64: Object.freeze(base64), sub64: Object.freeze(sub64),
+      });
     }
-    t = { lut64, base64: Object.freeze(base64), sub64: Object.freeze(sub64) };
+    if (descriptor.aim256) {
+      const a256 = new Aim256Tables(rom, descriptor.aim256);
+      Object.assign(t, {
+        lut256: a256.lut256, base256: a256.base256, sub256: a256.sub256,
+      });
+    }
+    t = Object.freeze(t);
   }
-  if (!t) t = new AimTables(rom);
-  byDescriptor.set(descriptor, t);
+  if (!t) {
+    if (!allowLegacyDefault) {
+      unreached(descriptor.handler, 'descriptor requires edition-bound aim tables');
+    }
+    t = new AimTables(rom);
+  }
+  byDescriptor.set(cacheKey, t);
   return t;
 }
 const TURRET_10 = TURRET_HANDLERS.get(0x268232);
@@ -3911,7 +3933,22 @@ function handler45(ram, rom, a5, ctx) {
 //     (`($2C,A5)` / `($32,A5)`) and its own sprite pointer;
 //   * two more `$281484` fires off the 32-entry muzzle table `$27347A`.
 // Four sprite requests, all through W11's enqueue API.
-function handler80(ram, rom, a5, ctx) {
+function requireType80Retirement(descriptor) {
+  if (descriptor.retirement?.semantic !== 'freeEnemy') {
+    unreached(descriptor.retirement?.entry ?? descriptor.handler,
+      'type-$80 requires ordinary freeEnemy retirement');
+  }
+}
+
+function requireType80AimTables(descriptor) {
+  if (!descriptor.aim64 || !descriptor.aim256) {
+    unreached(descriptor.handler, 'type-$80 requires edition-bound aim64 and aim256 tables');
+  }
+}
+
+function handler80(ram, rom, a5, ctx, descriptor) {
+  requireType80Retirement(descriptor);
+  requireType80AimTables(descriptor);
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   if (stepMovement(ram, rom, a5, tables, u)) return;   // $2739C0 jsr $2638A6
@@ -3920,7 +3957,7 @@ function handler80(ram, rom, a5, ctx) {
   let off = u16(u16((p0 & 0xffff) + 0x1800) + ram.u16(G.scroll)) + 0x9800 > 0xffff;
   if (!off) off = u16((p0 >>> 16) + 0x1400) + 0x7400 > 0xffff;   // $2739DC/$2739E0
   if (off) {                                           // $2739E4 bcc $2739F4
-    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // $2739EC
+    if (ram.u8(a5 + R.onScreen) !== 0) { retire80(ram, a5, descriptor); return; } // $2739EC
   } else {
     ram.setU8(a5 + R.onScreen, 1);                     // $2739F4
   }
@@ -3950,7 +3987,7 @@ function handler80(ram, rom, a5, ctx) {
   } else {
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $273A62
     ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);    // $273A64
-    scoreHit(ram, ctx, a6, dmg);                       // $273A68 jsr $286096 (W34)
+    scoreHit(ram, ctx, a6, dmg, a6, descriptor.score);  // $273A68 jsr $286096 (W34)
     d0 = ram.u8(a6 + S.palette);                       // $273A6E
     if (d0 === 0x19) d0 = ram.u8(a5 + R.rec1C);        // $273A72/$273A78
     d0 = (d0 ^ ram.u8(a5 + R.rec1D)) & 0xff;           // $273A7C/$273A80
@@ -3959,7 +3996,7 @@ function handler80(ram, rom, a5, ctx) {
     ram.setU16(a6 + S.hp, d4);                         // $273A90
     ram.setU16(a6 + S.f38, d4);                        // $273A94
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $273A98 tst.w / $273A9C bmi
-      deathSeq80(ram, rom, a5, ctx, dmg); return;      // $273DAE
+      deathSeq80(ram, rom, a5, ctx, dmg, descriptor); return; // $273DAE
     }
   }
   ram.setU8(a6 + S.palette, d0);                       // $273AA0
@@ -3967,7 +4004,7 @@ function handler80(ram, rom, a5, ctx) {
   // "its result is unused by $273AAA", which is TRUE of the RETURN VALUE and
   // beside the point: the routine's work is the `$81DB90` install and the
   // `($44,A5)` advance, both side effects, and skipping the call skipped those.
-  spawnCues28AC72(ram, rom, a5, a6);                   // $273AA4 jsr $28AC72
+  spawnCues28AC72(ram, rom, a5, a6, descriptor.cues);  // $273AA4 jsr $28AC72
   // $273AAA tst.l $8130D2 / bne $273C94 -- a freeze skips the fire AND both
   // turret aims and goes straight to the draw.
   if (ram.u32(G.freeze) === 0) {
@@ -3980,7 +4017,7 @@ function handler80(ram, rom, a5, ctx) {
       ram.setU8(a5 + R.rec1E, (c - 1) & 0xff);
       if (c === 0) {                                   // $273ACA bcc $273BEE
         ram.setU8(a5 + R.rec1E, ram.u8(a5 + 0x34));    // $273ACE reload from +$34
-        fan80(ram, rom, a5, a6, ctx);                  // $273AD4..$273BCA
+        fan80(ram, rom, a5, a6, ctx, descriptor);       // $273AD4..$273BCA
         // $273BCE: the SALVO counter, reachable only after the fan block.
         const sal = ram.u8(a5 + R.salvo);              // $273BCE subq.b #1,($20,A5)
         ram.setU8(a5 + R.salvo, (sal - 1) & 0xff);
@@ -3997,7 +4034,7 @@ function handler80(ram, rom, a5, ctx) {
     if (t === 0) {                                     // $273BF2 bcc $273C94
       ram.setU8(a5 + 0x26, ram.u8(a5 + 0x27));         // $273BF6
       if (ram.u8(a5 + 0x24) === ram.u8(a5 + 0x25))     // $273BFC/$273C00 bne
-        turrets80(ram, rom, a5, a6);                   // $273C08..$273C8E
+        turrets80(ram, rom, a5, a6, descriptor);        // $273C08..$273C8E
     }
   }
   // $273C94: FOUR sprite requests.
@@ -4015,7 +4052,7 @@ function handler80(ram, rom, a5, ctx) {
   if (ram.u16(G.rank98) === 0 && ram.u16(G.mirror2) !== 0) { // $273CCE/$273CD6
     enqueueRegisters(ram, 3,
       ((u16((pos >>> 16) + 0xd600) << 16) | (pos & 0xffff)) >>> 0, // $273CE2/$273CE8
-      0x172d18, 0xa40, 0x18);                          // $273CEE/$273CF4/$273CF8/$273CFC
+      descriptor.mirrorSprite, 0xa40, 0x18);             // $273CEE/$273CF4/$273CF8/$273CFC
   }
   // $273D02: the LASER tail, armed by ($18,A5) and cadenced on ($22,A5).
   if (ram.u16(a5 + 0x18) === 0) return;                // $273D02 tst.w / beq $273D1E
@@ -4024,13 +4061,13 @@ function handler80(ram, rom, a5, ctx) {
   const lc = ram.u8(a5 + 0x22);                        // $273D18 subq.b #1,($22,A5)
   ram.setU8(a5 + 0x22, (lc - 1) & 0xff);
   if (lc !== 0) return;                                // $273D1C bcs $273D20 only
-  laser80(ram, rom, a5, a6, ctx);                      // $273D20
+  laser80(ram, rom, a5, a6, ctx, descriptor);            // $273D20
 }
 
 // $273AD4..$273BCA -- the aim256 fan.  TWO shapes, and which one runs is decided
 // by the stage and by ($20,A5); both are `dbra` loops that step D1 by a fixed
 // amount and read a 64-entry longword table with `((D1+2) & $FC)`.
-function fan80(ram, rom, a5, a6, ctx) {
+function fan80(ram, rom, a5, a6, ctx, descriptor) {
   // $273AD4..$273AF2: the inlined target select (see aim85).
   let p0 = AIM.selP1, p1 = AIM.selP2;
   if (ram.u8(a5 + 0x03) !== 0) { p0 = AIM.selP2; p1 = AIM.selP1; } // $273AE0/$273AE6
@@ -4041,7 +4078,7 @@ function fan80(ram, rom, a5, a6, ctx) {
   const tgtY = ram.u16(p0 + 2), tgtX = ram.u16(p0 + 4);   // $273AF4 movem.w
   const selfY = ram.u16(a6 + 0x02), selfX = ram.u16(a6 + 0x04); // $273AFA
   // $273B00 addi.w #$fe00,D0 / $273B04 addi.w #$0,D1 (the short axis is unbiased).
-  let d1 = aim256(aimTables(rom), u16(selfY + 0xfe00), selfX, tgtY, tgtX); // $273B08
+  let d1 = aim256(aimTables(rom, descriptor), u16(selfY + 0xfe00), selfX, tgtY, tgtX); // $273B08
   const d2 = ram.u32(a6 + 0x02);                       // $273B0E move.l ($2,A6),D2
   const d5 = 0xfe000000;                               // $273B12 move.l #$fe000000,D5
   const stage4 = ram.u16(G.stage) === 4;               // $273B1A cmpi.w #$4
@@ -4056,17 +4093,19 @@ function fan80(ram, rom, a5, a6, ctx) {
   } else if (s20 === 1) {                              // $273B44 cmpi.b #$1 / bne
     d0 = 0x00000004; wide = true;                      // $273B4E, stage != 4 -> $273B62
   } else { wide = false; d0 = 0xffff0005; }            // $273B8E
-  const entry = wide ? 0x2817b8 : 0x2817a8;
-  const table = wide ? 0x2735fa : 0x2736fa;
+  const bullet = wide ? descriptor.bullet.wide : descriptor.bullet.narrow;
+  const table = wide ? descriptor.fan.wideTable : descriptor.fan.narrowTable;
   const step = wide ? 8 : 0xc;                         // $273B66 / $273BAA moveq
   const iters = wide ? 8 : 7;                          // $273B68 moveq #$7 / #$6, dbra
   d1 = (d1 - (wide ? 0x1c : 0x24)) & 0xff;             // $273B62 / $273BA6 subi.b
   for (let n = 0; n < iters; n++) {                    // $273B86 / $273BCA dbra
     const idx = u16((d1 + 2) & 0xfc);                  // $273B70/$273B72/$273B74
     const d3 = u32(rom.u32(table + idx) + d5);         // $273B78 / $273B7C add.l D5,D3
-    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, entry,
-      { d0, d1, d2, d3, d4: 0, d5, a5 });              // $273B7E / $273BC2
-    ctx.bulletSpawn?.(entry, res);
+    const res = fireBulletWithResources(
+      { ram, rom, log: new WriteLog(ram), mut: ctx.mut ?? null },
+      bullet.entry, { d0, d1, d2, d3, d4: 0, d5, a5 }, bullet,
+    );                                                   // $273B7E / $273BC2
+    ctx.bulletSpawn?.(bullet.entry, res);
     d1 = u16(d1 + step);                               // $273B84 / $273BC8 add.w D6,D1
   }
 }
@@ -4074,7 +4113,7 @@ function fan80(ram, rom, a5, a6, ctx) {
 // $273C08..$273C8E -- the TWO turrets.  `bchg #$6,($1,A6)` both TESTS the old
 // bit and FLIPS it, so the two arms alternate on consecutive aims and each
 // turret re-aims at half the cadence.
-function turrets80(ram, rom, a5, a6) {
+function turrets80(ram, rom, a5, a6, descriptor) {
   let p0 = AIM.selP1, p1 = AIM.selP2;
   if (ram.u8(a5 + 0x03) !== 0) { p0 = AIM.selP2; p1 = AIM.selP1; } // $273C14/$273C1A
   if ((ram.u16(p0) & 0x8000) === 0) {                  // $273C1C tst.w / bmi
@@ -4091,29 +4130,33 @@ function turrets80(ram, rom, a5, a6) {
   const shortBias = was ? 0xfb00 : 0x0500;             // $273C70 / $273C46
   const facingOff = was ? 0x32 : 0x2c;                 // $273C7A / $273C50
   const gfxOff = was ? 0x2e : 0x28;                    // $273C8E / $273C64
-  const dir = aim64(aimTables(rom), u16(selfY + 0x680), u16(selfX + shortBias),
+  const dir = aim64(aimTables(rom, descriptor), u16(selfY + 0x680), u16(selfX + shortBias),
     tgtY, tgtX);                                       // $273C42/$273C4A (or $273C6C/$273C74)
   const nf = slew64(ram.u16(a5 + facingOff), dir);     // $273C54 / $273C7E
   ram.setU16(a5 + facingOff, nf);                      // $273C5A / $273C84
-  ram.setU32(a5 + gfxOff, rom.u32(0x272f7a + ((nf & 0x3e) * 2))); // $273C64 / $273C8E
+  ram.setU32(a5 + gfxOff,
+    rom.u32(descriptor.aimSprite + ((nf & 0x3e) * 2)));   // $273C64 / $273C8E
 }
 
 // $273D20..$273DAC -- the laser pair.  Both fires go through `$281484` with a
 // muzzle vector out of `$27347A` biased per turret, and the SECOND salvo
 // counter ($24,A5) disarms the tail by clearing ($18,A5).
-function laser80(ram, rom, a5, a6, ctx) {
+function laser80(ram, rom, a5, a6, ctx, descriptor) {
   ram.setU8(a5 + 0x22, ram.u8(a5 + 0x35));             // $273D20 reload from +$35
   const d0 = ram.u16(G.stage) === 4 ? 0x00070013 : 0x00020013; // $273D2C/$273D32/$273D3E
   const d2 = ram.u32(a6 + 0x02);                       // $273D62 move.l ($2,A6),D2
   for (const [facingOff, shortBias] of [[0x2c, 0x0500], [0x32, 0xfb00]]) {
     const d1 = ram.u16(a5 + facingOff);                // $273D44 / $273D6C
-    const t = rom.u32(0x27347a + u16((d1 & 0x3e) * 2)); // $273D50 / $273D78
+    const t = rom.u32(descriptor.muzzle + u16((d1 & 0x3e) * 2)); // $273D50 / $273D78
     // $273D54/$273D58/$273D5A -- addi.w around a `swap`, so the two halves do
     // NOT carry into each other (unlike $273B7C's `add.l`).
     const d3 = ((u16((t >>> 16) + 0x680) << 16) | u16((t & 0xffff) + shortBias)) >>> 0;
-    const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x281484,
-      { d0, d1, d2, d3, d4: 0, d5: 0, a5 });            // $273D66 / $273D88
-    ctx.bulletSpawn?.(0x281484, res);
+    const bullet = descriptor.bullet.laser;
+    const res = fireBulletWithResources(
+      { ram, rom, log: new WriteLog(ram), mut: ctx.mut ?? null },
+      bullet.entry, { d0, d1, d2, d3, d4: 0, d5: 0, a5 }, bullet,
+    );                                                   // $273D66 / $273D88
+    ctx.bulletSpawn?.(bullet.entry, res);
   }
   const c = ram.u8(a5 + 0x24);                         // $273D8E subq.b #1,($24,A5)
   ram.setU8(a5 + 0x24, (c - 1) & 0xff);
@@ -4126,10 +4169,10 @@ function laser80(ram, rom, a5, a6, ctx) {
 // $273DAE..$273EFE -- the death arm.  SIX `$289004` allocations, each followed
 // by field writes into the record it would have returned in A0; all six are part
 // of the one noted gap, not six separate ones.
-function deathSeq80(ram, rom, a5, ctx, d1) {
+function deathSeq80(ram, rom, a5, ctx, d1, descriptor) {
   const u = ctx.unported;
-  scoreKill(ram, rom, ctx, 0x83, d1);                  // $273DAE/$273DB4
-  ctx.soundPost?.(0x28c2dc);                       // WAVE A: BGM id=5, death burst          // $273DBA jsr $28C2DC
+  scoreKill(ram, rom, ctx, 0x83, d1, descriptor.score); // $273DAE/$273DB4
+  ctx.soundPost?.(descriptor.sound.death);              // $273DBA jsr $28C2DC
   // W54: SPAWNED, all six.  No remap table -- every one hardcodes bucket
   // $10 (bucket 7).  [M] ALL SIX WRITE `($12,A0) = 1`, i.e. each asks pool
   // D for TWO records: `50-recon` 4.2's "every death arm writes ($12) = 0"
@@ -4141,15 +4184,18 @@ function deathSeq80(ram, rom, a5, ctx, d1) {
   // discarded record's bytes.
   //   kind  site      ($26,A0)  ($28,A0)  ($1a,A0)  ($14,A0)  ($18,A0) ($1c,A0)
   const a6b = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
-  for (const [kind, site, nHi, nLo, spdAng, sub14, delay, f1c] of [
-    [0x0d, 0x273dc2, 0xf800, null, null, 0x0400, null, null],  // $273DC8..$273DE0
-    [0x84, 0x273dea, 0xf600, 0x0600, 0x0754, 0x0000, null, null], // $273DF0..$273E14
-    [0x84, 0x273e1e, 0xf600, 0xfa00, 0x07ac, 0x0400, null, 0x40], // $273E24..$273E4E
-    [0x0d, 0x273e56, 0xf200, 0xfe00, 0x0798, 0x0000, 0x0002, null], // $273E5C..$273E86
-    [0x0d, 0x273e8e, 0xf200, 0x0100, 0x0768, 0x0000, 0x0004, null], // $273E94..$273EBE
-    [0x85, 0x273ec8, 0xf600, 0x0000, 0x0c80, 0x0400, 0x0004, null], // $273ECE..$273EF8
-  ]) {
-    const e = spawnEffect(ram, ctx, kind, site);
+  const effects = [
+    [0x0d, 0xf800, null, null, 0x0400, null, null],
+    [0x84, 0xf600, 0x0600, 0x0754, 0x0000, null, null],
+    [0x84, 0xf600, 0xfa00, 0x07ac, 0x0400, null, 0x40],
+    [0x0d, 0xf200, 0xfe00, 0x0798, 0x0000, 0x0002, null],
+    [0x0d, 0xf200, 0x0100, 0x0768, 0x0000, 0x0004, null],
+    [0x85, 0xf600, 0x0000, 0x0c80, 0x0400, 0x0004, null],
+  ];
+  for (const [index, [kind, nHi, nLo, spdAng, sub14, delay, f1c]]
+    of effects.entries()) {
+    const e = spawnEffect(ram, ctx, kind, descriptor.effectSites[index],
+      descriptor.effects);
     ram.setU32(e + B.pos, ram.u32(a6b + 0x02));
     ram.setU16(e + B.bucket, 0x10);
     if (nHi !== null) ram.setU16(e + B.nudge, nHi);
@@ -4160,7 +4206,12 @@ function deathSeq80(ram, rom, a5, ctx, d1) {
     if (delay !== null) ram.setU16(e + B.delay, delay);
     if (f1c !== null) ram.setU8(e + B.f1c, f1c);
   }
-  freeEnemy(ram, a5);                                  // $273EFE jmp $263762
+  retire80(ram, a5, descriptor);                         // $273EFE jmp $263762
+}
+
+function retire80(ram, a5, descriptor) {
+  requireType80Retirement(descriptor);
+  freeEnemy(ram, a5);
 }
 
 // ================================================= TYPE $8A (W30) =========
@@ -9005,7 +9056,9 @@ const HANDLERS = new Map([
   [0x2a4606, handler2A4606],  // W363: HIBACHI, stage 5's boss-route root -- spec in TB0. Its body
                               // $2A6B94 is a note(), so it appears and lets the stage clear but does
                               // not attack. Registered because the stage-clear path is COMPLETE.
-  [0x2739c0, handler80],   // W30: type $80
+  [0x2739c0, (ram, rom, a5, ctx) => handler80(
+    ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x80],
+  )],                       // W30: type $80
   [0x276702, handler8A],   // W30: type $8A
   // W31: type $0D, THE MIDBOSS.  It lives in its own module because it is
   // four routines and five data tables (see src/midboss.js's header), and
@@ -11304,6 +11357,10 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x26a2e2);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
         handler07(ram, rom, a5, ctx, descriptor));
+    } else if (descriptor.algorithm === 'type80') {
+      handlers.delete(0x2739c0);
+      handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
+        handler80(ram, rom, a5, ctx, descriptor));
     } else if (descriptor.algorithm === 'type85') {
       handlers.delete(0x275914);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
