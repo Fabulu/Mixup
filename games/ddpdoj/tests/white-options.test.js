@@ -118,10 +118,13 @@ test('White option capability, profile, and regenerated ROM ledgers agree exactl
   assert.deepEqual(WHITE_MANIFEST.options.ordinaryCombat, {
     entry: '$18A0E4', recurring: '$18A11C', collisionEntry: '$18A1AC',
     calls: [
-      ['$18A134', '$17E9DE'], ['$18A146', '$155394'],
-      ['$18A14C', '$15302C'], ['$18A152', '$14B74A'],
-      ['$18A158', '$153C3C'], ['$18A15E', '$1545FE'],
-      ['$18A164', '$188BD4'], ['$18A194', '$180D3A'],
+      ['$18A122', '$1886BC'], ['$18A128', '$16256E'],
+      ['$18A12E', '$189890'], ['$18A134', '$17E9DE'],
+      ['$18A13A', '$18798A'], ['$18A140', '$187C2E'],
+      ['$18A146', '$155394'], ['$18A14C', '$15302C'],
+      ['$18A152', '$14B74A'], ['$18A158', '$153C3C'],
+      ['$18A15E', '$1545FE'], ['$18A164', '$188BD4'],
+      ['$18A188', '$17DA50'], ['$18A194', '$180D3A'],
       ['$18A19A', '$152B5A'], ['$18A1A0', '$151FDE'],
       ['$18A1A6', '$152106'],
     ].map(([site, target]) => ({ site, target })),
@@ -474,7 +477,13 @@ test('White bomb driver is integrated at the exact guarded type-5 seam', () => {
 
   const seam = runWhiteType5BeforeBombCall18A146(ram, rom, slot, ctx);
   assert.equal(seam.phase, 'before-bomb-call-18a146');
-  assert.deepEqual(calls, [[0x18a134, 0x17e9de]]);
+  assert.deepEqual(calls, [
+    [0x18a122, 0x1886bc],
+    [0x18a12e, 0x189890],
+    [0x18a134, 0x17e9de],
+    [0x18a13a, 0x18798a],
+    [0x18a140, 0x187c2e],
+  ]);
 
   const frame = runWhiteType5AfterBombCall18A146Through144A02(
     ram, rom, slot, ctx, seam,
@@ -729,8 +738,14 @@ test('White option preflight validates every declared shot-count pointer and row
     }
   }
 
-  const corrupted = overrideRom(base, 'u16', (target, address) =>
-    address === roots.at(-1) + 8 ? target.u16(address) ^ 1 : target.u16(address));
+  let corruptReads = 0;
+  const corrupted = overrideRom(base, 'u16', (target, address) => {
+    if (address === roots.at(-1) + 8) {
+      corruptReads++;
+      return target.u16(address) ^ 1;
+    }
+    return target.u16(address);
+  });
   const { ram, slot } = recurringRam();
   const check = unchanged(ram);
   assert.throws(
@@ -741,16 +756,40 @@ test('White option preflight validates every declared shot-count pointer and row
 
   const resetRam = new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
   const resetSlot = 0x80e240;
-  resetRam.setU16(WHITE_SPARK_RESOURCES.p1Base, 0x8000);
-  resetRam.setU16(WHITE_SPARK_RESOURCES.count, 1);
-  const resetCheck = unchanged(resetRam);
-  assert.throws(
-    () => runWhiteType5BeforeBombCall18A146(
-      resetRam, corrupted, resetSlot, {},
-    ),
-    /White option-shot count row changed/,
+  const resetRecords = [
+    0x816b7a, 0x817f8c, 0x81b732, 0x81c8ec,
+    0x81cdee, 0x81d394, 0x81db90,
+  ];
+  for (const address of resetRecords) resetRam.setU16(address, 0x8000);
+  const calls = [];
+  const resetCtx = {
+    whiteType5SubsystemHook({ call, target }) {
+      calls.push([call, target]);
+    },
+  };
+  const beforeResetReads = corruptReads;
+  const result = runWhiteType5BeforeBombCall18A146(
+    resetRam, corrupted, resetSlot, resetCtx,
   );
-  resetCheck();
+  assert.deepEqual(
+    [result.phase, result.shotsProcessed, resetRam.u8(resetSlot + 2)],
+    ['reset', 0, 1],
+  );
+  assert.equal(result.stage, resetCtx.type5Started);
+  assert.deepEqual(resetRecords.map((address) => resetRam.u16(address)),
+    Array(resetRecords.length).fill(0));
+  assert.deepEqual(calls, [
+    [0x18a0e4, 0x17da3c],
+    [0x18a0ea, 0x1803a2],
+    [0x18a0f0, 0x187948],
+    [0x18a0f6, 0x187bc0],
+    [0x18a0fc, 0x18861c],
+    [0x18a102, 0x189776],
+    [0x18a108, 0x188a76],
+    [0x18a10e, 0x162398],
+  ]);
+  assert.equal(corruptReads, beforeResetReads,
+    'the reset frame returns before recurring option preflight');
 });
 
 test('White option, beam, laser, and spark editions reject mixed resource graphs', () => {

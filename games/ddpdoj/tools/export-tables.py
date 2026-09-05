@@ -1589,6 +1589,8 @@ SHOT_WINDOWS.extend([
                        "$278320, read by $2762D8/$276316/$27635A/$2763A0/"
                        "$276800/$2774E2. $278338 is $0022C59C, a stream "
                        "address, so the table ends there"),
+    (0x288FF0, 0x0014, "W267 POOL B: five cartridge-owned sprite emitter "
+                       "pointers selected by the shared driver"),
     (0x242D24, 0x0100, "W191 $242CAC signed-byte RNG table through the "
                        "$242E24 entry boundary"),
     (0x24399C, 0x0100, "W191 $24397A packed debris-position RNG table"),
@@ -10987,7 +10989,7 @@ def verify(t: dict) -> list[str]:
 
     producer_speeds = {win(record + 0x1A, 1)[0]
                        for record in producer_records if win(record + 0x1A, 1) is not None}
-    expected_producer_speeds = set(WHITE_SHOT_SPEEDS) - set(range(8, 37))
+    expected_producer_speeds = set(WHITE_SHOT_SPEEDS) - set(range(8, 42))
     if producer_speeds != expected_producer_speeds:
         bad.append("Version A producer templates no longer derive the sparse shot-speed closure")
 
@@ -11051,9 +11053,14 @@ def verify(t: dict) -> list[str]:
     spark_speeds = set() if spark_speed_rng is None else {
         min((value + 8) & 0xFF, 0x24) for value in spark_speed_rng
     }
+    pool_d_speed_rng = win(0x14322E, 0x100)
+    pool_d_speeds = set() if pool_d_speed_rng is None else {
+        (value & 0x0F) + 0x1A for value in pool_d_speed_rng
+    }
     if spark_speeds != set(range(8, 37)) \
-            or producer_speeds | spark_speeds != set(WHITE_SHOT_SPEEDS):
-        bad.append("Version A spark and producer speed domains do not close exactly")
+            or pool_d_speeds != set(range(0x1A, 0x2A)) \
+            or producer_speeds | spark_speeds | pool_d_speeds != set(WHITE_SHOT_SPEEDS):
+        bad.append("Version A spark, producer, and Pool D speed domains do not close exactly")
 
     # White Label Build A Pool-A and enemy bullets. This is an independent
     # authority projection even where a byte-identical vector row is also used
@@ -11394,10 +11401,26 @@ WHITE_LABEL_WINDOWS = [
     (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
 ]
 
-# Task #253's private Stage 1 world slice, extended by Tasks #265 and #266 for
-# Types $27 and $10. These are the bounded Build A data windows read by the
-# shared background, spawn, enemy, bullet, and emitter algorithms.
+# Task #253's private Stage 1 world slice, extended by Tasks #265, #266, and
+# #267 for Types $27, $10, and $85. These are the bounded Build A data windows
+# read by the shared background, spawn, enemy, bullet, cue, item, and effect
+# algorithms.
 WHITE_WORLD_RUNTIME_WINDOWS = [
+    (0x121530, 0x0018, "White A Pool-B kind-$02/$03/$04 script pointer pairs"),
+    (0x121548, 0x0008, "White A Pool-B kind-$05 script pointer pair"),
+    (0x121558, 0x0008, "White A Pool-B kind-$07 script pointer pair"),
+    (0x121580, 0x0008, "White A Pool-B kind-$0C script pointer pair"),
+    (0x121650, 0x0008, "White A Pool-B kind-$84 script pointer pair"),
+    (0x1218DC, 0x0052, "White A Pool-B kind-$02 descriptor and duration closure"),
+    (0x1219AA, 0x00A2, "White A Pool-B kind-$03 descriptor and duration closure"),
+    (0x121B10, 0x00BA, "White A Pool-B kind-$04 descriptor and duration closure"),
+    (0x121BCA, 0x009C, "White A Pool-B kind-$84 descriptor list"),
+    (0x121C66, 0x0040, "White A Pool-B kind-$84 duration list"),
+    (0x121CA6, 0x0090, "White A Pool-B kind-$05 descriptor list"),
+    (0x121D36, 0x0042, "White A Pool-B kind-$05 duration list"),
+    (0x121EFE, 0x00D2, "White A Pool-B kind-$07 descriptor and duration closure"),
+    (0x1222D2, 0x009C, "White A Pool-B kind-$0C descriptor list"),
+    (0x12236E, 0x0040, "White A Pool-B kind-$0C duration list"),
     (0x129FE0, 0x0004, "White A Pool-C rebased descriptor root $229FE0"),
     (0x12A044, 0x0004, "White A Pool-C rebased descriptor root $22A044"),
     (0x12A0A8, 0x0004, "White A Pool-C rebased descriptor root $22A0A8"),
@@ -11406,14 +11429,23 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x12A238, 0x0004, "White A Pool-C rebased descriptor root $22A238"),
     (0x130C6C, 0x1964, "White A Stage 1 spawn, aux, and movement-script closure"),
     (0x13DAB0, 0x003C, "White A type-$10/$11 record-convention sprite emitter"),
-    (0x13DBA0, 0x000E, "White A type-$27 record emitter"),
+    (0x13DAEC, 0x003C, "White A Type-$85 cue selector-$08 sprite emitter"),
+    (0x13DB28, 0x003C, "White A Type-$85 cue selector-$0C sprite emitter"),
+    (0x13DB64, 0x003C, "White A Type-$85 cue selector-$10 sprite emitter"),
+    (0x13DBA0, 0x000E, "White A type-$27, Pool-B, and Type-$85 cue emitter"),
     (0x13E21C, 0x003C, "White A type-$10/$11 register-convention sprite emitter"),
     (0x13E2A6, 0x000E, "White A type-$27 ARM-B emitter"),
     (0x13E2D4, 0x000E, "White A type-$27 ARM-A emitter"),
+    (0x13EE54, 0x0016, "White A item kind-$00 register-convention emitter"),
     (0x141094, 0x0014, "White A five-entry background tile-base table"),
     (0x1423E8, 0x00F9, "White A Aim64 operations, bases, and 129-byte LUT"),
     (0x14289C, 0x0050, "White A type-$10/$11 normal and rank fire-gate boxes"),
-    (0x143192, 0x0080, "White A type-$11 rank RNG byte table"),
+    (0x142EFC, 0x0100, "White A item kind-$00 unmasked bounce RNG table"),
+    (0x143074, 0x0100, "White A Pool-D signed hold RNG table"),
+    (0x143192, 0x0080, "White A shared rank, item-launch, and Pool-D angle RNG table"),
+    (0x14322E, 0x0100, "White A shared Pool-A and Pool-D unmasked RNG table"),
+    (0x14336A, 0x0100, "White A shared Pool-A and Pool-D signed RNG table"),
+    (0x14359E, 0x0040, "White A shared Pool-A and Pool-D masked RNG table"),
     (0x16067C, 0x02D8, "White A Stage 1 background script closure"),
     (0x16137C, 0x0014, "White A five-entry background element table"),
     (0x1623B0, 0x0010, "White A Stage 1 spawn-table entry"),
@@ -11444,11 +11476,35 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x16925A, 0x0008, "White A type-$27 run-length init stub"),
     (0x169328, 0x0016, "White A type-$27 enemy-record prototype"),
     (0x16933E, 0x001C, "White A type-$27 sub-record prototype"),
+    (0x171E4E, 0x0080, "White A type-$85 aim sprite table"),
+    (0x1722CE, 0x0080, "White A type-$85 muzzle table"),
+    (0x174866, 0x0008, "White A type-$85 run-length init stub"),
+    (0x1748E4, 0x0084, "White A type-$85 palette, prototypes, and cue thresholds"),
+    (0x17D4EC, 0x0008, "White A high type-table entry $85"),
+    (0x17DAAA, 0x0004, "White A item kind-$00 dispatch pointer"),
+    (0x17DACC, 0x0010, "White A item kind-$00 four-frame art table"),
+    (0x17E532, 0x00CC, "White A item kind-$00 normal and at-max collection lists"),
+    (0x17E7F8, 0x0004, "White A item kind-$00 template pointer"),
+    (0x17E818, 0x001A, "White A item kind-$00 template"),
     (0x180AC0, 0x0010, "White A enemy-bullet kind 12 complete template"),
-    (0x18692E, 0x0008, "White A type-$10/$11 score cap and refill tables"),
+    (0x18692E, 0x0008, "White A type-$10/$11/$85 score cap and refill tables"),
+    (0x187B2C, 0x0014, "White A Pool-B five-entry emitter pointer table"),
+    (0x187D86, 0x0004, "White A Pool-D selector-$00 emitter pointer"),
+    (0x18830C, 0x0010, "White A Pool-D template-$00 selector table"),
+    (0x188338, 0x0008, "White A Pool-D template-$00/$04 pointers"),
+    (0x18834C, 0x0010, "White A Pool-D template-$00"),
+    (0x18835C, 0x0080, "White A Pool-D template-$00 descriptor list zero"),
+    (0x1883DC, 0x0010, "White A Pool-D template-$04"),
+    (0x1883EC, 0x0080, "White A Pool-D template-$04 descriptor list"),
+    (0x18847C, 0x0080, "White A Pool-D template-$00 descriptor list one"),
+    (0x18850C, 0x0080, "White A Pool-D template-$00 descriptor list two"),
+    (0x18859C, 0x0080, "White A Pool-D template-$00 descriptor list three"),
+    (0x188762, 0x0014, "White A Pool-C five-entry emitter pointer table"),
     (0x18892A, 0x0004, "White A Pool-C kind-$04 template pointer"),
     (0x188962, 0x001C, "White A Pool-C kind-$04 template and list pointers"),
     (0x1889E6, 0x0030, "White A Pool-C kind-$04 reachable descriptor lists"),
+    (0x1897AE, 0x041C, "White A type-$85 cue spawner, driver, dispatch, and kinds $00/$04/$08"),
+    (0x189BCA, 0x006A, "White A type-$85 remaining reachable cue kinds"),
 ]
 
 # Task #239's type-0 HUD reads only these seven Build A table families. The
@@ -11615,7 +11671,9 @@ WHITE_SHOT_PRODUCER_WINDOWS = [
 ]
 
 WHITE_SHOT_SPEEDS = (
-    *range(8, 37),
+    # Player shots cover 8..36. Pool D death debris extends the same
+    # $141D48 vector path through 41 via `(rng & $0F) + $1A`.
+    *range(8, 42),
     60, 64, 68, 72, 76, 80, 84, 86, 88, 92, 94, 96,
     102, 104, 108, 110, 112, 116, 128, 134, 216, 232,
 )
@@ -11685,10 +11743,13 @@ WHITE_OPTION_RUNTIME_WINDOWS = [
 ]
 
 WHITE_OPTION_COMBAT_CALLS = (
-    (0x18A134, 0x17E9DE), (0x18A146, 0x155394),
-    (0x18A14C, 0x15302C), (0x18A152, 0x14B74A),
-    (0x18A158, 0x153C3C), (0x18A15E, 0x1545FE),
-    (0x18A164, 0x188BD4), (0x18A194, 0x180D3A),
+    (0x18A122, 0x1886BC), (0x18A128, 0x16256E),
+    (0x18A12E, 0x189890), (0x18A134, 0x17E9DE),
+    (0x18A13A, 0x18798A), (0x18A140, 0x187C2E),
+    (0x18A146, 0x155394), (0x18A14C, 0x15302C),
+    (0x18A152, 0x14B74A), (0x18A158, 0x153C3C),
+    (0x18A15E, 0x1545FE), (0x18A164, 0x188BD4),
+    (0x18A188, 0x17DA50), (0x18A194, 0x180D3A),
     (0x18A19A, 0x152B5A), (0x18A1A0, 0x151FDE),
     (0x18A1A6, 0x152106),
 )

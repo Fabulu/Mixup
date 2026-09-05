@@ -984,20 +984,48 @@ BODY.set(0x27462A, (ram, rom, a5, a6, unported) => {
 // heading-art table. Their only init-body difference is the five-pair palette
 // table selected by the two entry points below.
 const TYPE85_86_AIM_TABLES = new WeakMap();
-function init85Or86(ram, rom, a5, a6, unported, paletteTable) {
-  const cue = loadSubProto(ram, rom, a5, a6, 0x2758B0); // jsr $2637A2
+function type85AimTables(rom, descriptor) {
+  let byDescriptor = TYPE85_86_AIM_TABLES.get(rom);
+  if (!byDescriptor) {
+    byDescriptor = new Map();
+    TYPE85_86_AIM_TABLES.set(rom, byDescriptor);
+  }
+  let tables = byDescriptor.get(descriptor);
+  if (!tables) {
+    const a = descriptor.aim64;
+    const lut64 = Uint8Array.from(rom.bytes(a.lut, a.entries));
+    const base64 = [], sub64 = [];
+    for (let i = 0; i < 8; i++) {
+      base64.push(rom.u16(a.base + i * 2));
+      const op = rom.u32(a.ops + i * 4);
+      if (op !== a.sub && op !== a.add) {
+        unreached(a.ops + i * 4, 'invalid type-$85 aim64 operation');
+      }
+      sub64.push(op === a.sub);
+    }
+    tables = { lut64, base64: Object.freeze(base64), sub64: Object.freeze(sub64) };
+    byDescriptor.set(descriptor, tables);
+  }
+  return tables;
+}
+
+function init85Or86(ram, rom, a5, a6, unported, descriptorOrPalette) {
+  const descriptor = typeof descriptorOrPalette === 'number'
+    ? BLACK_WORLD_RESOURCES.enemyTypes[0x85] : descriptorOrPalette;
+  const paletteTable = typeof descriptorOrPalette === 'number'
+    ? descriptorOrPalette : descriptor.palette;
+  const cue = loadSubProto(ram, rom, a5, a6, descriptor.subPrototype); // jsr $2637A2
   ram.setU32(a5 + R.rec44, cue);                        // $275826/$275BC0
-  loadRecordProto(ram, rom, a5, 0x27589A, 0x0a);       // moveq #$a,D0; jsr $26377A
+  loadRecordProto(ram, rom, a5, descriptor.recordPrototype, 0x0a); // moveq #$a,D0; jsr $26377A
   readInitPosition(ram, rom, a5, unported);             // jsr $263808
 
-  let tables = TYPE85_86_AIM_TABLES.get(rom);
-  if (!tables) { tables = new AimTables(rom); TYPE85_86_AIM_TABLES.set(rom, tables); }
+  const tables = type85AimTables(rom, descriptor);
   const aimed = aim64FromCaller(tables, ram, a5,
     u16(ram.u16(a6 + S.posX) + 0xf900), ram.u16(a6 + S.posY)); // jsr $24200A
   let d1 = aimed.carry ? ram.u8(a6 + S.heading) : aimed.dir;
   ram.setU8(a5 + R.rec29, d1);                          // move.b D1,($29,A5)
   d1 = (d1 & 0x3e) << 1;
-  ram.setU32(a5 + 0x24, rom.u32(0x272DFA + d1));        // move.l (A2,D1.w),($24,A5)
+  ram.setU32(a5 + 0x24, rom.u32(descriptor.aimSprite + d1)); // move.l (A2,D1.w),($24,A5)
   let d0 = ram.u16(G.b6) & 0xff;
   ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);  // $8130B6 -> +$1E
   const lp = ram.u16(G.stageX2);
@@ -1009,7 +1037,7 @@ function init85Or86(ram, rom, a5, a6, unported, paletteTable) {
 
 // type $85 ($27581A): runLen 1, palette $275890.
 BODY.set(0x27581A, (ram, rom, a5, a6, unported) => {
-  init85Or86(ram, rom, a5, a6, unported, 0x275890);
+  init85Or86(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x85]);
 });
 
 // type $86 ($275BB6): stage 2 entry point, palette $275C28. W182.
@@ -2516,6 +2544,9 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
     }
   }
   for (const descriptor of descriptors) {
+    for (const foreignBody of descriptor.foreignInitBodies ?? []) {
+      map.delete(foreignBody);
+    }
     if (descriptor.algorithm === 'type11') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init11(ram, rom, a5, a6, unported, descriptor));
@@ -2525,6 +2556,9 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
     } else if (descriptor.algorithm === 'type07-family') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init07(ram, rom, a5, a6, unported, descriptor));
+    } else if (descriptor.algorithm === 'type85') {
+      map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
+        init85Or86(ram, rom, a5, a6, unported, descriptor));
     }
   }
   return map;

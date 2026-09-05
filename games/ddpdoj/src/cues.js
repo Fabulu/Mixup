@@ -44,8 +44,17 @@
 
 import { unreached } from './unported.js';
 import { u16 } from './ram.js';
-import { drawSigned242FDE } from './rng.js';
+import { drawSignedByteWithResources } from './rng.js';
 import { enqueueThroughStub } from './spritequeue.js';
+
+function deepFreeze(value, seen = new Set()) {
+  if (value === null || typeof value !== 'object' || seen.has(value)) return value;
+  seen.add(value);
+  for (const child of Object.values(value)) deepFreeze(child, seen);
+  return Object.freeze(value);
+}
+
+const hex = (value) => `$${value.toString(16).toUpperCase()}`;
 
 export const CUE = Object.freeze({
   base: 0x81db90, stride: 0x26, slots: 10,
@@ -86,30 +95,104 @@ export const CUE_KINDS = Object.freeze({
  *  this from the cartridge so the claim cannot go stale. */
 export const CUE_REACHABLE_INDICES = Object.freeze([0x00, 0x04, 0x08, 0x0c, 0x10, 0x14]);
 
+const BLACK_CUE_EMITTERS = Object.freeze([
+  0x23d79e, 0x23d762, 0x23d79e, 0x23d7da, 0x23d816, 0x23d852,
+]);
+const WHITE_CUE_EMITTERS = Object.freeze([
+  0x13daec, 0x13dab0, 0x13daec, 0x13db28, 0x13db64, 0x13dba0,
+]);
+
+const WHITE_CUE_KINDS = {
+  0x00: { body: 0x1899a4, art: 0x189b6e, reload: 0x0c, desc: 0x189b60 },
+  0x04: { body: 0x1899c6, art: 0x189b8c, reload: 0x0c, desc: 0x189b7e },
+  0x08: { body: 0x1899e8, art: 0x189baa, reload: 0x1c, desc: 0x189b9c },
+  0x0c: { body: 0x189a0a, art: 0x189bd8, reload: 0x0c, desc: 0x189bca },
+  0x10: { body: 0x189a2c, art: 0x189bf6, reload: 0x0c, desc: 0x189be8 },
+  0x14: { body: 0x189a4e, art: 0x189c14, reload: 0x1c, desc: 0x189c06 },
+};
+
+const BLACK_CUE_DIAGNOSTICS = {
+  descriptorLookup: 0x28acde,
+  referencedScripts: { start: 0x28af84, unreachableStart: 0x28afb0, end: 0x28afd2 },
+  childAllocation: 0x28ade8,
+};
+const relocateWhiteCue = (address) => address - 0x1014c4;
+
+export const BLACK_CUE_RESOURCES = deepFreeze({
+  edition: 'black',
+  wordSpawner: 0x28ac72, longSpawner: 0x28ac86, clear: 0x28ac3a,
+  fullDriver: 0x28ad54, innerDriver: 0x28ad70,
+  dispatch: {
+    base: CUE.dispatch, entries: CUE.dispatchEntries,
+    reachable: CUE_REACHABLE_INDICES,
+  },
+  artJump: { base: CUE.artJump, entries: CUE.artJumpEntries },
+  emitters: {
+    table: CUE.emitterTable, entries: CUE.emitterEntries,
+    expected: BLACK_CUE_EMITTERS,
+  },
+  kinds: CUE_KINDS,
+  rng: { routine: 0x242fde, table: 0x24301a, entries: 256 },
+  diagnostics: BLACK_CUE_DIAGNOSTICS,
+});
+
+export const WHITE_CUE_RESOURCES = deepFreeze({
+  edition: 'white',
+  wordSpawner: 0x1897ae, longSpawner: 0x1897c2, clear: 0x189776,
+  fullDriver: 0x189890, innerDriver: 0x1898ac,
+  dispatch: {
+    base: 0x189b10, entries: 20,
+    reachable: [...CUE_REACHABLE_INDICES],
+  },
+  artJump: { base: 0x189954, entries: 20 },
+  emitters: { table: 0x189aa8, entries: 6, expected: WHITE_CUE_EMITTERS },
+  kinds: WHITE_CUE_KINDS,
+  rng: { routine: 0x14332e, table: 0x14336a, entries: 256 },
+  diagnostics: {
+    descriptorLookup: relocateWhiteCue(BLACK_CUE_DIAGNOSTICS.descriptorLookup),
+    referencedScripts: {
+      start: relocateWhiteCue(BLACK_CUE_DIAGNOSTICS.referencedScripts.start),
+      unreachableStart: relocateWhiteCue(
+        BLACK_CUE_DIAGNOSTICS.referencedScripts.unreachableStart),
+      end: relocateWhiteCue(BLACK_CUE_DIAGNOSTICS.referencedScripts.end),
+    },
+    childAllocation: relocateWhiteCue(BLACK_CUE_DIAGNOSTICS.childAllocation),
+  },
+});
+
 const F = Object.freeze({
   flags: 0x00, pos: 0x02, offset: 0x06, sprite: 0x0a, size: 0x0e,
   parent: 0x10, delta: 0x14, emitter: 0x18, script: 0x1e,
   descriptorWord: 0x1c, countdown: 0x22, phase: 0x24,
 });
 
-function descriptor(rom, index) {
-  if ((index & 3) !== 0 || index >= CUE.dispatchEntries * 4) {
-    unreached(CUE.dispatch + index, `$28ACDE cue descriptor byte offset $$${index
-      .toString(16).toUpperCase()} is outside the 20-entry table`);
+function descriptor(rom, index, resources = BLACK_CUE_RESOURCES) {
+  const dispatch = resources.dispatch;
+  if ((index & 3) !== 0 || index >= dispatch.entries * 4) {
+    unreached(dispatch.base + index, `${hex(resources.diagnostics.descriptorLookup)} `
+      + `cue descriptor byte offset $${index.toString(16).toUpperCase()} is outside `
+      + `the ${dispatch.entries}-entry table at ${hex(dispatch.base)}`);
   }
-  const addr = rom.u32(CUE.dispatch + index);
-  if (!CUE_REACHABLE_INDICES.includes(index)) {
+  const addr = rom.u32(dispatch.base + index);
+  if (!dispatch.reachable.includes(index)) {
     // The eight remaining non-zero entries all point at $28B0F8..$28B13E, and
     // the six zero ones would send `$28ACE0 movea.l (0,A3,D0.w),A3` to
     // $000000. Neither is reachable: the only cue scripts that name indices
     // $18..$4C are the six at $28AFB0, $28AFB6, $28AFBE, $28AFC4, $28AFCC and
     // $28AFD0, and not one of the six has a single reference in the image.
-    unreached(addr, `cue dispatch index $$${index.toString(16).toUpperCase()} `
+    const scripts = resources.diagnostics.referencedScripts;
+    unreached(addr, `cue dispatch index $${index.toString(16).toUpperCase()} `
       + `selects ${addr === 0 ? 'a ZERO entry'
         : `descriptor $${addr.toString(16).toUpperCase()}`}, and no REFERENCED `
-      + 'cue script names that index -- the only scripts that name $18..$4C are '
-      + 'the six at $28AFB0..$28AFD2, and none of the six is referenced anywhere '
-      + 'in the cartridge');
+      + `cue script names that index; the referenced script window is ${hex(scripts.start)}`
+      + `..${hex(scripts.end)}, and the scripts from ${hex(scripts.unreachableStart)} `
+      + `that name $18..$4C are not referenced anywhere in the ${resources.edition} cartridge`);
+  }
+  const expected = resources.kinds[index]?.desc;
+  if (addr !== expected) {
+    unreached(dispatch.base + index, `${resources.edition} cue dispatch entry `
+      + `${hex(dispatch.base + index)} holds ${hex(addr)}, expected descriptor `
+      + hex(expected));
   }
   return addr;
 }
@@ -132,17 +215,21 @@ export function mergeDescriptorByte28AD2C(descriptorWord, d3) {
  * **THE DRAWS ARE OBSERVABLE STATE, NOT A DETAIL.** `$242FDE` bumps `$803917`,
  * so skipping this block did not merely mis-store one byte, it left the shared
  * draw cursor one or two steps behind for every other consumer that frame. */
-export function selectEmitter28ACFE(ram, rom, d3) {
+export function selectEmitter28ACFE(ram, rom, d3,
+  resources = BLACK_CUE_RESOURCES) {
   if ((d3 & 0x80) === 0) return d3 >>> 0;              // $28ACFE tst.b / $28AD00 bpl
   let v = ((d3 & ~0xff) | (~d3 & 0xff)) >>> 0;         // $28AD02 not.b D3
-  if ((v & 0x20) !== 0 && drawSigned242FDE(ram, rom) === 0) v ^= 0x20; // $28AD04..$28AD14
-  if ((v & 0x40) !== 0 && drawSigned242FDE(ram, rom) === 0) v ^= 0x40; // $28AD16..$28AD26
+  if ((v & 0x20) !== 0
+      && drawSignedByteWithResources(ram, rom, resources.rng) === 0) v ^= 0x20; // $28AD04..$28AD14
+  if ((v & 0x40) !== 0
+      && drawSignedByteWithResources(ram, rom, resources.rng) === 0) v ^= 0x40; // $28AD16..$28AD26
   return v >>> 0;
 }
 
-function installCue(ram, rom, slot, parent, d2, d3, script, countLive) {
+function installCue(ram, rom, slot, parent, d2, d3, script, countLive,
+  resources = BLACK_CUE_RESOURCES) {
   const index = rom.u16(script); script += 2;          // $28ACD6
-  const desc = descriptor(rom, index);                 // $28ACD8..$28ACE0
+  const desc = descriptor(rom, index, resources);      // $28ACD8..$28ACE0
   let flags = rom.u16(desc);                           // $28ACE2
   if ((rom.u16(script) & 0x8000) !== 0) flags |= 0x0080; // $28ACE4..$28ACE8
   ram.setU16(slot + F.flags, flags);
@@ -151,7 +238,7 @@ function installCue(ram, rom, slot, parent, d2, d3, script, countLive) {
   ram.setU16(slot + F.size, rom.u16(desc + 6));
   ram.setU32(slot + F.parent, parent);
   ram.setU32(slot + F.delta, d2);
-  d3 = selectEmitter28ACFE(ram, rom, d3);              // $28ACFE..$28AD26
+  d3 = selectEmitter28ACFE(ram, rom, d3, resources);   // $28ACFE..$28AD26
   ram.setU32(slot + F.emitter, d3);
   ram.setU16(slot + F.descriptorWord,
     mergeDescriptorByte28AD2C(rom.u16(desc + 8), d3));
@@ -165,7 +252,8 @@ function installCue(ram, rom, slot, parent, d2, d3, script, countLive) {
 }
 
 /** `$28AC72`, the word-threshold entry used by enemy handlers. */
-export function spawnCues28AC72(ram, rom, a5, a6) {
+export function spawnCues28AC72(ram, rom, a5, a6,
+  resources = BLACK_CUE_RESOURCES) {
   let script = ram.u32(a5 + 0x44);
   for (;;) {
     const threshold = rom.u16(script);
@@ -181,7 +269,7 @@ export function spawnCues28AC72(ram, rom, a5, a6) {
     script += 14;
     ram.setU32(a5 + 0x44, script);                     // both success and full
     if (slot !== null) installCue(ram, rom, slot, ram.u32(a5 + 0x06),
-      d2, d3, cueScript, true);
+      d2, d3, cueScript, true, resources);
   }
 }
 
@@ -189,7 +277,8 @@ export function spawnCues28AC72(ram, rom, a5, a6) {
  * 32-bit damage accumulator at sub-record +$3C. Each record is sixteen bytes:
  * threshold.l followed by the same D2.l/D3.l/script.l payload `$28ACA0`
  * consumes for the word-threshold entry. */
-export function spawnCues28AC86(ram, rom, a5, d0) {
+export function spawnCues28AC86(ram, rom, a5, d0,
+  resources = BLACK_CUE_RESOURCES) {
   let script = ram.u32(a5 + 0x44);
   for (;;) {
     const threshold = rom.u32(script); script += 4;
@@ -205,14 +294,14 @@ export function spawnCues28AC86(ram, rom, a5, d0) {
     script += 12;
     ram.setU32(a5 + 0x44, script);                     // success and full
     if (slot !== null) installCue(ram, rom, slot, ram.u32(a5 + 0x06),
-      d2, d3, cueScript, true);
+      d2, d3, cueScript, true, resources);
   }
 }
 
-function emitCue(ram, rom, cue) {
+function emitCue(ram, rom, cue, resources = BLACK_CUE_RESOURCES) {
   const flags = ram.u16(cue + F.flags);
   const kind = flags & 0x7c;                 // $28ADBA moveq #$7C / and.w D2,D0
-  const spec = CUE_KINDS[kind];
+  const spec = resources.kinds[kind];
   if (spec === undefined) {
     // $18..$24 (and their $28..$4C mirrors) reach `$28AF34`, a bare `nop` into
     // the shared tail. They are not ported because no reachable descriptor
@@ -220,11 +309,18 @@ function emitCue(ram, rom, cue) {
     // and nothing references the cue scripts that select them. $50 and up run
     // off the END of the twenty-entry table and would `jmp` into the code
     // that follows it.
-    unreached(CUE.artJump + kind, kind >= CUE.artJumpEntries * 4
+    const artJump = resources.artJump;
+    unreached(artJump.base + kind, kind >= artJump.entries * 4
       ? `live cue kind byte offset $${kind.toString(16).toUpperCase()} runs off `
-        + `the end of $28AE18's ${CUE.artJumpEntries}-entry art jump table`
+        + `the end of ${hex(artJump.base)}'s ${artJump.entries}-entry art jump table`
       : `live cue kind byte offset $${kind.toString(16).toUpperCase()} is in `
-        + '$28AE18\'s table but no REACHABLE descriptor carries it');
+        + `${hex(artJump.base)}'s table but no REACHABLE descriptor carries it`);
+  }
+  const body = rom.u32(resources.artJump.base + kind);
+  if (body !== spec.body) {
+    unreached(resources.artJump.base + kind, `${resources.edition} cue art jump entry `
+      + `${hex(resources.artJump.base + kind)} holds ${hex(body)}, expected body `
+      + hex(spec.body));
   }
   const table = spec.art, reload = spec.reload;
 
@@ -239,15 +335,24 @@ function emitCue(ram, rom, cue) {
   ram.setU32(cue + F.pos, (ram.u32(parent + 0x02) + ram.u32(cue + F.delta)) >>> 0);
   let sel = ram.u16(cue + F.emitter);
   if ((ram.u8(cue) & 1) !== 0) sel = u16(ram.u8(parent + 0x1e) << 2);
-  if ((sel & 3) !== 0 || sel >= CUE.emitterEntries * 4) {
-    unreached(CUE.emitterTable + sel, `cue emitter byte offset $${sel
-      .toString(16).toUpperCase()} is outside the six-entry table`);
+  const emitters = resources.emitters;
+  if ((sel & 3) !== 0 || sel >= emitters.entries * 4) {
+    unreached(emitters.table + sel, `cue emitter byte offset $${sel
+      .toString(16).toUpperCase()} is outside the ${emitters.entries}-entry table at `
+      + hex(emitters.table));
   }
-  enqueueThroughStub(ram, rom, rom.u32(CUE.emitterTable + sel), cue);
+  const emitter = rom.u32(emitters.table + sel);
+  const expected = emitters.expected[sel >>> 2];
+  if (emitter !== expected) {
+    unreached(emitters.table + sel, `${resources.edition} cue emitter table entry `
+      + `${hex(emitters.table + sel)} holds ${hex(emitter)}, expected ${hex(expected)}`);
+  }
+  enqueueThroughStub(ram, rom, emitter, cue);
 }
 
 /** `$28AD70..$28AF6A`, after the 150-slot enemy sub-record reaper. */
-export function runCueDriver28AD70(ram, rom) {
+export function runCueDriver28AD70(ram, rom,
+  resources = BLACK_CUE_RESOURCES) {
   let remaining = ram.u16(CUE.count);
   let live = 0, emitted = 0, freed = 0, advanced = 0;
   for (let i = 0; i < CUE.slots && remaining !== 0; i++) {
@@ -270,15 +375,17 @@ export function runCueDriver28AD70(ram, rom) {
       ram.setU16(cue + F.countdown, u16(countdown - 1));
       if (countdown === 1) {
         if ((ram.u8(cue) & 0x02) !== 0) {
-          unreached(0x28ade8, `type $84 reached cue bit-1 child allocation, `
-            + `outside its replace-in-place descriptor path`);
+          unreached(resources.diagnostics.childAllocation,
+            `type $84 reached cue bit-1 child allocation at `
+            + `${hex(resources.diagnostics.childAllocation)}, outside its `
+            + `replace-in-place descriptor path in the ${resources.edition} cartridge`);
         }
         installCue(ram, rom, cue, parent, ram.u32(cue + F.delta),
-          ram.u32(cue + F.emitter), ram.u32(cue + F.script), false);
+          ram.u32(cue + F.emitter), ram.u32(cue + F.script), false, resources);
         advanced++;
       }
     }
-    emitCue(ram, rom, cue); emitted++;
+    emitCue(ram, rom, cue, resources); emitted++;
   }
   return { live, emitted, freed, advanced };
 }

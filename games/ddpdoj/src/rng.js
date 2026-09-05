@@ -66,6 +66,13 @@ function advanceSharedCounter(ram) {
   return u16(ram.u16(RNG.state));
 }
 
+/** Resource-bound 64-longword member used by Pool D's position jitter. */
+export function drawLongWithResources(ram, rom, suppliedResources) {
+  const resources = validateBoundedDraw(suppliedResources, 64);
+  const index = advanceSharedCounter(ram) & 0x3f;
+  return rom.u32(resources.table + index * 4);
+}
+
 /** Resource-bound 64-longword member used by an edition's ordinary-shot hit path. */
 export function drawWordWithResources(ram, rom, suppliedResources) {
   const resources = validateBoundedDraw(suppliedResources, 64);

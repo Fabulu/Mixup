@@ -96,7 +96,8 @@ import { stepMovement, scrollCompensate, applyVelocity, applyVelocityA6,
   stickMove242A48, offScreen242684 } from './movement.js';
 import { readInput23D186 } from './tallyscreen.js';
 import {
-  fire as fireBulletFan, fireWithResources as fireBulletWithResources, WriteLog,
+  fire as fireBulletFan, fireWithResources as fireBulletWithResources,
+  spawnCoreWithResources, WriteLog,
 } from './bullets.js';
 // W372: type $4C's seven. `packedAdd` is deliberately absent -- it is a one-line local in
 // stage3carrier.js, not an export, so $4C inlines `u32(pos + delta)` instead.
@@ -250,7 +251,6 @@ const G = {
  *  `$275ABC move.l (A4,D0.w),D3`.  Its window is declared by
  *  `tools/export-tables.py`; the extent ($80 bytes) is pinned from the data,
  *  not from the index expression alone -- see the W30 worklog §1.1. */
-const MUZZLE_85 = 0x27327a;
 /** `$268B1E` -- type $11's muzzle table, read at `$268AF2` with the index
  *  `((($33,A5)+2) & $3C) * 2`, so the ENTRIES ARE 8 BYTES APART and only the
  *  first longword of each is read.  Already inside W20's $268B10 window. */
@@ -1656,14 +1656,15 @@ function handler8B(ram, rom, a5, ctx) {
 // that **fires a bullet in the live path** (`$275AD0 jsr $2813F0`), because all
 // four of that generator's register arguments are computed inside the handler
 // -- no `$23Dxxx` fire-action, no separate aim state machine.
-function handler85(ram, rom, a5, ctx) {
+function handler85(ram, rom, a5, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x85]) {
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   if (stepMovement(ram, rom, a5, tables, u)) return;   // $275914 jsr $2638A6
   // $27591A jsr $2426A4 / $275920 bcc $275930 -- carry SET is off-screen.
   if (offScreen2426A4(ram, a6)) {
     // $275922 tst.b ($16,A5) / beq $275936.  A BYTE test, unlike $11's word.
-    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // $275928 jmp $263762
+    if (ram.u8(a5 + R.onScreen) !== 0) { retire85(ram, a5, descriptor); return; } // $275928 jmp $263762
   } else {
     ram.setU8(a5 + R.onScreen, 1);                     // $275930 move.b #$1,($16,A5)
   }
@@ -1685,7 +1686,7 @@ function handler85(ram, rom, a5, ctx) {
     // ---- $275960: the damage arm.
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $275964 and.b D0,(A6)  (D0=$A3)
     ram.setU8(a6 + 0x20, ram.u8(a6 + 0x20) & 0xa3);    // $275966 and.b D0,($20,A6)
-    scoreHit(ram, ctx, a6, dmg);                       // $27596A jsr $286096 (W34)
+    scoreHit(ram, ctx, a6, dmg, a6, descriptor.score); // $27596A jsr $286096 (W34)
     d0 = ram.u8(a6 + S.palette);                       // $275970 move.b ($1D,A6),D0
     if (d0 === 0x19) d0 = ram.u8(a5 + R.rec1C);        // $275974 cmpi.b #$19 / $27597A
     d0 = (d0 ^ ram.u8(a5 + R.rec1D)) & 0xff;           // $27597E/$275982 eor.b D2,D0
@@ -1696,7 +1697,7 @@ function handler85(ram, rom, a5, ctx) {
     ram.setU16(a6 + S.hp, d4);                         // $275992
     ram.setU16(a6 + S.f38, d4);                        // $275996
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $27599A tst.w / $27599E bmi
-      deathSeq85(ram, rom, a5, a6, ctx, dmg);          // $275AF2
+      deathSeq85(ram, rom, a5, a6, ctx, dmg, descriptor); // $275AF2
       return;
     }
   }
@@ -1709,7 +1710,7 @@ function handler85(ram, rom, a5, ctx) {
   // Its return value is DEAD here -- the
   // next instruction is `tst.l $8130D2`, so its return value is dead. W182
   // closes the live spawn/advance side effects for both sharing types.
-  spawnCues28AC72(ram, rom, a5, a6);
+  spawnCues28AC72(ram, rom, a5, a6, descriptor.cues);
   // $2759AC tst.l $8130D2 -- a LONG test, so it covers $8130D2 AND $8130D4.
   if (ram.u32(G.freeze) === 0) {                       // $2759B2 bne $275A24
     // $2759B6 subq.b #1,($22,A5) / bcc $275A24 -- the aim CADENCE.  `bcc` is
@@ -1720,7 +1721,7 @@ function handler85(ram, rom, a5, ctx) {
       ram.setU8(a5 + R.cadence22, ram.u8(a5 + R.rec23)); // $2759BE reload from +$23
       // $2759C4 move.b ($20,A5),D0 / cmp.b ($21,A5),D0 / bne $275A24
       if (ram.u8(a5 + R.salvo) === ram.u8(a5 + R.rec21)) {
-        aim85(ram, rom, a5, a6);                       // $2759D0..$275A1E
+        aim85(ram, rom, a5, a6, descriptor);           // $2759D0..$275A1E
       }
     }
   }
@@ -1758,7 +1759,15 @@ function handler85(ram, rom, a5, ctx) {
   const fc = ram.u8(a5 + R.rec1E);                     // $275A9A subq.b #1,($1E,A5)
   ram.setU8(a5 + R.rec1E, (fc - 1) & 0xff);
   if (fc !== 0) return;                                // $275A9E bcs $275AA2 (borrow only)
-  fire85(ram, rom, a5, a6, ctx);                       // $275AA2
+  fire85(ram, rom, a5, a6, ctx, descriptor);           // $275AA2
+}
+
+function retire85(ram, a5, descriptor) {
+  if (descriptor.retirement?.semantic !== 'freeEnemy') {
+    unreached(descriptor.retirement?.entry ?? descriptor.handler,
+      'type-$85 requires ordinary freeEnemy retirement');
+  }
+  freeEnemy(ram, a5);
 }
 
 // ---- $2759D0..$275A1E: the INLINED target select + aim + slew ------------
@@ -1766,7 +1775,8 @@ function handler85(ram, rom, a5, ctx) {
 // addresses out longhand.  It is the same routine (`src/aim.js`
 // `targetSelectBy`), and it is transcribed inline rather than delegated so that
 // a reader checking `$2759D0` against this file sees the same four tests.
-function aim85(ram, rom, a5, a6) {
+function aim85(ram, rom, a5, a6,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x85]) {
   let p0 = AIM.selP1, p1 = AIM.selP2;                  // $2759D0 lea / $2759D6 lea
   if (ram.u8(a5 + 0x03) !== 0) { p0 = AIM.selP2; p1 = AIM.selP1; } // $2759DC/$2759E2 exg
   if ((ram.u16(p0) & 0x8000) === 0) {                  // $2759E4 tst.w (A0) / bmi
@@ -1778,11 +1788,13 @@ function aim85(ram, rom, a5, a6) {
   const selfY = ram.u16(a6 + 0x02);                    // $2759F4 movem.w ($2,A6),D0-D1
   const selfX = ram.u16(a6 + 0x04);
   // $2759FA addi.w #$f900,D0 -- THE MUZZLE OFFSET, on the long axis only.
-  const dir = aim64(aimTables(rom), u16(selfY + 0xf900), selfX, tgtY, tgtX); // $2759FE
+  const dir = aim64(aimTables(rom, descriptor),
+    u16(selfY + 0xf900), selfX, tgtY, tgtX);            // $2759FE
   const nf = slew64(ram.u16(a5 + R.fireCtr), dir);     // $275A04/$275A08 jsr $242190
   ram.setU16(a5 + R.fireCtr, nf);                      // $275A0E move.w D1,($28,A5)
   // $275A12 andi.w #$3E,D1 / add.w D1,D1 -- 32 entries at a 4-byte stride.
-  ram.setU32(a5 + R.rec24, rom.u32(0x272DFA + ((nf & 0x3e) * 2))); // $275A18/$275A1E
+  ram.setU32(a5 + R.rec24,
+    rom.u32(descriptor.aimSprite + ((nf & 0x3e) * 2))); // $275A18/$275A1E
 }
 
 // ---- $275AA2..$275AF0: THE FIRE ------------------------------------------
@@ -1790,7 +1802,18 @@ function aim85(ram, rom, a5, a6) {
 // generator reads is computed here; there is no `$23Dxxx` fire-action and no
 // stored aim byte, which is exactly why this one is wirable and $11's is a
 // separate piece of work.
-function fire85(ram, rom, a5, a6, ctx) {
+function fireType85Bullet(ctx, entry, regs, resources) {
+  if (entry !== resources.entry) {
+    unreached(entry, `type-$85 bullet entry does not match its resource descriptor`);
+  }
+  if (resources.semantic === 'bank-a-direct') {
+    return [spawnCoreWithResources(ctx, regs, 'A', resources)];
+  }
+  return fireBulletWithResources(ctx, entry, regs, resources);
+}
+
+function fire85(ram, rom, a5, a6, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x85]) {
   ram.setU8(a5 + R.rec1E, 6);                          // $275AA2 move.w #$6,D0 / $275AA6
   const facing = ram.u16(a5 + R.fireCtr);              // $275AB0 move.w ($28,A5),D1
   // $275AB4 move.w D1,D0 / andi.w #$3E,D0 / add.w D0,D0 -- 32 longwords.
@@ -1798,7 +1821,7 @@ function fire85(ram, rom, a5, a6, ctx) {
   // $275ABC move.l (A4,D0.w),D3 / $275AC0 addi.l #$f9000000,D3.  The `addi.l`
   // is on the WHOLE longword, so the carry out of the low half reaches the
   // high half -- write it as a 32-bit add, not two 16-bit ones.
-  const d3 = ((rom.u32(MUZZLE_85 + idx) + 0xf9000000) >>> 0);
+  const d3 = ((rom.u32(descriptor.muzzle + idx) + 0xf9000000) >>> 0);
   const regs = {
     d0: 0xffff000d,                                    // $275AC6 move.l #$ffff000d,D0
     d1: facing, d2: ram.u32(a6 + 0x02) >>> 0,          // $275ACC move.l ($2,A6),D2
@@ -1807,8 +1830,10 @@ function fire85(ram, rom, a5, a6, ctx) {
   // $275AD0 jsr $2813F0.  Kind $D; `$2815C6[13]` is `$2818AC` (the do-nothing
   // epilogue) and template `$281AF8`'s +$10 run-init word is $0000, so D4/D5
   // are never read and passing 0 is not a guess.
-  const res = fireBullet({ ram, rom, log: new WriteLog(ram) }, 0x2813f0, regs);
-  ctx.bulletSpawn?.(0x275ad0, res);
+  const bulletCtx = { ram, rom, log: new WriteLog(ram), mut: ctx.mut ?? null };
+  const res = fireType85Bullet(bulletCtx, descriptor.bullet.entry, regs,
+    descriptor.bullet);
+  ctx.bulletSpawn?.(descriptor.bullet.site, res);
   // $275AD6 subq.b #1,($20,A5) / bcc $275AF0 -- the SALVO counter.  On the
   // frame it borrows, ($1E,A5) is reloaded with $50 - $8130BA instead of the
   // 6 written at $275AA6, i.e. a long gap between salvos and a short one
@@ -1844,15 +1869,19 @@ function fire85(ram, rom, a5, a6, ctx) {
 // `src/shots.js` has `$81308C` MEASURED at `$0001` on this tree, so **type `$85`
 // drops ONE power-up here and would drop TWO in a two-player game.**  (The
 // ITEM, once it exists, does draw from the RNG -- `src/items.js init27EACE`.)
-function deathSeq85(ram, rom, a5, a6, ctx, d1) {
+function deathSeq85(ram, rom, a5, a6, ctx, d1,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x85]) {
   const u = ctx.unported;
-  scoreKill(ram, rom, ctx, 0x25, d1);                  // $275AF2/$275AF4
+  scoreKill(ram, rom, ctx, 0x25, d1, descriptor.score); // $275AF2/$275AF4
   // $275AFA moveq #$0,D0 / $275AFC cmpi.b #$86,($C,A5) / $275B04 moveq #$8,D0
-  const d0 = ram.u8(a5 + 0x0c) === 0x86 ? 8 : 0;
-  spawnItem(ram, rom, ctx, d0, a6, 0x275b06);          // $275B06 jsr $27E812
+  const d0 = ram.u8(a5 + 0x0c) === descriptor.items.alternateType
+    ? descriptor.items.alternateKind : descriptor.items.kind;
+  spawnItem(ram, rom, ctx, d0, a6, descriptor.items.sites.first,
+    descriptor.items);                                 // $275B06 jsr $27E812
   // $275B0C tst.w $81308C / bne $275B20 ; $275B14 cmpi.w #$8,D0 / beq $275B20
   if (ram.u16(0x81308c) === 0 && d0 !== 8) {
-    spawnItem(ram, rom, ctx, d0, a6, 0x275b1a);        // $275B1A jsr $27E812
+    spawnItem(ram, rom, ctx, d0, a6, descriptor.items.sites.second,
+      descriptor.items);                               // $275B1A jsr $27E812
   }
   // $275B20/$275B4C/$275B72: three effect allocations, each followed by field
   // writes into the record `$289004` would have returned in A0.  The writes are
@@ -1861,20 +1890,23 @@ function deathSeq85(ram, rom, a5, a6, ctx, d1) {
   // (bucket 7).  [M] kind $5 is NOT in `50-recon` 2.4's measured eight;
   // it is enumerated from the listing, which is docs/knowledge/09's rule.
   {
-    const e1 = spawnEffect(ram, ctx, 0x05, 0x275b22);   // $275B20/$275B22
+    const e1 = spawnEffect(ram, ctx, 0x05, descriptor.effectSites.first,
+      descriptor.effects);                             // $275B20/$275B22
     ram.setU32(e1 + B.pos, ram.u32(a6 + 0x02));         // $275B28
     ram.setU16(e1 + B.bucket, 0x10);                    // $275B2E
     ram.setU16(e1 + B.sub12, 0x0000);                   // $275B34
     ram.setU16(e1 + B.sub14, 0x0400);                   // $275B3A
     ram.setU16(e1 + B.nudge, 0x0200);                   // $275B40
     ram.setU16(e1 + B.nudge + 2, 0x0200);               // $275B46
-    const e2 = spawnEffect(ram, ctx, 0x0c, 0x275b4e);   // $275B4C/$275B4E
+    const e2 = spawnEffect(ram, ctx, 0x0c, descriptor.effectSites.second,
+      descriptor.effects);                             // $275B4C/$275B4E
     ram.setU32(e2 + B.pos, ram.u32(a6 + 0x02));         // $275B54
     ram.setU16(e2 + B.bucket, 0x10);                    // $275B5A
     ram.setU16(e2 + B.sub12, 0x0000);                   // $275B60
     ram.setU16(e2 + B.sub14, 0x0000);                   // $275B66
     ram.setU16(e2 + B.nudge, 0xf600);                   // $275B6C
-    const e3 = spawnEffect(ram, ctx, 0x84, 0x275b76);   // $275B72/$275B76
+    const e3 = spawnEffect(ram, ctx, 0x84, descriptor.effectSites.third,
+      descriptor.effects);                             // $275B72/$275B76
     ram.setU32(e3 + B.pos, ram.u32(a6 + 0x02));         // $275B7C
     ram.setU16(e3 + B.bucket, 0x10);                    // $275B82
     ram.setU16(e3 + B.sub12, 0x0000);                   // $275B88
@@ -1882,8 +1914,8 @@ function deathSeq85(ram, rom, a5, a6, ctx, d1) {
     ram.setU16(e3 + B.nudge, 0xee00);                   // $275B94
     ram.setU16(e3 + B.nudge + 2, 0xfe00);               // $275B9A
   }
-  ctx.soundPost?.(0x28c274);                       // WAVE A: SFX id=1, death burst          // $275BA0 jsr $28C274
-  freeEnemy(ram, a5);                                  // $275BA6 jmp $263762
+  ctx.soundPost?.(descriptor.sound.death);          // WAVE A: SFX id=1, death burst          // $275BA0 jsr $28C274
+  retire85(ram, a5, descriptor);                       // $275BA6 jmp $263762
 }
 
 // ============================================ TYPE $8E (W319) ============
@@ -8946,7 +8978,8 @@ const HANDLERS = new Map([
     handler07(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x27])],
   [0x2747c6, handler82],
   [0x27687e, handler8B],
-  [0x275914, handler85],   // W30: types $85 AND $86 share this one
+  [0x275914, (ram, rom, a5, ctx) =>
+    handler85(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x85])],
   [0x272424, handler55],   // W351: stage-5 burst-firing drifter, spec in T55
   [0x2710e2, handler46],   // W352: stage-5 extend-spawn-retract arm, $55's PARENT, spec in T46
   [0x268e6c, handler1A],   // W365: stage-5 slewing twin-weapon turret -- spec in T1A
@@ -11255,6 +11288,10 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x26a2e2);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
         handler07(ram, rom, a5, ctx, descriptor));
+    } else if (descriptor.algorithm === 'type85') {
+      handlers.delete(0x275914);
+      handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
+        handler85(ram, rom, a5, ctx, descriptor));
     }
   }
   RESOURCE_HANDLER_MAPS.set(resources, handlers);

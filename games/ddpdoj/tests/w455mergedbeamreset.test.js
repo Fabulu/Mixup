@@ -486,14 +486,17 @@ test('SECTION 6: one common production body serves every full and inner caller',
     { 'bomb.js': 1, 'items.js': 1, 'laser.js': 1, 'player.js': 1 },
     'bomb arm, full wrapper, release and death all use the sole laser.js implementation');
   assert.deepEqual(calls.wipeSegmentPoolWithResources,
-    { 'laser.js': 2, 'options.js': 1, 'white-options.js': 1 },
-    'edition-bound option cleanup shares the explicit resource implementation');
+    { 'items.js': 1, 'laser.js': 2, 'options.js': 1, 'white-options.js': 1 },
+    'edition-bound item and option cleanup share the explicit resource implementation');
 
   const itemsSource = readFileSync(join(SRC, 'items.js'), 'utf8');
   const laserSource = readFileSync(join(SRC, 'laser.js'), 'utf8');
   const bombSource = readFileSync(join(SRC, 'bomb.js'), 'utf8');
-  assert.match(itemsSource, /import \{ BEAM, wipeSegmentPool \} from '\.\/laser\.js';/);
+  assert.match(itemsSource,
+    /import \{\s*BEAM, wipeSegmentPool, wipeSegmentPoolWithResources,\s*\} from '\.\/laser\.js';/);
   assert.match(itemsSource, /wipeSegmentPool\(ram, ctx, b\);/);
+  assert.match(itemsSource,
+    /wipeSegmentPoolWithResources\(\s*ram, ctx, b, binding\.resources, beams,\s*\);/);
   assert.equal([...laserSource.matchAll(/export function wipeSegmentPool\s*\(/g)].length, 1);
   assert.doesNotMatch(itemsSource, /for \(let n = 0; n < 32; n\+\+\)/,
     'items.js must not regrow its private 32-slot loop');

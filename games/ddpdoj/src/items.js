@@ -108,12 +108,20 @@ import { u16, i16 } from './ram.js';
 import { unreached } from './unported.js';
 import { txPrint240DC2, livesRow2878CC } from './hud.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
-import { drawByte242B3C, drawByte242E24 } from './rng.js';
+import {
+  drawByte242B3C, drawByte242E24, drawByteWithResources,
+  drawUnmaskedByteWithResources,
+} from './rng.js';
 import { aim64, AimTables } from './aim.js';
 import { scoreByMask, abcd } from './score.js';
 import { applyVelocityA6, offScreen242684 } from './movement.js';
 import { dist242494 } from './bossscripts.js';
-import { BEAM, wipeSegmentPool } from './laser.js';
+import {
+  BEAM, wipeSegmentPool, wipeSegmentPoolWithResources,
+} from './laser.js';
+import { BLACK_ITEM_RESOURCES, WHITE_ITEM_RESOURCES } from './item-resources.js';
+
+export { BLACK_ITEM_RESOURCES, WHITE_ITEM_RESOURCES };
 
 // ============================== THE GEOMETRY ================================
 
@@ -241,10 +249,11 @@ function aimTables(rom) {
  *  which `src/type5.js` throws for), so it is transcribed and unexercised --
  *  and it is ported anyway, because a pool that survives a reset it should not
  *  is `50-recon` §4.3 item 6 and it is twenty bytes. */
-export function clearItemPool(ram) {
+export function clearItemPool(ram, resources = BLACK_ITEM_RESOURCES) {
   for (let i = 0; i < ITEM.clearWords; i++) {          // $27E998 dbra
     ram.setU16(ITEM.base + i * 2, 0);                  // $27E994 move.w #0,(A0)+
   }
+  void resources.clear;
 }
 
 // ========================= $27E812 + $27F6AE, THE DROP ======================
@@ -271,7 +280,14 @@ export function clearItemPool(ram) {
  *   the kind was refused -- which is what the ROM's `rts` with carry set means
  *   to a caller that does not look.
  */
-export function spawnItem(ram, rom, ctx, d0, a6, siteAddr = ITEM.alloc) {
+export function spawnItem(ram, rom, ctx, d0, a6, siteAddr = undefined,
+  resources = BLACK_ITEM_RESOURCES) {
+  if (siteAddr === undefined) siteAddr = resources.alloc;
+  if (resources.supportedKinds && !resources.supportedKinds.includes(d0)) {
+    unreached(resources.dispatch.table + d0, `${resources.edition} item kind `
+      + `$${d0.toString(16).toUpperCase()} is not supported by this resource seam; `
+      + `dispatch entry $${(resources.dispatch.table + d0).toString(16).toUpperCase()}`);
+  }
   // --------------------------------------------------- §THE REFUSAL (header)
   if (REFUSED_KINDS.includes(d0)) {
     const who = d0 === 0x0c ? 'P1' : 'P2';
@@ -296,7 +312,8 @@ export function spawnItem(ram, rom, ctx, d0, a6, siteAddr = ITEM.alloc) {
     // The ELSE arm is `$27E86C`, and `$27B4A0`'s `$10` is the only D0 any caller
     // passes into it.  Anything else lands in the SAME one-slot pool and is
     // then dispatched as kind `d0 & $3C`, i.e. a different item entirely.
-    unreached(0x27e86c, `$27E812's ELSE arm -- D0 = $${d0.toString(16)
+    unreached(resources.diagnostics.allocElse, `$${resources.alloc.toString(16).toUpperCase()}`
+      + `'s ELSE arm -- D0 = $${d0.toString(16)
       .toUpperCase()} is not one of the six kinds {0,4,8,$C,$10,$14}, so it `
       + `would allocate from $81717A's ONE slot and then be dispatched through `
       + `$27E9F8 as index ${(d0 & ITEM.kindMask) >> 2}. A wrong D0 silently `
@@ -306,16 +323,15 @@ export function spawnItem(ram, rom, ctx, d0, a6, siteAddr = ITEM.alloc) {
   for (let n = 0; n <= pool.d2; n++) {                 // $27E880 dbra D2
     const a0 = pool.base + n * ITEM.stride;            // $27E87C lea ($40,A0),A0
     if (ram.u16(a0 + I.status) !== 0) continue;        // $27E876 tst.w (A0) / beq
-    fill27F6AE(ram, rom, ctx, a0, d0, a6);             // $27E878 beq.w $27F6AE
+    fill27F6AE(ram, rom, ctx, a0, d0, a6, resources);  // $27E878 beq.w $27F6AE
     ctx?.itemSpawn?.(d0, siteAddr, a0);
     return a0;
   }
-  note(ctx, 0x27e884, `$27E812 found NO FREE SLOT in kind $${d0.toString(16)
+  note(ctx, resources.diagnostics.allocFull, `$${resources.alloc.toString(16).toUpperCase()}`
+    + ` found NO FREE SLOT in kind $${d0.toString(16)
     .toUpperCase()}'s ${pool.slots}-slot pool $${pool.base.toString(16)
-    .toUpperCase()} and returned D2 = $FFFF with CARRY SET -- and NEITHER `
-    + `reachable call site tests it ($275B0C tst.w $81308C is the very next `
-    + `instruction and overwrites the flags). The drop is LOST, silently, on `
-    + `the board too. Site $${siteAddr.toString(16).toUpperCase()}`);
+    .toUpperCase()} and returned D2 = $FFFF with CARRY SET. The drop is LOST, `
+    + `silently, on the board too. Site $${siteAddr.toString(16).toUpperCase()}`);
   return null;
 }
 
@@ -376,18 +392,36 @@ export function fill27F6E4(ram, rom, a0, d0, d6) {
  * a port that "helpfully" cleared the record would differ from the board on any
  * future reader of `+$20`.
  */
-export function fill27F6AE(ram, rom, ctx, a0, d0, a6) {
+export function fill27F6AE(ram, rom, ctx, a0, d0, a6,
+  resources = BLACK_ITEM_RESOURCES) {
   const idx = d0 >> 2;
+  if (resources.supportedKinds && !resources.supportedKinds.includes(d0)) {
+    unreached(resources.templates.table + d0, `${resources.edition} item kind `
+      + `$${d0.toString(16).toUpperCase()} is unsupported at template entry `
+      + `$${(resources.templates.table + d0).toString(16).toUpperCase()}`);
+  }
   if (d0 < 0 || d0 > 0x14 || (d0 & 3) !== 0 || idx > 5) {
-    unreached(ITEM.templateTable, `$27F6B8 movea.l ($27F746,A2,D0.w) -- D0 = `
-      + `$${d0.toString(16).toUpperCase()} indexes the 8-entry template table `
+    unreached(resources.templates.table,
+      `$${resources.diagnostics.templateLookup.toString(16).toUpperCase()} template lookup `
+      + `with D0 = $${d0.toString(16).toUpperCase()} indexes the `
+      + `${resources.templates.expected.length}-entry template table `
       + `outside its SIX templates. Entries [6] and [7] both point at $27F7E8, `
       + `which is \`4E75 204E 4A50 6AF8\` -- \`rts / movea.l A6,A0 / tst.w (A0) `
       + `/ bpl\`, i.e. CODE -- so D0 = $18 or $1C copies 26 bytes of `
       + `INSTRUCTIONS into the record's +$06..+$1F, which includes the collision `
       + `half-extents and the lifetime`);
   }
-  const tmpl = TEMPLATES[idx];
+  const templateEntry = resources.templates.table + d0;
+  const tmpl = rom.u32(templateEntry);
+  const expected = idx === 0
+    ? resources.kind0.template
+    : resources.templates.expected[idx];
+  if (tmpl !== expected) {
+    unreached(templateEntry, `${resources.edition} item template entry `
+      + `$${templateEntry.toString(16).toUpperCase()} holds `
+      + `$${tmpl.toString(16).toUpperCase()}, expected `
+      + `$${expected.toString(16).toUpperCase()}`);
+  }
   ram.setU16(a0 + I.status, u16(d0 | 0x8000));         // $27F6B4/$27F6C2
   ram.setU32(a0 + I.pos, ram.u32(a6 + 0x02));          // $27F6C4 move.l ($2,A6)
   for (let i = 0; i < 6; i++) {                        // $27F6C8..$27F6D2, 6 longs
@@ -405,9 +439,10 @@ export function fill27F6AE(ram, rom, ctx, a0, d0, a6) {
  *  file's driver tests `+$00`; two different emptiness tests on one record,
  *  consistent only because of this clear.  `ori #$1,SR` sets CARRY, which is
  *  how the eleven `bcs`/`bcc` sites that reach it tell their callers to stop. */
-export function freeItem(ram, a6) {
+export function freeItem(ram, a6, resources = BLACK_ITEM_RESOURCES) {
   ram.setU32(a6 + I.status, 0);                        // $27F2F2 move.l D0,(A6)
   ram.setU16(ITEM.count, u16(ram.u16(ITEM.count) - 1));  // $27F2F4 subq.w #1
+  void resources.free;
   return true;                                         // $27F2FA ori #$1,SR
 }
 
@@ -437,7 +472,8 @@ export function freeItem(ram, a6) {
  * frame.  Type-5 call #18 (`$28B64C`), listed in `src/type5.js calls[17]`.
  * @returns telemetry; the ROM returns none.
  */
-export function runItemDriver(ram, rom, ctx) {
+export function runItemDriver(ram, rom, ctx,
+  resources = BLACK_ITEM_RESOURCES) {
   let d7 = ram.u16(ITEM.count);                        // $27E99E move.w $8171BA,D7
   const t = { live: 0, emitted: 0, freed: 0, collected: 0, walked: 0 };
   if (d7 === 0) return t;                              // $27E9A4 beq
@@ -451,25 +487,35 @@ export function runItemDriver(ram, rom, ctx) {
       if (ram.u16(r + I.status) !== 0) { a6 = r; break; }
     }
     if (a6 < 0) {
-      unreached(0x27e9b0, `$27E99E's walk ran out of slots with `
+      unreached(resources.diagnostics.driverScan,
+        `$${resources.driver.toString(16).toUpperCase()}'s walk ran out of slots with `
         + `$8171BA = ${d7} and only ${t.live} live record(s) found in the `
         + `${ITEM.slots}-slot family. On the board `
-        + `\`$27E9B0 lea ($40,A6),A6 / move.w (A6),D1 / beq\` would keep `
+        + `\`$${resources.diagnostics.driverScan.toString(16).toUpperCase()} `
+        + `lea ($40,A6),A6 / move.w (A6),D1 / beq\` would keep `
         + `walking past $8171BA into $8171BE -- IMPACT POOL A -- and drive `
         + `whatever it found there as an item. The live count and the slots `
-        + `have disagreed, which is the one thing $27F6AE's addq and $27F2F0's `
+        + `have disagreed, which is the one thing $${resources.fill.toString(16)
+          .toUpperCase()}'s addq and $${resources.free.toString(16).toUpperCase()}'s `
         + `subq exist to keep true`);
     }
     slot++;
     t.live++; t.walked++;
     const d1 = ram.u16(a6 + I.status);                 // $27E9B4 move.w (A6),D1
+    const resourceKind = d1 & ITEM.kindMask;
+    if (resources.supportedKinds && !resources.supportedKinds.includes(resourceKind)) {
+      const entry = resources.dispatch.table + resourceKind;
+      unreached(entry, `${resources.edition} live item kind `
+        + `$${resourceKind.toString(16).toUpperCase()} is unsupported at dispatch entry `
+        + `$${entry.toString(16).toUpperCase()}`);
+    }
     ram.setU16(a6 + I.posX,                            // $27E9BE sub.w D0,($4,A6)
       u16(ram.u16(a6 + I.posX) - ram.u16(ITEM.scroll)));
 
     const hi = ram.u8(a6 + 0x01);                      // $27E9C2/$27E9CC btst
     if ((hi & 0x80) !== 0 || (hi & 0x01) !== 0) {
       t.collected++;
-      if (collectedStep27F5F4(ram, rom, ctx, a6)) t.freed++;   // $27E9D6 bsr
+      if (collectedStep27F5F4(ram, rom, ctx, a6, resources)) t.freed++; // $27E9D6 bsr
       continue;                                        // $27E9DA bra $27E9EE
     }
     // $27E9DE: THE KIND DISPATCH.  `moveq #$3C` is FOUR BITS -- sixteen indices
@@ -484,25 +530,42 @@ export function runItemDriver(ram, rom, ctx) {
     // ADDRESS ERROR.  A port that divides by 4 first cannot tell `$3C` from
     // `$3F`; this checks the offset the ROM actually forms.
     if ((d0 & 3) !== 0) {
-      unreached(ITEM.dispatch, `$27E9E8 adda.w D0,A0 -- the kind mask produced `
+      unreached(resources.dispatch.table,
+        `$${resources.diagnostics.dispatchLookup.toString(16).toUpperCase()} `
+        + `item dispatch formed `
         + `byte offset $${d0.toString(16).toUpperCase()}, which is not a `
-        + `longword boundary in the 8-entry table $27E9F8. \`moveq #$3C\` is `
+        + `longword boundary in the ${resources.dispatch.entries}-entry table `
+        + `$${resources.dispatch.table.toString(16).toUpperCase()}. \`moveq #$3C\` is `
         + `four bits ALIGNED; a mask that let bits 0 or 1 through would read a `
         + `pointer straddling two entries. Record at `
         + `$${a6.toString(16).toUpperCase()}, status `
         + `$${d1.toString(16).toUpperCase()}`);
     }
     const idx = d0 >> 2;
-    if (idx >= ITEM.dispatchEntries) {
-      unreached(ITEM.dispatch, `$27E9E2 lea ($27E9F8,PC),A0 / adda.w D0,A0 / `
+    if (idx >= resources.dispatch.entries) {
+      unreached(resources.dispatch.table,
+        `$${resources.diagnostics.dispatchLookup.toString(16).toUpperCase()} `
+        + `item dispatch lookup `
         + `movea.l (A0),A0 / jsr (A0) -- a LIVE item record carries status `
         + `$${d1.toString(16).toUpperCase()}, whose masked kind $${d0.toString(16)
-          .toUpperCase()} is index ${idx} of a ${ITEM.dispatchEntries}-entry `
+          .toUpperCase()} is index ${idx} of a ${resources.dispatch.entries}-entry `
         + `table. The mask is $3C, so indices 8..15 are REACHABLE and land in `
-        + `the sprite-address table at $27EA1A -- the board would jsr into `
-        + `sprite data. Record at $${a6.toString(16).toUpperCase()}`);
+        + `the cartridge data following $${(resources.dispatch.table
+          + resources.dispatch.entries * 4).toString(16).toUpperCase()} -- the `
+        + `board would jsr into data. Record at $${a6.toString(16).toUpperCase()}`);
     }
-    const r = runBody(ram, rom, ctx, a6, d1, idx);
+    const dispatchEntry = resources.dispatch.table + d0;
+    const body = rom.u32(dispatchEntry);
+    const expected = idx === 0
+      ? resources.kind0.body
+      : resources.dispatch.expected[idx];
+    if (body !== expected) {
+      unreached(dispatchEntry, `${resources.edition} item dispatch entry `
+        + `$${dispatchEntry.toString(16).toUpperCase()} holds `
+        + `$${body.toString(16).toUpperCase()}, expected `
+        + `$${expected.toString(16).toUpperCase()}`);
+    }
+    const r = runBody(ram, rom, ctx, a6, d1, idx, resources);
     if (r?.freed) t.freed++;
     if (r?.emitted) t.emitted++;
   }
@@ -512,15 +575,16 @@ export function runItemDriver(ram, rom, ctx) {
 /** `$27E9F8`'s eight entries, by index.  [6] is THE FREE and [7] is a
  *  deliberate `rts` -- the longword at `$27EA18` is `4E75 001B`, i.e. the `rts`
  *  itself, so entry [7] is a NO-OP and not a bug. */
-function runBody(ram, rom, ctx, a6, d1, idx) {
+function runBody(ram, rom, ctx, a6, d1, idx,
+  resources = BLACK_ITEM_RESOURCES) {
   switch (idx) {
-    case 0: return body27EA2A(ram, rom, ctx, a6, d1);       // kind $00 POWER-UP
+    case 0: return body27EA2A(ram, rom, ctx, a6, d1, resources); // kind $00 POWER-UP
     case 1: return body27EBDC(ram, rom, ctx, a6, d1);       // kind $04 FULL POWER
     case 2: return body27ED8C(ram, rom, ctx, a6, d1);       // kind $08 SET ITEM
     case 3: return bodyHyperItem(ram, rom, ctx, a6, d1, false); // kind $0C, P1
     case 5: return bodyHyperItem(ram, rom, ctx, a6, d1, true);  // kind $14, P2
     case 4: return body27F1A6(ram, rom, ctx, a6, d1);       // kind $10 COUNTER
-    case 6: return { freed: freeItem(ram, a6) };            // $27F2F0 THE FREE
+    case 6: return { freed: freeItem(ram, a6, resources) }; // $27F2F0 THE FREE
     case 7: return null;                                    // $27EA18 rts
     default: return null;
   }
@@ -553,20 +617,22 @@ function scrollPair2417B6(ram) {
 /** The `$23EB06` emit every body and both steppers end with.  D1 is packed
  *  LONG:SHORT and `$23EB1C asr.l #6` runs on the whole 32 bits, which is why it
  *  is built as one value here and not as two. */
-function emit23EB06(ram, rom, longAxis, shortAxis, d2, d3, d4) {
+function emit23EB06(ram, rom, longAxis, shortAxis, d2, d3, d4,
+  resources = BLACK_ITEM_RESOURCES) {
   const d1 = (((longAxis & 0xffff) << 16) | (shortAxis & 0xffff)) >>> 0;
-  enqueueRegistersThroughStub(ram, rom, ITEM.emitStub, d1, d2, d3, d4);
+  enqueueRegistersThroughStub(ram, rom, resources.kind0.emitter, d1, d2, d3, d4);
 }
 
 /** The four-frame sprite table read, RANGE-CHECKED.  `($e,A6)` is masked `$F`
  *  by `$27EA9A andi.w #$F`, so it can hold 0..15 -- but only 0/4/8/$C are
  *  multiples of 4, and a table of FOUR longwords is 16 bytes.  An odd cursor
  *  would read a longword straddling two entries. */
-function anim4Stream(rom, table, cursor, site) {
-  if ((cursor & 3) !== 0 || cursor >= 16) {
+function anim4Stream(rom, table, cursor, site, entries = 4,
+  resources = BLACK_ITEM_RESOURCES) {
+  if ((cursor & 3) !== 0 || cursor >= entries * 4) {
     unreached(site, `$${site.toString(16).toUpperCase()} adda.w ($e,A6),A0 -- `
       + `the animation cursor is $${cursor.toString(16).toUpperCase()}, which `
-      + `is not a longword index inside the FOUR-entry sprite table `
+      + `is not a longword index inside the ${entries}-entry ${resources.edition} sprite table `
       + `$${table.toString(16).toUpperCase()}. \`addq.w #4\` masked \`$F\` can `
       + `only produce 0/4/8/$C, so the record's +$0E was written by something `
       + `other than this body`);
@@ -584,38 +650,43 @@ function anim4Stream(rom, table, cursor, site) {
 //   4. the animation advance, `subq.b #1,($c,A6)` on the BORROW
 //   5. the emit, as a `jmp` -- the body's last instruction IS the enqueue
 
-function body27EA2A(ram, rom, ctx, a6, d1) {
+function body27EA2A(ram, rom, ctx, a6, d1,
+  resources = BLACK_ITEM_RESOURCES) {
   if ((d1 & 0x2000) === 0) {                           // $27EA2A btst #$D / bne
     ram.setU8(a6, ram.u8(a6) | 0x20);                  // $27EA32 bset #5,(A6) BYTE
-    init27EACE(ram, rom, a6);                          // $27EA36 bsr $27EACE
+    init27EACE(ram, rom, a6, resources);               // $27EA36 bsr $27EACE
     ram.setU16(a6 + I.frame, 0x0202);                  // $27EA3A move.w #$202
     ram.setU16(a6 + I.anim, 0x0000);                   // $27EA40 move.w #$0
   }
   const touch = d1 & 0x1800;                           // $27EA46 andi.w #$1800
   if (touch !== 0) {                                   // $27EA4A beq $27EA82
     if ((touch & 0x1000) !== 0) {                      // $27EA4E btst #$C / beq
-      if (collect252C96(ram, rom, ctx)) {              // $27EA56 jsr / $27EA5C bcs
-        return { collected: true, ...collectMax27F582(ram, rom, ctx, a6) };
+      if (collect252C96(ram, rom, ctx, resources)) {   // $27EA56 jsr / $27EA5C bcs
+        return { collected: true,
+          ...collectMax27F582(ram, rom, ctx, a6, undefined, resources) };
       }
     } else {
-      if (collect252D24(ram, rom, ctx)) {              // $27EA76 jsr / $27EA7C bcc
-        return { collected: true, ...collectMax27F582(ram, rom, ctx, a6) };
+      if (collect252D24(ram, rom, ctx, resources)) {   // $27EA76 jsr / $27EA7C bcc
+        return { collected: true,
+          ...collectMax27F582(ram, rom, ctx, a6, undefined, resources) };
       }
     }
-    ctx.soundPost?.(0x28c5ca);  // WAVE A: BGM id=$1D, item PICKUP ($27EA60)
-    ctx.soundPost?.(0x28c9f8);  // WAVE A: BGM id=$3B, POWER-UP ($27EA66)
-    collect27F54C(ram, rom, ctx, a6, ANIM_LISTS.d27F480);   // $27EA6C/$27EA72
+    ctx.soundPost?.(resources.sounds.pickup);          // $27EA60
+    ctx.soundPost?.(resources.sounds.powerUp);         // $27EA66
+    collect27F54C(ram, rom, ctx, a6, resources.collected.normalList,
+      resources);                                      // $27EA6C/$27EA72
     return { collected: true };
   }
-  if (motion27EAE8(ram, rom, ctx, a6)) return { freed: true };  // $27EA82/$27EA86
+  if (motion27EAE8(ram, rom, ctx, a6, resources)) return { freed: true }; // $27EA82/$27EA86
   advanceAnim4(ram, a6);                               // $27EA8A..$27EA9A
   // $27EAA0: D1 = (($2,A6) - $600) : (($4,A6) - $300), then the sprite.
   emit23EB06(ram, rom,
     u16(ram.u16(a6 + I.pos) - 0x600),                  // $27EAA4 addi.w #-$600
     u16(ram.u16(a6 + I.posX) - 0x300),                 // $27EAAE addi.w #-$300
-    anim4Stream(rom, ANIM4[0x00], ram.u16(a6 + I.anim), 0x27eab6),
+    anim4Stream(rom, resources.kind0.art.table, ram.u16(a6 + I.anim),
+      resources.diagnostics.artLookup, resources.kind0.art.entries, resources),
     0x0618,                                            // $27EABC move.w #$618,D3
-    0x001b);                                           // $27EAC0 move.w #$1B,D4
+    0x001b, resources);                                // $27EAC0 move.w #$1B,D4
   return { emitted: true };
 }
 
@@ -624,9 +695,11 @@ function body27EA2A(ram, rom, ctx, a6, d1) {
  *  `$803916`/`$803917` counters move on the frame it first runs.  Recon 59
  *  says the DROP has no RNG in it, which is true and is about `$275AF2..
  *  $275B20`; the ITEM does. */
-function init27EACE(ram, rom, a6) {
+function init27EACE(ram, rom, a6,
+  resources = BLACK_ITEM_RESOURCES) {
+  void resources.kind0.init;
   ram.setU32(a6 + I.life, 0x0700_0b00);                // $27EACE move.l #$7000B00
-  let d0 = drawByte242E24(ram, rom);                   // $27EAD6 jsr $242E24
+  let d0 = drawByteWithResources(ram, rom, resources.rng.launch); // $27EAD6 jsr $242E24
   d0 = (d0 >>> 1) & 0x7f;                              // $27EADC lsr.b #1,D0
   ram.setU8(a6 + I.angle, (d0 + 0x10) & 0xff);         // $27EADE/$27EAE2
 }
@@ -648,9 +721,11 @@ function init27EACE(ram, rom, a6) {
  *
  * @returns {boolean} CARRY -- the record freed itself.
  */
-function motion27EAE8(ram, rom, ctx, a6) {
-  if ((ram.u8(ITEM.pause30f8) & 0x40) !== 0) return tail27EBBA(ram, ctx, a6);
-  if (ram.u16(a6 + I.life) === 0) return tail27EBBA(ram, ctx, a6);  // $27EAF4
+function motion27EAE8(ram, rom, ctx, a6,
+  resources = BLACK_ITEM_RESOURCES) {
+  void resources.kind0.motion;
+  if ((ram.u8(ITEM.pause30f8) & 0x40) !== 0) return tail27EBBA(ram, ctx, a6, resources);
+  if (ram.u16(a6 + I.life) === 0) return tail27EBBA(ram, ctx, a6, resources); // $27EAF4
   if (ram.u16(ITEM.freeze) === 0) {                    // $27EAFC tst.w $8130D2
     ram.setU16(a6 + I.life, u16(ram.u16(a6 + I.life) - 1));   // $27EB04 subq.w #1
   }
@@ -661,7 +736,7 @@ function motion27EAE8(ram, rom, ctx, a6) {
       if (ram.u16(a6 + I.pos) >= 0x2b00) {             // $27EB4A cmpi.w #$2B00/bcs
         ram.setU8(a6 + I.angle, 0x28);                 // $27EB52 move.b #$28
       }
-      reflect27EB58(ram, rom, a6);
+      reflect27EB58(ram, rom, a6, resources);
     }
   } else if (d0 >= 0x3d00) {                           // $27EB16 cmpi.w #$3D00/bcc
     ram.setU16(a6 + I.posX, 0x3500);                   // $27EB1E move.w #$3500
@@ -671,7 +746,7 @@ function motion27EAE8(ram, rom, ctx, a6) {
       } else {
         ram.setU8(a6 + I.angle, 0x18);                 // $27EB34 move.b #$18
       }
-      reflect27EB58(ram, rom, a6);
+      reflect27EB58(ram, rom, a6, resources);
     }
   }
   // $27EB6C: THE LONG AXIS, three ways.  `$27EB1C bra $27EB6C` is the middle
@@ -680,36 +755,39 @@ function motion27EAE8(ram, rom, ctx, a6) {
   const ang = ram.u8(a6 + I.angle);
   if (y >= 0x6d00) {                                   // $27EB6C cmpi.w #$6D00/bcc
     if (ang < 0x10 || ang > 0x30) {                    // $27EB7E/$27EB86
-      bounceLong27EBA0(ram, rom, a6);                  // $27EB84/$27EB8C bra $27EBA0
+      bounceLong27EBA0(ram, rom, a6, resources);       // $27EB84/$27EB8C bra $27EBA0
     }
   } else if (y <= 0x0700) {                            // $27EB74 cmpi.w #$700/bls
     if (ang > 0x10 && ang <= 0x30) {                   // $27EB90/$27EB98
-      bounceLong27EBA0(ram, rom, a6);
+      bounceLong27EBA0(ram, rom, a6, resources);
     }
   }
-  return tail27EBBA(ram, ctx, a6);
+  return tail27EBBA(ram, ctx, a6, resources);
 }
 
 /** `$27EB58` / `$27ED08` -- reflect the angle and jitter it.  `neg.b` then
  *  `+ $242B3C` masked `$3F`.  **A SECOND RNG DRAW PER BOUNCE.** */
-function reflect27EB58(ram, rom, a6) {
+function reflect27EB58(ram, rom, a6,
+  resources = BLACK_ITEM_RESOURCES) {
   ram.setU8(a6 + I.angle, (-ram.u8(a6 + I.angle)) & 0xff);   // $27EB58 neg.b
-  const d0 = drawByte242B3C(ram, rom);                       // $27EB5C jsr $242B3C
+  const d0 = drawUnmaskedByteWithResources(ram, rom, resources.rng.bounce); // $27EB5C
   ram.setU8(a6 + I.angle, (ram.u8(a6 + I.angle) + d0) & 0xff);  // $27EB62 add.b
   ram.setU8(a6 + I.angle, ram.u8(a6 + I.angle) & 0x3f);      // $27EB66 andi.b #$3F
 }
 
 /** `$27EBA0` / `$27ED50` -- the LONG axis's bounce: `+$20` THEN the reflect. */
-function bounceLong27EBA0(ram, rom, a6) {
+function bounceLong27EBA0(ram, rom, a6,
+  resources = BLACK_ITEM_RESOURCES) {
   ram.setU8(a6 + I.angle, (ram.u8(a6 + I.angle) + 0x20) & 0xff);  // $27EBA0 addi.b
-  reflect27EB58(ram, rom, a6);                                    // $27EBA6..
+  reflect27EB58(ram, rom, a6, resources);                         // $27EBA6..
 }
 
 /** `$27EBBA` -- every motion routine's tail: move, then the off-screen free. */
-function tail27EBBA(ram, ctx, a6) {
+function tail27EBBA(ram, ctx, a6,
+  resources = BLACK_ITEM_RESOURCES) {
   applyVelocityA6(ram, ctx.tables, a6);                // $27EBBA jsr $2417DE
   if (offScreen242684(ram, a6)) {                      // $27EBC0 jsr / $27EBC6 bcs
-    freeItem(ram, a6);                                 // $27F2F0
+    freeItem(ram, a6, resources);                      // $27F2F0
     return true;
   }
   return false;                                        // $27EBCA rts
@@ -1083,8 +1161,11 @@ function motion27F23E(ram, ctx, a6) {
 // (17 frames off `$27F508` against 30 off `$27F300`/`$380`/`$400`/`$480`).
 
 /** `$27F54C` -- collected NORMALLY.  Scores `$10`. */
-export function collect27F54C(ram, rom, ctx, a6, list) {
+export function collect27F54C(ram, rom, ctx, a6, list,
+  resources = BLACK_ITEM_RESOURCES) {
+  void resources.collected.normalTail;
   const d1 = ram.u8(a6);                               // $27F550 move.b (A6),D1
+  void resources.collection.scoreRoutine;
   scoreByMask(ram, 0x10, d1);                          // $27F552/$27F554 jsr $286128
   ram.setU8(a6, 0x80);                                 // $27F55E move.b #$80,(A6)
   ram.setU8(a6 + 0x01, ram.u8(a6 + 0x01) | 0x01);      // $27F562 bset #$0,($1,A6)
@@ -1092,23 +1173,27 @@ export function collect27F54C(ram, rom, ctx, a6, list) {
   ram.setU32(a6 + I.list, list);                       // $27F56E move.l A0,($6,A6)
   ram.setU16(a6 + I.cursor, 0);                        // $27F572
   ram.setU8(a6 + I.anim, 0);                           // $27F578 move.b #$0 -- BYTE
-  tail27F5C2(ram, rom, a6);                            // $27F57E bra $27F5C2
+  tail27F5C2(ram, rom, a6, resources);                 // $27F57E bra $27F5C2
   ctx?.itemCollect?.(d1, 0x10, a6);
 }
 
 /** `$27F582` -- collected AT MAXIMUM.  Scores `$1000`, through the same
  *  `$286128`, and the immediate is a `move.l` where the other is a `moveq`. */
-export function collectMax27F582(ram, rom, ctx, a6) {
-  ctx.soundPost?.(0x28c5ca);  // WAVE A: BGM id=$1D, AT-MAXIMUM pickup ($27F582)
+export function collectMax27F582(ram, rom, ctx, a6, list = undefined,
+  resources = BLACK_ITEM_RESOURCES) {
+  void list;
+  void resources.collected.maxTail;
+  ctx.soundPost?.(resources.sounds.atMax);             // $27F582
   const d1 = ram.u8(a6);                               // $27F58C move.b (A6),D1
+  void resources.collection.scoreRoutine;
   scoreByMask(ram, 0x1000, d1);                        // $27F58E/$27F594
   ram.setU8(a6, 0x80);                                 // $27F59E
   ram.setU8(a6 + 0x01, ram.u8(a6 + 0x01) | 0x80);      // $27F5A2 bset #$7,($1,A6)
-  ram.setU32(a6 + I.list, ANIM_LISTS.max27F500);       // $27F5A8/$27F5AC
+  ram.setU32(a6 + I.list, resources.collected.maxList); // $27F5A8/$27F5AC
   ram.setU16(a6 + I.cursor, 0);                        // $27F5B0
   ram.setU16(a6 + I.frame, 0x0202);                    // $27F5B6
   ram.setU8(a6 + I.anim, 0);                           // $27F5BC
-  tail27F5C2(ram, rom, a6);
+  tail27F5C2(ram, rom, a6, resources);
   ctx?.itemCollect?.(d1, 0x1000, a6);
   return { atMax: true };
 }
@@ -1116,11 +1201,13 @@ export function collectMax27F582(ram, rom, ctx, a6) {
 /** `$27F5C2` -- both tails' shared eight instructions: pick the flight angle
  *  from where the item is on the SHORT axis, then the speed from **A THIRD RNG
  *  DRAW**.  `andi.w #$6` + `addq.w #7` gives 7, 9, 11 or 13 -- odd speeds only. */
-function tail27F5C2(ram, rom, a6) {
+function tail27F5C2(ram, rom, a6,
+  resources = BLACK_ITEM_RESOURCES) {
+  void resources.collected.sharedTail;
   const d1 = u16(ram.u16(ITEM.scroll) + ram.u16(a6 + I.posX));  // $27F5C2/$27F5C8
   ram.setU8(a6 + I.angle, 0x30);                       // $27F5CC move.b #$30
   if (d1 < 0x1c00) ram.setU8(a6 + I.angle, 0x10);      // $27F5D2 cmpi.w/bcc/$27F5D8
-  let d0 = drawByte242B3C(ram, rom);                   // $27F5DE jsr $242B3C
+  let d0 = drawUnmaskedByteWithResources(ram, rom, resources.rng.bounce); // $27F5DE
   if ((d0 & 0x80) !== 0) d0 = (-d0) & 0xff;            // $27F5E4 bpl / neg.b D0
   ram.setU8(a6 + I.speed, (d0 & 0x06) + 7);            // $27F5E8 andi.w #$6/addq #7
 }
@@ -1143,10 +1230,11 @@ function tail27F5C2(ram, rom, a6) {
 // outside this file writes +$0E's high byte.  Named, not removed.
 
 /** `$27F5F4` -- the collected animation.  @returns {boolean} the record freed. */
-export function collectedStep27F5F4(ram, rom, ctx, a6) {
+export function collectedStep27F5F4(ram, rom, ctx, a6,
+  resources = BLACK_ITEM_RESOURCES) {
   const atMax = (ram.u8(a6 + 0x01) & 0x80) !== 0;      // $27F5F4 btst #$7 / bne
-  const end = atMax ? ANIM_END.atMax : ANIM_END.normal;
-  const site = atMax ? ITEM.stepperMax : ITEM.stepper;
+  const end = atMax ? resources.collected.bounds.atMax : resources.collected.bounds.normal;
+  const site = atMax ? resources.collected.maxStepper : resources.collected.stepper;
   const list = ram.u32(a6 + I.list);                   // $27F5FE movea.l ($6,A6)
   const cursor = ram.u16(a6 + I.cursor);
   if ((cursor & 3) !== 0 || cursor >= end) {
@@ -1162,7 +1250,7 @@ export function collectedStep27F5F4(ram, rom, ctx, a6) {
   const d1 = ((ram.u32(a6 + I.pos) + rom.u32(list)) >>> 0);   // $27F606 add.l (A0)+
   const d3 = rom.u16(list + 4);                        // $27F608 move.w (A0)+,D3
   const d2 = rom.u32(list + 8 + cursor);               // $27F60C/$27F610
-  enqueueRegistersThroughStub(ram, rom, ITEM.emitStub, d1, d2, d3, 0x001d);
+  enqueueRegistersThroughStub(ram, rom, resources.kind0.emitter, d1, d2, d3, 0x001d);
   if (ram.u8(a6 + I.anim) !== 0) {                     // $27F61C tst.b ($e,A6)
     ram.setU16(a6 + I.pos, u16(ram.u16(a6 + I.pos) + 0x20));  // $27F624 addi.w #$20
   } else {
@@ -1176,7 +1264,7 @@ export function collectedStep27F5F4(ram, rom, ctx, a6) {
   const nc = u16(cursor + 4);                          // $27F646 addq.w #4
   ram.setU16(a6 + I.cursor, nc);
   if (i16(nc) >= end) {                                // $27F64A cmpi.w / bge
-    freeItem(ram, a6);                                 // $27F650 -> $27F2F0
+    freeItem(ram, a6, resources);                      // $27F650 -> $27F2F0
     return true;
   }
   return false;
@@ -1221,15 +1309,19 @@ export const POWER = {
  *  and `n+1 <= 11`, or the SHOT row and the LASER row overlap.  Recon 59 §9.6
  *  could not measure the domain because `$810440` and `$81043E` were absent
  *  from `src/`; this is the check that turns that into a loud throw. */
-function powerRow(ram, ship, weapon, site) {
+function powerRow(ram, ship, weapon, site,
+  resources = BLACK_ITEM_RESOURCES) {
+  const powerLists = resources.collection.powerLists;
   const d0 = u16(u16(u16(ram.u16(ship) - 2) * 2) + ram.u16(weapon));
-  if ((d0 & 1) !== 0 || d0 + 1 >= POWER.listCount) {
+  if ((d0 & 1) !== 0 || d0 + 1 >= powerLists.count) {
     unreached(site, `$${site.toString(16).toUpperCase()} -- the power-list row `
       + `index ((${ram.u16(ship)} - 2) * 2 + ${ram.u16(weapon)}) = ${d0} is `
-      + `either ODD or past the ${POWER.listCount}-longword array at $25520C. `
+      + `either ODD or past the ${powerLists.count}-longword array at `
+      + `$${powerLists.root.toString(16).toUpperCase()}. `
       + `The code reads TWO entries 4 bytes apart (the SHOT list and the LASER `
       + `list), so an odd index makes them overlap and a large one runs off the `
-      + `end into $25523C, the first five-word list itself`);
+      + `end into $${(powerLists.root + powerLists.count * 4).toString(16)
+        .toUpperCase()}, the first ${powerLists.words}-word list itself`);
   }
   return d0 * 4;                                       // $252CE2/$252CE4 add.w x2
 }
@@ -1253,7 +1345,9 @@ function powerRow(ram, ship, weapon, site) {
  *
  * @returns {boolean} CARRY -- refused because BOTH are already at maximum.
  */
-export function collect252C96(ram, rom, ctx) {
+export function collect252C96(ram, rom, ctx,
+  resources = BLACK_ITEM_RESOURCES) {
+  void resources.collection.p1;
   const d0 = u16(ram.u16(POWER.p1Shot) + ram.u16(POWER.p1Laser));  // $252C96/$252C9C
   if (d0 === 0x10) return true;                        // $252CA2 cmpi.w #$10 -> $252D1E
   if (ram.u16(POWER.p1Laser) !== 8) {                  // $252CA8 cmpi.w #$8
@@ -1263,12 +1357,14 @@ export function collect252C96(ram, rom, ctx) {
   }
   if (ram.u16(POWER.p1Shot) === 8) return false;       // $252CC2 -> $252D1A
   ram.setU16(POWER.p1Shot, u16(ram.u16(POWER.p1Shot) + 2));       // $252CCC addq.w #2
-  advanceCursors(ram, rom, ctx, 0);
+  advanceCursors(ram, rom, ctx, 0, resources);
   return false;
 }
 
 /** `$252D24` -- the P2 mirror, address for address. */
-export function collect252D24(ram, rom, ctx) {
+export function collect252D24(ram, rom, ctx,
+  resources = BLACK_ITEM_RESOURCES) {
+  void resources.collection.p2;
   const d0 = u16(ram.u16(POWER.p2Shot) + ram.u16(POWER.p2Laser));  // $252D24/$252D2A
   if (d0 === 0x10) return true;                        // $252D30 -> $252D1E
   if (ram.u16(POWER.p2Laser) !== 8) {                  // $252D36
@@ -1278,23 +1374,25 @@ export function collect252D24(ram, rom, ctx) {
   }
   if (ram.u16(POWER.p2Shot) === 8) return false;       // $252D50 -> $252DA8
   ram.setU16(POWER.p2Shot, u16(ram.u16(POWER.p2Shot) + 2));       // $252D5A
-  advanceCursors(ram, rom, ctx, 1);
+  advanceCursors(ram, rom, ctx, 1, resources);
   return false;
 }
 
 /** `$252CD2..$252D18` / `$252D60..$252DA6` -- the cursor advance, both players.
  *  The comparison is against **word[4]** of each five-word list, i.e. the
  *  cursor stops at the LAST word rather than being counted. */
-function advanceCursors(ram, rom, ctx, who) {
+function advanceCursors(ram, rom, ctx, who,
+  resources = BLACK_ITEM_RESOURCES) {
   const P = who === 0
     ? { ship: POWER.p1Ship, weapon: POWER.p1Weapon, shot: POWER.p1Cursor,
-      pod: POWER.p1PodCursor, site: 0x252ce6 }
+      pod: POWER.p1PodCursor, site: resources.collection.p1CursorDiagnostic }
     : { ship: POWER.p2Ship, weapon: POWER.p2Weapon, shot: POWER.p2Cursor,
-      pod: POWER.p2PodCursor, site: 0x252d74 };
-  const off = powerRow(ram, P.ship, P.weapon, P.site);
-  const laserList = rom.u32(POWER.lists + off + 4);    // $252CEC movea.l ($4,A0,D0.w)
+      pod: POWER.p2PodCursor, site: resources.collection.p2CursorDiagnostic };
+  const off = powerRow(ram, P.ship, P.weapon, P.site, resources);
+  const lists = resources.collection.powerLists.root;
+  const laserList = rom.u32(lists + off + 4);          // $252CEC movea.l ($4,A0,D0.w)
   const d1 = rom.u16(laserList + 8);                   // $252CF0 move.w ($8,A1),D1
-  const shotList = rom.u32(POWER.lists + off);         // $252CF4 movea.l (A0,D0.w)
+  const shotList = rom.u32(lists + off);               // $252CF4 movea.l (A0,D0.w)
   const d0 = rom.u16(shotList + 8);                    // $252CF8 move.w ($8,A0),D0
   if (rom.u16(ram.u32(P.shot)) !== d0) {               // $252D02/$252D04 cmp.w (A0),D0
     ram.setU32(P.shot, (ram.u32(P.shot) + 2) >>> 0);   // $252D08 addq.l #2,(A1)
@@ -1363,11 +1461,29 @@ function writeCursors(ram, rom, who) {
  * posts its sound and reaches the cartridge's single `$25279A..$2527BC` wipe.
  * Picking up power, requesting or ending a hyper, and the laser-bomb cleanup all
  * destroy the firing beam while preserving every byte outside the owned words.
+ * A private edition binds its own frozen `itemBeamReset` resources on the frame
+ * context; legacy three-argument callers retain the native Black owner table.
  */
 export function beamReset25270C(ram, ctx, who) {
-  const b = BEAM[who];
+  const binding = ctx?.itemBeamReset;
+  if (binding !== undefined
+      && (binding === null || typeof binding !== 'object'
+        || binding.beams === undefined || binding.resources === undefined)) {
+    throw new TypeError('item beam reset needs edition resources and beam owners');
+  }
+  const beams = binding?.beams ?? BEAM;
+  const b = beams[who];
+  if (b === undefined) {
+    throw new RangeError(`item beam reset owner ${who} is outside the bound beam owners`);
+  }
   ram.setU16(b.opt, ram.u16(b.opt) & 0xdffb);             // $25270C / $252754 andi.w
-  wipeSegmentPool(ram, ctx, b);                           // $252714 / $25275C inner entry
+  if (binding === undefined) {
+    wipeSegmentPool(ram, ctx, b);                         // $252714 / $25275C inner entry
+    return;
+  }
+  wipeSegmentPoolWithResources(
+    ram, ctx, b, binding.resources, beams,
+  );
 }
 
 /**

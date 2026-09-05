@@ -108,7 +108,6 @@
 //
 // =========================== WHAT IS *NOT* IN THIS WAVE ====================
 //
-// * **pool D** -- §THE REFUSAL above.  `$289098` and `$2890F2` stay counted.
 // * **`$2440E0`** (E5c) -- 39 blocks over the 624-byte table `$244ACE`, which
 //   `50-recon` §3 read end to end.  It calls `$288E0C` and then `$289004` 39
 //   times, so it is now a ~30-line port -- but [M] its only non-boss caller is
@@ -122,13 +121,14 @@
 //   that proved it).  Deferred with the rest of the sound wave.
 
 import { u16, i16 } from './ram.js';
-import { BLACK_TYPE11_EFFECT_RESOURCES } from './type11-resources.js';
+import {
+  BLACK_TYPE11_EFFECT_RESOURCES, WHITE_TYPE11_EFFECT_RESOURCES,
+} from './type11-resources.js';
 import { unreached } from './unported.js';
 import { enqueueThroughStub } from './spritequeue.js';
 import {
-  drawByte242B3C, drawByte242E24, drawByte24311A, drawByte2431F4,
-  drawByteWithResources, drawLong24397A, drawSigned242CAC, drawSigned242FDE,
-  drawSignedByteWithResources, drawWord242EC2,
+  drawByteWithResources, drawLongWithResources, drawSignedByteWithResources,
+  drawUnmaskedByteWithResources,
 } from './rng.js';
 
 export const POOL_B = {
@@ -172,20 +172,81 @@ export const POOL_C = {
   templateTable: 0x289dea,
 };
 
-export { BLACK_TYPE11_EFFECT_RESOURCES };
+export {
+  BLACK_TYPE11_EFFECT_RESOURCES, WHITE_TYPE11_EFFECT_RESOURCES,
+} from './type11-resources.js';
+
+function boundedRng(resources, key, entries) {
+  const rng = resources?.rng?.[key];
+  if (!Number.isSafeInteger(rng?.routine)
+      || !Number.isSafeInteger(rng?.table) || rng.entries !== entries) {
+    throw new TypeError(`effect resources require a ${entries}-entry ${key} RNG root`);
+  }
+  return rng;
+}
+
+function poolBEffectResources(resources = BLACK_TYPE11_EFFECT_RESOURCES) {
+  if (!Number.isSafeInteger(resources?.poolBClear)
+      || !Number.isSafeInteger(resources?.poolBWalker)
+      || !Number.isSafeInteger(resources?.poolBDriver)
+      || !Number.isSafeInteger(resources?.poolBAllocator)
+      || !Number.isSafeInteger(resources?.poolBTableA)
+      || !Number.isSafeInteger(resources?.poolBTableB)
+      || !Number.isSafeInteger(resources?.poolBEmitTable)
+      || !Number.isSafeInteger(resources?.poolBSubSpawnSite)
+      || !Number.isSafeInteger(resources?.poolBScrollCompensation)
+      || !Number.isSafeInteger(resources?.poolBVector)
+      || !Array.isArray(resources?.poolBEmitters)
+      || resources.poolBEmitters.length !== 5
+      || resources.poolBEmitters.some((entry) => !Number.isSafeInteger(entry))) {
+    throw new TypeError('pool-B effect resources require complete allocator, driver, table, and emitter roots');
+  }
+  return resources;
+}
+
+function poolDEffectResources(resources = BLACK_TYPE11_EFFECT_RESOURCES) {
+  if (!Number.isSafeInteger(resources?.poolDClear)
+      || !Number.isSafeInteger(resources?.poolDAllocator)
+      || !Number.isSafeInteger(resources?.poolDDriver)
+      || !Number.isSafeInteger(resources?.poolDAnimate)
+      || !Number.isSafeInteger(resources?.poolDFill)
+      || !Number.isSafeInteger(resources?.poolDInitPrimary)
+      || !Number.isSafeInteger(resources?.poolDInitAlternate)
+      || !Number.isSafeInteger(resources?.poolDSelectorTable)
+      || !Number.isSafeInteger(resources?.poolDTemplateTable)
+      || !Number.isSafeInteger(resources?.poolDEmitTable)
+      || !Number.isSafeInteger(resources?.poolDVector)
+      || !Number.isSafeInteger(resources?.poolDVectorOffsets)
+      || !Array.isArray(resources?.poolDEmitters)
+      || resources.poolDEmitters.length !== 5
+      || resources.poolDEmitters.some((entry) => !Number.isSafeInteger(entry))) {
+    throw new TypeError('pool-D effect resources require complete allocator, driver, template, and emitter roots');
+  }
+  boundedRng(resources, 'poolDPosition', 64);
+  boundedRng(resources, 'signed', 256);
+  boundedRng(resources, 'poolDSpeed', 256);
+  boundedRng(resources, 'poolDHold', 256);
+  boundedRng(resources, 'poolDAngle', 256);
+  boundedRng(resources, 'poolDPositiveAngle', 128);
+  boundedRng(resources, 'byte64', 64);
+  return resources;
+}
 
 function type11EffectResources(resources = BLACK_TYPE11_EFFECT_RESOURCES) {
   const signed = resources?.rng?.signed;
   const byte128 = resources?.rng?.byte128;
   const byte64 = resources?.rng?.byte64;
-  if (!Number.isSafeInteger(resources?.poolBAllocator)
-      || !Number.isSafeInteger(resources?.poolCEntry)
+  if (!Number.isSafeInteger(resources?.poolCEntry)
+      || !Number.isSafeInteger(resources?.poolCDriver)
+      || !Number.isSafeInteger(resources?.poolCEmitTable)
+      || !Array.isArray(resources?.poolCEmitters)
+      || resources.poolCEmitters.length !== 5
       || !Number.isSafeInteger(resources?.poolCTemplateTable)
       || !Number.isSafeInteger(resources?.descriptorPointerBias)
       || !Number.isSafeInteger(signed?.table) || signed.entries !== 256
       || !Number.isSafeInteger(byte128?.table) || byte128.entries !== 128
       || !Number.isSafeInteger(byte64?.table) || byte64.entries !== 64) {
-    throw new TypeError('type-$11 effect resources require bounded allocator, template, and RNG roots');
+    throw new TypeError('type-$11 effect resources require bounded template and RNG roots');
   }
   return resources;
 }
@@ -226,6 +287,32 @@ export const B = {
 export const EMIT_STUB = Object.freeze({
   0x0: 0x23d762, 0x4: 0x23d79e, 0x8: 0x23d7da, 0xc: 0x23d816, 0x10: 0x23d852,
 });
+
+function resourceEmitter(rom, selector, table, expected, label) {
+  if ((selector & 3) !== 0 || selector < 0 || selector > 0x10) {
+    unreached(table, `${label} emitter selector $${selector.toString(16).toUpperCase()} `
+      + `is not one of 0, 4, 8, $C or $10`);
+  }
+  const index = selector >>> 2;
+  const pointer = rom.u32(table + selector);
+  if (pointer !== expected[index]) {
+    unreached(table + selector, `${label} emitter table changed at `
+      + `$${(table + selector).toString(16).toUpperCase()}: expected `
+      + `$${expected[index].toString(16).toUpperCase()}, found `
+      + `$${pointer.toString(16).toUpperCase()}`);
+  }
+  return pointer;
+}
+
+function effectVector(ctx, entry, speed, angle) {
+  if (typeof ctx?.tables?.shotVector !== 'function') {
+    throw new TypeError(`effect vector $${entry.toString(16).toUpperCase()} `
+      + 'requires an exact edition shot-vector table');
+  }
+  const vector = ctx.tables.shotVector(speed, angle);
+  ctx?.effectVectorHook?.(entry, speed, angle, vector);
+  return vector;
+}
 
 /** The two enemy-bucket -> effect-bucket remap tables the death arms index.
  *  Both are ROM windows (`tools/export-tables.py`), both range-checked here.
@@ -270,17 +357,22 @@ export function remapBucket(rom, row, byteIndex, siteAddr) {
  *  count word, 4,538 bytes.  [M] five absolute-long callers: `$2440E0`
  *  (E5c, unported), `$25FD40`, `$27C73A`, `$28B5B4` (object type 5's "not
  *  started" branch, which `src/type5.js` throws for) and `$2A5A30`. */
-export function clearEffectPool(ram) {
+export function clearEffectPool(
+  ram, resources = BLACK_TYPE11_EFFECT_RESOURCES,
+) {
+  poolBEffectResources(resources);
   for (let i = 0; i < POOL_B.clearWords; i++) {          // $288E1A dbra
     ram.setU16(POOL_B.base + i * 2, 0);                  // $288E16 move.w #0,(A0)+
   }
 }
 
 /** `$289084` -- clear pool D: 20 slots and its count word, 1,282 bytes.
- *  Ported even though NOTHING IN THIS PORT ALLOCATES FROM POOL D (§THE REFUSAL),
- *  because the clear is what stops a pool surviving a reset it should not, and
- *  because it is the cheap half of `50-recon` §4.3's item 6. */
-export function clearSubEffectPool(ram) {
+ *  Type $85 death effects allocate pool D children through `$289098`; clearing
+ *  this pool on reset keeps those children from surviving into the next stage. */
+export function clearSubEffectPool(
+  ram, resources = BLACK_TYPE11_EFFECT_RESOURCES,
+) {
+  poolDEffectResources(resources);
   for (let i = 0; i < POOL_D.clearWords; i++) {          // $289092 dbra
     ram.setU16(POOL_D.base + i * 2, 0);                  // $28908E move.w #0,(A0)+
   }
@@ -397,7 +489,7 @@ const WALK_CAP = 64;
 export function spawnEffect(ram, ctx, d0,
   siteAddr = BLACK_TYPE11_EFFECT_RESOURCES.poolBAllocator,
   resources = BLACK_TYPE11_EFFECT_RESOURCES) {
-  const effects = type11EffectResources(resources);
+  const effects = poolBEffectResources(resources);
   const allocator = effects.poolBAllocator;
   const returnSite = allocator + 0x74;
   const d1 = d0 & 0x7f;                                  // $289008/$28900A
@@ -410,7 +502,8 @@ export function spawnEffect(ram, ctx, d0,
   if (d1 > POOL_B.kindMax) {                             // $289016 cmpi.w #$21 / bgt
     ctx?.unportedLog?.note(returnSite, `$${(allocator + 0x12).toString(16).toUpperCase()} -- effect kind `
       + `$${d0.toString(16).toUpperCase()} is outside the 34 script entries `
-      + `(kind & $7F must be 0..$21), so $289004 returned THE BIT BUCKET `
+      + `(kind & $7F must be 0..$21), so $${allocator.toString(16).toUpperCase()} `
+      + `returned THE BIT BUCKET `
       + `$81C8B2 and the caller's field writes are DISCARDED. Site `
       + `$${siteAddr.toString(16).toUpperCase()}`);
     return POOL_B.bitBucket;                             // $289078 lea $81C8B2
@@ -472,16 +565,20 @@ export function spawnEffect(ram, ctx, d0,
 
 /** `$288E20` -- consume every escape command at the cursor, leaving it on the
  *  next STREAM ADDRESS.  Mutates `($e,A6)`, `($6,A6)` and `($2,A6)`. */
-export function walkDescriptor288E20(ram, rom, a6) {
+export function walkDescriptor288E20(
+  ram, rom, a6, resources = BLACK_TYPE11_EFFECT_RESOURCES,
+) {
+  const effects = poolBEffectResources(resources);
   let a1 = ram.u32(a6 + B.descCursor);                   // $288E20 movea.l
   for (let guard = 0; ; guard++) {
     const d0 = rom.u32(a1);                              // $288E24 move.l (A1),D0
     if ((d0 & 0x80000000) === 0) break;                  // $288E26 bpl $288E48
     if (guard > 64) {
-      unreached(0x288e24, `$288E20's descriptor walk consumed 64 escape `
-        + `commands without reaching a stream address, at `
-        + `$${a1.toString(16).toUpperCase()}. Every list in $221740..$222618 `
-        + `is [M] at most 36 cells, so the cursor is not in the script data`);
+      unreached(effects.poolBWalker + 4,
+        `$${effects.poolBWalker.toString(16).toUpperCase()}'s descriptor walk `
+        + `consumed 64 escape commands without reaching a stream address, at `
+        + `$${a1.toString(16).toUpperCase()}. The cursor is outside the edition's `
+        + `bounded effect script data`);
     }
     if (rom.u16(a1) === 0xffff) {                        // $288E2C cmpi.w #$FFFF
       ram.setU16(a6 + B.size, rom.u16(a1 + 2));          // $288E34 move.w (A1)+
@@ -527,7 +624,10 @@ export function walkDescriptor288E20(ram, rom, a6) {
  * @returns {{live:number, emitted:number, freed:number, culled:number,
  *            delayed:number, subSpawned:number}} telemetry; the ROM returns none.
  */
-export function runEffectDriver(ram, rom, ctx) {
+export function runEffectDriver(
+  ram, rom, ctx, resources = BLACK_TYPE11_EFFECT_RESOURCES,
+) {
+  const effects = poolBEffectResources(resources);
   ram.setU16(POOL_B.count, 0);                           // $288E58 clr.w $81C8EA
   let live = 0, emitted = 0, freed = 0, culled = 0, delayed = 0, subSpawned = 0;
   const laserOn = (ram.u16(POOL_B.laserRec) & 0x8000) !== 0;   // $288FC2 tst.w / bpl
@@ -560,21 +660,23 @@ export function runEffectDriver(ram, rom, ctx) {
       // $288E8E bclr #$7,D1 / beq $288E9C -- Z comes from the OLD bit 7, so
       // bit 7 SET picks table B.  (`bclr` also strips it, which is what makes
       // the index 0..$21 rather than $80..$A1.)
-      const tbl = (kind & 0x80) ? POOL_B.tableB : POOL_B.tableA;
+      const tbl = (kind & 0x80) ? effects.poolBTableB : effects.poolBTableA;
       const d1 = (kind & 0x7f) << 3;                     // $288E9C lsl.w #3,D1
       if ((kind & 0x7f) > POOL_B.kindMax) {
-        unreached(0x288e9e, `$288E9E movea.l ($4,A1,D1.w),A2 -- a LIVE effect `
-          + `record carries kind $${kind.toString(16).toUpperCase()}, whose `
-          + `index ${kind & 0x7f} is past the ${POOL_B.tableEntries}-entry `
-          + `script table $${tbl.toString(16).toUpperCase()}. $289004 range-`
-          + `checks this and returns the bit bucket, so a record holding it `
-          + `means something wrote the status word behind the allocator`);
+        unreached(effects.poolBDriver + 0x50,
+          `$${(effects.poolBDriver + 0x50).toString(16).toUpperCase()} `
+          + `movea.l ($4,A1,D1.w),A2: a live effect record carries kind `
+          + `$${kind.toString(16).toUpperCase()}, whose index ${kind & 0x7f} is `
+          + `past the ${POOL_B.tableEntries}-entry script table `
+          + `$${tbl.toString(16).toUpperCase()}. The edition allocator range-checks `
+          + `this and returns the bit bucket, so a record holding it means something `
+          + `wrote the status word behind the allocator`);
       }
       const durList = rom.u32(tbl + d1 + 4);             // $288E9E movea.l ($4,A1,D1.w)
       ram.setU16(a6 + B.cell, u16(rom.u16(durList) + 1)); // $288EA2/$288EA6 +1
       ram.setU32(a6 + B.durCursor, durList + 2);         // $288EAA move.l A2,($2e,A6)
       ram.setU32(a6 + B.descCursor, rom.u32(tbl + d1));  // $288EAE move.l (A1,D1.w)
-      walkDescriptor288E20(ram, rom, a6);                // $288EB4 bsr $288E20
+      walkDescriptor288E20(ram, rom, a6, effects);          // $288EB4 bsr $288E20
       const at = ram.u32(a6 + B.descCursor);             // $288EB8 movea.l ($2a,A6)
       ram.setU32(a6 + B.descriptor, rom.u32(at));        // $288EBC move.l (A2)+,($a,A6)
       ram.setU32(a6 + B.descCursor, at + 4);             // $288EC0 move.l A2,($2a,A6)
@@ -584,7 +686,7 @@ export function runEffectDriver(ram, rom, ctx) {
     }
 
     // ------------------------------------- $288ED0: THE POOL-D SUB-SPAWN
-    if (subSpawn288ED0(ram, ctx, a6)) subSpawned++;
+    if (subSpawn288ED0(ram, ctx, a6, effects)) subSpawned++;
 
     // $288F00: the SCROLL, subtracted from the SHORT axis (the low word).
     ram.setU16(a6 + B.pos + 2,
@@ -610,7 +712,7 @@ export function runEffectDriver(ram, rom, ctx) {
     const spd = ram.u8(a6 + B.speed);                    // $288F1A move.b ($1a,A6)
     if (spd !== 0) {                                     // $288F1E beq $288F3A
       const ang = ram.u8(a6 + B.angle);                  // $288F24 move.b ($1b,A6)
-      const v = ctx.tables.shotVector(spd, ang);         // $288F28 jsr $241D34
+      const v = effectVector(ctx, effects.poolBVector, spd, ang);
       ram.setU16(a6 + B.vel, u16(v.dy));                 // $288F2E move.w D2,($34,A6)
       ram.setU16(a6 + B.vel + 2, u16(v.dx));             // $288F32 move.w D3,($36,A6)
       ram.setU8(a6 + B.speed, 0);                        // $288F36 clr.b ($1a,A6)
@@ -662,7 +764,7 @@ export function runEffectDriver(ram, rom, ctx) {
       }
       ram.setU16(a6 + B.cell, d0);                       // $288FA2 move.w D0,($32,A6)
       ram.setU32(a6 + B.durCursor, cur + 2);             // $288FA6 move.l A0,($2e,A6)
-      walkDescriptor288E20(ram, rom, a6);                // $288FAA bsr $288E20
+      walkDescriptor288E20(ram, rom, a6, effects);          // $288FAA bsr $288E20
       const at = ram.u32(a6 + B.descCursor);             // $288FAE movea.l ($2a,A6)
       ram.setU32(a6 + B.descriptor, rom.u32(at));        // $288FB2/$288FB4
       ram.setU32(a6 + B.descCursor, at + 4);             // $288FB8 move.l A0,($2a,A6)
@@ -671,37 +773,32 @@ export function runEffectDriver(ram, rom, ctx) {
     // $288FBC: THE LASER INTERLOCK, then $288FD6: THE EMIT.
     if (parityGate) continue;                            // $288FD2 beq $288FE6
     const sel = ram.u16(a6 + B.bucket);                  // $288FD6 move.w ($1e,A6)
-    const stub = EMIT_STUB[sel];
-    if (stub === undefined) {                            // $288FDA..$288FE4
-      unreached(POOL_B.emitTable, `pool B's emitter selector ($1e,A6) = `
-        + `$${sel.toString(16).toUpperCase()} is a raw BYTE offset into the `
-        + `FIVE-entry table $288FF0 and only 0, 4, 8, $C and $10 are entries. `
-        + `The longword at $289004 is \`48E7C07E\` -- $289004's own movem.l, `
-        + `CODE -- so the board would jsr into an instruction. Record at `
-        + `$${a6.toString(16).toUpperCase()}, kind `
-        + `$${(ram.u16(a6 + B.status) & 0xff).toString(16).toUpperCase()}`);
-    }
+    const stub = resourceEmitter(
+      rom, sel, effects.poolBEmitTable, effects.poolBEmitters, 'pool B',
+    );
     enqueueThroughStub(ram, rom, stub, a6);              // $288FE4 jsr (A0)
     emitted++;
   }
   return { live, emitted, freed, culled, delayed, subSpawned };
 }
 
-function poolDTemplateInit(ram, rom, a0, templateIndex) {
+function poolDTemplateInit(ram, rom, a0, templateIndex, resources) {
   let list = ram.u32(a0 + D.list);
   if (templateIndex === 0) {
-    const pick = drawByte2431F4(ram, rom);
-    list = rom.u32(0x2897d0 + pick * 4);
+    const pick = drawByteWithResources(ram, rom, resources.rng.byte64);
+    list = rom.u32(resources.poolDSelectorTable + pick * 4);
     ram.setU32(a0 + D.list, list);
   }
-  const pick = drawByte2431F4(ram, rom);
+  const pick = drawByteWithResources(ram, rom, resources.rng.byte64);
   const delta = ((pick + 1) << 5) - 4;
   ram.setU16(a0 + D.cursor, u16(ram.u16(a0 + D.cursor) - delta));
   ram.setU32(a0 + D.descriptor, rom.u32(list + delta));
 }
 
 /** `$289658`, initialize one pool-D record from its selected ROM template. */
-function fillSubEffect289658(ram, rom, ctx, a0, parent, packed, multi) {
+function fillSubEffect289658(
+  ram, rom, ctx, a0, parent, packed, multi, resources,
+) {
   let select = (packed >>> 8) & 0xff;
   let mode = select >= 0x80 ? select - 0x100 : select;
   let status = 0x8000;
@@ -715,20 +812,24 @@ function fillSubEffect289658(ram, rom, ctx, a0, parent, packed, multi) {
   }
   const templateIndex = select & 0x1c;
   if (templateIndex > 0x10) {
-    unreached(0x289680, `pool D template selector $${templateIndex.toString(16)} `
-      + `is past the five-entry pointer table at $2897FC`);
+    unreached(resources.poolDFill + 0x28,
+      `pool D template selector $${templateIndex.toString(16)} is past the `
+      + `five-entry pointer table at `
+      + `$${resources.poolDTemplateTable.toString(16).toUpperCase()}`);
   }
-  const template = rom.u32(0x2897fc + templateIndex);
+  const template = rom.u32(resources.poolDTemplateTable + templateIndex);
   ram.setU16(a0 + D.status, status);
   ram.setU32(a0 + D.pos, ram.u32(parent + B.pos));
   if (multi) {
-    const jitter = drawLong24397A(ram, rom);
+    const jitter = drawLongWithResources(ram, rom, resources.rng.poolDPosition);
     ram.setU16(a0 + D.pos + 2,
       u16(ram.u16(a0 + D.pos + 2) + (jitter & 0xffff)));
   }
   ram.setU32(a0 + D.offs, rom.u32(template));
   let bucket = (packed >>> 16) & 0xff00;
-  if (drawSigned242FDE(ram, rom) === 0) bucket |= 0x1000;
+  if (drawSignedByteWithResources(ram, rom, resources.rng.signed) === 0) {
+    bucket |= 0x1000;
+  }
   bucket = ((bucket << 8) & 0xff);
   ram.setU16(a0 + D.bucket, bucket);
   ram.setU8(a0 + D.attr, 0);
@@ -741,29 +842,37 @@ function fillSubEffect289658(ram, rom, ctx, a0, parent, packed, multi) {
   const wrap = rom.u16(template + 14);
   ram.setU16(a0 + D.cursor, wrap);
   ram.setU16(a0 + D.wrap, wrap);
-  ram.setU8(a0 + D.speed, (drawWord242EC2(ram, rom) & 0x0f) + 0x1a);
-  ram.setU16(a0 + D.hold, u16(drawSigned242CAC(ram, rom) * 4 + 0x30));
-  poolDTemplateInit(ram, rom, a0, templateIndex);
+  ram.setU8(a0 + D.speed,
+    (drawUnmaskedByteWithResources(ram, rom, resources.rng.poolDSpeed) & 0x0f) + 0x1a);
+  ram.setU16(a0 + D.hold, u16(
+    drawSignedByteWithResources(ram, rom, resources.rng.poolDHold) * 4 + 0x30,
+  ));
+  poolDTemplateInit(ram, rom, a0, templateIndex, resources);
 
   let angle;
   if (mode < 0) {
     ram.setU8(a0 + D.drift, ram.u8(a0 + D.drift + 1) + 0x10);
-    let spread = drawWord242EC2(ram, rom) & 0x0f;
+    let spread = drawUnmaskedByteWithResources(
+      ram, rom, resources.rng.poolDSpeed,
+    ) & 0x0f;
     if ((ram.u8(a0 + D.status) & 0x04) !== 0) {
       spread >>>= 1;
       ram.setU8(a0 + D.speed, ram.u8(a0 + D.speed) - 8);
     }
     ram.setU8(a0 + D.speed, ram.u8(a0 + D.speed) + spread);
     ram.setU8(a0 + D.auxAngle, ram.u8(a0 + D.speed) + 0x20);
-    const random = drawByte242B3C(ram, rom);
+    const random = drawUnmaskedByteWithResources(
+      ram, rom, resources.rng.poolDAngle,
+    );
     angle = (((random << 24) >> 24) >> 2) + (packed & 0xff);
   } else {
-    angle = drawByte242E24(ram, rom);
+    angle = drawByteWithResources(ram, rom, resources.rng.poolDPositiveAngle);
     if (angle > 0x15 && angle < 0x2b) angle = (angle + 0x20) & 0x3f;
     const modeByte = ram.u8(a0 + D.mode + 1);
     ram.setU8(a0 + D.mode + 1, modeByte & ~0x20);
-    if ((modeByte & 0x20) !== 0)
+    if ((modeByte & 0x20) !== 0) {
       angle = ((((angle + 0x16) & 0x3f) >> 1) + 0x15) & 0xff;
+    }
   }
   angle &= 0xff;
   if (angle >= 0x20) ram.setU8(a0 + D.attr, ram.u8(a0 + D.attr) | 0x20);
@@ -772,8 +881,12 @@ function fillSubEffect289658(ram, rom, ctx, a0, parent, packed, multi) {
 }
 
 /** `$289098`, allocate and fill one or more pool-D debris records. */
-export function spawnSubEffect289098(ram, rom, ctx, packed, parent,
-  siteAddr = 0x289098) {
+export function spawnSubEffect289098(
+  ram, rom, ctx, packed, parent,
+  siteAddr = BLACK_TYPE11_EFFECT_RESOURCES.poolDAllocator,
+  resources = BLACK_TYPE11_EFFECT_RESOURCES,
+) {
+  const effects = poolDEffectResources(resources);
   const requested = ((packed >>> 16) & 0xff) + 1;
   const limit = ram.u16(0x813098) !== 0 || ram.u16(0x81308c) === 0
     ? POOL_D.slotsNarrow : POOL_D.slots;
@@ -788,7 +901,9 @@ export function spawnSubEffect289098(ram, rom, ctx, packed, parent,
       ctx?.subEffectDrop?.(requested - allocated, siteAddr);
       break;
     }
-    fillSubEffect289658(ram, rom, ctx, slot, parent, packed, requested > 1);
+    fillSubEffect289658(
+      ram, rom, ctx, slot, parent, packed, requested > 1, effects,
+    );
     ram.setU16(POOL_D.count, u16(ram.u16(POOL_D.count) + 1));
     allocated++;
   }
@@ -813,14 +928,19 @@ export function spawnSubEffect289098(ram, rom, ctx, packed, parent,
  *
  * @returns {boolean} whether this record requested its one-shot sub-spawn.
  */
-export function subSpawn288ED0(ram, ctx, a6) {
+export function subSpawn288ED0(
+  ram, ctx, a6, resources = BLACK_TYPE11_EFFECT_RESOURCES,
+) {
+  const effects = poolBEffectResources(resources);
+  poolDEffectResources(effects);
   const d0 = ram.u16(a6 + B.sub12);                      // $288ED0 move.w ($12,A6)
   if ((d0 & 0x8000) !== 0) return false;                 // $288ED4 bmi $288F00
   const param = ram.u16(a6 + B.sub14);                   // $288EE6 move.w ($14,A6)
   ram.setU8(a6 + B.f1d, ram.u8(a6 + B.f16));             // $288EEA move.b ($16,A6)
   const packed = ((((ram.u16(a6 + B.bucket) << 8) | (d0 & 0xff)) << 16)
     | param) >>> 0;
-  spawnSubEffect289098(ram, ctx.rom, ctx, packed, a6, 0x288ef0);
+  spawnSubEffect289098(ram, ctx.rom, ctx, packed, a6,
+    effects.poolBSubSpawnSite, effects);
   ram.setU16(a6 + B.sub12, 0xffff);                      // $288EFA -- the one-shot
   return true;
 }
@@ -1008,16 +1128,14 @@ export function runPoolCDriver(ram, rom, ctx,
       freed++; continue;
     }
     const selector = ram.u8(slot + C.bucket);
-    const stub = EMIT_STUB[selector];
-    if (stub === undefined) {
-      unreached(0x289c04, `pool C emitter selector $${selector.toString(16)} `
-        + `is not one of 0, 4, 8, $C or $10`);
-    }
+    const stub = resourceEmitter(rom, selector, effects.poolCEmitTable,
+      effects.poolCEmitters, 'pool C');
     enqueueThroughStub(ram, rom, stub, slot);
     emitted++;
   }
   if (remaining !== 0) {
-    unreached(0x289c0e, `pool C live count ${initial} exceeds the ${found} `
+    unreached(effects.poolCDriver + 0x8e,
+      `pool C live count ${initial} exceeds the ${found} `
       + `allocated records found in its 30 slots`);
   }
   return { live: initial, emitted, freed };
@@ -1047,7 +1165,10 @@ function subEffectInBounds(ram, a6, lowerY = -0x600, upperY = 0x7600) {
 }
 
 /** `$2890F2`, step and emit pool-D secondary debris. */
-export function runSubEffectDriver(ram, rom, ctx) {
+export function runSubEffectDriver(
+  ram, rom, ctx, resources = BLACK_TYPE11_EFFECT_RESOURCES,
+) {
+  const effects = poolDEffectResources(resources);
   let remaining = ram.u16(POOL_D.count);
   const initial = remaining;
   let emitted = 0, freed = 0, found = 0;
@@ -1085,7 +1206,9 @@ export function runSubEffectDriver(ram, rom, ctx) {
         }
       }
       if (speed !== 0) {
-        const v = ctx.tables.shotVector(speed, ram.u8(a6 + D.angle));
+        const v = effectVector(
+          ctx, effects.poolDVector, speed, ram.u8(a6 + D.angle),
+        );
         ram.setU16(a6 + D.pos, u16(ram.u16(a6 + D.pos) + v.dy));
         ram.setU16(a6 + D.pos + 2,
           u16(ram.u16(a6 + D.pos + 2) + v.dx - (v.dx >> 2)));
@@ -1106,7 +1229,9 @@ export function runSubEffectDriver(ram, rom, ctx) {
         }
       }
       if (ram.u16(POOL_B.bgFreeze) === 0) {
-        const v = ctx.tables.shotVector(speed, ram.u8(a6 + D.angle));
+        const v = effectVector(
+          ctx, effects.poolDVector, speed, ram.u8(a6 + D.angle),
+        );
         ram.setU16(a6 + D.pos, u16(ram.u16(a6 + D.pos) + v.dy));
         ram.setU16(a6 + D.pos + 2,
           u16(ram.u16(a6 + D.pos + 2) + v.dx));
@@ -1143,18 +1268,17 @@ export function runSubEffectDriver(ram, rom, ctx) {
     if (!shouldEmit) continue;
 
     const selector = ram.u16(a6 + D.bucket);
-    const stub = EMIT_STUB[selector];
-    if (stub === undefined) {
-      unreached(0x28921e, `pool D emitter selector $${selector.toString(16)} `
-        + `is not one of 0, 4, 8, $C or $10`);
-    }
+    const stub = resourceEmitter(
+      rom, selector, effects.poolDEmitTable, effects.poolDEmitters, 'pool D',
+    );
     enqueueThroughStub(ram, rom, stub, a6);
     emitted++;
   }
 
   if (remaining !== 0) {
-    unreached(0x289218, `pool D live count ${initial} exceeds the ${found} `
-      + `allocated records found in its 20 slots`);
+    unreached(effects.poolDDriver + 0x12c,
+      `pool D live count ${initial} exceeds the ${found} allocated records `
+      + `found in its 20 slots`);
   }
   return { live: initial, emitted, freed };
 }

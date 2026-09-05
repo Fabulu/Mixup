@@ -3,8 +3,11 @@
 import { BLACK_BULLET_SPAWN_RESOURCES } from './bullets.js';
 import {
   BLACK_SCORE_RESOURCES, BLACK_TYPE11_EFFECT_RESOURCES,
+  WHITE_TYPE11_EFFECT_RESOURCES,
 } from './type11-resources.js';
 import { WHITE_BULLET_SPAWN_RESOURCES } from './white-bullets.js';
+import { BLACK_CUE_RESOURCES, WHITE_CUE_RESOURCES } from './cues.js';
+import { BLACK_ITEM_RESOURCES, WHITE_ITEM_RESOURCES } from './item-resources.js';
 
 function deepFreeze(value, seen = new Set()) {
   if (value === null || typeof value !== 'object' || seen.has(value)) return value;
@@ -53,15 +56,7 @@ const white11 = {
   score: {
     hit: 0x184cf0, kill: 0x184db8, capTable: 0x18692e, refillTable: 0x186932,
   },
-  effects: {
-    poolBAllocator: 0x187b40, poolCEntry: 0x188630,
-    poolCTemplateTable: 0x188926, descriptorPointerBias: -0x100000,
-    rng: {
-      signed: { table: 0x14336a, entries: 256 },
-      byte128: { table: 0x1434c4, entries: 128 },
-      byte64: { table: 0x14359e, entries: 64 },
-    },
-  },
+  effects: WHITE_TYPE11_EFFECT_RESOURCES,
   remaps: { death: 0x167018, hit: 0x167024, secondary: 0x167030 },
   sound: { death: 0x18ad80 },
   aim64: {
@@ -142,6 +137,53 @@ const white27 = {
   sound: { death: 0x18adce },
 };
 
+const black85 = {
+  type: 0x85, algorithm: 'type85', initStub: 0x275812, initBody: 0x27581a,
+  handler: 0x275914, palette: 0x275890,
+  recordPrototype: 0x27589a, subPrototype: 0x2758b0,
+  aimSprite: 0x272dfa, muzzle: 0x27327a,
+  aim64: black27.aim64,
+  bullet: {
+    ...BLACK_BULLET_SPAWN_RESOURCES,
+    entry: 0x2813f0, semantic: 'bank-a-direct', site: 0x275ad0,
+  },
+  score: black11.score,
+  cues: BLACK_CUE_RESOURCES,
+  items: {
+    ...BLACK_ITEM_RESOURCES, allocator: BLACK_ITEM_RESOURCES.alloc,
+    kind: 0, alternateType: 0x86, alternateKind: 8,
+    sites: { first: 0x275b06, second: 0x275b1a },
+  },
+  effects: black11.effects,
+  effectSites: { first: 0x275b22, second: 0x275b4e, third: 0x275b76 },
+  sound: { death: 0x28c274 },
+  retirement: { entry: 0x263762, semantic: 'freeEnemy' },
+};
+
+const white85 = {
+  type: 0x85, algorithm: 'type85', initStub: 0x174866, initBody: 0x17486e,
+  foreignInitBodies: [0x27581a, 0x275bb6],
+  handler: 0x174968, palette: 0x1748e4,
+  recordPrototype: 0x1748ee, subPrototype: 0x174904,
+  secondSubPrototype: 0x174920,
+  aimSprite: 0x171e4e, muzzle: 0x1722ce,
+  aim64: white11.aim64,
+  bullet: {
+    ...WHITE_BULLET_SPAWN_RESOURCES,
+    entry: 0x180474, semantic: 'bank-a-direct', site: 0x174b24,
+  },
+  score: white11.score,
+  cues: WHITE_CUE_RESOURCES,
+  items: {
+    ...WHITE_ITEM_RESOURCES, allocator: WHITE_ITEM_RESOURCES.alloc, kind: 0,
+    sites: { first: 0x174b5a, second: 0x174b6e },
+  },
+  effects: white11.effects,
+  effectSites: { first: 0x174b76, second: 0x174ba2, third: 0x174bca },
+  sound: { death: 0x18ad9a },
+  retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
+};
+
 export const BLACK_WORLD_RESOURCES = deepFreeze({
   edition: 'black', objectDispatch: 0x240f62,
   background: {
@@ -159,7 +201,7 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
   },
   enemyFrame: { entry: 0x2634f4, walker: 0x2633be, driver: 0x263502 },
   movement: { entry: 0x241812, speedPointers: 0x200920, fold: 0x2418b4 },
-  enemyTypes: { 0x10: black10, 0x11: black11, 0x27: black27 },
+  enemyTypes: { 0x10: black10, 0x11: black11, 0x27: black27, 0x85: black85 },
   displayList: { filler: [0xfc00, 0x3800, 0, 0, 0x0201], coordinates: 'black' },
 });
 
@@ -180,6 +222,6 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
   },
   enemyFrame: { entry: 0x16256e, walker: 0x162438, driver: 0x162670 },
   movement: { entry: 0x141b60, speedPointers: 0x100920, fold: 0x141bee },
-  enemyTypes: { 0x10: white10, 0x11: white11, 0x27: white27 },
+  enemyTypes: { 0x10: white10, 0x11: white11, 0x27: white27, 0x85: white85 },
   displayList: { filler: [0xfbff, 0xfc00, 0, 0, 0x0201], coordinates: 'direct' },
 });

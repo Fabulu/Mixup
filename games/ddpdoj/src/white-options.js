@@ -33,6 +33,24 @@ import {
   runWhiteBombDamage144CE8, runWhiteBombDriver155394,
   preflightWhiteBombPointers,
 } from './white-bomb.js';
+import {
+  runEffectDriver, runPoolCDriver, runSubEffectDriver,
+  clearEffectPool, clearSubEffectPool,
+} from './effects.js';
+import { runItemDriver, clearItemPool } from './items.js';
+import { WHITE_ITEM_RESOURCES } from './item-resources.js';
+import { runCueDriver28AD70, WHITE_CUE_RESOURCES } from './cues.js';
+import { clearPoolC289AE0, clearCuePool28AC3A } from './poolclear.js';
+import {
+  poolClear as clearBulletPool28131E, poolPark as parkBulletSlots281330,
+} from './bullets.js';
+import {
+  reapSubRecords, resetAndInstallStage26331E,
+} from './spawn.js';
+import {
+  WHITE_TYPE11_EFFECT_RESOURCES,
+} from './type11-resources.js';
+import { WHITE_WORLD_RESOURCES } from './world-resources.js';
 import { runEnemyFrame } from './enemyframe.js';
 
 const freezeObject = (entries) => Object.freeze(Object.fromEntries(entries));
@@ -271,6 +289,11 @@ export const WHITE_BEAMS = Object.freeze([
     posHistory: 0x812834, imgHistory: 0x8128b4, drawBias: 0,
   }),
 ]);
+
+export const WHITE_ITEM_BEAM_RESET = Object.freeze({
+  beams: WHITE_BEAMS,
+  resources: WHITE_LASER_EDITION_RESOURCES,
+});
 
 const WHITE_OPTION_CARTRIDGE_IDENTITY = Object.freeze({
   templates: freezeRows([
@@ -804,40 +827,98 @@ function traceWhiteType5(ctx, call, target) {
   ctx?.whiteType5SubsystemHook?.(Object.freeze({ call, target }), ctx);
 }
 
+function resetWhiteType5World(ram, rom, slot, ctx) {
+  ctx?.privateDamageReceiptHook?.({ phase: 'allocator-reset', ram });
+  clearItemPool(ram, WHITE_ITEM_RESOURCES);
+  traceWhiteType5(ctx, 0x18a0e4, WHITE_ITEM_RESOURCES.clear);
+  clearBulletPool28131E(ram, ctx);
+  parkBulletSlots281330(ram);
+  traceWhiteType5(ctx, 0x18a0ea, 0x1803a2);
+  clearEffectPool(ram, WHITE_TYPE11_EFFECT_RESOURCES);
+  traceWhiteType5(ctx, 0x18a0f0, WHITE_TYPE11_EFFECT_RESOURCES.poolBClear);
+  clearSubEffectPool(ram, WHITE_TYPE11_EFFECT_RESOURCES);
+  traceWhiteType5(ctx, 0x18a0f6, WHITE_TYPE11_EFFECT_RESOURCES.poolDClear);
+  clearPoolC289AE0(ram);
+  traceWhiteType5(ctx, 0x18a0fc, 0x18861c);
+  clearCuePool28AC3A(ram);
+  traceWhiteType5(ctx, 0x18a102, WHITE_CUE_RESOURCES.clear);
+  clearPoolWithResources(ram, WHITE_SPARK_RESOURCES);
+  traceWhiteType5(ctx, 0x18a108, 0x188a76);
+  const stage = resetAndInstallStage26331E(
+    ram, rom, ctx?.unportedLog, ctx?.prot, ctx?.stageScriptInstallHook,
+    WHITE_WORLD_RESOURCES,
+  );
+  traceWhiteType5(ctx, 0x18a10e, WHITE_WORLD_RESOURCES.spawn.entryReset);
+  ram.setU8(slot + 2, 1);
+  if (ctx != null) ctx.type5Started = stage;
+  return Object.freeze({ phase: 'reset', shotsProcessed: 0, stage });
+}
+
 function beginWhiteCombat(
   ram, rom, slot, ctx, profileRequest, trustedProfile = undefined,
 ) {
   const profile = prepareWhiteCombatBase(
     rom, ctx, profileRequest, trustedProfile,
   );
-  preflightWhiteOptionCartridge(rom);
-  preflightWhiteLaserCartridge(rom);
-  preflightWhiteBombPointers(ram, rom, ctx, profile);
   if (ram.u8(slot + 2) === 0) {
-    clearPoolWithResources(ram, WHITE_SPARK_RESOURCES);
-    ram.setU8(slot + 2, 1);
-    return Object.freeze({ phase: 'reset', shotsProcessed: 0 });
+    return resetWhiteType5World(ram, rom, slot, ctx);
   }
   const prepared = prepareWhiteRecurringCombat(ram, rom, ctx, profile);
+  preflightWhiteBombPointers(ram, rom, ctx, profile);
   const { runtimeContext } = prepared;
   const bulletCtx = {
     ...deriveProfileContext(runtimeContext, { tables: prepared.tables }),
     ram, rom,
+    itemBeamReset: WHITE_ITEM_BEAM_RESET,
   };
+  const poolCFrame = runPoolCDriver(
+    ram, rom, runtimeContext, WHITE_TYPE11_EFFECT_RESOURCES,
+  );
+  if (ctx != null) {
+    ctx.poolCFrame = poolCFrame;
+    ctx.poolCSink?.(poolCFrame);
+  }
+  traceWhiteType5(ctx, 0x18a122, WHITE_TYPE11_EFFECT_RESOURCES.poolCDriver);
   const privateWorld = ctx?.stage1WorldPrivate;
+  let enemyFrame = null;
   if (privateWorld) {
-    const enemyFrame = runEnemyFrame(
+    enemyFrame = runEnemyFrame(
       ram, rom, { ...runtimeContext, tables: privateWorld.tables },
       privateWorld.enemyHandlers, privateWorld.resources,
     );
     if (ctx != null) ctx.enemyFrame = enemyFrame;
     traceWhiteType5(ctx, 0x18a128, privateWorld.resources.enemyFrame.entry);
   }
+  const subReaped = reapSubRecords(ram, WHITE_WORLD_RESOURCES);
+  const cueFrame = runCueDriver28AD70(ram, rom, WHITE_CUE_RESOURCES);
+  if (ctx != null) {
+    ctx.subReaped = subReaped;
+    ctx.cueFrame = cueFrame;
+  }
+  traceWhiteType5(ctx, 0x18a12e, WHITE_CUE_RESOURCES.fullDriver);
   const poolAFrame = runWhitePoolADriver(ram, rom, bulletCtx, profile);
   traceWhiteType5(ctx, 0x18a134, 0x17e9de);
+  const effectFrame = runEffectDriver(
+    ram, rom, bulletCtx, WHITE_TYPE11_EFFECT_RESOURCES,
+  );
+  if (ctx != null) {
+    ctx.effectFrame = effectFrame;
+    ctx.effectSink?.(effectFrame);
+  }
+  traceWhiteType5(ctx, 0x18a13a, WHITE_TYPE11_EFFECT_RESOURCES.poolBDriver);
+  const subEffectFrame = runSubEffectDriver(
+    ram, rom, bulletCtx, WHITE_TYPE11_EFFECT_RESOURCES,
+  );
+  if (ctx != null) {
+    ctx.subEffectFrame = subEffectFrame;
+    ctx.subEffectSink?.(subEffectFrame);
+  }
+  traceWhiteType5(ctx, 0x18a140, WHITE_TYPE11_EFFECT_RESOURCES.poolDDriver);
   const seam = Object.freeze({
     phase: 'before-bomb-call-18a146',
-    ram, rom, slot, ctx, prepared, bulletCtx, poolAFrame,
+    ram, rom, slot, ctx, prepared, bulletCtx,
+    poolCFrame, enemyFrame, subReaped, cueFrame, poolAFrame,
+    effectFrame, subEffectFrame,
   });
   WHITE_COMBAT_SEAMS.add(seam);
   return seam;
@@ -846,10 +927,8 @@ function beginWhiteCombat(
 /**
  * Reach the task #237 insertion point before `$18A146 -> $155394`.
  *
- * Task #238 owns only `$18A134 -> $17E9DE` in this prefix. Task #253
- * supplies `$18A128 -> $16256E` only when the private world seam is present.
- * Neither task claims the omitted cartridge calls at `$18A122 -> $1886BC`,
- * `$18A12E -> $189890`, `$18A13A -> $18798A`, or `$18A140 -> $187C2E`.
+ * Task #267 completes the recurring prefix in cartridge order: pool C, enemy,
+ * sub-record reaper with cue fall-through, pool A, pool B and pool D.
  */
 export function runWhiteType5BeforeBombCall18A146(
   ram, rom, slot, ctx, profileRequest,
@@ -859,8 +938,7 @@ export function runWhiteType5BeforeBombCall18A146(
 
 /**
  * Consume the guarded seam by running `$18A146 -> $155394`, then finish the
- * recurring type-5 graph through `$144A02 -> $144CE8`. The remaining omitted
- * cartridge calls are represented by their already-ported subsystem work.
+ * recurring type-5 graph through `$144A02 -> $144CE8`.
  */
 export function runWhiteType5AfterBombCall18A146Through144A02(
   ram, rom, slot, ctx, seam,
@@ -872,7 +950,8 @@ export function runWhiteType5AfterBombCall18A146Through144A02(
   }
   WHITE_COMBAT_SEAMS.delete(seam);
   const {
-    prepared, bulletCtx, poolAFrame,
+    prepared, bulletCtx, poolCFrame, enemyFrame, subReaped, cueFrame,
+    poolAFrame, effectFrame, subEffectFrame,
   } = seam;
   const { tables, handlers } = prepared;
   const shotCtx = bulletCtx;
@@ -902,6 +981,8 @@ export function runWhiteType5AfterBombCall18A146Through144A02(
     ram, rom, shotCtx, WHITE_SPARK_RESOURCES,
   );
   traceWhiteType5(ctx, 0x18a164, 0x188bd4);
+  const itemFrame = runItemDriver(ram, rom, shotCtx, WHITE_ITEM_RESOURCES);
+  traceWhiteType5(ctx, 0x18a188, WHITE_ITEM_RESOURCES.driver);
   const bulletFrame = runWhiteBulletDriver(bulletCtx, prepared.profile);
   traceWhiteType5(ctx, 0x18a194, 0x180d3a);
   const clearTimerExpired = runWhiteClearTimer(ram, prepared.profile);
@@ -930,14 +1011,16 @@ export function runWhiteType5AfterBombCall18A146Through144A02(
 
   if (ctx != null) {
     Object.assign(ctx, {
-      poolAFrame, bombFrame, shotsProcessed, segmentsProcessed, beamDrawn, sparkFrame,
-      bulletFrame, clearTimerExpired, bonusFollowers, hyperStockAnimations,
+      poolCFrame, enemyFrame, subReaped, cueFrame, poolAFrame, effectFrame,
+      subEffectFrame, bombFrame, shotsProcessed, segmentsProcessed, beamDrawn, sparkFrame,
+      itemFrame, bulletFrame, clearTimerExpired, bonusFollowers, hyperStockAnimations,
       whiteShotCollision: collision, whiteBombDamage: bombDamage,
     });
   }
   return Object.freeze({
-    phase: 'recurring', poolAFrame, bombFrame, shotsProcessed, segmentsProcessed,
-    beamDrawn, sparkFrame, bulletFrame, clearTimerExpired,
+    phase: 'recurring', poolCFrame, enemyFrame, subReaped, cueFrame,
+    poolAFrame, effectFrame, subEffectFrame, bombFrame, shotsProcessed,
+    segmentsProcessed, beamDrawn, sparkFrame, itemFrame, bulletFrame, clearTimerExpired,
     bonusFollowers, hyperStockAnimations, collision, bombDamage,
   });
 }

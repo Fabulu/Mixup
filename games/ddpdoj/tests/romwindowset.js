@@ -750,10 +750,20 @@
 // Measured: 1697 -> 1706 windows, 652,025 -> 652,639 bytes, and 79 -> 79
 // overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1706;
+// ---------------------------------------------------------------------------
+// PRIVATE WHITE TYPE $85 ADDED FORTY-SIX DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The Build A enemy, cue, item, Pool B, Pool C, Pool D, RNG, and Type-5 closures
+// add 4,636 exact bytes. Forty-five windows and 4,616 bytes are White-private;
+// the shared Black Pool B emitter contributes one 20-byte window. No new pair
+// overlaps.
+// Measured: 1706 -> 1752 windows, 652,639 -> 657,275 bytes, and 79 -> 79
+// overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 1752;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 652639;
+export const ROM_WINDOW_BYTES = 657275;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -829,8 +839,8 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 754;
-const WHITE_LABEL_WINDOW_BYTES = 195060;
+const WHITE_LABEL_WINDOW_COUNT = 799;
+const WHITE_LABEL_WINDOW_BYTES = 199676;
 
 /** Remove the later embedded Version A window family before reconstructing any
  *  earlier Black Label ledger. The edition manifest is the identity list, so a
