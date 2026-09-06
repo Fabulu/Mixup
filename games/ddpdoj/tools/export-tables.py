@@ -10770,6 +10770,8 @@ def verify(t: dict) -> list[str]:
         bad.append("embedded Version A Stage 1 Type $0B executable identity manifest drifted")
     if white.get("stage1Type24") != WHITE_STAGE1_TYPE24_EXECUTABLE_IDENTITY:
         bad.append("embedded Version A Stage 1 Type $24 executable identity manifest drifted")
+    if white.get("stage1Type31") != WHITE_STAGE1_TYPE31_EXECUTABLE_IDENTITY:
+        bad.append("embedded Version A Stage 1 Type $31 executable identity manifest drifted")
     if white.get("stage1Type82") != WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY:
         bad.append("embedded Version A Stage 1 Type $82 executable identity manifest drifted")
     if white.get("stage1Type88") != WHITE_STAGE1_TYPE88_EXECUTABLE_IDENTITY:
@@ -11429,10 +11431,10 @@ WHITE_LABEL_WINDOWS = [
     (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
 ]
 
-# Task #253's private Stage 1 world slice, extended through Task #286 for Types
-# $27, $10, $85, $0D, $1C, $82, $89, $88, $08, $0B, $09, and $24. These are
-# the bounded Build A data windows read by the shared background, spawn, enemy,
-# bullet, cue, item, and effect algorithms.
+# Task #253's private Stage 1 world slice, extended through Task #288 for Types
+# $27, $10, $85, $0D, $1C, $82, $89, $88, $08, $0B, $09, $24, and $31. These
+# are the bounded Build A data windows read by the shared background, spawn,
+# enemy, bullet, cue, item, and effect algorithms.
 WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x121528, 0x0008, "White A Pool-B kind-$01 script pointer pair"),
     (0x121530, 0x0018, "White A Pool-B kind-$02/$03/$04 script pointer pairs"),
@@ -11459,6 +11461,8 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x1223AE, 0x00EA, "White A Pool-B kind-$0D descriptor and duration closure"),
     (0x122BF8, 0x0040, "White A type-$24 palette block"),
     (0x123338, 0x00C0, "White A midboss three-bank palette closure"),
+    (0x1250B8, 0x0040, "White A type-$31 second palette block"),
+    (0x1251B8, 0x0040, "White A type-$31 first palette block"),
     (0x129FE0, 0x0004, "White A Pool-C rebased descriptor root $229FE0"),
     (0x12A044, 0x0004, "White A Pool-C rebased descriptor root $22A044"),
     (0x12A0A8, 0x0004, "White A Pool-C rebased descriptor root $22A0A8"),
@@ -11477,6 +11481,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x13E2D4, 0x000E, "White A damage-first family ARM-A emitter"),
     (0x13E3A4, 0x0012, "White A midboss arm register-convention sprite emitter"),
     (0x13EE54, 0x0016, "White A item kind-$00 register-convention emitter"),
+    (0x13FBE4, 0x0016, "White A type-$31 record-convention sprite emitter"),
     (0x141094, 0x0014, "White A five-entry background tile-base table"),
     (0x1423E8, 0x00F9, "White A Aim64 operations, bases, and 129-byte LUT"),
     (0x14289C, 0x0050, "White A type-$10/$11 normal and rank fire-gate boxes"),
@@ -11503,6 +11508,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x16699C, 0x0020, "White A low type-table entries $20 through $23"),
     (0x1669BC, 0x0008, "White A low type-table entry $24"),
     (0x1669D4, 0x0008, "White A low type-table entry $27"),
+    (0x166A24, 0x0008, "White A low type-table entry $31"),
     (0x166FE8, 0x0008, "White A type-$10/$11 initial emitter pair"),
     (0x167018, 0x0024, "White A type-$10/$11 death, hit, and secondary remap rows"),
     (0x16711A, 0x000E, "White A type-$10/$11 seven-stage fire-distance thresholds"),
@@ -11520,6 +11526,10 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x167B96, 0x0080, "White A type-$11 muzzle offsets"),
     (0x167C16, 0x0100, "White A type-$11 main sprite table"),
     (0x167D16, 0x0080, "White A type-$11 fire and art sprite table"),
+    (0x1687C4, 0x0008, "White A type-$31 run-length init stub"),
+    (0x168828, 0x0014, "White A type-$31 loop palette-bank tables"),
+    (0x168846, 0x0028, "White A type-$31 record and sub-record prototypes"),
+    (0x168986, 0x0230, "White A type-$31 70-entry animation table"),
     (0x168C2E, 0x0010, "White A damage-first family body animation table"),
     (0x168C3E, 0x0008, "White A type-$05 run-length init stub"),
     (0x168D2C, 0x001A, "White A type-$05 enemy-record prototype"),
@@ -11778,6 +11788,18 @@ WHITE_STAGE1_TYPE24_EXECUTABLE_IDENTITY = {
     "handler": {
         "start": "$195A42", "end": "$195B0E",
         "sha256": "9b0c498bdb4ac423f98908975732d06775dead684f4bcc7597a307da3814679b",
+    },
+}
+
+
+WHITE_STAGE1_TYPE31_EXECUTABLE_IDENTITY = {
+    "init": {
+        "start": "$1687C4", "end": "$16886E",
+        "sha256": "91a2098c93051d8e0a93ba8cd6eea80653bafb7d2c0d4f10b5c0acd436965563",
+    },
+    "handler": {
+        "start": "$16886E", "end": "$168986",
+        "sha256": "9f55845d8135fff1a5265254d3c5bf311bbc5f7da8ed91d209ffa4cedc9e7a54",
     },
 }
 
@@ -12288,6 +12310,7 @@ def white_label_tables(d: bytes) -> dict:
         "stage1Type09": WHITE_STAGE1_TYPE09_EXECUTABLE_IDENTITY,
         "stage1Type0B": WHITE_STAGE1_TYPE0B_EXECUTABLE_IDENTITY,
         "stage1Type24": WHITE_STAGE1_TYPE24_EXECUTABLE_IDENTITY,
+        "stage1Type31": WHITE_STAGE1_TYPE31_EXECUTABLE_IDENTITY,
         "stage1Type82": WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY,
         "stage1Type88": WHITE_STAGE1_TYPE88_EXECUTABLE_IDENTITY,
         "stage1Type89": WHITE_STAGE1_TYPE89_EXECUTABLE_IDENTITY,

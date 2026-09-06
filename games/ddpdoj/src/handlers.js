@@ -135,7 +135,7 @@ import { handler12, handler13, handler14 } from './stage3carrier.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType08Resources,
   requireType09Resources, requireType0BResources, requireType24Resources,
-  requireType82Resources,
+  requireType31Resources, requireType82Resources,
   requireType88Resources, requireType89Resources,
 } from './world-resources.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
@@ -5573,15 +5573,16 @@ function deathSeq88(ram, rom, a5, ctx, d1, descriptor) {
 // `$26990E + $230 == $269B3E` -- which is the damage-first family's shared draw
 // block, i.e. instructions.  So the table is exactly `$26990E..$269B3D`, 70
 // entries, and the two ends agree.
-function handler31(ram, rom, a5, ctx) {
-  const { unported: u } = ctx;
+function handler31(ram, rom, a5, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x31]) {
+  const resources = requireType31Resources(descriptor);
   const a6 = ram.u32(a5 + 0x06);
   if (ram.u16(a5 + 0x20) !== 0) {                      // $2697F6 tst.w ($20,A5) / beq
     const c = ram.u8(a5 + R.rec1E);                    // $2697FE subq.b #$1,($1E,A5)
     ram.setU8(a5 + R.rec1E, (c - 1) & 0xff);
     if (c === 0) {                                     // $269802 bcc $269816
       ram.setU8(a5 + R.rec1E, ram.u8(a5 + 0x1f));      // $269806
-      ctx.soundPost?.(0x28c692);                    // WAVE A: BGM id=$1C, the $31 emitter ($26980C)
+      ctx.soundPost?.(resources.sound.cue);             // WAVE A: BGM id=$1C, the $31 emitter
       ram.setU16(a5 + 0x20, u16(ram.u16(a5 + 0x20) - 1));   // $269812 subq.w #$1
     }
   }
@@ -5591,15 +5592,15 @@ function handler31(ram, rom, a5, ctx) {
   // taken on exactly that tick and on no other.
   const was = ram.u16(a5 + R.cooldown);
   ram.setU16(a5 + R.cooldown, u16(was - 1));
-  if (was !== 0) { emit31(ram, rom, a5, a6); return; }
+  if (was !== 0) { emit31(ram, rom, a6, resources); return; }
   const phase = ram.u16(a5 + R.onScreen);              // $269824 cmpi.w #$0,($16,A5)
   if (phase === 0) {                                   // $26982A bne $269858
-    animStep31(ram, rom, a5, a6);
+    animStep31(ram, rom, a5, a6, resources);
     if (ram.u16(a5 + 0x1a) === 0xf0) {                 // $269844 cmpi.w #$F0 / bne
       ram.setU16(a5 + R.onScreen, 1);                  // $26984E move.w #$1,($16,A5)
     }
   } else if (phase === 1) {                            // $269858 cmpi.w #$1 / bne
-    animStep31(ram, rom, a5, a6);
+    animStep31(ram, rom, a5, a6, resources);
     if (ram.u16(a5 + 0x1a) === 0x128) {                // $269878 cmpi.w #$128 / bne
       ram.setU16(a5 + 0x1a, 0x100);                    // $269882 -- the LOOP BACK
       const n = u16(ram.u16(a5 + R.rec1C) - 1);        // $269888 subq.w #$1,($1C,A5)
@@ -5607,18 +5608,24 @@ function handler31(ram, rom, a5, ctx) {
       if (n === 0xffff) ram.setU16(a5 + R.onScreen, 2);     // $26988C bcc / $269890
     }
   } else {                                             // $26989A
-    animStep31(ram, rom, a5, a6);
-    if (ram.u16(a5 + 0x1a) === 0x230) { freeEnemy(ram, a5); return; }  // $2698B2/$2698BC
+    animStep31(ram, rom, a5, a6, resources);
+    if (ram.u16(a5 + 0x1a) === 0x230) {
+      if (resources.retirement.semantic !== 'freeEnemy') {
+        throw new TypeError('type $31 retirement must preserve freeEnemy semantics');
+      }
+      freeEnemy(ram, a5);
+      return;
+    }
   }
-  emit31(ram, rom, a5, a6);                            // $2698C4
+  emit31(ram, rom, a6, resources);                      // $2698C4
 }
 
 /** `$26982C`/`$269860`/`$26989A` -- the identical four instructions in all three
  *  phases: read the 6-byte entry at `$26990E + ($1A,A5)` into the sprite pointer
  *  and the frame counter, then step the cursor by EIGHT. */
-function animStep31(ram, rom, a5, a6) {
-  const at = 0x26990e + ram.u16(a5 + 0x1a);            // lea $26990E(pc) / adda.w D0
-  ram.setU32(a6 + S.sprite0a, rom.u32(at));            // move.l (A0)+,($A,A6)
+function animStep31(ram, rom, a5, a6, resources) {
+  const at = resources.animationTable + ram.u16(a5 + 0x1a);
+  ram.setU32(a6 + S.sprite0a, rom.u32(at));             // move.l (A0)+,($A,A6)
   ram.setU16(a5 + R.cooldown, rom.u16(at + 4));        // move.w (A0)+,($18,A5)
   ram.setU16(a5 + 0x1a, u16(ram.u16(a5 + 0x1a) + 8));  // addq.w #$8,($1A,A5)
 }
@@ -5628,13 +5635,12 @@ function animStep31(ram, rom, a5, a6) {
  *  `$80390B` -- the byte BELOW `$80390C`, not part of that word -- and the arm
  *  moves the long axis by -+$40 around the extra request and puts it back, so
  *  the record is unchanged on exit either way. */
-function emit31(ram, rom, a5, a6) {
-  void a5;
-  enqueueThroughStub(ram, rom, 0x23f896, a6);          // $2698C4 jsr $23F896
+function emit31(ram, rom, a6, resources) {
+  enqueueThroughStub(ram, rom, resources.draw.emitter, a6); // $2698C4 jsr $23F896
   if (ram.u16(G.mirror2) === 0) return;                // $2698CA tst.w $80390C / beq
   const d = (ram.u8(G.mirror) & 0x02) !== 0 ? -0x40 : 0x40;  // $2698D2 btst #$1
   ram.setU16(a6 + 0x02, u16(ram.u16(a6 + 0x02) + d));  // $2698DC subi.w / $2698F0 addi.w
-  enqueueThroughStub(ram, rom, 0x23f896, a6);          // $2698E2 / $2698F6
+  enqueueThroughStub(ram, rom, resources.draw.emitter, a6); // $2698E2 / $2698F6
   ram.setU16(a6 + 0x02, u16(ram.u16(a6 + 0x02) - d));  // $2698E8 addi.w / $2698FC subi.w
 }
 
@@ -9354,7 +9360,8 @@ const HANDLERS = new Map([
   [0x27733e, handler89],
   [0x275f30, (ram, rom, a5, ctx) =>
     handler88(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x88])],
-  [0x2697f6, handler31],
+  [0x2697f6, (ram, rom, a5, ctx) =>
+    handler31(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x31])],
   [0x29700c, (ram, rom, a5, ctx) =>
     handler24(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x24])],
   // W57: type $1C, spawned ONLY by the midboss's death ($26B7E0/$26B7E2).
@@ -11669,6 +11676,11 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x29700c);
       handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
         handler24(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type31') {
+      const canonical = requireType31Resources(descriptor, resources.edition);
+      handlers.delete(0x2697f6);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handler31(ram, rom, a5, ctx, canonical));
     } else if (descriptor.algorithm === 'type20') {
       handlers.delete(0x272aac);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>

@@ -47,7 +47,7 @@ import { initType99_29E580 } from './boss3type99.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType08Resources,
   requireType09Resources, requireType0BResources, requireType24Resources,
-  requireType82Resources,
+  requireType31Resources, requireType82Resources,
   requireType88Resources, requireType89Resources,
 } from './world-resources.js';
 
@@ -1050,29 +1050,32 @@ BODY.set(0x296fb0, (ram, rom, a5, a6, unported, tables, palette) =>
   init24(ram, rom, a5, a6, unported, palette,
     BLACK_WORLD_RESOURCES.enemyTypes[0x24]));
 
-// --- type $31 ($269754): boss-approach prop.  Loaders, fixed position, a
-// palette lookup from $2697B0/$2697BA indexed by $813094, two resource installs.
-BODY.set(0x269754, (ram, rom, a5, a6, unported, tables, palette) => {
-  loadSubProto(ram, rom, a5, a6, 0x2697DA);            // jsr $2637A2
-  loadRecordProto(ram, rom, a5, 0x2697CE, 0x05);       // moveq #$5,D0; jsr $26377A
-  ram.setU32(a6 + S.posX, 0x40001c00);                 // move.l #$40001c00,($2,A6)
-  unported?.note(0x28ca60, `$28CA60 in type $31 init -- bespoke; not a stat`);
+// --- type $31: boss-approach animation prop with loop-indexed palette banks.
+function init31(ram, rom, a5, a6, unported, palette,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x31]) {
+  const resources = requireType31Resources(descriptor);
+  loadSubProto(ram, rom, a5, a6, resources.subPrototype);
+  loadRecordProto(ram, rom, a5, resources.recordPrototype, 0x05);
+  ram.setU32(a6 + S.posX, 0x40001c00);
+  unported?.note(resources.initHook,
+    `$${resources.initHook.toString(16).toUpperCase()} in type $31 init: bespoke; not a stat`);
   const lp = ram.u16(G.stageX2);
-  // $26978A: `move.w (A1,D6.w),D0 / move.b D0,($1d,A6)` -- reads a WORD at
-  // $2697B0+lp and takes its LOW byte (not a direct byte read like $11/$80).
-  // **AND D0 IS STILL THAT WORD AT `$269792 jsr $24150A`** (W92): the ONE
-  // read feeds the sub-record's palette byte and the colour bank number both,
-  // which is why this site's bank is `None` in the exporter's PALETTE_SITES --
-  // it comes out of a table, not an immediate.
-  const bank1 = rom.u16(0x2697B0 + lp);
-  ram.setU8(a6 + S.palette, bank1 & 0xff);             // $26978E
-  installBank(ram, rom, palette, unported, bank1, 0x2251B8, 0x269792,
-    'type $31\'s first install, bank from $2697B0[$813094]');
-  // $269798 lea $2250B8.l,A0 / $2697A4 move.w ($2697BA,D6.w),D0 -- the second
-  // install takes its bank from a DIFFERENT table and writes no record field.
-  installBank(ram, rom, palette, unported, rom.u16(0x2697BA + lp), 0x2250B8,
-    0x2697A8, 'type $31\'s second install, bank from $2697BA[$813094]');
-});
+  const first = resources.palette.first;
+  const bank1 = rom.u16(first.bankTable + lp);
+  ram.setU8(a6 + S.palette, bank1 & 0xff);
+  installBank(ram, rom, palette, unported, bank1, first.block, first.site,
+    `type $31's first install, bank from $${first.bankTable
+      .toString(16).toUpperCase()}[$813094]`, resources.palette.installer);
+  const second = resources.palette.second;
+  installBank(ram, rom, palette, unported, rom.u16(second.bankTable + lp),
+    second.block, second.site,
+    `type $31's second install, bank from $${second.bankTable
+      .toString(16).toUpperCase()}[$813094]`, resources.palette.installer);
+}
+
+BODY.set(0x269754, (ram, rom, a5, a6, unported, tables, palette) =>
+  init31(ram, rom, a5, a6, unported, palette,
+    BLACK_WORLD_RESOURCES.enemyTypes[0x31]));
 
 // --- the aim-indexed types. Type $80 performs both authentic aim64 calls and
 // stores the two turret art pointers through its edition descriptor. The static
@@ -2749,6 +2752,10 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
       const canonical = requireType24Resources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6, unported, tables, palette) =>
         init24(ram, rom, a5, a6, unported, palette, canonical));
+    } else if (descriptor.algorithm === 'type31') {
+      const canonical = requireType31Resources(descriptor, edition);
+      map.set(canonical.initBody, (ram, rom, a5, a6, unported, tables, palette) =>
+        init31(ram, rom, a5, a6, unported, palette, canonical));
     } else if (descriptor.algorithm === 'type80') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init80(ram, rom, a5, a6, unported, descriptor));
