@@ -20,6 +20,7 @@ import {
 const WHITE_STANDARD_BULLET_KINDS = Object.freeze([12, 13]);
 const WHITE_TYPE80_FAN_KINDS = Object.freeze([4, 5]);
 const WHITE_TYPE80_LASER_KINDS = Object.freeze([19]);
+const WHITE_TYPE88_BULLET_KINDS = Object.freeze([4]);
 const WHITE_TYPE89_BULLET_KINDS = Object.freeze([6]);
 
 function deepFreeze(value, seen = new Set()) {
@@ -332,6 +333,72 @@ const white82 = {
   retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
 };
 
+const black88 = {
+  edition: 'black',
+  type: 0x88, algorithm: 'type88', initStub: 0x275d98, initBody: 0x275da0,
+  handler: 0x275f30, palette: 0x275ea2,
+  recordPrototype: 0x275eac, subPrototype: 0x275ecc, cueCursor: 0x275f04,
+  initAimSite: 0x24200a, headingArt: 0x272d7a, fanVectors: 0x2731fa,
+  aim: { entry: 0x24203e, slew: 0x242190 }, aim64: black11.aim64,
+  spriteTable: 0x2763d8,
+  emitter: { recordDispatch: 0x27829c, recordEntries: 18,
+    registerDispatch: 0x2782e4, registerEntries: 12 },
+  bullet: {
+    direct: {
+      ...BLACK_BULLET_SPAWN_RESOURCES,
+      entry: 0x2813f0, semantic: 'bank-a-direct',
+    },
+    spreadTwo: {
+      ...BLACK_BULLET_SPAWN_RESOURCES,
+      entry: 0x281442, semantic: 'bank-a-spread-two',
+    },
+    sites: [0x2761de, 0x2761e6, 0x2761ee, 0x27622e, 0x276236, 0x27623e],
+  },
+  score: black11.score, cues: BLACK_CUE_RESOURCES, effects: black11.effects,
+  effect: {
+    sites: [0x2762c6, 0x276304, 0x276348, 0x27638e],
+    remap: 0x278320, hook: 1,
+  },
+  secondaryBurst: 0x289b22,
+  poolA: BLACK_POOL_A_RESOURCES, poolAKind: 0x08, poolAOffsets: 0x2763e8,
+  sound: { death: 0x28c2dc },
+  retirement: { entry: 0x263762, semantic: 'freeEnemy' },
+};
+
+const white88 = {
+  edition: 'white',
+  type: 0x88, algorithm: 'type88', initStub: 0x174e3a, initBody: 0x174e42,
+  handler: 0x174fd2, palette: 0x174f44,
+  recordPrototype: 0x174f4e, subPrototype: 0x174f6e, cueCursor: 0x174fa6,
+  initAimSite: 0x142344, headingArt: 0x171dce, fanVectors: 0x17224e,
+  aim: { entry: 0x142378, slew: 0x1424ca }, aim64: white11.aim64,
+  spriteTable: 0x17547a,
+  emitter: { recordDispatch: 0x17733a, recordEntries: 18,
+    registerDispatch: 0x177382, registerEntries: 12 },
+  bullet: {
+    direct: {
+      ...WHITE_BULLET_SPAWN_RESOURCES,
+      supportedKinds: WHITE_TYPE88_BULLET_KINDS,
+      entry: 0x180474, semantic: 'bank-a-direct',
+    },
+    spreadTwo: {
+      ...WHITE_BULLET_SPAWN_RESOURCES,
+      supportedKinds: WHITE_TYPE88_BULLET_KINDS,
+      entry: 0x1804c2, semantic: 'bank-a-spread-two',
+    },
+    sites: [0x175280, 0x175288, 0x175290, 0x1752d0, 0x1752d8, 0x1752e0],
+  },
+  score: white11.score, cues: WHITE_CUE_RESOURCES, effects: white11.effects,
+  effect: {
+    sites: [0x175368, 0x1753a6, 0x1753ea, 0x175430],
+    remap: 0x1773be, hook: 1,
+  },
+  secondaryBurst: 0x18865e,
+  poolA: WHITE_POOL_A_RESOURCES, poolAKind: 0x08, poolAOffsets: 0x17548a,
+  sound: { death: 0x18ae02 },
+  retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
+};
+
 const black89 = {
   edition: 'black',
   type: 0x89, algorithm: 'type89', initStub: 0x277270, initBody: 0x277278,
@@ -500,7 +567,7 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
     0x05: black05, 0x07: black27, 0x0d: BLACK_TYPE0D_RESOURCES,
     0x10: black10, 0x11: black11, 0x1c: BLACK_TYPE1C_RESOURCES,
     0x20: black20, 0x21: black20, 0x22: black20, 0x23: black20, 0x27: black27,
-    0x80: black80, 0x82: black82, 0x85: black85, 0x89: black89,
+    0x80: black80, 0x82: black82, 0x85: black85, 0x88: black88, 0x89: black89,
     0x8a: black8A, 0x8b: black8B,
   },
   displayList: { filler: [0xfc00, 0x3800, 0, 0, 0x0201], coordinates: 'black' },
@@ -532,7 +599,7 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
     0x05: white05, 0x07: white27, 0x0d: WHITE_TYPE0D_RESOURCES,
     0x10: white10, 0x11: white11, 0x1c: WHITE_TYPE1C_RESOURCES,
     0x20: white20, 0x21: white20, 0x22: white20, 0x23: white20, 0x27: white27,
-    0x80: white80, 0x82: white82, 0x85: white85, 0x89: white89,
+    0x80: white80, 0x82: white82, 0x85: white85, 0x88: white88, 0x89: white89,
     0x8a: white8A, 0x8b: white8B,
   },
   displayList: { filler: [0xfbff, 0xfc00, 0, 0, 0x0201], coordinates: 'direct' },
@@ -548,6 +615,20 @@ export function requireType82Resources(
       || resources.algorithm !== 'type82'
       || (edition !== null && resources.edition !== edition)) {
     throw new TypeError('type $82 needs its canonical frozen edition descriptor');
+  }
+  return resources;
+}
+
+export function requireType88Resources(
+  resources = BLACK_WORLD_RESOURCES.enemyTypes[0x88], edition = null,
+) {
+  const canonical = resources?.edition === 'black'
+    ? BLACK_WORLD_RESOURCES.enemyTypes[0x88]
+    : resources?.edition === 'white' ? WHITE_WORLD_RESOURCES.enemyTypes[0x88] : null;
+  if (resources !== canonical || resources.type !== 0x88
+      || resources.algorithm !== 'type88'
+      || (edition !== null && resources.edition !== edition)) {
+    throw new TypeError('type $88 needs its canonical frozen edition descriptor');
   }
   return resources;
 }

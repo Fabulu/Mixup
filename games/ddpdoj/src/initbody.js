@@ -46,7 +46,7 @@ import { loadAnimObjects246410 } from './animobjects.js';
 import { initType99_29E580 } from './boss3type99.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType82Resources,
-  requireType89Resources,
+  requireType88Resources, requireType89Resources,
 } from './world-resources.js';
 
 // ----------------------------------------------------------- the record layout
@@ -1127,53 +1127,53 @@ BODY.set(0x275BB6, (ram, rom, a5, a6, unported) => {
   init85Or86(ram, rom, a5, a6, unported, 0x275C28);
 });
 
-// type $88 ($275DA0): runLen 1, sprite/bucket from $272D7A (x2), sub-rec
-// sprite from $2763D8, palette $275EA2.
-BODY.set(0x275DA0, (ram, rom, a5, a6, unported) => {
-  // W428: the same correction again. Stub $275D98 `move.w #$1,($4,A5)`, two
-  // long-form subs, so `$275DAC move.l A0,($44,A5)` stores $275ECC + 56 =
-  // $275F04. `$275ECC + 28` = $275EE8 was the second sub's flags word ($8000).
-  const cues88 = loadSubProto(ram, rom, a5, a6, 0x275ECC);   // jsr $2637A2
-  ram.setU32(a5 + R.rec44, cues88);                    // $275DAC move.l A0,($44,A5)
-  loadRecordProto(ram, rom, a5, 0x275EAC, 0x0f);       // moveq #$f,D0; jsr $26377A
-  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
-  unported?.note(0x24200a, `$24200A aim in type $88 init -- bucket tracks W24 pos`);
+// Type $88 uses the same twin-turret initializer in both editions. The
+// descriptor owns every cartridge address; Black remains the behavior oracle.
+function init88(ram, rom, a5, a6, unported,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x88]) {
+  const resources = requireType88Resources(descriptor);
+  // Two long-form subs make the returned A0 the cue cursor after 56 bytes.
+  const cues88 = loadSubProto(ram, rom, a5, a6, resources.subPrototype);
+  ram.setU32(a5 + R.rec44, cues88);
+  loadRecordProto(ram, rom, a5, resources.recordPrototype, 0x0f);
+  readInitPosition(ram, rom, a5, unported);
+  unported?.note(resources.initAimSite,
+    `$${resources.initAimSite.toString(16).toUpperCase()} aim in type $88 init -- bucket tracks movement heading`);
   let d1 = ram.u8(a6 + S.heading);
   ram.setU8(a5 + R.rec29, d1);
   d1 = (d1 & 0x3e) << 1;
-  ram.setU32(a5 + 0x24, rom.u32(0x272D7A + d1));        // first bucket pair
-  // second aim (mirror); the ROM re-aims with -D1 offset; heading fallback.
+  ram.setU32(a5 + 0x24, rom.u32(resources.headingArt + d1));
+  // The second cartridge aim mirrors the vertical offset; translated movement
+  // already supplies the fallback heading used by that call.
   let d1b = ram.u8(a6 + S.heading);
   ram.setU8(a5 + R.rec2F, d1b);
   d1b = (d1b & 0x3e) << 1;
-  ram.setU32(a5 + R.rec2A, rom.u32(0x272D7A + d1b));    // second bucket pair
-  ram.setU8(a5 + R.rec31, 0x04);                        // move.b #$4,($31,A5) (stage>1 same)
-  if (ram.u16(G.rank98) !== 0) {                         // $273834 tst.w $813098
+  ram.setU32(a5 + R.rec2A, rom.u32(resources.headingArt + d1b));
+  ram.setU8(a5 + R.rec31, 0x04);
+  if (ram.u16(G.rank98) !== 0) {
     ram.setU8(a5 + R.rec20, (ram.u8(a5 + R.rec20) + 1) & 0xff);
     ram.setU8(a5 + R.rec21, (ram.u8(a5 + R.rec21) + 1) & 0xff);
   }
-  // $275E46: sub-record sprite from $2763D8 indexed by (sub +$28) word.
   const sw = ram.u16(a6 + 0x28);
-  ram.setU32(a6 + 0x2a, rom.u32(0x2763D8 + sw));        // move.l (A0,D0.w),($2a,A6)
-  let d0 = ram.u16(G.ae) & 0xff;
-  ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);  // $8130AE -> +$1E
-  const lp = ram.u16(G.stageX2);
-  const pal = 0x275EA2 + lp;
+  ram.setU32(a6 + 0x2a, rom.u32(resources.spriteTable + sw));
+  const d0 = ram.u16(G.ae) & 0xff;
+  ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);
+  const pal = resources.palette + ram.u16(G.stageX2);
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + R.rec1C, rom.u8(pal));
   ram.setU8(a5 + R.rec1D, rom.u8(pal + 1));
-  // $275E7A: the tail -- if the sub-record flags byte bit 5 is clear, install
-  // a hitbox override: +$2E := 1, copy anim to +$31, write $F400 to +$14 (if
-  // anim != 0) or +$16 (if anim == 0), then clear anim.  (Which word gets the
-  // $F400 tracks anim, a movement-script field (W24); the write itself is here.)
-  if ((ram.u8(a6) & 0x20) === 0) {                     // $275E7A btst #$5,(A6)
-    ram.setU16(a6 + S.f2e, 1);                         // $275E80 move.w #$1,($2e,A6)
+  // If sub-record flag bit 5 is clear, install the native hitbox override.
+  if ((ram.u8(a6) & 0x20) === 0) {
+    ram.setU16(a6 + S.f2e, 1);
     const an = ram.u8(a6 + S.anim);
-    ram.setU8(a6 + S.f31, an);                         // $275E86 move.b ($1e,A6),($31,A6)
-    ram.setU16(a6 + (an !== 0 ? S.hit14 : S.hit16), 0xf400); // $275E98 move.w #$f400,(A0)
-    ram.setU8(a6 + S.anim, 0);                         // $275E9C clr.b ($1e,A6)
+    ram.setU8(a6 + S.f31, an);
+    ram.setU16(a6 + (an !== 0 ? S.hit14 : S.hit16), 0xf400);
+    ram.setU8(a6 + S.anim, 0);
   }
-});
+}
+
+BODY.set(0x275DA0, (ram, rom, a5, a6, unported) =>
+  init88(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x88]));
 
 // Type $89 uses the same initializer algorithm in both editions. The descriptor
 // owns every cartridge address; Black remains the behavior oracle.
@@ -2634,6 +2634,10 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
       const canonical = requireType82Resources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>
         init82(ram, rom, a5, a6, unported, canonical));
+    } else if (descriptor.algorithm === 'type88') {
+      const canonical = requireType88Resources(descriptor, edition);
+      map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>
+        init88(ram, rom, a5, a6, unported, canonical));
     } else if (descriptor.algorithm === 'type89') {
       const canonical = requireType89Resources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>

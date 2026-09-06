@@ -69,7 +69,7 @@ const SKIP = HAVE ? false
 const TABLE_JSON = HAVE ? JSON.parse(readFileSync(TABLES, 'utf8')) : null;
 const BASE_CHECKPOINT = HAVE ? JSON.parse(readFileSync(CHECKPOINT, 'utf8')) : null;
 const PROGRAM_IMAGE = HAVE ? readFileSync(IMAGE) : null;
-const TABLE_HASH = 'd2374d899ef5d3095b0d47151df079ebe3ece7633bcbd9e812b6158b6f6d8138';
+const TABLE_HASH = '4968485c1c53f9ab74bee48d34a643f41b762a5365a6398b3986629017b7bfea';
 const CHECKPOINT_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const PAIRS = Object.freeze([
   Object.freeze([0, 2]), Object.freeze([0, 4]), Object.freeze([0, 6]),
@@ -372,7 +372,7 @@ test('W631 all six Black Label endings are complete production Demo presentation
     assert.deepEqual([
       TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((bytes, window) => bytes + window.len, 0),
-    ], [1833, 662_425], 'the exact 1833-window, 662425-byte ROM table is in use');
+    ], [1840, 662_931], 'the exact 1840-window, 662931-byte ROM table is in use');
 
     const exact = await exactBundle();
     assert.deepEqual(exact.tables, TABLE_JSON,

@@ -134,7 +134,7 @@ import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType82Resources,
-  requireType89Resources,
+  requireType88Resources, requireType89Resources,
 } from './world-resources.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
 import { handler83 } from './stage3type83.js';
@@ -5258,7 +5258,16 @@ function deathSeq89(ram, rom, a5, ctx, d1, descriptor) {
 // It is a TWIN-TURRET gun platform: two independent aim states (`($28,A5)` and
 // `($2E,A5)`), alternated by `$27608E bchg #$6,($1,A6)` so each updates on
 // every other frame, four sprite emits, and six bullets per volley.
-function handler88(ram, rom, a5, ctx) {
+function retire88(ram, a5, descriptor) {
+  if (descriptor.retirement.semantic !== 'freeEnemy') {
+    throw new TypeError('type $88 retirement must preserve freeEnemy semantics');
+  }
+  freeEnemy(ram, a5);
+}
+
+function handler88(ram, rom, a5, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x88]) {
+  const resources = requireType88Resources(descriptor);
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   // The out-object is EMPTY on purpose: `$2638A6` zeroes D2/D3 itself on the
@@ -5287,7 +5296,7 @@ function handler88(ram, rom, a5, ctx) {
   let off = u16(u16((pos & 0xffff) + 0x1400) + ram.u16(G.scroll)) + 0xa000 > 0xffff;
   if (!off) off = u16((pos >>> 16) + 0xc00) + 0x7800 > 0xffff;   // $275F70/$275F78 bcc
   if (off) {                                           // $275F7A
-    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }  // $275F80
+    if (ram.u8(a5 + R.onScreen) !== 0) { retire88(ram, a5, resources); return; }
   } else {
     ram.setU8(a5 + R.onScreen, 1);                     // $275F88
   }
@@ -5302,19 +5311,19 @@ function handler88(ram, rom, a5, ctx) {
   } else {
     const d1 = hitMask(ram, a6);
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $275FAC andi.b #$A3,(A6)
-    scoreHit(ram, ctx, a6, d1);                        // $275FB0 jsr $286096
+    scoreHit(ram, ctx, a6, d1, a6, resources.score);     // $275FB0 jsr edition score hit
     d0 = ram.u8(a6 + S.palette);                       // $275FB6
     if (d0 === 0x19) d0 = ram.u8(a5 + R.rec1C);        // $275FBA/$275FC0
     d0 ^= ram.u8(a5 + R.rec1D);                        // $275FC4/$275FC8
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $275FCA tst.w / bmi $27627E
-      deathSeq88(ram, rom, a5, ctx, d1); return;
+      deathSeq88(ram, rom, a5, ctx, d1, resources); return;
     }
   }
   ram.setU8(a6 + S.palette, d0 & 0xff);                // $275FD2 move.b D0,($1D,A6)
   // W382. [M] `$275FD6  4e b9 00 28 ac 72` -- UNCONDITIONAL. The note here also
   // claimed "driver $28AD70 also unported"; that is FALSE -- `runCueDriver28AD70`
   // is cues.js:145 and type5.js runs it every frame as dispatch entry 3.
-  spawnCues28AC72(ram, rom, a5, a6);                   // $275FD6 jsr $28AC72
+  spawnCues28AC72(ram, rom, a5, a6, resources.cues);    // $275FD6 edition cue driver
   // $275FDC: the MUZZLE ANIMATION, gated on the freeze and on the heading.
   if (ram.u16(G.freeze) === 0 && ram.u8(a6 + S.heading) < 0x40) {  // $275FDC/$275FEA
     ram.setU16(a6 + 0x06, 0xf400);                     // $275FE4 move.w #$F400,($6,A6)
@@ -5334,7 +5343,7 @@ function handler88(ram, rom, a5, ctx) {
         if (n > 0xfff0) ram.setU16(a6 + 0x28, 0x0c);   // $276022 bcc / $276024
       }
       ram.setU32(a6 + 0x2a,                            // $27602A/$276034 move.l (A0,D0.w)
-        rom.u32(0x2763d8 + ram.u16(a6 + 0x28)));
+        rom.u32(resources.spriteTable + ram.u16(a6 + 0x28)));
     }
   }
   // $27603A `tst.l $8130D2` -- a LONGWORD test again ($8130D2/$8130D4 together).
@@ -5347,11 +5356,11 @@ function handler88(ram, rom, a5, ctx) {
     if (c === 0) {
       ram.setU8(a5 + 0x22, ram.u8(a5 + 0x23));         // $27604C
       if (ram.u8(a5 + 0x20) === ram.u8(a5 + 0x21)) {   // $276052/$276056/$27605A
-        aim88(ram, rom, a5, a6);                       // $27605E..$2760E6
+        aim88(ram, rom, a5, a6, resources);              // alternating edition aim
       }
     }
   }
-  emit88(ram, rom, a5, a6);                            // $2760E8..$27617A
+  emit88(ram, rom, a5, a6, resources);                  // four edition emitter requests
   // $27617C: the FIRE gate -- freeze, long axis, and the ($1E,A5) cooldown.
   if (ram.u32(G.freeze) !== 0) return;                 // $27617C tst.l / bne $276192
   if (i16(ram.u16(a6 + 0x02)) < 0x1000) return;        // $276184 cmpi.w #$1000 / blt
@@ -5359,7 +5368,7 @@ function handler88(ram, rom, a5, ctx) {
   ram.setU8(a5 + R.rec1E, (f - 1) & 0xff);
   if (f !== 0) return;                                 // $276190 bcs $276194 (borrow only)
   ram.setU8(a5 + R.rec1E, ram.u8(a5 + 0x31));          // $276194 move.b ($31,A5)
-  fire88(ram, rom, a5, a6, ctx);                       // $27619A..$27623E
+  fire88(ram, rom, a5, a6, ctx, resources);             // six edition bullet calls
   // $276244: the two salvo counters.  The SECOND overwrites ($1E,A5) again.
   const s = ram.u8(a5 + 0x20);                         // $276244 subq.b #$1,($20,A5)
   ram.setU8(a5 + 0x20, (s - 1) & 0xff);
@@ -5379,7 +5388,7 @@ function handler88(ram, rom, a5, ctx) {
  *  TESTS the old bit and FLIPS it, so the two turrets update on alternate
  *  frames; the muzzle biases differ ($5C0 vs $F9C0 on the short axis) and so do
  *  the record fields they store into. */
-function aim88(ram, rom, a5, a6) {
+function aim88(ram, rom, a5, a6, descriptor) {
   let p0 = AIM.selP1, p1 = AIM.selP2;                  // $27605E/$276064
   if (ram.u8(a5 + 0x03) !== 0) { p0 = AIM.selP2; p1 = AIM.selP1; }  // $276070 exg
   if ((ram.u16(p0) & 0x8000) === 0) {                  // $276072 tst.w (A0) / bmi
@@ -5390,18 +5399,18 @@ function aim88(ram, rom, a5, a6) {
   const sy = ram.u16(a6 + 0x02), sx = ram.u16(a6 + 0x04);  // $276082 movem.w ($2,A6)
   const was = (ram.u8(a6 + 0x01) & 0x40) !== 0;        // $27608E bchg #$6,($1,A6)
   ram.setU8(a6 + 0x01, ram.u8(a6 + 0x01) ^ 0x40);
-  const t = aimTables(rom);
+  const t = aimTables(rom, descriptor);
   if (!was) {                                          // $276094 bne $2760C0
     const dir = aim64(t, u16(sy + 0x300), u16(sx + 0x5c0), ty, tx);  // $276096/$27609A
     const nf = slew64(ram.u16(a5 + R.fireCtr), dir);   // $2760A4/$2760A8 jsr $242190
     ram.setU16(a5 + R.fireCtr, nf);                    // $2760AE move.w D1,($28,A5)
-    ram.setU32(a5 + R.rec24, rom.u32(0x272d7a + u16((nf & 0x3e) * 2)));  // $2760B8
+    ram.setU32(a5 + R.rec24, rom.u32(descriptor.headingArt + u16((nf & 0x3e) * 2)));  // $2760B8
     return;                                            // $2760BE bra $2760E8
   }
   const dir = aim64(t, u16(sy + 0x300), u16(sx + 0xf9c0), ty, tx);   // $2760C0/$2760C4
   const nf = slew64(ram.u16(a5 + 0x2e), dir);          // $2760CE/$2760D2 jsr $242190
   ram.setU16(a5 + 0x2e, nf);                           // $2760D8 move.w D1,($2E,A5)
-  ram.setU32(a5 + 0x2a, rom.u32(0x272d7a + u16((nf & 0x3e) * 2)));   // $2760E2
+  ram.setU32(a5 + 0x2a, rom.u32(descriptor.headingArt + u16((nf & 0x3e) * 2)));   // $2760E2
 }
 
 /**
@@ -5413,13 +5422,18 @@ function aim88(ram, rom, a5, a6) {
  * so both carry over from the request before.  Rebuilding the registers for
  * each call would put a different sprite on the screen.
  */
-function emit88(ram, rom, a5, a6) {
+function emit88(ram, rom, a5, a6, descriptor) {
   const idx = u16(ram.u16(a6 + S.anim) * 4);
-  // #1 -- the RECORD convention, through $27829C.
+  if (idx >= descriptor.emitter.recordEntries * 4
+      || idx >= descriptor.emitter.registerEntries * 4) {
+    unreached(descriptor.emitter.recordDispatch + idx,
+      `type $88 emitter index $${idx.toString(16).toUpperCase()} exceeds its descriptor`);
+  }
+  // #1 -- the RECORD convention through the edition-owned dispatch.
   enqueueThroughStub(ram, rom,
-    rom.u32(EMIT_TABLE.dispatch27829C + idx), a6);     // $2760FA jsr (A0)
+    rom.u32(descriptor.emitter.recordDispatch + idx), a6);     // $2760FA jsr (A0)
   const pos = ram.u32(a6 + 0x02);
-  const stub2 = rom.u32(EMIT_TABLE.dispatch2782E4 + idx); // $276120 lea $2782E4
+  const stub2 = rom.u32(descriptor.emitter.registerDispatch + idx);
   // #2 -- $2760FC..$27612A.  Two `addi.w`s straddling a pair of swaps.
   let d1 = ((u16((pos >>> 16) + 0xf200) << 16)         // $276106 addi.w #$F200
     | u16((pos & 0xffff) + 0xf500)) >>> 0;             // $276100 addi.w #$F500
@@ -5432,12 +5446,12 @@ function emit88(ram, rom, a5, a6) {
     | u16((pos & 0xffff) + 0x2c0)) >>> 0;              // $276130 addi.w #$2C0
   d3 = 0x418;                                          // $276140 move.w #$418,D3
   d4 = ram.u16(a6 + S.f1c);                            // $276144 move.w ($1C,A6),D4
-  enqueueRegistersThroughStub(ram, rom, rom.u32(0x2782e4 + idx), d1,
+  enqueueRegistersThroughStub(ram, rom, rom.u32(descriptor.emitter.registerDispatch + idx), d1,
     ram.u32(a5 + R.rec24), d3, d4);                    // $27613C move.l ($24,A5),D2
   // #4 -- $27615C..$27617A.  D1's high half, D3 and D4 are #3's leftovers.
   d1 = ((d1 & 0xffff0000)                              // (unchanged)
     | u16(ram.u16(a6 + 0x04) + 0xf6c0)) >>> 0;         // $27615C/$276160
-  enqueueRegistersThroughStub(ram, rom, rom.u32(0x2782e4 + idx), d1,
+  enqueueRegistersThroughStub(ram, rom, rom.u32(descriptor.emitter.registerDispatch + idx), d1,
     ram.u32(a5 + 0x2a), d3, d4);                       // $276164 move.l ($2A,A5),D2
 }
 
@@ -5448,71 +5462,79 @@ function emit88(ram, rom, a5, a6) {
  * `($32,A5)`: 0 -> +3, 1 -> +5, anything else -> +0.  D2 is set ONCE at
  * `$2761BE` and both turrets use it.
  */
-function fire88(ram, rom, a5, a6, ctx) {
-  const ctxB = { ram, rom, log: new WriteLog(ram) };
+function fire88(ram, rom, a5, a6, ctx, descriptor) {
+  const ctxB = { ram, rom, log: new WriteLog(ram), mut: ctx.mut ?? null };
   const d2 = ram.u32(a6 + 0x02);                       // $2761BE move.l ($2,A6),D2
   const s32 = ram.u8(a5 + 0x32);
+  const { direct, spreadTwo, sites } = descriptor.bullet;
+  const fireAt = (site, bullet, regs) => ctx.bulletSpawn?.(
+    site, fireBulletWithResources(ctxB, bullet.entry, regs, bullet),
+  );
   // ---- turret A, from ($28,A5), muzzle bias (+$300 long, +$5C0 short).
   let d1 = ram.u16(a5 + R.fireCtr);                    // $2761A0 move.w ($28,A5),D1
-  let e = rom.u32(0x2731fa + u16((d1 & 0x3e) * 2));    // $2761A6/$2761AA/$2761AC
+  let e = rom.u32(descriptor.fanVectors + u16((d1 & 0x3e) * 2));
   let d3 = (((u16((e >>> 16) + 0x300) << 16)           // $2761B6 addi.w #$300
     | u16((e & 0xffff) + 0x5c0)) >>> 0);               // $2761B0 addi.w #$5C0
-  let regs = { d0: 0x00030004, d1, d2, d3, d4: 0, d5: 0, a5 };  // $2761C2
+  let regs = { d0: 0x00030004, d1, d2, d3, d4: 0, d5: 0, a5 };
   if (s32 === 0) regs.d1 = u16(d1 + 3);                // $2761C8 tst.b / $2761CE addq #3
   else if (s32 === 1) regs.d1 = u16(d1 + 5);           // $2761D4 cmpi.b #$1 / $2761DC
-  ctx.bulletSpawn?.(0x2761de, fireBullet(ctxB, 0x281442, regs));   // $2761DE
+  fireAt(sites[0], spreadTwo, regs);
   regs.d1 = u16(regs.d1 - 5);                          // $2761E4 subq.w #$5,D1
-  ctx.bulletSpawn?.(0x2761e6, fireBullet(ctxB, 0x2813f0, regs));   // $2761E6
+  fireAt(sites[1], direct, regs);
   regs.d1 = u16(regs.d1 - 5);                          // $2761EC subq.w #$5,D1
-  ctx.bulletSpawn?.(0x2761ee, fireBullet(ctxB, 0x281442, regs));   // $2761EE
+  fireAt(sites[2], spreadTwo, regs);
   // ---- turret B, from ($2E,A5), bias (+$300 long, +$F9C0 short), steps negated.
   d1 = ram.u16(a5 + 0x2e);                             // $2761F4 move.w ($2E,A5),D1
-  e = rom.u32(0x2731fa + u16((d1 & 0x3e) * 2));        // $2761FA/$2761FE/$276200
+  e = rom.u32(descriptor.fanVectors + u16((d1 & 0x3e) * 2));
   d3 = (((u16((e >>> 16) + 0x300) << 16)               // $27620A addi.w #$300
     | u16((e & 0xffff) + 0xf9c0)) >>> 0);              // $276204 addi.w #$F9C0
-  regs = { d0: 0x00030004, d1, d2, d3, d4: 0, d5: 0, a5 };        // $276212
+  regs = { d0: 0x00030004, d1, d2, d3, d4: 0, d5: 0, a5 };
   if (s32 === 0) regs.d1 = u16(d1 - 3);                // $276218 / $27621E subq #3
   else if (s32 === 1) regs.d1 = u16(d1 - 5);           // $276224 / $27622C subq #5
-  ctx.bulletSpawn?.(0x27622e, fireBullet(ctxB, 0x281442, regs));   // $27622E
+  fireAt(sites[3], spreadTwo, regs);
   regs.d1 = u16(regs.d1 + 5);                          // $276234 addq.w #$5,D1
-  ctx.bulletSpawn?.(0x276236, fireBullet(ctxB, 0x2813f0, regs));   // $276236
+  fireAt(sites[4], direct, regs);
   regs.d1 = u16(regs.d1 + 5);                          // $27623C addq.w #$5,D1
-  ctx.bulletSpawn?.(0x27623e, fireBullet(ctxB, 0x281442, regs));   // $27623E
+  fireAt(sites[5], spreadTwo, regs);
 }
 
 /** `$27627E..$2763D0` -- type `$88`'s death.  Score `$115` (a LONGWORD `move.l
  *  #$115,D0`, not a `moveq`), then a seven-iteration `$27F8FA` loop over
  *  `$2763E8` and FOUR `$289004` allocations, each with eight to ten field
  *  writes into the record the allocator would have returned. */
-function deathSeq88(ram, rom, a5, ctx, d1) {
+function deathSeq88(ram, rom, a5, ctx, d1, descriptor) {
   const u = ctx.unported;
-  const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
-  scoreKill(ram, rom, ctx, 0x115, d1);                 // $27627E/$276284 jsr $28615E
-  ctx.soundPost?.(0x28c2dc);                       // WAVE A: BGM id=5, death burst          // $27628A
-  noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$FFFFFA00');  // $27629C
-  noteEffect(u, 0x289b22, a5, 'D0=$C, D2=$00000600');  // $2762A8
-  // W411 (docket D49): SEVEN gold discs. `$2762AE moveq #$8,D0 / $2762B0 lea
-  // ($2763E8,PC),A4 / $2762B6 moveq #$6,D6 / $2762B8 move.l (A4)+,D1 / $2762BA jsr
-  // $27F8FA / $2762C0 dbra` -- seven longs, ending where $276404 `3B7C` is code again.
-  for (let i = 0; i < 7; i++) {                        // $2762C0 dbra D6
-    allocPoolA27F8F0(ram, rom, ctx, 0x08, rom.u32(0x2763e8 + i * 4), 0, a6); // $2762BA
+  const a6 = ram.u32(a5 + 0x06);
+  scoreKill(ram, rom, ctx, 0x115, d1, descriptor.score);
+  ctx.soundPost?.(descriptor.sound.death);
+  noteEffect(u, descriptor.secondaryBurst, a5, 'D0=$C, D2=$FFFFFA00');
+  noteEffect(u, descriptor.secondaryBurst, a5, 'D0=$C, D2=$00000600');
+  // The cartridge loops over seven edition-owned Pool-A displacement vectors.
+  for (let i = 0; i < 7; i++) {
+    allocPoolAWithResources(
+      ram, rom, ctx, descriptor.poolAKind,
+      rom.u32(descriptor.poolAOffsets + i * 4), 0, a6, descriptor.poolA,
+    );
   }
-  // W54: SPAWNED, all four.  Same $278320 prologue, four different tails.
-  // Each writes ($12,A0) = 1 -- TWO pool-D records apiece, all refused.
-  for (const [kind, site, sub14, nudge, speedAngle] of [
-    [0x0d, 0x2762c6, 0x0400, 0x02000000, null],        // $2762CC..$2762FC
-    [0x0c, 0x276304, 0x0000, 0xfe00fa00, 0x05c0],      // $27630A..$276340
-    [0x0c, 0x276348, 0x0400, 0xfc000200, 0x0440],      // $27634E..$276384
-    [0x85, 0x27638e, 0x0000, 0xfe000000, 0x0380],      // $276394..$2763CA
-  ]) {
-    const e = effectArmShared278320(ram, rom, ctx, a6, kind, site);
+  const effectSpecs = [
+    [0x0d, 0x0400, 0x02000000, null],
+    [0x0c, 0x0000, 0xfe00fa00, 0x05c0],
+    [0x0c, 0x0400, 0xfc000200, 0x0440],
+    [0x85, 0x0000, 0xfe000000, 0x0380],
+  ];
+  for (let i = 0; i < effectSpecs.length; i++) {
+    const [kind, sub14, nudge, speedAngle] = effectSpecs[i];
+    const e = effectArmShared278320(
+      ram, rom, ctx, a6, kind, descriptor.effect.sites[i],
+      descriptor.effect.remap, descriptor.effects,
+    );
     ram.setU16(e + B.sub12, 0x0001);
     ram.setU16(e + B.sub14, sub14);
     ram.setU32(e + B.nudge, nudge >>> 0);
     if (speedAngle !== null) ram.setU16(e + B.speed, speedAngle);
-    ram.setU16(e + B.hook, 1);
+    ram.setU16(e + B.hook, descriptor.effect.hook);
   }
-  freeEnemy(ram, a5);                                  // $2763D0 jmp $263762
+  retire88(ram, a5, descriptor);
 }
 
 // ------------------------------------------------------------------------
@@ -9296,7 +9318,8 @@ const HANDLERS = new Map([
   [0x26a860, handler09],
   [0x26ad28, handler0B],
   [0x27733e, handler89],
-  [0x275f30, handler88],
+  [0x275f30, (ram, rom, a5, ctx) =>
+    handler88(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x88])],
   [0x2697f6, handler31],
   [0x29700c, handler24],
   // W57: type $1C, spawned ONLY by the midboss's death ($26B7E0/$26B7E2).
@@ -11581,6 +11604,11 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x2747c6);
       handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
         handler82(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type88') {
+      const canonical = requireType88Resources(descriptor, resources.edition);
+      handlers.delete(0x275f30);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handler88(ram, rom, a5, ctx, canonical));
     } else if (descriptor.algorithm === 'type89') {
       const canonical = requireType89Resources(descriptor, resources.edition);
       handlers.delete(0x27733e);

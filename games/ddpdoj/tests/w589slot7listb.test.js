@@ -43,7 +43,7 @@ const IMG = SKIP ? null : readFileSync(IMAGE);
 const TABLE_JSON = SKIP ? null : JSON.parse(readFileSync(TABLES, 'utf8'));
 const W588_TABLE = SKIP ? null : tableBeforeW589(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
-const LIVE_TABLE_HASH = 'd2374d899ef5d3095b0d47151df079ebe3ece7633bcbd9e812b6158b6f6d8138';
+const LIVE_TABLE_HASH = '4968485c1c53f9ab74bee48d34a643f41b762a5365a6398b3986629017b7bfea';
 const W588_TABLE_HASH = '6ba6ed93f3b995ed1baf60fc757808379e548adb2919e040ac95f8d0e17081aa';
 const STORED_CHECKPOINT_TABLE_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const FAMILY_HASH = '5ac350be51f40c6d0714f82ec621cb1288ea2dce91f8a8e8a17c974837d8ac9b';
@@ -262,7 +262,7 @@ test('W589 registry is exact, reconstructs W588 strictly, and stops at $291B3A',
         Number.parseInt(window.base.slice(1), 16), window.len,
       ])),
       canonicalHash(TABLE_JSON),
-    ], [1833, 80, 1833, 662425, 80, LIVE_TABLE_HASH]);
+    ], [1840, 80, 1840, 662931, 80, LIVE_TABLE_HASH]);
     assert.deepEqual([
       W588_TABLE.rom.windows.length,
       W588_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),

@@ -548,13 +548,13 @@ function spread3A(ctx, regs, resources = BLACK_BULLET_SPAWN_RESOURCES) {
 }
 
 /** $2813D4 -- bank A's two-way spread: scale, then -8 and +8, bank B core. */
-function spread2A(ctx, regs) {
+function spread2A(ctx, regs, resources = BLACK_BULLET_SPAWN_RESOURCES) {
   const r = [];
   scaleAngle(regs);
   angMinus8(regs);
-  r.push(spawnCore(ctx, regs, 'B'));
+  r.push(spawnCoreWithResources(ctx, regs, 'B', resources));
   angPlus16(regs);
-  r.push(spawnCore(ctx, regs, 'B'));
+  r.push(spawnCoreWithResources(ctx, regs, 'B', resources));
   return r;
 }
 
@@ -656,6 +656,13 @@ function bankBSpreadThree(ctx, regs, resources) {
   return restoreFan(regs, () => spread3B(ctx, regs, resources));
 }
 
+function bankASpreadTwo(ctx, regs, resources) {
+  if (!fanWithResources(ctx, resources)) {
+    return [spawnCoreWithResources(ctx, regs, 'A', resources)];
+  }
+  return restoreFan(regs, () => spread2A(ctx, regs, resources));
+}
+
 function bankASpreadThree(ctx, regs, resources) {
   if (!fanWithResources(ctx, resources)) {
     return [spawnCoreWithResources(ctx, regs, 'A', resources)];
@@ -667,6 +674,9 @@ export function fireWithResources(ctx, entry, regs, resources) {
   if (!resources || entry !== resources.entry) {
     unreached(entry, `no resource-bound generator entry at $${entry.toString(16)
       .toUpperCase()}`);
+  }
+  if (resources.semantic === 'bank-a-direct') {
+    return [spawnCoreWithResources(ctx, regs, 'A', resources)];
   }
   if (resources.semantic === 'bank-a-plus4') {
     return bankAPlus4(ctx, regs, resources);
@@ -682,6 +692,9 @@ export function fireWithResources(ctx, entry, regs, resources) {
   }
   if (resources.semantic === 'bank-b-spread-three') {
     return bankBSpreadThree(ctx, regs, resources);
+  }
+  if (resources.semantic === 'bank-a-spread-two') {
+    return bankASpreadTwo(ctx, regs, resources);
   }
   if (resources.semantic === 'bank-a-spread-three') {
     return bankASpreadThree(ctx, regs, resources);
