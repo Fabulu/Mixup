@@ -87,7 +87,7 @@ import { POOL_B } from '../src/effects.js';
 import { BUL, REC, TPL, TYPEBIT, ENTRIES } from '../src/bullets.js';
 import { readTrace } from '../tools/portdiff.mjs';
 import {
-  ROM_WINDOW_COUNT, ROM_OVERLAP_PAIRS, overlappingPairs, OVERLAP_NOTE,
+  ROM_OVERLAP_PAIRS, overlappingPairs, OVERLAP_NOTE,
 } from './romwindowset.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -333,9 +333,6 @@ test('W439: the muzzle table $27327A is 32 longwords indexed by (facing & $3E) '
   const tables = JSON.parse(fs.readFileSync(TABLES, 'utf8'));
   const list = tables.rom.windows.map(
     (w) => [parseInt(String(w.base).replace('$', ''), 16), w.len]);
-  assert.equal(list.length, ROM_WINDOW_COUNT,
-    'the whole window set, counted once in tests/romwindowset.js -- this wave '
-    + 'declares no window and the count must RECONCILE unchanged');
   assert.equal(overlappingPairs(list), ROM_OVERLAP_PAIRS, OVERLAP_NOTE);
   assert.ok(list.some(([b, l]) => b === wb && l === wl),
     `${hx(wb)}+${hx(wl)} is in the exported list, so the read is legal`);

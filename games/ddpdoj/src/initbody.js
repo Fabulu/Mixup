@@ -1108,9 +1108,9 @@ function init82(ram, rom, a5, a6, unported,
   ram.setU32(a5 + R.rec44, cues82);
   loadRecordProto(ram, rom, a5, resources.recordPrototype, 0x0d);
   readInitPosition(ram, rom, a5, unported);
-  unported?.note(resources.initAimSite,
-    `$${resources.initAimSite.toString(16).toUpperCase()} aim in type $82 init`);
-  let d1 = ram.u8(a6 + S.heading);
+  const aimed = aim64FromCaller(() => type07AimTables(rom, resources), ram, a5,
+    u16(ram.u16(a6 + S.posX) + 0x0240), ram.u16(a6 + S.posY));
+  let d1 = aimed.carry ? ram.u8(a6 + S.heading) : aimed.dir;
   ram.setU8(a5 + R.rec2D, d1);
   d1 = (d1 & 0x3e) << 1;
   ram.setU32(a5 + R.rec28, rom.u32(resources.aimSprite + d1));

@@ -235,6 +235,7 @@ const G = {
   ca: 0x8130ca,   // W30: $275954 -- the gate that picks $85's palette index
   // W36: three more RANK/progress words the seven new handlers read, all of
   // them as `sub.w <word>,D0` against a literal reload.
+  b2: 0x8130b2,   // $2749A8 / $1739FC -- type $82 primary-fire cadence
   b4: 0x8130b4,   // $26A742 / $26A906 / $27626E / $276272
   b6: 0x8130b6,   // $27747A -- type $89's salvo reload
   bc: 0x8130bc,   // $276254 -- type $88's, and the only one shifted (lsr.w #2)
@@ -560,6 +561,7 @@ function offScreen2426A4(ram, a6) {
 // cache is keyed on the ROM OBJECT, so it is a pure derivation of immutable
 // input -- NOT per-Game mutable state, which `NOTES-replay.md` §2 forbids.
 const AIM_TABLES = new WeakMap();
+const AIM256_TABLES = new WeakMap();
 const LEGACY_AIM_TABLES = Symbol('legacyAimTables');
 function aimTables(rom, descriptor) {
   const allowLegacyDefault = descriptor === undefined;
@@ -602,6 +604,18 @@ function aimTables(rom, descriptor) {
   byDescriptor.set(cacheKey, t);
   return t;
 }
+
+function aim256Tables(rom, descriptor) {
+  let byDescriptor = AIM256_TABLES.get(rom);
+  if (!byDescriptor) { byDescriptor = new Map(); AIM256_TABLES.set(rom, byDescriptor); }
+  let tables = byDescriptor.get(descriptor);
+  if (!tables) {
+    tables = new Aim256Tables(rom, descriptor.aim256);
+    byDescriptor.set(descriptor, tables);
+  }
+  return tables;
+}
+
 const TURRET_10 = TURRET_HANDLERS.get(0x268232);
 const TURRET_11 = TURRET_HANDLERS.get(0x2688cc);
 
@@ -1413,8 +1427,8 @@ function handler82(ram, rom, a5, ctx,
   fire82(ram, rom, a5, a6, ctx, resources);              // $274858
 }
 
-// ---- $274858..$274AEE: TYPE $82's fire/state machine.  ITS DRAW IS WIRED
-// ---- BY W81; the two BULLET arms stay counted notes and say why.
+// ---- $274858..$274AEE: TYPE $82's fire/state machine. The primary fan,
+// ---- second fire, and all three draw emitters are translated below.
 //
 // W68 §2.2 measured type $82 as 21 spawned objects and 9,730 invisible
 // collidable slot-frames -- the single largest invisible population in the
@@ -1439,14 +1453,68 @@ function handler82(ram, rom, a5, ctx,
 //                         immediate $173810 -- and it is gated on RANK
 //                         (`tst.w $813098`) so a rank-0 run never asks for it.
 //
-// WHAT IS STILL A NOTE, AND WHY.  `$27487A..$2749B2` is the aim + the six
-// bullet fans (`$281708` x4, `$281764` x2); that block still needs aim256
-// (`$2422A2`) and the ($30,A5)/($31,A5) stored aim byte it fires from, and it is
-// read by nothing else in this handler.  **`$274A9C..$274AEE`, the SEVENTH fan
-// through `$281484`, IS PORTED -- W439**; see `secondFire82`.  Both arms fall
-// into the draw at `$274A22`, which is why the draw was wirable without either.
+// `$27487A..$2749B2` owns the two Aim256 origins and either two spread-two
+// calls or four plus-four calls. `$274A9C..$274AEE`, the seventh fan, is the
+// separately translated `secondFire82` block from W439. Both arms fall into the
+// draw at `$274A22`.
+function primaryFire82(ram, rom, a5, a6, ctx, descriptor) {
+  const fan = descriptor.primaryFan;
+  ram.setU8(a5 + R.rec1E, ram.u8(a5 + R.rec2E));       // $27487A move.b ($2E,A5),($1E,A5)
+  const salvo = ram.u8(a5 + R.rec20);
+  const salvoReload = ram.u8(a5 + R.rec21);
+
+  if (salvo === salvoReload) {                         // $274880..$274888
+    const sel = targetSelect(ram, a5);                 // $27488A..$2748AA
+    if (sel.carry) return;                             // neither player alive: $2749B4
+    const tables = aim256Tables(rom, descriptor);
+    const targetY = ram.u16(sel.addr + 0x02);
+    const targetX = ram.u16(sel.addr + 0x04);
+    const selfY = ram.u16(a6 + 0x02);
+    const selfX = ram.u16(a6 + 0x04);
+    ram.setU8(a5 + R.rec30, aim256(tables,
+      u16(selfY + 0xf7c0), u16(selfX + 0xfac0), targetY, targetX)); // left
+    ram.setU8(a5 + R.rec31, aim256(tables,
+      u16(selfY + 0xf7c0), u16(selfX + 0x0500), targetY, targetX)); // right
+  }
+
+  const d2 = ram.u32(a6 + 0x02);
+  const enhanced = ram.u16(G.stage) >= 3 && salvo === salvoReload;
+  const d5 = ram.u16(G.stage) >= 3 ? salvo : 0;
+  const bulletCtx = { ram, rom, log: new WriteLog(ram), mut: ctx.mut ?? null };
+  const fire = (resources, site, d0, d1, d3) => {
+    const result = fireBulletWithResources(bulletCtx, resources.entry, {
+      d0, d1: u16(d1), d2, d3, d4: 0, d5, a5,
+    }, resources);
+    ctx.bulletSpawn?.(site, result);
+  };
+
+  const left = ram.u8(a5 + R.rec30);
+  if (enhanced) {
+    fire(fan.plus4, fan.plus4.sites[0], fan.plus4D0, left + 2, 0xf7c0fac0);
+    fire(fan.plus4, fan.plus4.sites[1],
+      (fan.plus4D0 - 0x00020000) >>> 0, left + 7, 0xf7c0fac0);
+  } else {
+    fire(fan.spreadTwo, fan.spreadTwo.sites[0], fan.baseD0, left, 0xf7c0fac0);
+  }
+
+  const right = ram.u8(a5 + R.rec31);
+  if (enhanced) {
+    fire(fan.plus4, fan.plus4.sites[2], fan.plus4D0, right - 2, 0xf7c00500);
+    fire(fan.plus4, fan.plus4.sites[3],
+      (fan.plus4D0 - 0x00020000) >>> 0, right - 7, 0xf7c00500);
+  } else {
+    fire(fan.spreadTwo, fan.spreadTwo.sites[1], fan.baseD0, right, 0xf7c00500);
+  }
+
+  ram.setU8(a5 + R.rec20, (salvo - 1) & 0xff);         // $274998 subq.b #1,($20,A5)
+  if (salvo === 0) {
+    ram.setU8(a5 + R.rec20, salvoReload);               // $27499E
+    ram.setU8(a5 + R.rec1E,
+      u16(0x70 - ram.u16(G.b2) - 4) & 0xff);            // $2749A4..$2749B0
+  }
+}
+
 function fire82(ram, rom, a5, a6, ctx, descriptor) {
-  const u = ctx.unported;
   // W382. [M] `$274858  4e b9 00 28 ac 72` -- UNCONDITIONAL, and the very next
   // instruction is `$27485E tst.l $8130D2`, exactly the shape the fourteen
   // already-live sites have ($27410A, $2759A6, ...). `spawnCues28AC72` has been
@@ -1460,12 +1528,7 @@ function fire82(ram, rom, a5, a6, ctx, descriptor) {
       const cd = ram.u8(a5 + R.rec1E);                 // $274872 subq.b #1,($1E,A5)
       ram.setU8(a5 + R.rec1E, (cd - 1) & 0xff);
       if (cd === 0) {                                  // $274876 bcc $2749B4
-        // $27487A..$2749B2 -- the aim and the six fans.
-        const fan = descriptor.primaryFan;
-        u?.note(fan.site, `$82 aim/fan block at $${fan.site.toString(16).toUpperCase()} `
-          + `(aim256 $${fan.aim.toString(16).toUpperCase()} + `
-          + `$${fan.adaptive.toString(16).toUpperCase()} x4 / `
-          + `$${fan.spreadTwo.toString(16).toUpperCase()} x2) rec $${a5.toString(16)}`);
+        primaryFire82(ram, rom, a5, a6, ctx, descriptor); // $27487A..$2749B2
       }
     }
     toHeading = true;                                  // $2749B4 is reached

@@ -486,9 +486,20 @@ const black82 = {
   handler: 0x2747c6, palette: 0x27474a,
   recordPrototype: 0x274754, subPrototype: 0x274770,
   aimSprite: 0x272dfa, muzzle: 0x27327a, initAimSite: 0x24200a,
-  aim64: black11.aim64,
+  aim64: black11.aim64, aim256: BLACK_AIM256_RESOURCES,
   primaryFan: {
-    site: 0x27487a, aim: 0x2422a2, adaptive: 0x281708, spreadTwo: 0x281764,
+    site: 0x27487a, aimCore: 0x2422a2,
+    baseD0: 0x0003000c, plus4D0: 0xfffd000d,
+    plus4: {
+      ...BLACK_BULLET_SPAWN_RESOURCES,
+      entry: 0x281708, semantic: 'bank-b-plus4',
+      sites: [0x27492a, 0x274938, 0x27497a, 0x274988],
+    },
+    spreadTwo: {
+      ...BLACK_BULLET_SPAWN_RESOURCES,
+      entry: 0x281764, semantic: 'bank-b-spread-two',
+      sites: [0x274942, 0x274992],
+    },
   },
   bullet: {
     ...BLACK_BULLET_SPAWN_RESOURCES,
@@ -510,9 +521,22 @@ const white82 = {
   handler: 0x17381a, palette: 0x17379e,
   recordPrototype: 0x1737a8, subPrototype: 0x1737c4,
   aimSprite: 0x171e4e, muzzle: 0x1722ce, initAimSite: 0x142344,
-  aim64: white11.aim64,
+  aim64: white11.aim64, aim256: WHITE_AIM256_RESOURCES,
   primaryFan: {
-    site: 0x1738ce, aim: 0x1425dc, adaptive: 0x180746, spreadTwo: 0x180782,
+    site: 0x1738ce, aimCore: 0x1425dc,
+    baseD0: 0x0005000c, plus4D0: 0xffff000d,
+    plus4: {
+      ...WHITE_BULLET_SPAWN_RESOURCES,
+      supportedKinds: [13],
+      entry: 0x180746, semantic: 'bank-b-plus4',
+      sites: [0x17397e, 0x17398c, 0x1739ce, 0x1739dc],
+    },
+    spreadTwo: {
+      ...WHITE_BULLET_SPAWN_RESOURCES,
+      supportedKinds: [12],
+      entry: 0x180782, semantic: 'bank-b-spread-two',
+      sites: [0x173996, 0x1739e6],
+    },
   },
   bullet: {
     ...WHITE_BULLET_SPAWN_RESOURCES,

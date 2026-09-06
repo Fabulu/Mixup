@@ -4,10 +4,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
+import { Aim256Tables, aim256 } from '../src/aim.js';
 import { RomWindows } from '../src/rom.js';
 import { WHITE_LABEL_PROFILE } from '../src/profiles.js';
 import { ENEMY } from '../src/enemies.js';
-import { BUL, REC as BULLET_REC } from '../src/bullets.js';
+import { BUL, REC as BULLET_REC, TPL } from '../src/bullets.js';
 import { B, POOL_B } from '../src/effects.js';
 import { CUE } from '../src/cues.js';
 import { DMG } from '../src/damage.js';
@@ -57,15 +58,38 @@ function trackedCartridge() {
   return { rom, reads };
 }
 
-function assertWhiteOnly(reads) {
-  assert.deepEqual(reads.filter(({ address, end }) =>
-    address >= 0x200000 || end > 0x200000), [],
-  'every White Type $82 cartridge read stays below $200000');
+const numericWindows = tables.rom.windows.map(({ base, len }) => ({
+  start: typeof base === 'string' ? parseInt(base.replace('$', ''), 16) : base,
+  end: (typeof base === 'string' ? parseInt(base.replace('$', ''), 16) : base) + len,
+}));
+
+function assertWholeWhiteReads(reads) {
+  for (const read of reads) {
+    assert.ok(read.address >= 0 && read.end <= 0x200000,
+      `White Type $82 ${read.method} escaped Build A at $${read.address.toString(16)}`);
+    assert.ok(numericWindows.some(({ start, end }) =>
+      read.address >= start && read.end <= end),
+    `White Type $82 ${read.method} at $${read.address.toString(16)} crossed a window seam`);
+  }
 }
 
 function assertRead(reads, address) {
   assert.equal(reads.some((read) => read.address === address), true,
     `missing White cartridge read at $${address.toString(16)}`);
+}
+
+function assertNoRead(reads, address) {
+  assert.equal(reads.some((read) => read.address === address), false,
+    `unexpected White cartridge read at $${address.toString(16)}`);
+}
+
+function assertPrimaryAimReads(reads, descriptor) {
+  for (const address of [
+    descriptor.aim256.lut, descriptor.aim256.base, descriptor.aim256.ops,
+  ]) assertRead(reads, address);
+  for (const address of [
+    descriptor.aim64.lut, descriptor.aim64.base, descriptor.aim64.ops,
+  ]) assertNoRead(reads, address);
 }
 
 function createWhiteFixture() {
@@ -77,12 +101,12 @@ function createWhiteFixture() {
   return { ram, rom, reads, machineCtx, world };
 }
 
-function spawnWhite82() {
+function spawnWhite82(player = { y: 0x3000, x: 0x2000 }) {
   const fixture = createWhiteFixture();
   const { ram, rom, machineCtx, world } = fixture;
   ram.setU16(DMG.p1rec, 0x8000);
-  ram.setU16(DMG.p1rec + 0x02, 0x3000);
-  ram.setU16(DMG.p1rec + 0x04, 0x2000);
+  ram.setU16(DMG.p1rec + 0x02, player.y);
+  ram.setU16(DMG.p1rec + 0x04, player.x);
   world.resetSpawn(ram, rom, machineCtx);
   ram.setU32(world.resources.spawn.liveCursor, SOURCE);
   ram.setU16(world.resources.spawn.distanceClock, 0x00e3);
@@ -144,11 +168,27 @@ test('Type $82 owns canonical edition descriptors and exact White executable evi
   ]);
   assert.deepEqual(white.effectSites, [0x173b54, 0x173b82]);
   assert.deepEqual([
+    black.aim256.entry, black.primaryFan.aimCore,
+    black.primaryFan.baseD0, black.primaryFan.plus4D0,
+    black.primaryFan.plus4.entry, black.primaryFan.spreadTwo.entry,
+    white.aim256.entry, white.primaryFan.aimCore,
+    white.primaryFan.baseD0, white.primaryFan.plus4D0,
+    white.primaryFan.plus4.entry, white.primaryFan.spreadTwo.entry,
+  ], [
+    0x2422a2, 0x2422a2, 0x0003000c, 0xfffd000d, 0x281708, 0x281764,
+    0x1425d0, 0x1425dc, 0x0005000c, 0xffff000d, 0x180746, 0x180782,
+  ]);
+  assert.deepEqual(white.primaryFan.plus4.sites,
+    [0x17397e, 0x17398c, 0x1739ce, 0x1739dc]);
+  assert.deepEqual(white.primaryFan.spreadTwo.sites, [0x173996, 0x1739e6]);
+  assert.deepEqual([
     white.score.capTable, white.score.refillTable,
     white.effects.poolBTableA, white.effects.poolBTableB,
     white.effects.poolBAllocator,
   ], [0x18692e, 0x186932, 0x121520, 0x121630, 0x187b40]);
-  for (const value of [black, white, white.aim64, white.primaryFan, white.bullet,
+  for (const value of [black, white, white.aim64, white.aim256, white.primaryFan,
+    white.primaryFan.plus4, white.primaryFan.plus4.sites,
+    white.primaryFan.spreadTwo, white.primaryFan.spreadTwo.sites, white.bullet,
     white.score, white.cues, white.effects, white.effectSites, white.emitters,
     white.sound, white.retirement]) {
     assert.equal(Object.isFrozen(value), true);
@@ -184,7 +224,7 @@ test('Type $82 owns canonical edition descriptors and exact White executable evi
 });
 
 test('natural $13106C spawn follows the White auxiliary, dispatch, and initializer route', () => {
-  const { ram, rom, reads, machineCtx, world } = spawnWhite82();
+  const { ram, rom, reads, machineCtx, world } = spawnWhite82({ y: 0x1000, x: 0x6000 });
   const descriptor = world.resources.enemyTypes[0x82];
 
   assert.deepEqual(Array.from(rom.bytes(SOURCE, 8)), [
@@ -203,20 +243,19 @@ test('natural $13106C spawn follows the White auxiliary, dispatch, and initializ
     ram.u16(SUB + 0x18), ram.u16(SUB + 0x38),
     ram.u8(SUB + 0x1d), ram.u8(REC + 0x1c), ram.u8(REC + 0x1d),
   ], [0x1735fc, 0x18, 0x20, 0x0200, 0x0200, 0x0c, 0x0c, 0x13]);
-  assert.equal(ram.u8(REC + 0x2d), ram.u8(SUB + 0x1b));
+  assert.notEqual(ram.u8(REC + 0x2d), ram.u8(SUB + 0x1b),
+    'the native $142344 aim replaces the movement-heading fallback while P1 is alive');
   assert.equal(ram.u32(REC + 0x28),
-    rom.u32(descriptor.aimSprite + ((ram.u8(SUB + 0x1b) & 0x3e) * 2)));
-  assert.deepEqual(machineCtx.unportedLog.report(), [
-    '      1 x $142344 $142344 aim in type $82 init',
-  ]);
+    rom.u32(descriptor.aimSprite + ((ram.u8(REC + 0x2d) & 0x3e) * 2)));
+  assert.deepEqual(machineCtx.unportedLog.report(), []);
 
   for (const address of [
     SOURCE, 0x13178a, 0x13178c, MOVEMENT, 0x17d4d4,
     descriptor.initStub + 2, descriptor.subPrototype, descriptor.recordPrototype,
-    descriptor.palette,
-    descriptor.aimSprite + ((ram.u8(SUB + 0x1b) & 0x3e) * 2),
+    descriptor.palette, descriptor.aim64.ops, descriptor.aim64.base, descriptor.aim64.lut,
+    descriptor.aimSprite + ((ram.u8(REC + 0x2d) & 0x3e) * 2),
   ]) assertRead(reads, address);
-  assertWhiteOnly(reads);
+  assertWholeWhiteReads(reads);
 });
 
 test('White Type $82 advances its cue, aims, draws all emitters, and fires kind $07', () => {
@@ -260,8 +299,7 @@ test('White Type $82 advances its cue, aims, draws all emitters, and fires kind 
     result: [{ carry: false, slot: 0, addr: BUL.pool, declined: false }],
   }]);
   assert.equal(ram.u16(BUL.pool + BULLET_REC.typeWord), 0x8107);
-  assert.deepEqual(ctx.unported.report(), [],
-    'the unresolved primary fan remains dormant on this second-fire frame');
+  assert.deepEqual(ctx.unported.report(), []);
 
   const muzzle = descriptor.muzzle + ((facing & 0x3e) * 2);
   for (const address of [
@@ -271,7 +309,113 @@ test('White Type $82 advances its cue, aims, draws all emitters, and fires kind 
     descriptor.bullet.templatePtrs + 4 * 7,
     descriptor.bullet.spawnInitPtrs + 4 * 7,
   ]) assertRead(reads, address);
-  assertWhiteOnly(reads);
+  assertWholeWhiteReads(reads);
+});
+
+test('White Type $82 fires both native primary-fan branches with P2 selection and fallback', () => {
+  const runPrimary = ({ stage, salvo, targetP2 }) => {
+    const fixture = spawnWhite82();
+    const { ram, rom, reads, world } = fixture;
+    const descriptor = world.resources.enemyTypes[0x82];
+    isolateHandler(ram);
+    reads.length = 0;
+    ram.setU16(0x813092, stage);
+    ram.setU16(0x813098, 1);
+    ram.setU8(REC + 0x03, 1);
+    ram.setU8(REC + 0x1e, 0);
+    ram.setU8(REC + 0x20, salvo);
+    ram.setU8(REC + 0x21, salvo);
+    ram.setU8(REC + 0x22, 1);
+    ram.setU8(REC + 0x26, 1);
+    if (targetP2) {
+      ram.setU16(DMG.p2rec, 0x8000);
+      ram.setU16(DMG.p2rec + 0x02, 0x1000);
+      ram.setU16(DMG.p2rec + 0x04, 0x6000);
+    } else {
+      ram.setU16(DMG.p2rec, 0);
+    }
+    const target = targetP2 ? DMG.p2rec : DMG.p1rec;
+    const aimTables = new Aim256Tables(new RomWindows(tables.rom), descriptor.aim256);
+    const selfY = ram.u16(SUB + 0x02);
+    const selfX = ram.u16(SUB + 0x04);
+    const expectedAim = [
+      aim256(aimTables, (selfY + 0xf7c0) & 0xffff, (selfX + 0xfac0) & 0xffff,
+        ram.u16(target + 0x02), ram.u16(target + 0x04)),
+      aim256(aimTables, (selfY + 0xf7c0) & 0xffff, (selfX + 0x0500) & 0xffff,
+        ram.u16(target + 0x02), ram.u16(target + 0x04)),
+    ];
+    const calls = [];
+    const ctx = handlerContext(fixture, {
+      bulletSpawn: (site, result) => calls.push({ site, result }),
+    });
+    runHandler(descriptor.handler, ram, rom, REC, ctx, world.resources);
+    return { fixture, descriptor, calls, ctx, expectedAim };
+  };
+
+  const spread = runPrimary({ stage: 2, salvo: 1, targetP2: false });
+  assert.deepEqual([
+    spread.fixture.ram.u8(REC + 0x30), spread.fixture.ram.u8(REC + 0x31),
+  ], spread.expectedAim, 'a dead nominated P2 falls back to the live P1 for both origins');
+  assert.deepEqual(spread.calls.map(({ site }) => site),
+    spread.descriptor.primaryFan.spreadTwo.sites);
+  assert.deepEqual(spread.calls.map(({ result }) => result.length), [2, 2]);
+  const spreadDirs = [
+    spread.expectedAim[0] - 8, spread.expectedAim[0] + 8,
+    spread.expectedAim[1] - 8, spread.expectedAim[1] + 8,
+  ].map((value) => value & 0xff);
+  const spreadPositions = [0x37c01ac0, 0x37c01ac0, 0x37c02500, 0x37c02500];
+  const spreadBullet = spread.descriptor.primaryFan.spreadTwo;
+  const spreadTemplate = spread.fixture.rom.u32(spreadBullet.templatePtrs + 4 * 12);
+  const spreadSpeed = (spread.fixture.rom.u16(spreadTemplate + TPL.baseSpeed) + 5
+    + spread.fixture.ram.u16(spreadBullet.speedBias1)
+    + spread.fixture.ram.u16(spreadBullet.speedBias2)) & 0xff;
+  for (let slot = 0; slot < 4; slot++) {
+    const bullet = BUL.pool + slot * BUL.stride;
+    assert.equal(spread.fixture.ram.u16(bullet) & 0x3f, 12);
+    assert.equal(spread.fixture.ram.u16(bullet) & 0x0200, 0x0200);
+    assert.equal(spread.fixture.ram.u8(bullet + BULLET_REC.dir), spreadDirs[slot]);
+    assert.equal(spread.fixture.ram.u8(bullet + BULLET_REC.speed), spreadSpeed);
+    assert.equal(spread.fixture.ram.u32(bullet + BULLET_REC.posA), spreadPositions[slot]);
+  }
+  assert.equal(spread.fixture.ram.u8(REC + 0x20), 0);
+  assert.equal(spread.fixture.ram.u8(REC + 0x1e), spread.fixture.ram.u8(REC + 0x2e));
+  assert.deepEqual(spread.ctx.unported.report(), []);
+  assertPrimaryAimReads(spread.fixture.reads, spread.descriptor);
+  assertWholeWhiteReads(spread.fixture.reads);
+
+  const plus4 = runPrimary({ stage: 3, salvo: 0, targetP2: true });
+  assert.deepEqual([
+    plus4.fixture.ram.u8(REC + 0x30), plus4.fixture.ram.u8(REC + 0x31),
+  ], plus4.expectedAim, 'a live nominated P2 owns both Aim256 target coordinates');
+  assert.deepEqual(plus4.calls.map(({ site }) => site),
+    plus4.descriptor.primaryFan.plus4.sites);
+  assert.deepEqual(plus4.calls.map(({ result }) => result.length), [1, 1, 1, 1]);
+  const plusDirs = [
+    plus4.expectedAim[0] + 2, plus4.expectedAim[0] + 7,
+    plus4.expectedAim[1] - 2, plus4.expectedAim[1] - 7,
+  ].map((value) => value & 0xff);
+  const plusPositions = [0x37c01ac0, 0x37c01ac0, 0x37c02500, 0x37c02500];
+  const plusBullet = plus4.descriptor.primaryFan.plus4;
+  const plusTemplate = plus4.fixture.rom.u32(plusBullet.templatePtrs + 4 * 13);
+  const baseSpeed = plus4.fixture.rom.u16(plusTemplate + TPL.baseSpeed)
+    + plus4.fixture.ram.u16(plusBullet.speedBias1)
+    + plus4.fixture.ram.u16(plusBullet.speedBias2);
+  const plusSpeeds = [baseSpeed + 3, baseSpeed + 1, baseSpeed + 3, baseSpeed + 1]
+    .map((value) => value & 0xff);
+  for (let slot = 0; slot < 4; slot++) {
+    const bullet = BUL.pool + slot * BUL.stride;
+    assert.equal(plus4.fixture.ram.u16(bullet) & 0x3f, 13);
+    assert.equal(plus4.fixture.ram.u16(bullet) & 0x0200, 0x0200);
+    assert.equal(plus4.fixture.ram.u8(bullet + BULLET_REC.dir), plusDirs[slot]);
+    assert.equal(plus4.fixture.ram.u8(bullet + BULLET_REC.speed), plusSpeeds[slot]);
+    assert.equal(plus4.fixture.ram.u32(bullet + BULLET_REC.posA), plusPositions[slot]);
+  }
+  assert.equal(plus4.fixture.ram.u8(REC + 0x20), 0);
+  assert.equal(plus4.fixture.ram.u8(REC + 0x1e),
+    (0x70 - plus4.fixture.ram.u16(0x8130b2) - 4) & 0xff);
+  assert.deepEqual(plus4.ctx.unported.report(), []);
+  assertPrimaryAimReads(plus4.fixture.reads, plus4.descriptor);
+  assertWholeWhiteReads(plus4.fixture.reads);
 });
 
 test('White Type $82 lethal P2 ownership uses native score, effects, sound, and retirement', () => {
@@ -315,5 +459,5 @@ test('White Type $82 lethal P2 ownership uses native score, effects, sound, and 
   assert.equal(ram.u8(POOL_B.base + POOL_B.stride + B.f1c), 0x40);
   assertRead(reads, descriptor.score.capTable);
   assertRead(reads, descriptor.score.refillTable);
-  assertWhiteOnly(reads);
+  assertWholeWhiteReads(reads);
 });
