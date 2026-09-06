@@ -10768,6 +10768,8 @@ def verify(t: dict) -> list[str]:
         bad.append("embedded Version A Stage 1 Type $09 executable identity manifest drifted")
     if white.get("stage1Type0B") != WHITE_STAGE1_TYPE0B_EXECUTABLE_IDENTITY:
         bad.append("embedded Version A Stage 1 Type $0B executable identity manifest drifted")
+    if white.get("stage1Type24") != WHITE_STAGE1_TYPE24_EXECUTABLE_IDENTITY:
+        bad.append("embedded Version A Stage 1 Type $24 executable identity manifest drifted")
     if white.get("stage1Type82") != WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY:
         bad.append("embedded Version A Stage 1 Type $82 executable identity manifest drifted")
     if white.get("stage1Type88") != WHITE_STAGE1_TYPE88_EXECUTABLE_IDENTITY:
@@ -11427,10 +11429,10 @@ WHITE_LABEL_WINDOWS = [
     (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
 ]
 
-# Task #253's private Stage 1 world slice, extended through Task #281 for Types
-# $27, $10, $85, $0D, $1C, $82, $89, and $88. These are the bounded Build A
-# data windows read by the shared background, spawn, enemy, bullet, cue, item,
-# and effect algorithms.
+# Task #253's private Stage 1 world slice, extended through Task #286 for Types
+# $27, $10, $85, $0D, $1C, $82, $89, $88, $08, $0B, $09, and $24. These are
+# the bounded Build A data windows read by the shared background, spawn, enemy,
+# bullet, cue, item, and effect algorithms.
 WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x121528, 0x0008, "White A Pool-B kind-$01 script pointer pair"),
     (0x121530, 0x0018, "White A Pool-B kind-$02/$03/$04 script pointer pairs"),
@@ -11455,6 +11457,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x1222D2, 0x009C, "White A Pool-B kind-$0C descriptor list"),
     (0x12236E, 0x0040, "White A Pool-B kind-$0C duration list"),
     (0x1223AE, 0x00EA, "White A Pool-B kind-$0D descriptor and duration closure"),
+    (0x122BF8, 0x0040, "White A type-$24 palette block"),
     (0x123338, 0x00C0, "White A midboss three-bank palette closure"),
     (0x129FE0, 0x0004, "White A Pool-C rebased descriptor root $229FE0"),
     (0x12A044, 0x0004, "White A Pool-C rebased descriptor root $22A044"),
@@ -11498,6 +11501,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x166924, 0x0008, "White A low type-table entry $11"),
     (0x16697C, 0x0008, "White A low type-table entry $1C"),
     (0x16699C, 0x0020, "White A low type-table entries $20 through $23"),
+    (0x1669BC, 0x0008, "White A low type-table entry $24"),
     (0x1669D4, 0x0008, "White A low type-table entry $27"),
     (0x166FE8, 0x0008, "White A type-$10/$11 initial emitter pair"),
     (0x167018, 0x0024, "White A type-$10/$11 death, hit, and secondary remap rows"),
@@ -11628,6 +11632,9 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x1889E6, 0x0030, "White A Pool-C kind-$04 reachable descriptor lists"),
     (0x1897AE, 0x041C, "White A type-$85 cue spawner, driver, dispatch, and kinds $00/$04/$08"),
     (0x189BCA, 0x006A, "White A type-$85 remaining reachable cue kinds"),
+    (0x1959DE, 0x0008, "White A type-$24 run-length init stub"),
+    (0x195A28, 0x001C, "White A type-$24 sub-record prototype"),
+    (0x195B0E, 0x0040, "White A type-$24 sprite table"),
 ]
 
 # Task #239's type-0 HUD reads only these seven Build A table families. The
@@ -11759,6 +11766,18 @@ WHITE_STAGE1_TYPE0B_EXECUTABLE_IDENTITY = {
     "handler": {
         "start": "$169DA0", "end": "$169F9E",
         "sha256": "469b8995d477c8dda9c1078290c761781a7daa0474ed46e045b290c9c847e4b4",
+    },
+}
+
+
+WHITE_STAGE1_TYPE24_EXECUTABLE_IDENTITY = {
+    "init": {
+        "start": "$1959DE", "end": "$195A42",
+        "sha256": "fb397f6e7ae41fadb713880902857925b8209f910900840060383e04abbc0b41",
+    },
+    "handler": {
+        "start": "$195A42", "end": "$195B0E",
+        "sha256": "9b0c498bdb4ac423f98908975732d06775dead684f4bcc7597a307da3814679b",
     },
 }
 
@@ -12268,6 +12287,7 @@ def white_label_tables(d: bytes) -> dict:
         "stage1Type08": WHITE_STAGE1_TYPE08_EXECUTABLE_IDENTITY,
         "stage1Type09": WHITE_STAGE1_TYPE09_EXECUTABLE_IDENTITY,
         "stage1Type0B": WHITE_STAGE1_TYPE0B_EXECUTABLE_IDENTITY,
+        "stage1Type24": WHITE_STAGE1_TYPE24_EXECUTABLE_IDENTITY,
         "stage1Type82": WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY,
         "stage1Type88": WHITE_STAGE1_TYPE88_EXECUTABLE_IDENTITY,
         "stage1Type89": WHITE_STAGE1_TYPE89_EXECUTABLE_IDENTITY,

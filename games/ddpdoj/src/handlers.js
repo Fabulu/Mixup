@@ -134,7 +134,8 @@ import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType08Resources,
-  requireType09Resources, requireType0BResources, requireType82Resources,
+  requireType09Resources, requireType0BResources, requireType24Resources,
+  requireType82Resources,
   requireType88Resources, requireType89Resources,
 } from './world-resources.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
@@ -5647,10 +5648,15 @@ function emit31(ram, rom, a5, a6) {
 // producer.  `$2970D4` is the last instruction; `$2970D8` is its own
 // 16-longword sprite table and `$297118` is the next init stub, so both ends of
 // that table are pinned by code.
-function handler24(ram, rom, a5, ctx) {
+function handler24(ram, rom, a5, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x24]) {
+  const resources = requireType24Resources(descriptor);
   const { tables } = ctx;
   const a6 = ram.u32(a5 + 0x06);
-  if (ram.u16(G.freeze) !== 0) { emit24(ram, rom, a5, a6); return; }  // $29700C/$297012
+  if (ram.u16(G.freeze) !== 0) {
+    emit24(ram, rom, a5, a6, resources);
+    return;
+  }
   scrollCompensate(ram, a5);                           // $297016 jsr $24179E
   applyVelocity(ram, tables, a5);                      // $29701C jsr $2417DE
   if (ram.u16(a5 + R.rec1E) === 0) {                   // $297022 cmpi.w #$0,($1E,A5)
@@ -5689,23 +5695,24 @@ function handler24(ram, rom, a5, ctx) {
     }
     ram.setU16(a5 + R.cooldown, cur & 0x3f);           // $297098 andi.w #$3F
   }
-  emit24(ram, rom, a5, a6);                            // $29709E
+  emit24(ram, rom, a5, a6, resources);                   // $29709E
 }
 
 /** `$29709E..$2970D4` -- TWO register-convention requests through `$23DECE`.
  *  The first takes its sprite from the LITERAL `$7E8AC`; the second reads
  *  `$2970D8 + ($18,A5)` and biases the position by `$FDC00080` as ONE longword
  *  add, so the low half's carry reaches the high half. */
-function emit24(ram, rom, a5, a6) {
+function emit24(ram, rom, a5, a6, resources) {
+  const { draw } = resources;
   const d1 = ram.u32(a6 + 0x02);                       // $2970A4 move.l ($2,A6),D1
-  enqueueRegistersThroughStub(ram, rom, 0x23dece, d1,
-    0x0007e8ac,                                        // $29709E move.l #$7E8AC,D2
-    0x1488,                                            // $2970A8 move.w #$1488,D3
-    0x13);                                             // $2970AC moveq #$13,D4
-  enqueueRegistersThroughStub(ram, rom, 0x23dece,
-    u32(d1 + 0xfdc00080),                              // $2970C4 addi.l #$FDC00080,D1
-    rom.u32(0x2970d8 + ram.u16(a5 + R.cooldown)),      // $2970BA/$2970BE move.l (A0),D2
-    0x1488, 0x13);                                     // $2970CA/$2970CE/$2970D0 jmp
+  enqueueRegistersThroughStub(ram, rom, draw.emitter, d1,
+    draw.fixedSprite,                                  // $29709E move.l #$7E8AC,D2
+    draw.size,                                         // $2970A8 move.w #$1488,D3
+    draw.palette);                                     // $2970AC moveq #$13,D4
+  enqueueRegistersThroughStub(ram, rom, draw.emitter,
+    u32(d1 + draw.positionBias),                       // $2970C4 addi.l #$FDC00080,D1
+    rom.u32(draw.spriteTable + ram.u16(a5 + R.cooldown)),
+    draw.size, draw.palette);
 }
 
 // ############################################################################
@@ -9348,7 +9355,8 @@ const HANDLERS = new Map([
   [0x275f30, (ram, rom, a5, ctx) =>
     handler88(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x88])],
   [0x2697f6, handler31],
-  [0x29700c, handler24],
+  [0x29700c, (ram, rom, a5, ctx) =>
+    handler24(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x24])],
   // W57: type $1C, spawned ONLY by the midboss's death ($26B7E0/$26B7E2).
   // It is a BACKGROUND blit, not a sprite -- see the W57 block's header.
   [0x26c20c, handler1C],
@@ -11656,6 +11664,11 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x27733e);
       handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
         handler89(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type24') {
+      const canonical = requireType24Resources(descriptor, resources.edition);
+      handlers.delete(0x29700c);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handler24(ram, rom, a5, ctx, canonical));
     } else if (descriptor.algorithm === 'type20') {
       handlers.delete(0x272aac);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>

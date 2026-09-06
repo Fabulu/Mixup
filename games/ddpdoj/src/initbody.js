@@ -46,7 +46,8 @@ import { loadAnimObjects246410 } from './animobjects.js';
 import { initType99_29E580 } from './boss3type99.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType08Resources,
-  requireType09Resources, requireType0BResources, requireType82Resources,
+  requireType09Resources, requireType0BResources, requireType24Resources,
+  requireType82Resources,
   requireType88Resources, requireType89Resources,
 } from './world-resources.js';
 
@@ -1025,19 +1026,29 @@ BODY.set(0x265a5c, (ram, rom, a5, a6) => {
   ram.setU32(a6 + 0x22, ram.u32(a6 + S.posX));
 });
 
-// --- type $24 ($296FB0): boss-approach prop.  Sub-proto, resource install,
-// record clears, position.  The resource install ($24150A) is noted (data).
-BODY.set(0x296FB0, (ram, rom, a5, a6, unported, tables, palette) => {
-  loadSubProto(ram, rom, a5, a6, 0x296FF2);            // jsr $2637A2
-  // W92: `$296FBC lea $222BF8.l,A0 / moveq #$13,D0 / $296FC6 jsr $24150A`.
-  installBank(ram, rom, palette, unported, 0x13, 0x222BF8, 0x296FC6,
-    'enemy type $24\'s init body $296FB0');
-  ram.setU16(a5 + R.rec18, 0);                          // move.w #$0,($18,A5)
-  ram.setU16(a5 + R.rec1A, 0);                          // move.w #$0,($1a,A5)
-  ram.setU16(a5 + R.rec1C, 0x0120);                     // move.w #$120,($1c,A5)
-  ram.setU16(a5 + R.rec1E, 0);                          // move.w #$0,($1e,A5)
-  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
-});
+// --- type $24: boss-approach prop. Sub-proto, resource install, record clears,
+// and movement-owned position.
+function init24(ram, rom, a5, a6, unported, palette,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x24]) {
+  const resources = requireType24Resources(descriptor);
+  loadSubProto(ram, rom, a5, a6, resources.subPrototype);
+  installBank(
+    ram, rom, palette, unported,
+    resources.palette.bank, resources.palette.block, resources.palette.site,
+    `enemy type $24's init body $${resources.initBody.toString(16).toUpperCase()}`,
+    resources.palette.installer,
+  );
+  ram.setU16(a5 + R.rec18, 0);
+  ram.setU16(a5 + R.rec1A, 0);
+  ram.setU16(a5 + R.rec1C, 0x0120);
+  ram.setU16(a5 + R.rec1E, 0);
+  readInitPosition(ram, rom, a5, unported);
+  ram.setU16(a6 + S.posX, u16(ram.u16(a6 + S.posX) + 0x0200));
+}
+
+BODY.set(0x296fb0, (ram, rom, a5, a6, unported, tables, palette) =>
+  init24(ram, rom, a5, a6, unported, palette,
+    BLACK_WORLD_RESOURCES.enemyTypes[0x24]));
 
 // --- type $31 ($269754): boss-approach prop.  Loaders, fixed position, a
 // palette lookup from $2697B0/$2697BA indexed by $813094, two resource installs.
@@ -2734,6 +2745,10 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
     } else if (descriptor.algorithm === 'type20') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init20(ram, rom, a5, a6, unported, descriptor));
+    } else if (descriptor.algorithm === 'type24') {
+      const canonical = requireType24Resources(descriptor, edition);
+      map.set(canonical.initBody, (ram, rom, a5, a6, unported, tables, palette) =>
+        init24(ram, rom, a5, a6, unported, palette, canonical));
     } else if (descriptor.algorithm === 'type80') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init80(ram, rom, a5, a6, unported, descriptor));

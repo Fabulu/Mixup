@@ -347,6 +347,34 @@ const white20 = {
   retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
 };
 
+const black24 = {
+  edition: 'black',
+  type: 0x24, algorithm: 'type24',
+  initStub: 0x296fa8, initBody: 0x296fb0, handler: 0x29700c,
+  subPrototype: 0x296ff2,
+  palette: { bank: 0x13, block: 0x222bf8, site: 0x296fc6, installer: 0x24150a },
+  motion: { scrollCompensation: 0x24179e, velocity: 0x2417de },
+  draw: {
+    emitter: 0x23dece, fixedSprite: 0x0007e8ac, spriteTable: 0x2970d8,
+    positionBias: 0xfdc00080, size: 0x1488, palette: 0x13,
+  },
+  retirement: { entry: 0x263762, semantic: 'freeEnemy' },
+};
+
+const white24 = {
+  edition: 'white',
+  type: 0x24, algorithm: 'type24',
+  initStub: 0x1959de, initBody: 0x1959e6, handler: 0x195a42,
+  subPrototype: 0x195a28,
+  palette: { bank: 0x13, block: 0x122bf8, site: 0x1959fc, installer: 0x141844 },
+  motion: { scrollCompensation: 0x141ad8, velocity: 0x141b18 },
+  draw: {
+    emitter: 0x13e21c, fixedSprite: 0x0007e8ac, spriteTable: 0x195b0e,
+    positionBias: 0xfdc00080, size: 0x1488, palette: 0x13,
+  },
+  retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
+};
+
 const black80 = {
   type: 0x80, algorithm: 'type80', initStub: 0x2737fa, initBody: 0x273802,
   handler: 0x2739c0, palette: 0x273922,
@@ -698,7 +726,8 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
     0x05: black05, 0x07: black27, 0x08: black08, 0x09: black09, 0x0b: black0B,
     0x0d: BLACK_TYPE0D_RESOURCES,
     0x10: black10, 0x11: black11, 0x1c: BLACK_TYPE1C_RESOURCES,
-    0x20: black20, 0x21: black20, 0x22: black20, 0x23: black20, 0x27: black27,
+    0x20: black20, 0x21: black20, 0x22: black20, 0x23: black20, 0x24: black24,
+    0x27: black27,
     0x80: black80, 0x82: black82, 0x85: black85, 0x88: black88, 0x89: black89,
     0x8a: black8A, 0x8b: black8B,
   },
@@ -731,7 +760,8 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
     0x05: white05, 0x07: white27, 0x08: white08, 0x09: white09, 0x0b: white0B,
     0x0d: WHITE_TYPE0D_RESOURCES,
     0x10: white10, 0x11: white11, 0x1c: WHITE_TYPE1C_RESOURCES,
-    0x20: white20, 0x21: white20, 0x22: white20, 0x23: white20, 0x27: white27,
+    0x20: white20, 0x21: white20, 0x22: white20, 0x23: white20, 0x24: white24,
+    0x27: white27,
     0x80: white80, 0x82: white82, 0x85: white85, 0x88: white88, 0x89: white89,
     0x8a: white8A, 0x8b: white8B,
   },
@@ -776,6 +806,20 @@ export function requireType0BResources(
       || resources.algorithm !== 'type0B'
       || (edition !== null && resources.edition !== edition)) {
     throw new TypeError('type $0B needs its canonical frozen edition descriptor');
+  }
+  return resources;
+}
+
+export function requireType24Resources(
+  resources = BLACK_WORLD_RESOURCES.enemyTypes[0x24], edition = null,
+) {
+  const canonical = resources?.edition === 'black'
+    ? BLACK_WORLD_RESOURCES.enemyTypes[0x24]
+    : resources?.edition === 'white' ? WHITE_WORLD_RESOURCES.enemyTypes[0x24] : null;
+  if (resources !== canonical || resources.type !== 0x24
+      || resources.algorithm !== 'type24'
+      || (edition !== null && resources.edition !== edition)) {
+    throw new TypeError('type $24 needs its canonical frozen edition descriptor');
   }
   return resources;
 }

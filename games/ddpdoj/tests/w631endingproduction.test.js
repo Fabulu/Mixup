@@ -69,7 +69,7 @@ const SKIP = HAVE ? false
 const TABLE_JSON = HAVE ? JSON.parse(readFileSync(TABLES, 'utf8')) : null;
 const BASE_CHECKPOINT = HAVE ? JSON.parse(readFileSync(CHECKPOINT, 'utf8')) : null;
 const PROGRAM_IMAGE = HAVE ? readFileSync(IMAGE) : null;
-const TABLE_HASH = '28d33479ee2f7dc67959e558790b86dc98a100522b13ed102eb2d6e35d532ef8';
+const TABLE_HASH = '72599d6a78d2e78599247bfe008bc938e250d5cbc0647e04063ef0555a559e28';
 const CHECKPOINT_HASH = 'e950e18d5a41eb205405d216e00f683fbaecf4a72d2042e54e74336089e191b1';
 const PAIRS = Object.freeze([
   Object.freeze([0, 2]), Object.freeze([0, 4]), Object.freeze([0, 6]),
