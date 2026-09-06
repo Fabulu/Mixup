@@ -20,6 +20,7 @@ import {
 const WHITE_STANDARD_BULLET_KINDS = Object.freeze([12, 13]);
 const WHITE_TYPE80_FAN_KINDS = Object.freeze([4, 5]);
 const WHITE_TYPE80_LASER_KINDS = Object.freeze([19]);
+const WHITE_TYPE89_BULLET_KINDS = Object.freeze([6]);
 
 function deepFreeze(value, seen = new Set()) {
   if (value === null || typeof value !== 'object' || seen.has(value)) return value;
@@ -331,6 +332,49 @@ const white82 = {
   retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
 };
 
+const black89 = {
+  edition: 'black',
+  type: 0x89, algorithm: 'type89', initStub: 0x277270, initBody: 0x277278,
+  handler: 0x27733e, palette: 0x27730c,
+  recordPrototype: 0x277316, subPrototype: 0x277322,
+  initAimSite: 0x24202c, headingArt: 0x272e7a, pairedFan: 0x2732fa,
+  aim: { entry: 0x24203e, slew: 0x242190 },
+  aim64: black11.aim64,
+  playerDistance: 0x268018, fireGate: black11.fireGate,
+  bullet: {
+    ...BLACK_BULLET_SPAWN_RESOURCES,
+    entry: 0x2813f0, semantic: 'bank-a-direct', sites: [0x27745c, 0x277464],
+  },
+  emitter: { dispatch: 0x27829c, entries: 18 },
+  score: black11.score, effects: black11.effects,
+  effect: { kind: 0x0c, site: 0x2774d0, remap: 0x278320, hook: 1 },
+  poolA: BLACK_POOL_A_RESOURCES, poolAKind: 0x08,
+  sound: { death: 0x28c25a },
+  retirement: { entry: 0x263762, semantic: 'freeEnemy' },
+};
+
+const white89 = {
+  edition: 'white',
+  type: 0x89, algorithm: 'type89', initStub: 0x176312, initBody: 0x17631a,
+  handler: 0x1763e0, palette: 0x1763ae,
+  recordPrototype: 0x1763b8, subPrototype: 0x1763c4,
+  initAimSite: 0x142366, headingArt: 0x171ece, pairedFan: 0x17234e,
+  aim: { entry: 0x142378, slew: 0x1424ca },
+  aim64: white11.aim64,
+  playerDistance: 0x167090, fireGate: white11.fireGate,
+  bullet: {
+    ...WHITE_BULLET_SPAWN_RESOURCES,
+    supportedKinds: WHITE_TYPE89_BULLET_KINDS,
+    entry: 0x180474, semantic: 'bank-a-direct', sites: [0x1764fe, 0x176506],
+  },
+  emitter: { dispatch: 0x17733a, entries: 18 },
+  score: white11.score, effects: white11.effects,
+  effect: { kind: 0x0c, site: 0x176572, remap: 0x1773be, hook: 1 },
+  poolA: WHITE_POOL_A_RESOURCES, poolAKind: 0x08,
+  sound: { death: 0x18ad80 },
+  retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
+};
+
 const black8A = {
   edition: 'black',
   type: 0x8a, algorithm: 'type8A', initStub: 0x2766a6, initBody: 0x2766ae,
@@ -456,7 +500,8 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
     0x05: black05, 0x07: black27, 0x0d: BLACK_TYPE0D_RESOURCES,
     0x10: black10, 0x11: black11, 0x1c: BLACK_TYPE1C_RESOURCES,
     0x20: black20, 0x21: black20, 0x22: black20, 0x23: black20, 0x27: black27,
-    0x80: black80, 0x82: black82, 0x85: black85, 0x8a: black8A, 0x8b: black8B,
+    0x80: black80, 0x82: black82, 0x85: black85, 0x89: black89,
+    0x8a: black8A, 0x8b: black8B,
   },
   displayList: { filler: [0xfc00, 0x3800, 0, 0, 0x0201], coordinates: 'black' },
 });
@@ -487,7 +532,8 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
     0x05: white05, 0x07: white27, 0x0d: WHITE_TYPE0D_RESOURCES,
     0x10: white10, 0x11: white11, 0x1c: WHITE_TYPE1C_RESOURCES,
     0x20: white20, 0x21: white20, 0x22: white20, 0x23: white20, 0x27: white27,
-    0x80: white80, 0x82: white82, 0x85: white85, 0x8a: white8A, 0x8b: white8B,
+    0x80: white80, 0x82: white82, 0x85: white85, 0x89: white89,
+    0x8a: white8A, 0x8b: white8B,
   },
   displayList: { filler: [0xfbff, 0xfc00, 0, 0, 0x0201], coordinates: 'direct' },
 });
@@ -502,6 +548,20 @@ export function requireType82Resources(
       || resources.algorithm !== 'type82'
       || (edition !== null && resources.edition !== edition)) {
     throw new TypeError('type $82 needs its canonical frozen edition descriptor');
+  }
+  return resources;
+}
+
+export function requireType89Resources(
+  resources = BLACK_WORLD_RESOURCES.enemyTypes[0x89], edition = null,
+) {
+  const canonical = resources?.edition === 'black'
+    ? BLACK_WORLD_RESOURCES.enemyTypes[0x89]
+    : resources?.edition === 'white' ? WHITE_WORLD_RESOURCES.enemyTypes[0x89] : null;
+  if (resources !== canonical || resources.type !== 0x89
+      || resources.algorithm !== 'type89'
+      || (edition !== null && resources.edition !== edition)) {
+    throw new TypeError('type $89 needs its canonical frozen edition descriptor');
   }
   return resources;
 }

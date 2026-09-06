@@ -10,7 +10,7 @@ import {
   runBulletDriverWithResources, runClearTimerWithResources, runScreenClearWithResources,
 } from './bulletdriver.js';
 
-const SUPPORTED_KINDS = Object.freeze([3, 4, 5, 7, 12, 13, 19]);
+const SUPPORTED_KINDS = Object.freeze([3, 4, 5, 6, 7, 12, 13, 19]);
 
 export const WHITE_VECTOR_RESOURCES = Object.freeze({
   entry: 0x141d3e,
@@ -30,7 +30,7 @@ export const WHITE_BULLET_SPAWN_RESOURCES = Object.freeze({
   templatePtrs: 0x18093e,
   spawnInitPtrs: 0x180612,
   kinds: 36,
-  supportedKinds: Object.freeze([3, 4, 5, 7, 12, 13, 19]),
+  supportedKinds: SUPPORTED_KINDS,
   spawnInitDispatch: Object.freeze({
     0x180894: 0x2818ac,
     0x18089c: 0x2818b4,
@@ -172,6 +172,7 @@ const WHITE_BEHAVIOUR_EXPECTED = Object.freeze({
   3: 0x181380,
   4: 0x18143c,
   5: 0x1814f8,
+  6: 0x1815b4,
   7: 0x181670,
   12: 0x18189c,
   13: 0x1818f6,
@@ -188,6 +189,7 @@ const WHITE_INITIALIZER_DISPATCH = Object.freeze({
   0x181380: 0x2823ec,
   0x18143c: 0x2824a8,
   0x1814f8: 0x282564,
+  0x1815b4: 0x282620,
   0x181670: 0x2826dc,
   0x18189c: 0x282908,
   0x1818f6: 0x282962,
@@ -197,6 +199,7 @@ const WHITE_CONTINUATION_DISPATCH = Object.freeze({
   0x1813b4: 0x282420,
   0x181470: 0x2824dc,
   0x18152c: 0x282598,
+  0x1815e8: 0x282654,
   0x1816cc: 0x282738,
   0x1818d8: 0x282944,
   0x181932: 0x28299e,
@@ -206,6 +209,7 @@ const WHITE_CONTINUATION_STORE = Object.freeze({
   0x282420: 0x1813b4,
   0x2824dc: 0x181470,
   0x282598: 0x18152c,
+  0x282654: 0x1815e8,
   0x282738: 0x1816cc,
   0x282944: 0x1818d8,
   0x28299e: 0x181932,

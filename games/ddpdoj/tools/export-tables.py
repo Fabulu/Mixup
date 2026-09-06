@@ -10764,6 +10764,8 @@ def verify(t: dict) -> list[str]:
         bad.append("embedded Version A Stage 1 Type $0D/$1C executable identity manifest drifted")
     if white.get("stage1Type82") != WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY:
         bad.append("embedded Version A Stage 1 Type $82 executable identity manifest drifted")
+    if white.get("stage1Type89") != WHITE_STAGE1_TYPE89_EXECUTABLE_IDENTITY:
+        bad.append("embedded Version A Stage 1 Type $89 executable identity manifest drifted")
     if any(address < 0 or address + length > 0x200000
            for address, length, _ in WHITE_BUTTON2_RUNTIME_WINDOWS):
         bad.append("embedded Version A Button 2 authority escaped the Build A cartridge region")
@@ -11129,14 +11131,14 @@ def verify(t: dict) -> list[str]:
         bad.append("Version A Pool-A presentation stub convention drifted")
 
     expected_behaviours = {
-        3: 0x181380, 4: 0x18143C, 5: 0x1814F8, 7: 0x181670,
-        12: 0x18189C, 13: 0x1818F6, 19: 0x181AC4,
+        3: 0x181380, 4: 0x18143C, 5: 0x1814F8, 6: 0x1815B4,
+        7: 0x181670, 12: 0x18189C, 13: 0x1818F6, 19: 0x181AC4,
     }
     expected_bullet_templates = {
-        3: 0x180A0C, 4: 0x180A20, 5: 0x180A34, 7: 0x180A5C,
-        12: 0x180AC0, 13: 0x180AD4, 19: 0x180B24,
+        3: 0x180A0C, 4: 0x180A20, 5: 0x180A34, 6: 0x180A48,
+        7: 0x180A5C, 12: 0x180AC0, 13: 0x180AD4, 19: 0x180B24,
     }
-    expected_run_init = {3: 1, 4: 1, 5: 1, 7: 1, 12: 0, 13: 0, 19: 1}
+    expected_run_init = {3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 12: 0, 13: 0, 19: 1}
     for kind in _WHITE_BULLET_KINDS:
         if w32(0x180FD0 + kind * 4) != expected_behaviours[kind]:
             bad.append(f"Version A enemy-bullet kind {kind} behaviour pointer drifted")
@@ -11522,8 +11524,10 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x171A96, 0x0008, "White A type-$20 family run-length init stub"),
     (0x171AE4, 0x001C, "White A type-$20 family sub-record prototype"),
     (0x171E4E, 0x0080, "White A type-$85 aim sprite table"),
+    (0x171ECE, 0x0080, "White A type-$89 heading art table"),
     (0x171FCE, 0x0080, "White A type-$80 aim sprite table"),
     (0x1722CE, 0x0080, "White A type-$85 muzzle table"),
+    (0x17234E, 0x0100, "White A type-$89 paired fan vectors"),
     (0x1724CE, 0x0080, "White A type-$80 muzzle table"),
     (0x17264E, 0x0100, "White A type-$80 wide fan vectors"),
     (0x17274E, 0x0100, "White A type-$80 narrow fan vectors"),
@@ -11540,11 +11544,14 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x1758BE, 0x0008, "White A type-$8B run-length init stub"),
     (0x175900, 0x0004, "White A type-$8B enemy-record prototype"),
     (0x175904, 0x001C, "White A type-$8B sub-record prototype"),
+    (0x176312, 0x0008, "White A type-$89 run-length init stub"),
+    (0x1763AE, 0x0032, "White A type-$89 palette and prototypes"),
     (0x17733A, 0x0048, "White A type-$8A 18-entry emitter dispatch"),
     (0x1773BE, 0x000C, "White A type-$8A Pool-B bucket-remap row"),
     (0x17D4C4, 0x0008, "White A high type-table entry $80"),
     (0x17D4D4, 0x0008, "White A high type-table entry $82"),
     (0x17D4EC, 0x0008, "White A high type-table entry $85"),
+    (0x17D50C, 0x0008, "White A high type-table entry $89"),
     (0x17D514, 0x0008, "White A high type-table entry $8A"),
     (0x17D51C, 0x0008, "White A high type-table entry $8B"),
     (0x17DAAA, 0x0004, "White A item kind-$00 dispatch pointer"),
@@ -11566,11 +11573,13 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x180358, 0x0014, "White A bee x2 popup tile table"),
     (0x18061E, 0x0004, "White A enemy-bullet kind $03 spawn-init pointer"),
     (0x180622, 0x0008, "White A enemy-bullet kinds $04/$05 spawn-init pointers"),
+    (0x18062A, 0x0004, "White A enemy-bullet kind $06 spawn-init pointer"),
     (0x18062E, 0x0004, "White A enemy-bullet kind $07 spawn-init pointer"),
     (0x18065E, 0x0004, "White A enemy-bullet kind $13 spawn-init pointer"),
     (0x180A0C, 0x0010, "White A enemy-bullet kind $03 complete template"),
     (0x180A20, 0x0010, "White A enemy-bullet kind $04 complete template"),
     (0x180A34, 0x0010, "White A enemy-bullet kind $05 complete template"),
+    (0x180A48, 0x0012, "White A enemy-bullet kind $06 complete template and run-init"),
     (0x180A5C, 0x0010, "White A enemy-bullet kind $07 complete template"),
     (0x180AC0, 0x0010, "White A enemy-bullet kind 12 complete template"),
     (0x180B24, 0x0010, "White A enemy-bullet kind $13 complete template"),
@@ -11699,6 +11708,18 @@ WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY = {
     "handler": {
         "start": "$17381A", "end": "$173BC0",
         "sha256": "c871a325f02618695ad45556fb92121229d0220176cd9b0546495f14f6725b65",
+    },
+}
+
+
+WHITE_STAGE1_TYPE89_EXECUTABLE_IDENTITY = {
+    "init": {
+        "start": "$176312", "end": "$1763E0",
+        "sha256": "c173ffefab1a57da8b6a1007f42565a636a4a5bce0e1e9621202b586ca4bfae1",
+    },
+    "handler": {
+        "start": "$1763E0", "end": "$1765B4",
+        "sha256": "447b057b4dd401052b5c0b178370968f9116836c59bdb71f71dea012c29cec97",
     },
 }
 
@@ -11995,7 +12016,7 @@ WHITE_LASER_RUNTIME_REQUESTS = (
 
 # Build A enemy bullets reuse the Black algorithms but retain cartridge-authentic
 # dispatch and continuation identities. Only bytes read as data are authorized.
-_WHITE_BULLET_KINDS = (3, 4, 5, 7, 12, 13, 19)
+_WHITE_BULLET_KINDS = (3, 4, 5, 6, 7, 12, 13, 19)
 _WHITE_BULLET_TEMPLATE_RUN_INIT = {
     3: 0x180A1C, 4: 0x180A30, 5: 0x180A44, 7: 0x180A6C,
     12: 0x180AD0, 19: 0x180B34,
@@ -12170,6 +12191,7 @@ def white_label_tables(d: bytes) -> dict:
         "stage1Type20": WHITE_STAGE1_TYPE20_EXECUTABLE_IDENTITY,
         "stage1Type0D": WHITE_STAGE1_TYPE0D_EXECUTABLE_IDENTITY,
         "stage1Type82": WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY,
+        "stage1Type89": WHITE_STAGE1_TYPE89_EXECUTABLE_IDENTITY,
         "playerWindows": [{"base": f"${address:06X}", "len": length}
                           for address, length, _ in WHITE_PLAYER_WINDOWS],
         "shotProducerWindows": [{"base": f"${address:06X}", "len": length}
@@ -12581,6 +12603,13 @@ def check_white_label_frontend_windows(d: bytes) -> None:
         if hashlib.sha256(d[start:end]).hexdigest() != identity["sha256"]:
             raise SystemExit(
                 f"White A Stage 1 Type $8B {label} executable identity changed"
+            )
+    for label, identity in WHITE_STAGE1_TYPE89_EXECUTABLE_IDENTITY.items():
+        start = int(identity["start"].lstrip("$"), 16)
+        end = int(identity["end"].lstrip("$"), 16)
+        if hashlib.sha256(d[start:end]).hexdigest() != identity["sha256"]:
+            raise SystemExit(
+                f"White A Stage 1 Type $89 {label} executable identity changed"
             )
     if d[0x1491D0:0x1492E2] != d[0x249B2C:0x249C3E]:
         raise SystemExit("White A shot-cadence prefix is no longer the exact Build B twin")

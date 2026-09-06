@@ -148,11 +148,11 @@ test('White enemy-bullet resource graph and manifest are exact, complete, and de
     behaviourTable: '$180FD0', templatePointers: '$18093E',
     muzzleTable: '$1829AA', directionTable: '$1828AA', spriteEmitter: '$182EE4',
     type5PresentationCalls: ['$151FDE', '$152106'],
-    stage1Kinds: [3, 4, 5, 7, 12, 13, 19],
+    stage1Kinds: [3, 4, 5, 6, 7, 12, 13, 19],
   });
   assert.deepEqual(white.bulletSpeedLevels, Array.from({ length: 256 }, (_, i) => i));
   assert.equal(white.bulletSpeedWindows.length, 512);
-  assert.equal(white.bulletRuntimeWindows.length, 53);
+  assert.equal(white.bulletRuntimeWindows.length, 55);
 
   const keys = new Set(white.bulletSpeedWindows.map(({ base, len }) => `${base}:${len}`));
   for (let speed = 0; speed < 256; speed++) {
@@ -168,8 +168,8 @@ test('White enemy-bullet resource graph and manifest are exact, complete, and de
 test('every direct White Pool-A, Aim256, mover, and presentation read is guarded', () => {
   const guarded = guardedRom();
   const continuations = new Map([
-    [3, 0x1813b4], [4, 0x181470], [5, 0x18152c], [7, 0x1816cc],
-    [12, 0x1818d8], [13, 0x181932], [19, 0x181af8],
+    [3, 0x1813b4], [4, 0x181470], [5, 0x18152c], [6, 0x1815e8],
+    [7, 0x1816cc], [12, 0x1818d8], [13, 0x181932], [19, 0x181af8],
   ]);
   for (const [kind, continuation] of continuations) {
     const ram = new Ram();

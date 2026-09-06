@@ -827,10 +827,19 @@
 // Measured: 1820 -> 1824 windows, 661,787 -> 661,945 bytes, and 79 -> 80
 // overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1824;
+// ---------------------------------------------------------------------------
+// TASK #280 PRIVATE WHITE TYPE $89 ADDED NINE DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The Build A heading-art and paired-fan tables, initializer stub, palette and
+// prototypes, high type-table row, and kind-$06 bullet pointer, template, and
+// behavior cells add 480 exact bytes below $200000. No new pair overlaps.
+// Measured: 1824 -> 1833 windows, 661,945 -> 662,425 bytes, 870 -> 879 unique
+// White windows, 204,148 -> 204,628 White bytes, and 80 -> 80 overlap pairs.
+
+export const ROM_WINDOW_COUNT = 1833;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 661945;
+export const ROM_WINDOW_BYTES = 662425;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -930,8 +939,8 @@ function removeTask277BlackAnimationWindow(tables, required = false) {
   return tables;
 }
 
-const WHITE_LABEL_WINDOW_COUNT = 870;
-const WHITE_LABEL_WINDOW_BYTES = 204148;
+const WHITE_LABEL_WINDOW_COUNT = 879;
+const WHITE_LABEL_WINDOW_BYTES = 204628;
 
 /** Remove the later embedded Version A family and Task #277's Black animation
  *  correction before reconstructing any earlier Black Label ledger. The

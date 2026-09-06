@@ -263,8 +263,10 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$171A96', len: 0x0008 },
     { base: '$171AE4', len: 0x001c },
     { base: '$171E4E', len: 0x0080 },
+    { base: '$171ECE', len: 0x0080 },
     { base: '$171FCE', len: 0x0080 },
     { base: '$1722CE', len: 0x0080 },
+    { base: '$17234E', len: 0x0100 },
     { base: '$1724CE', len: 0x0080 },
     { base: '$17264E', len: 0x0100 },
     { base: '$17274E', len: 0x0100 },
@@ -281,11 +283,14 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$1758BE', len: 0x0008 },
     { base: '$175900', len: 0x0004 },
     { base: '$175904', len: 0x001c },
+    { base: '$176312', len: 0x0008 },
+    { base: '$1763AE', len: 0x0032 },
     { base: '$17733A', len: 0x0048 },
     { base: '$1773BE', len: 0x000c },
     { base: '$17D4C4', len: 0x0008 },
     { base: '$17D4D4', len: 0x0008 },
     { base: '$17D4EC', len: 0x0008 },
+    { base: '$17D50C', len: 0x0008 },
     { base: '$17D514', len: 0x0008 },
     { base: '$17D51C', len: 0x0008 },
     { base: '$17DAAA', len: 0x0004 },
@@ -307,11 +312,13 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$180358', len: 0x0014 },
     { base: '$18061E', len: 0x0004 },
     { base: '$180622', len: 0x0008 },
+    { base: '$18062A', len: 0x0004 },
     { base: '$18062E', len: 0x0004 },
     { base: '$18065E', len: 0x0004 },
     { base: '$180A0C', len: 0x0010 },
     { base: '$180A20', len: 0x0010 },
     { base: '$180A34', len: 0x0010 },
+    { base: '$180A48', len: 0x0012 },
     { base: '$180A5C', len: 0x0010 },
     { base: '$180AC0', len: 0x0010 },
     { base: '$180B24', len: 0x0010 },
@@ -372,6 +379,16 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     handler: {
       start: '$17381A', end: '$173BC0',
       sha256: 'c871a325f02618695ad45556fb92121229d0220176cd9b0546495f14f6725b65',
+    },
+  });
+  assert.deepEqual(white.stage1Type89, {
+    init: {
+      start: '$176312', end: '$1763E0',
+      sha256: 'c173ffefab1a57da8b6a1007f42565a636a4a5bce0e1e9621202b586ca4bfae1',
+    },
+    handler: {
+      start: '$1763E0', end: '$1765B4',
+      sha256: '447b057b4dd401052b5c0b178370968f9116836c59bdb71f71dea012c29cec97',
     },
   });
   assert.deepEqual(white.stage1Type8B, {
@@ -465,8 +482,8 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
   const g = game();
   const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
 
-  assert.equal(excluded.size, 870);
-  assert.equal(tables.rom.windows.length, 1824,
+  assert.equal(excluded.size, 879);
+  assert.equal(tables.rom.windows.length, 1833,
     'runtime projection does not mutate the complete exported table');
   assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [954, 457797]);
   for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);

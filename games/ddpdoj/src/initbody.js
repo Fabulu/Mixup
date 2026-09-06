@@ -46,6 +46,7 @@ import { loadAnimObjects246410 } from './animobjects.js';
 import { initType99_29E580 } from './boss3type99.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType82Resources,
+  requireType89Resources,
 } from './world-resources.js';
 
 // ----------------------------------------------------------- the record layout
@@ -1174,31 +1175,36 @@ BODY.set(0x275DA0, (ram, rom, a5, a6, unported) => {
   }
 });
 
-// type $89 ($277278): sprite via $24202C + $272E7A, palette $27730C.
-BODY.set(0x277278, (ram, rom, a5, a6, unported) => {
-  loadSubProto(ram, rom, a5, a6, 0x277322);            // jsr $2637A2
-  loadRecordProto(ram, rom, a5, 0x277316, 0x05);       // moveq #$5,D0; jsr $26377A
-  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
-  // $277298: stage-0 (==0 here is stage 1, since $813092 stage-1 stores 1) and
-  // clock >= $156 -> sub HP +$18 := $280.  (The ROM tests stage==0 which is the
-  // attract/track; in stage 1 $813092==1 so this arm is not taken.)
+// Type $89 uses the same initializer algorithm in both editions. The descriptor
+// owns every cartridge address; Black remains the behavior oracle.
+function init89(ram, rom, a5, a6, unported,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x89]) {
+  const resources = requireType89Resources(descriptor);
+  loadSubProto(ram, rom, a5, a6, resources.subPrototype);
+  loadRecordProto(ram, rom, a5, resources.recordPrototype, 0x05);
+  readInitPosition(ram, rom, a5, unported);
   if (ram.u16(G.stage) === 0 && i16(ram.u16(G.scrollClock)) >= 0x156) {
-    ram.setU16(a6 + S.hp, 0x0280);                      // move.w #$280,($18,A6)
+    ram.setU16(a6 + S.hp, 0x0280);
   }
-  unported?.note(0x24202c, `$24202C aim in type $89 init -- sprite tracks W24 pos`);
-  let d1 = ram.u8(a6 + S.heading);                      // bcc-taken fallback
-  ram.setU8(a5 + R.rec21, d1);                          // move.b D1,($21,A5)
+  // The translated movement initializer already supplies the heading used by
+  // the cartridge aim call, so that call remains one address-cited note.
+  unported?.note(resources.initAimSite,
+    `$${resources.initAimSite.toString(16).toUpperCase()} aim in type $89 init -- sprite tracks movement heading`);
+  let d1 = ram.u8(a6 + S.heading);
+  ram.setU8(a5 + R.rec21, d1);
   d1 = (d1 & 0x3e) << 1;
-  ram.setU32(a6 + 0x0a, rom.u32(0x272E7A + d1));        // move.l (A0,D1.w),($a,A6)
-  ram.setU8(a5 + 0x17, 0x04);                           // move.b #$4,($17,A5)
-  let d0 = ram.u16(G.b4) & 0xff;
-  ram.setU8(a5 + R.rec1A, (ram.u8(a5 + R.rec1A) - d0) & 0xff);  // $8130B4 -> +$1A
-  const lp = ram.u16(G.stageX2);
-  const pal = 0x27730C + lp;
+  ram.setU32(a6 + 0x0a, rom.u32(resources.headingArt + d1));
+  ram.setU8(a5 + 0x17, 0x04);
+  const d0 = ram.u16(G.b4) & 0xff;
+  ram.setU8(a5 + R.rec1A, (ram.u8(a5 + R.rec1A) - d0) & 0xff);
+  const pal = resources.palette + ram.u16(G.stageX2);
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + 0x18, rom.u8(pal));
   ram.setU8(a5 + 0x19, rom.u8(pal + 1));
-});
+}
+
+BODY.set(0x277278, (ram, rom, a5, a6, unported) =>
+  init89(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x89]));
 
 // --- type $0D ($26B484): THE MIDBOSS (runLen 16). The shared body executes
 // both bespoke arm routines, installs all three palettes, and sets
@@ -2628,6 +2634,10 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
       const canonical = requireType82Resources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>
         init82(ram, rom, a5, a6, unported, canonical));
+    } else if (descriptor.algorithm === 'type89') {
+      const canonical = requireType89Resources(descriptor, edition);
+      map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>
+        init89(ram, rom, a5, a6, unported, canonical));
     } else if (descriptor.algorithm === 'type05') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init05(ram, rom, a5, a6, unported, descriptor));

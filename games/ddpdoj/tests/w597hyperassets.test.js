@@ -35,7 +35,7 @@ const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW597(TABLE_JSON);
 const PRIOR_ROM = SKIP ? null : new RomWindows(PRIOR_TABLE.rom);
 
-const CURRENT_HASH = '4dbe429c7f6f87e3bc8f3cb0dfd7023eb6f7a47236e0a57ca3f6ffb57b12eb90';
+const CURRENT_HASH = 'd2374d899ef5d3095b0d47151df079ebe3ece7633bcbd9e812b6158b6f6d8138';
 const W596_HASH = 'cfc5cc76a2a669248ce987104d45408f13b0b92d680afd8309e00faae4b47888';
 const canonicalHash = (value) => createHash('sha256')
   .update(JSON.stringify(value)).digest('hex');

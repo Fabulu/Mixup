@@ -134,6 +134,7 @@ import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType82Resources,
+  requireType89Resources,
 } from './world-resources.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
 import { handler83 } from './stage3type83.js';
@@ -5120,136 +5121,130 @@ function state0B26AE86(ram, rom, a5, a6, ctx) {
 //
 // It is the first W36 handler that reaches `$268018` DIRECTLY (twice), which is
 // why that block is now its own function rather than the tail of `$267FC6`.
-function handler89(ram, rom, a5, ctx) {
+function retire89(ram, a5, descriptor) {
+  if (descriptor.retirement.semantic !== 'freeEnemy') {
+    throw new TypeError('type $89 retirement must preserve freeEnemy semantics');
+  }
+  freeEnemy(ram, a5);
+}
+
+function handler89(ram, rom, a5, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x89]) {
+  const resources = requireType89Resources(descriptor);
   const { tables, unported: u } = ctx;
   const a6 = ram.u32(a5 + 0x06);
   if (stepMovement(ram, rom, a5, tables, u)) return;   // $27733E jsr $2638A6
   if (offScreen242684(ram, a6)) {                       // $277344 jsr $242684 / bcc
-    if (ram.u8(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; }  // $277352
+    if (ram.u8(a5 + R.onScreen) !== 0) { retire89(ram, a5, resources); return; }
   } else {
     ram.setU8(a5 + R.onScreen, 1);                     // $27735A
   }
-  // $277360: the damage branch.  The NO-damage arm ($277366) also computes D0,
-  // and both arms converge on `$2773A4 move.b D0,($1D,A6)` -- so the palette is
-  // written on EVERY frame, not only on a hit.
+  // $277360: the damage branch. The no-damage arm also computes D0, and both
+  // arms converge on the palette write, so the palette is written every frame.
   let d0;
-  if ((ram.u8(a6) & 0x5c) === 0) {                     // $277360 moveq #$5C / beq
-    d0 = ram.u8(a5 + R.cooldown);                      // $277366 move.b ($18,A5),D0
-    if (ram.u16(a6 + S.hp) < 0x120                     // $27736A cmpi.w #$120 / bcc
-        && ram.u16(G.ca) === 0) {                      // $277372 tst.w $8130CA / bne
-      d0 = 0x19;                                       // $27737A moveq #$19,D0
-    }
+  if ((ram.u8(a6) & 0x5c) === 0) {
+    d0 = ram.u8(a5 + R.cooldown);
+    if (ram.u16(a6 + S.hp) < 0x120 && ram.u16(G.ca) === 0) d0 = 0x19;
   } else {
     const d1 = hitMask(ram, a6);
-    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $27737E andi.b #$A3,(A6)
-    scoreHit(ram, ctx, a6, d1);                        // $277382 jsr $286096
-    d0 = ram.u8(a6 + S.palette);                       // $277388 move.b ($1D,A6),D0
-    if (d0 === 0x19) d0 = ram.u8(a5 + R.cooldown);     // $27738C/$277392
-    d0 ^= ram.u8(a5 + R.cooldownReload);               // $277396/$27739A eor.b D2,D0
-    if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $27739C tst.w / bmi $27749C
-      deathSeq89(ram, rom, a5, ctx, d1); return;
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
+    scoreHit(ram, ctx, a6, d1, a6, resources.score);
+    d0 = ram.u8(a6 + S.palette);
+    if (d0 === 0x19) d0 = ram.u8(a5 + R.cooldown);
+    d0 ^= ram.u8(a5 + R.cooldownReload);
+    if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {
+      deathSeq89(ram, rom, a5, ctx, d1, resources);
+      return;
     }
   }
-  ram.setU8(a6 + S.palette, d0 & 0xff);                // $2773A4 move.b D0,($1D,A6)
-  // $2773A8 `tst.l $8130D2` -- a LONGWORD test, so the word past the freeze
-  // ($8130D4) is part of it.  The other handlers here test the word.
-  if (ram.u32(G.freeze) !== 0) { emit89(ram, rom, a6); return; }   // $2773AE bne
-  // $2773B2: the AIM cadence on ($1E,A5), reloaded from ($1F,A5).
-  const c = ram.u8(a5 + R.rec1E);                      // $2773B2 subq.b #$1,($1E,A5)
+  ram.setU8(a6 + S.palette, d0 & 0xff);
+  if (ram.u32(G.freeze) !== 0) { emit89(ram, rom, a6, resources); return; }
+  const c = ram.u8(a5 + R.rec1E);
   ram.setU8(a5 + R.rec1E, (c - 1) & 0xff);
-  if (c === 0) {                                       // $2773B6 bcc $277420
-    ram.setU8(a5 + R.rec1E, ram.u8(a5 + 0x1f));        // $2773B8
-    // $2773BE jsr $268018 / bcs $277420 -- the player-distance gate.
-    if (!playerDist268018(ram, rom, a6).carry
-        && ram.u8(a5 + R.rec1C) === ram.u8(a5 + R.rec1D)) {   // $2773C6/$2773CA bne
-      // $2773D0..$2773EC: the target select, written out longhand exactly as
-      // type $85's `$2759D0` is (the same four tests, no `bsr $24270A`).
-      let p0 = AIM.selP1, p1 = AIM.selP2;              // $2773D0/$2773D6
-      if (ram.u8(a5 + 0x03) !== 0) { p0 = AIM.selP2; p1 = AIM.selP1; }  // $2773E2 exg
+  if (c === 0) {
+    ram.setU8(a5 + R.rec1E, ram.u8(a5 + 0x1f));
+    if (!playerDist268018(ram, rom, a6, resources.fireGate).carry
+        && ram.u8(a5 + R.rec1C) === ram.u8(a5 + R.rec1D)) {
+      let p0 = AIM.selP1, p1 = AIM.selP2;
+      if (ram.u8(a5 + 0x03) !== 0) { p0 = AIM.selP2; p1 = AIM.selP1; }
       let ok = true;
-      if ((ram.u16(p0) & 0x8000) === 0) {              // $2773E4 tst.w (A0) / bmi
-        if ((ram.u16(p1) & 0x8000) === 0) ok = false;  // $2773E8 tst.w (A1) / bpl
-        else { const t = p0; p0 = p1; p1 = t; }        // $2773EC exg A0,A1
+      if ((ram.u16(p0) & 0x8000) === 0) {
+        if ((ram.u16(p1) & 0x8000) === 0) ok = false;
+        else { const t = p0; p0 = p1; p1 = t; }
       }
       if (ok) {
-        const dir = aim64(aimTables(rom), ram.u16(a6 + 0x02), ram.u16(a6 + 0x04),
-          ram.u16(p0 + 2), ram.u16(p0 + 4));           // $2773EE..$2773FA jsr $24203E
-        const nf = slew64(ram.u16(a5 + 0x20), dir);    // $277400/$277404 jsr $242190
-        ram.setU16(a5 + 0x20, nf);                     // $27740A move.w D1,($20,A5)
-        // $27740E andi.w #$3E,D1 / add.w D1,D1 -- 32 longwords at $272E7A.
-        ram.setU32(a6 + S.sprite0a, rom.u32(0x272e7a + u16((nf & 0x3e) * 2)));
+        const dir = aim64(aimTables(rom, resources), ram.u16(a6 + 0x02),
+          ram.u16(a6 + 0x04), ram.u16(p0 + 2), ram.u16(p0 + 4));
+        const nf = slew64(ram.u16(a5 + 0x20), dir);
+        ram.setU16(a5 + 0x20, nf);
+        ram.setU32(a6 + S.sprite0a,
+          rom.u32(resources.headingArt + u16((nf & 0x3e) * 2)));
       }
     }
   }
-  // $277420: the FIRE, gated on the long axis and its own cooldown ($1A,A5).
-  if (i16(ram.u16(a6 + 0x02)) >= 0x1000) {             // $277420 cmpi.w #$1000 / blt
-    const f = ram.u8(a5 + 0x1a);                       // $277428 subq.b #$1,($1A,A5)
+  if (i16(ram.u16(a6 + 0x02)) >= 0x1000) {
+    const f = ram.u8(a5 + 0x1a);
     ram.setU8(a5 + 0x1a, (f - 1) & 0xff);
-    if (f === 0) {                                     // $27742C bcc $277486
-      ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x17));         // $27742E move.b ($17,A5)
-      if (!playerDist268018(ram, rom, a6).carry) {     // $277434 jsr $268018 / bcs
-        fire89(ram, rom, a5, a6, ctx);
-        // $27746A: the SALVO counter on ($1C,A5); when it borrows, ($1A,A5) is
-        // reloaded from `$40 - $8130B6 + 8` instead of from ($17,A5).
-        const s = ram.u8(a5 + R.rec1C);                // $27746A subq.b #$1,($1C,A5)
+    if (f === 0) {
+      ram.setU8(a5 + 0x1a, ram.u8(a5 + 0x17));
+      if (!playerDist268018(ram, rom, a6, resources.fireGate).carry) {
+        fire89(ram, rom, a5, a6, ctx, resources);
+        const s = ram.u8(a5 + R.rec1C);
         ram.setU8(a5 + R.rec1C, (s - 1) & 0xff);
-        if (s === 0) {                                 // $27746E bcc $277486
-          ram.setU8(a5 + R.rec1C, ram.u8(a5 + R.rec1D));   // $277470
-          ram.setU8(a5 + 0x1a,
-            u16(0x40 - ram.u16(G.b6) + 8) & 0xff);     // $277476/$27747A/$277480
+        if (s === 0) {
+          ram.setU8(a5 + R.rec1C, ram.u8(a5 + R.rec1D));
+          ram.setU8(a5 + 0x1a, u16(0x40 - ram.u16(G.b6) + 8) & 0xff);
         }
       }
     }
   }
-  emit89(ram, rom, a6);                                // $277486
+  emit89(ram, rom, a6, resources);
 }
 
-/** `$277486..$27749A` -- the draw: `($1E,A6)` picks one of `$27829C`'s stubs.
- *  `$277498 jsr (A0)` and then `$27749A rts`, so it is a call, not a tail jump. */
-function emit89(ram, rom, a6) {
-  const stub = rom.u32(EMIT_TABLE.dispatch27829C + u16(ram.u16(a6 + S.anim) * 4));
-  enqueueThroughStub(ram, rom, stub, a6);              // $277498 jsr (A0)
-}
-
-/** `$27743C..$277468` -- two `$2813F0` bullets from ONE 32-heading table of
- *  PAIRS.  `$27744C`/`$27744E` double the masked heading TWICE, so the stride
- *  is 8 bytes and `(A4)+` reads the two longwords of that heading's entry. */
-function fire89(ram, rom, a5, a6, ctx) {
-  const d1 = ram.u16(a5 + 0x20);                       // $277442 move.w ($20,A5),D1
-  const off = u16(u16((d1 & 0x3e) * 2) * 2);           // $277448/$27744C/$27744E
-  const regs = { d0: 0x6, d1, d2: ram.u32(a6 + 0x02), // $277456 moveq #$6 / $277458
-    d3: rom.u32(0x2732fa + off), d4: 0, d5: 0, a5 };   // $277452 move.l (A4)+,D3
-  const ctxB = { ram, rom, log: new WriteLog(ram) };
-  ctx.bulletSpawn?.(0x27745c, fireBullet(ctxB, 0x2813f0, regs));   // $27745C
-  regs.d3 = rom.u32(0x2732fa + off + 4);               // $277462 move.l (A4)+,D3
-  ctx.bulletSpawn?.(0x277464, fireBullet(ctxB, 0x2813f0, regs));   // $277464
-}
-
-/** `$27749C..$27750C` -- type `$89`'s death.  Score `$34`, then five unported
- *  subsystems and a free.  Every one of the five is behind `$289004`, whose
- *  only driver is type-5 call #5 `$288E4E` (W34 §1.6). */
-function deathSeq89(ram, rom, a5, ctx, d1) {
-  const u = ctx.unported;
-  const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
-  scoreKill(ram, rom, ctx, 0x34, d1);                  // $27749C/$27749E jsr $28615E
-  ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst          // $2774A4
-  noteEffect(u, 0x289af4, a5, 'D0=$8 secondary');      // $2774BC (D1 from $278314)
-  // W411 (docket D49): THE DROP. `$2774C2 moveq #$8,D0 / $2774C4 move.w ($1E,A6),D2 /
-  // $2774C8 jsr $27F8EE` -- byte-for-byte the shape types $8E, $8F and $94 use.
-  allocPoolA27F8F0(ram, rom, ctx, 0x08, 0,
-    ram.u16(a6 + 0x1e), a6);                           // $2774C2/$2774C4/$2774C8
-  // W54: SPAWNED.  $2774CE moveq #$C / $2774D0 jsr $289004, then
-  // $2774D6..$277506's eight writes -- and ($12,A0) = 1 here, i.e. this
-  // arm asks pool D for TWO records (`src/effects.js` §THE REFUSAL).
-  {
-    const e = effectArmShared278320(ram, rom, ctx, a6, 0x0c, 0x2774d0);
-    ram.setU16(e + B.sub12, 0x0001);                   // $2774EE
-    ram.setU16(e + B.sub14, 0x0000);                   // $2774F4
-    ram.setU16(e + B.nudge, 0xfe00);                   // $2774FA
-    ram.setU16(e + B.nudge + 2, 0x0000);               // $277500
-    ram.setU16(e + B.hook, 1);                         // $277506
+function emit89(ram, rom, a6, descriptor) {
+  const idx = u16(ram.u16(a6 + S.anim) * 4);
+  if (idx >= descriptor.emitter.entries * 4) {
+    unreached(descriptor.emitter.dispatch + idx,
+      `type $89 emitter index $${idx.toString(16).toUpperCase()} exceeds its descriptor`);
   }
-  freeEnemy(ram, a5);                                  // $27750C jmp $263762
+  const stub = rom.u32(descriptor.emitter.dispatch + idx);
+  enqueueThroughStub(ram, rom, stub, a6);
+}
+
+function fire89(ram, rom, a5, a6, ctx, descriptor) {
+  const d1 = ram.u16(a5 + 0x20);
+  const off = u16(u16((d1 & 0x3e) * 2) * 2);
+  const bullet = descriptor.bullet;
+  if (bullet.semantic !== 'bank-a-direct') {
+    throw new TypeError('type $89 fire requires bank-a-direct bullet semantics');
+  }
+  const regs = { d0: 0x6, d1, d2: ram.u32(a6 + 0x02),
+    d3: rom.u32(descriptor.pairedFan + off), d4: 0, d5: 0, a5 };
+  const ctxB = { ram, rom, log: new WriteLog(ram), mut: ctx.mut ?? null };
+  ctx.bulletSpawn?.(bullet.sites[0],
+    [spawnCoreWithResources(ctxB, regs, 'A', bullet)]);
+  regs.d3 = rom.u32(descriptor.pairedFan + off + 4);
+  ctx.bulletSpawn?.(bullet.sites[1],
+    [spawnCoreWithResources(ctxB, regs, 'A', bullet)]);
+}
+
+function deathSeq89(ram, rom, a5, ctx, d1, descriptor) {
+  const a6 = ram.u32(a5 + 0x06);
+  scoreKill(ram, rom, ctx, 0x34, d1, descriptor.score);
+  ctx.soundPost?.(descriptor.sound.death);
+  noteEffect(ctx.unported, descriptor.effects.poolCEntry, a5, 'D0=$8 secondary');
+  allocPoolAWithResources(ram, rom, ctx, descriptor.poolAKind, 0,
+    ram.u16(a6 + 0x1e), a6, descriptor.poolA);
+  const e = effectArmShared278320(
+    ram, rom, ctx, a6, descriptor.effect.kind, descriptor.effect.site,
+    descriptor.effect.remap, descriptor.effects,
+  );
+  ram.setU16(e + B.sub12, 0x0001);
+  ram.setU16(e + B.sub14, 0x0000);
+  ram.setU16(e + B.nudge, 0xfe00);
+  ram.setU16(e + B.nudge + 2, 0x0000);
+  ram.setU16(e + B.hook, descriptor.effect.hook);
+  retire89(ram, a5, descriptor);
 }
 
 // ------------------------------------------------------------------------
@@ -11586,6 +11581,11 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x2747c6);
       handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
         handler82(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type89') {
+      const canonical = requireType89Resources(descriptor, resources.edition);
+      handlers.delete(0x27733e);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handler89(ram, rom, a5, ctx, canonical));
     } else if (descriptor.algorithm === 'type20') {
       handlers.delete(0x272aac);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>

@@ -579,8 +579,8 @@ export function spriteEmit(ctx, base) {
 //
 // `$281F08..$281F1A` resolves `$282030[kind]` (kind = live type & $3F, so the
 // 14/15->10 alias is honoured) and `jsr`s it.  `jmp $22(A6)` then runs the
-// continuation the initialiser installed.  Both are hand-translated for the seven
-// kinds stage 1 spawns (3/4/5/7/12/13/19); every other kind is a LOUD NAMED
+// continuation the initialiser installed. Both are hand-translated for the eight
+// kinds stage 1 spawns (3/4/5/6/7/12/13/19); every other kind is a LOUD NAMED
 // THROW carrying the address (the 39 behaviour bodies are W27).
 
 const TPL_OFF = { runInit: 0x10 };   // bullets.js TPL.runInit -- duplicated to dodge a cycle
@@ -864,7 +864,7 @@ INIT_BODIES.set(0x282620, (ctx, base) => {
   ram.setU32(base + REC.velA, 0);
   ram.setU32(base + REC.velA, ram.u32(base + 0x30));
   ram.setU32(base + 0x0a, 0x1c00a4);                 // renderOffs (final)
-  ram.setU32(base + REC.continuation, 0x282654);
+  storeContinuation(ctx, base, 0x282654);
 });
 CONTINUATIONS.set(0x282654, (ctx, base) => {
   const { ram } = ctx;
