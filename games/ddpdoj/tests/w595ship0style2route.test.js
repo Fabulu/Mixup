@@ -45,7 +45,7 @@ const word = (...names) => portWordFromBits(names.map((name) => CONTROLS[name]))
 const DOWN_SHOT = word('DOWN', 'SHOT');
 const TOTAL_STEPS = 174029;
 const CADENCE = 500;
-const LIVE_TABLE_HASH = '4968485c1c53f9ab74bee48d34a643f41b762a5365a6398b3986629017b7bfea';
+const LIVE_TABLE_HASH = 'ad7d60dbeea674f93109348687331a3c127ab91bb6390011fed3b5afb253fe4d';
 const STORED_TABLE_HASH = 'af3dee2f75818bcbb32d5c024b50b0816837d319595bb71eaade5d136fcd2a69';
 const W595_TABLE_HASH = 'ff2c30f555ef96f4687a27a663a9c8dd7626902773cb9edaba7e0520594389f7';
 const PRE_W595_TABLE_HASH = '02abccda19f3e2914759b3de5c4db13dcb7306e03d4bbe692ef2477a639787b3';

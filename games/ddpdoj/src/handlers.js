@@ -133,8 +133,8 @@ import { pushExternalSpeed } from './background.js';
 import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
 import {
-  BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType82Resources,
-  requireType88Resources, requireType89Resources,
+  BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType08Resources,
+  requireType82Resources, requireType88Resources, requireType89Resources,
 } from './world-resources.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
 import { handler83 } from './stage3type83.js';
@@ -4790,26 +4790,25 @@ const FAM = {
  *
  * @returns {null|'ran'} `null` when the record was freed (the caller returns).
  */
-function damageFirstHead(ram, rom, a5, a6, ctx, score) {
-  const { tables, unported: u } = ctx;
+function damageFirstHead(ram, rom, a5, a6, ctx, score, descriptor = null) {
+  const { tables } = ctx;
+  const family = descriptor ?? FAM;
   if ((ram.u8(a6) & 0x5c) !== 0) {                     // $26A5E4/$26A860/$26AD28
     const d1 = hitMask(ram, a6);
     ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $26A5EC/$26A868/$26AD30
-    scoreHit(ram, ctx, a6, d1);                        // jsr $286096
+    scoreHit(ram, ctx, a6, d1, a6, descriptor?.score); // jsr edition score-hit
     // the palette flash: ($2A,A5) EOR ($2B,A5) -- the emitter pair's two bytes.
     ram.setU8(a6 + S.palette,
       ram.u8(a5 + 0x2a) ^ ram.u8(a5 + 0x2b));          // $26A5F8..$26A602
     if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // tst.w ($18,A6) / bpl
-      scoreKill(ram, rom, ctx, score, d1);             // moveq #$8,D0 / jsr $28615E
-      // moveq #$2,D0 / jsr $289004, then EIGHT field writes into the record the
-      // allocator would have returned in A0, then jsr $28C2A8.  All of it is
-      // inside the ONE noted gap (`$289004` has no driver -- W34 §1.6), so the
-      // writes are noted with it rather than aimed at an invented address.
-      // W54: SPAWNED.  `$26A616`/`$26A882`/`$26AD4A moveq #$2,D0`, and the
-      // five writes after each are $269D24's, instruction for instruction.
-      effectArmFamily(ram, rom, ctx, a6, 0x02, 0x26a618);
-      ctx.soundPost?.(0x28c2a8);                       // WAVE A: SFX id=3, death burst
-      freeEnemy(ram, a5);                              // jmp $263762
+      scoreKill(ram, rom, ctx, score, d1, descriptor?.score);
+      // W54: `$26A616`/`$26A882`/`$26AD4A moveq #$2,D0`, followed by the
+      // five writes shared with $269D24.
+      effectArmFamily(ram, rom, ctx, a6, 0x02,
+        descriptor?.effectSite ?? 0x26a618, descriptor?.effects);
+      ctx.soundPost?.(descriptor?.sound.death ?? 0x28c2a8);
+      if (descriptor) retireDamageFirst(ram, a5, descriptor);
+      else freeEnemy(ram, a5);
       return null;
     }
   } else {
@@ -4817,17 +4816,19 @@ function damageFirstHead(ram, rom, a5, a6, ctx, score) {
   }
   if (offScreen242684(ram, a6)) {                       // jsr $242684 / bcc
     if (ram.u8(a5 + R.onScreen) !== 0) {               // tst.b ($16,A5) / beq
-      freeEnemy(ram, a5); return null;                 // jmp $263762
+      if (descriptor) retireDamageFirst(ram, a5, descriptor);
+      else freeEnemy(ram, a5);
+      return null;
     }
   } else {
     ram.setU8(a5 + R.onScreen, 1);                     // move.b #$1,($16,A5)
   }
   // `move.b ($23,A5),D1` FIRST, so D1 is the facing byte on the frozen exit.
   if (ram.u16(G.freeze) !== 0) {                       // tst.w $8130D2 / bne $269E20
-    drawFamily269E20(ram, rom, a5, a6, ram.u8(a5 + R.rec23));
+    drawFamily269E20(ram, rom, a5, a6, ram.u8(a5 + R.rec23), family);
     return null;
   }
-  applyVelocity(ram, tables, a5);                      // jsr $2417DE
+  applyVelocity(ram, tables, a5);                      // jsr edition applyVelocity
   return 'ran';
 }
 
@@ -4836,11 +4837,13 @@ function damageFirstHead(ram, rom, a5, a6, ctx, score) {
  * Span `$26A5E4..$26A788` plus the shared tail; `$26A78C` is type `$09`'s init
  * stub, four bytes past the last `bra`.
  */
-function handler08(ram, rom, a5, ctx) {
+function handler08(ram, rom, a5, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x08]) {
+  const resources = requireType08Resources(descriptor);
   const a6 = ram.u32(a5 + 0x06);
-  if (damageFirstHead(ram, rom, a5, a6, ctx, 0x08) === null) return;
+  if (damageFirstHead(ram, rom, a5, a6, ctx, 0x08, resources) === null) return;
   if (ram.u16(a5 + 0x26) !== 0) {                      // $26A682 tst.w ($26,A5) / bne
-    state26A40C(ram, rom, a5, a6);                     // $26A686 bne.w $26A40C
+    state26A40C(ram, rom, a5, a6, resources);          // edition-equivalent shared state
     return;
   }
   if (ram.u8(a6 + S.speed) !== 0) {                      // $26A68A tst.b ($1A,A6) / beq
@@ -4864,7 +4867,7 @@ function handler08(ram, rom, a5, ctx) {
     // $26A6CE `jsr $24202C` WITHOUT a `bcs`.  When both players are dead the
     // routine `rts`es at `$242030` leaving D1 = the byte above, and the slew
     // that follows is then `slew64(x, x)` -- the value survives, masked to $3F.
-    const r = aim64AtTarget(aimTables(rom), ram, a5, a6);   // $26A6CE
+    const r = aim64AtTarget(aimTables(rom, resources), ram, a5, a6);   // $26A6CE
     const tgt = r.carry ? d1 : r.dir;
     d1 = slew64(ram.u8(a5 + R.rec23), tgt);            // $26A6D4/$26A6D8 jsr $242190
     ram.setU8(a5 + R.rec23, d1 & 0xff);                // $26A6DE move.b D1,($23,A5)
@@ -4891,18 +4894,26 @@ function handler08(ram, rom, a5, ctx) {
   // $26A738: the fire cooldown.
   const cd = ram.u8(a5 + R.cooldown);                  // $26A738 subq.b #$1,($18,A5)
   ram.setU8(a5 + R.cooldown, (cd - 1) & 0xff);
-  if (cd !== 0) { drawFamily269E20(ram, rom, a5, a6, d1); return; }  // $26A73C bcc
+  if (cd !== 0) {
+    drawFamily269E20(ram, rom, a5, a6, d1, resources);
+    return;
+  }  // $26A73C bcc
   // $26A740 moveq #$58,D0 / sub.w $8130B4,D0 / addq.w #$2,D0 -- RANK shortens
   // the reload, and only D0's low byte is stored.
   ram.setU8(a5 + R.cooldown,
     u16(0x58 - ram.u16(G.b4) + 2) & 0xff);             // $26A742/$26A748/$26A74A
-  if (boxTest2425B2(ram, rom, a6).carry) {             // $26A74E jsr $2425B2 / bcs
-    drawFamily269E20(ram, rom, a5, a6, d1); return;
+  if (boxTest2425B2(ram, rom, a6, resources.fireGate).carry) {  // $26A74E jsr $2425B2 / bcs
+    drawFamily269E20(ram, rom, a5, a6, d1, resources); return;
   }
-  const r = aim64AtTarget(aimTables(rom), ram, a5, a6);    // $26A758 jsr $24202C
-  if (r.carry) { drawFamily269E20(ram, rom, a5, a6, d1); return; }   // $26A75E bcs
-  fireFamily2814AC(ram, rom, a5, a6, ctx, r.dir, r.dir, 0x0003000d, 0x26a782);
-  drawFamily269E20(ram, rom, a5, a6, r.dir);           // $26A788 bra.w $269E20
+  const r = aim64AtTarget(aimTables(rom, resources), ram, a5, a6); // $26A758 jsr $24202C
+  if (r.carry) {
+    drawFamily269E20(ram, rom, a5, a6, d1, resources); return;
+  }  // $26A75E bcs
+  fireFamily2814AC(
+    ram, rom, a5, a6, ctx, r.dir, r.dir, 0x0003000d,
+    resources.bullet.site, resources, resources.bullet,
+  );
+  drawFamily269E20(ram, rom, a5, a6, r.dir, resources);  // $26A788 bra.w $269E20
 }
 
 /**
@@ -9314,7 +9325,8 @@ const HANDLERS = new Map([
   // W36: the seven remaining NON-BOSS stage-1 handlers, 43 of the 44 records
   // the eleven above did not own.  The 44th is the stage-1 BOSS `$292902`,
   // which stays a loud named throw -- see the W36 block's header.
-  [0x26a5e4, handler08],
+  [0x26a5e4, (ram, rom, a5, ctx) =>
+    handler08(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x08])],
   [0x26a860, handler09],
   [0x26ad28, handler0B],
   [0x27733e, handler89],
@@ -11599,6 +11611,11 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x26c20c);
       handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
         handler1C(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type08') {
+      const canonical = requireType08Resources(descriptor, resources.edition);
+      handlers.delete(0x26a5e4);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handler08(ram, rom, a5, ctx, canonical));
     } else if (descriptor.algorithm === 'type82') {
       const canonical = requireType82Resources(descriptor, resources.edition);
       handlers.delete(0x2747c6);
