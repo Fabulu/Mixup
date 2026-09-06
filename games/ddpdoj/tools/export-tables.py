@@ -11146,13 +11146,17 @@ def verify(t: dict) -> list[str]:
 
     expected_behaviours = {
         3: 0x181380, 4: 0x18143C, 5: 0x1814F8, 6: 0x1815B4,
-        7: 0x181670, 12: 0x18189C, 13: 0x1818F6, 19: 0x181AC4,
+        7: 0x181670, 11: 0x181834, 12: 0x18189C, 13: 0x1818F6,
+        19: 0x181AC4,
     }
     expected_bullet_templates = {
         3: 0x180A0C, 4: 0x180A20, 5: 0x180A34, 6: 0x180A48,
-        7: 0x180A5C, 12: 0x180AC0, 13: 0x180AD4, 19: 0x180B24,
+        7: 0x180A5C, 11: 0x180AAC, 12: 0x180AC0, 13: 0x180AD4,
+        19: 0x180B24,
     }
-    expected_run_init = {3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 12: 0, 13: 0, 19: 1}
+    expected_run_init = {
+        3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 11: 0, 12: 0, 13: 0, 19: 1,
+    }
     for kind in _WHITE_BULLET_KINDS:
         if w32(0x180FD0 + kind * 4) != expected_behaviours[kind]:
             bad.append(f"Version A enemy-bullet kind {kind} behaviour pointer drifted")
@@ -12208,7 +12212,7 @@ WHITE_LASER_RUNTIME_REQUESTS = (
 
 # Build A enemy bullets reuse the Black algorithms but retain cartridge-authentic
 # dispatch and continuation identities. Only bytes read as data are authorized.
-_WHITE_BULLET_KINDS = (3, 4, 5, 6, 7, 12, 13, 19)
+_WHITE_BULLET_KINDS = (3, 4, 5, 6, 7, 11, 12, 13, 19)
 _WHITE_BULLET_TEMPLATE_RUN_INIT = {
     3: 0x180A1C, 4: 0x180A30, 5: 0x180A44, 7: 0x180A6C,
     12: 0x180AD0, 19: 0x180B34,
@@ -12238,6 +12242,7 @@ WHITE_BULLET_RUNTIME_WINDOWS = [
     (0x1829AA, 0x0180, "White A 32-entry enemy-bullet muzzle table"),
     (0x1828AA, 0x0040, "White A 32-word enemy-bullet direction fold table"),
     (0x1816A8, 0x0024, "White A kind-7 nine-entry direction sprite table"),
+    (0x180AAC, 0x0012, "White A enemy-bullet kind 11 complete template"),
     (0x180AD4, 0x0012, "White A enemy-bullet kind 13 complete template"),
 ]
 WHITE_BULLET_RUNTIME_WINDOWS.extend(

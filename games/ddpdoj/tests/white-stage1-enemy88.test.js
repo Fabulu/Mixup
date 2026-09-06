@@ -261,7 +261,6 @@ test('White Type $88 owns its exact descriptors, windows, and natural $131304 ro
   assert.equal(ram.u32(world.resources.spawn.liveCursor), SOURCE + 16);
   assert.deepEqual(machineCtx.unportedLog.report(), [
     '      1 x $142344 $142344 aim in type $88 init -- bucket tracks movement heading',
-    '      1 x $142344 $142344 aim in type $82 init',
   ]);
   for (const address of [
     SOURCE, 0x1317be, MOVEMENT, 0x17d504,

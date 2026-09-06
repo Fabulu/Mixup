@@ -1203,7 +1203,7 @@ INIT_BODIES.set(0x2828a0, (ctx, base) => {
   ram.setU32(base + 0x0a, 0x1c0e0c);                 // $2828CA descriptor
   ram.setU32(base + 0x06, 0xfc00fe00);               // $2828D2 renderOffs (final)
   ram.setU16(base + 0x0e, 0x0410);                   // $2828DA graphic (final)
-  ram.setU32(base + REC.continuation, 0x2828ea);     // $2828E0
+  storeContinuation(ctx, base, 0x2828ea);             // $2828E0
 });
 CONTINUATIONS.set(0x2828ea, (ctx, base) => {
   // $2828EA addi.l #$24,-(A1): A1 is at base+$E after the emit, so this lands on
