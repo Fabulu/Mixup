@@ -52,8 +52,8 @@ function whiteCartridgeWindows() {
   ];
   const key = ({ base, len }) => `${base}:${len}`;
   const allowed = new Set(descriptors.map(key));
-  assert.equal(allowed.size, 847,
-    'the overlapping White runtime categories resolve to 847 unique windows');
+  assert.equal(allowed.size, 850,
+    'the overlapping White runtime categories resolve to 850 unique windows');
   const windows = tables.rom.windows.filter((window) => allowed.has(key(window)));
   assert.equal(windows.length, allowed.size,
     'every unique White descriptor resolves to one global ROM window');

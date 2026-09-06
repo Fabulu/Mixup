@@ -581,8 +581,24 @@ BODY.set(0x276824, (ram, rom, a5, a6, unported) =>
 // lands as 0: ($1A,A5) = 0 and ($1B,A5) = param 3.  That is why the handler's
 // `subq.b #$1,($1A,A5)` borrows on its very first frame and immediately
 // reloads from ($1B,A5) -- transcribe the word stores, not what they "meant".
-BODY.set(0x272A4A, (ram, rom, a5, a6, unported) => {
-  loadSubProto(ram, rom, a5, a6, 0x272A90);            // jsr $2637A2
+function requireType20InitDescriptor(descriptor) {
+  const canonical = descriptor?.edition === 'black'
+    ? BLACK_WORLD_RESOURCES.enemyTypes[0x20]
+    : descriptor?.edition === 'white'
+      ? WHITE_WORLD_RESOURCES.enemyTypes[0x20]
+      : null;
+  if (!descriptor || !Object.isFrozen(descriptor) || descriptor !== canonical
+      || descriptor.type !== 0x20 || descriptor.algorithm !== 'type20'
+      || !Number.isInteger(descriptor.initStub) || !Number.isInteger(descriptor.initBody)
+      || !Number.isInteger(descriptor.subPrototype)) {
+    throw new TypeError('type $20 family init needs a complete frozen edition descriptor');
+  }
+  return descriptor;
+}
+
+function init20(ram, rom, a5, a6, unported, descriptor) {
+  const resources = requireType20InitDescriptor(descriptor);
+  loadSubProto(ram, rom, a5, a6, resources.subPrototype); // jsr edition loader
   let p = ram.u32(a5 + R.movement);                    // $272A56 movea.l ($12,A5),A0
   ram.setU32(a6 + S.posX, rom.u32(p)); p += 4;         // $272A5A move.l (A0)+,($2,A6)
   let d0 = rom.u16(p) & 0xff; p += 2;                  // $272A66 and.w (A0)+,D0
@@ -597,7 +613,10 @@ BODY.set(0x272A4A, (ram, rom, a5, a6, unported) => {
   ram.setU16(a5 + 0x1a, d2);                           // $272A86 move.w D2,($1A,A5)
   ram.setU32(a5 + R.movement, p);                      // $272A8A move.l A0,($12,A5)
   void unported;
-});
+}
+
+BODY.set(0x272A4A, (ram, rom, a5, a6, unported) =>
+  init20(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x20]));
 
 // --- type $3E ($2653EE): the Stage-3 opening two-hitbox fighter. The loader
 // copies two consecutive long-form sub prototypes because the registry stub's
@@ -2600,6 +2619,9 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
     } else if (descriptor.algorithm === 'type07-family') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init07(ram, rom, a5, a6, unported, descriptor));
+    } else if (descriptor.algorithm === 'type20') {
+      map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
+        init20(ram, rom, a5, a6, unported, descriptor));
     } else if (descriptor.algorithm === 'type80') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init80(ram, rom, a5, a6, unported, descriptor));

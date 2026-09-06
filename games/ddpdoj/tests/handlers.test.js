@@ -114,7 +114,7 @@ test('the ported handler addresses are registered through W529 type $A5', () => 
   // W31 adds `$26B6FA` (type $0D, the MIDBOSS), which lives in src/midboss.js
   // and is NOT in SIX -- the `runs on a live record` test below drives SIX
   // against a STUB rom, and the midboss reads four real ROM tables.
-  // W33 adds `$272AAC` (types $20/$21/$23, THE SCRIPTED CARRIER); it is not in
+  // W33 adds `$272AAC` (types $20/$21/$22/$23, THE SCRIPTED CARRIER); it is not in
   // SIX either, because it reads its spawn type out of the enemy record rather
   // than out of the stub ROM and has its own tests below.
   // W36 adds the SEVEN remaining non-boss stage-1 handlers; none is in SIX

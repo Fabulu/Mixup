@@ -178,7 +178,7 @@ const R = {
   // in that table is a member of the `$23D762` enqueue family (see
   // src/spritequeue.js §1c).  Renamed so the mislabel cannot come back.
   emitRec2A: 0x2a, emitReg2E: 0x2e,
-  // W33, for `$272AAC` (types $20/$21/$23).  The SAME bytes named again for
+  // W33, for `$272AAC` (types $20/$21/$22/$23).  The SAME bytes named again for
   // the type that uses them differently, per this block's own rule: ($16,A5)
   // is `onScreen` (a BYTE flag) for $10/$11 and here is a WORD holding the
   // TYPE THIS CARRIER SPAWNS; ($18,A5) is `cooldown` elsewhere and here is the
@@ -4519,7 +4519,7 @@ function deathSeq8A(ram, rom, a5, ctx, d1, descriptor) {
 }
 
 // ==================================================================== W33
-// `$272AAC` -- TYPES `$20`, `$21` AND `$23`, THE SCRIPTED CARRIER.
+// `$272AAC` -- TYPES `$20`, `$21`, `$22` AND `$23`, THE SCRIPTED CARRIER.
 //
 // **IT FIRES NO BULLET.**  There is not one `jsr $281xxx` in it, nor in its
 // call closure -- checked by the recursive closure scan in the W33 worklog §2
@@ -4539,7 +4539,43 @@ function deathSeq8A(ram, rom, a5, ctx, d1, descriptor) {
 // bounds block, to the `jmp $263762` free.  The salvo counter running out and
 // the enemy leaving the screen are the same exit, and they are `$50` bytes
 // apart in the listing.
-function handler20(ram, rom, a5, ctx) {
+function requireType20Resources(descriptor) {
+  const canonical = canonicalWorldDescriptor(descriptor, 0x20);
+  if (!descriptor || !isFrozenResourceGraph(descriptor) || !canonical
+      || descriptor.type !== 0x20 || descriptor.algorithm !== 'type20'
+      || descriptor.initStub !== canonical.initStub
+      || descriptor.initBody !== canonical.initBody
+      || descriptor.handler !== canonical.handler
+      || descriptor.subPrototype !== canonical.subPrototype
+      || descriptor.scrollCompensation !== canonical.scrollCompensation
+      || descriptor.types !== canonical.types
+      || descriptor.enqueue !== canonical.enqueue
+      || descriptor.retirement !== canonical.retirement
+      || !Array.isArray(descriptor.types) || descriptor.types.length !== 4
+      || ![0x20, 0x21, 0x22, 0x23].every((type, index) =>
+        descriptor.types[index] === type)
+      || !Number.isInteger(descriptor.initStub) || !Number.isInteger(descriptor.initBody)
+      || !Number.isInteger(descriptor.handler) || !Number.isInteger(descriptor.subPrototype)
+      || !Number.isInteger(descriptor.scrollCompensation)
+      || descriptor.enqueue?.d1 !== 'caller'
+      || !Number.isInteger(descriptor.enqueue?.entry)
+      || descriptor.retirement?.semantic !== 'freeEnemy'
+      || !Number.isInteger(descriptor.retirement?.entry)) {
+    throw new TypeError('type $20 family handler needs a complete frozen edition resource graph');
+  }
+  return descriptor;
+}
+
+function retire20(ram, a5, descriptor) {
+  if (descriptor.retirement.semantic !== 'freeEnemy') {
+    throw new TypeError('type $20 family retirement must preserve freeEnemy semantics');
+  }
+  freeEnemy(ram, a5);
+}
+
+function handler20(ram, rom, a5, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x20]) {
+  const resources = requireType20Resources(descriptor);
   const a6 = ram.u32(a5 + 0x06);
   // $272AAC tst.w ($8,A6) / bne -- ($8,A6) is set to 1 by the INIT when the
   // stream's first param word is the escape `$0002` (see initbody.js), and it
@@ -4560,7 +4596,7 @@ function handler20(ram, rom, a5, ctx) {
     else if (d1 >= 0xb800) off = true;                 // $272AE4 cmpi.l / blt -> on
   }
   if (off) {
-    if (ram.u16(a6 + 0x06) !== 0) { freeEnemy(ram, a5); return; }  // $272AEE/$272AF6
+    if (ram.u16(a6 + 0x06) !== 0) { retire20(ram, a5, resources); return; } // edition free
   } else {
     ram.setU16(a6 + 0x06, 1);                          // $272AFE move.w #$1,($6,A6)
   }
@@ -4590,7 +4626,7 @@ function handler20(ram, rom, a5, ctx) {
   if (ram.u16(a5 + R.carrySalvo) === 0) return;        // $272B3E beq $272B46
   const n = ram.u8(a5 + R.carrySalvoCtr);              // $272B40 subq.b #$1,($19,A5)
   ram.setU8(a5 + R.carrySalvoCtr, (n - 1) & 0xff);
-  if (((n - 1) & 0xff) === 0) freeEnemy(ram, a5);      // $272B44 beq $272AF6
+  if (((n - 1) & 0xff) === 0) retire20(ram, a5, resources); // edition free
   void rom; void ctx;
 }
 
@@ -9206,7 +9242,8 @@ function handler9C(ram, rom, a5, ctx) {
 
 // ============================================================ THE DISPATCH
 const HANDLERS = new Map([
-  [0x272aac, handler20],   // W33: types $20, $21 AND $23 share this one
+  [0x272aac, (ram, rom, a5, ctx) =>
+    handler20(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x20])],
   [0x2688cc, (ram, rom, a5, ctx) =>
     handler11(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x11])],
   [0x268232, (ram, rom, a5, ctx) =>
@@ -11520,7 +11557,11 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
   if (handlers) return handlers;
   handlers = new Map(HANDLERS);
   for (const descriptor of Object.values(resources.enemyTypes ?? {})) {
-    if (descriptor.algorithm === 'type05') {
+    if (descriptor.algorithm === 'type20') {
+      handlers.delete(0x272aac);
+      handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
+        handler20(ram, rom, a5, ctx, descriptor));
+    } else if (descriptor.algorithm === 'type05') {
       handlers.delete(0x269cea);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
         handler05(ram, rom, a5, ctx, descriptor));

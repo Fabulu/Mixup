@@ -1,5 +1,5 @@
 // W33 -- the SUB-RECORD REAPER (`$28AD54`, type-5 call #3) and the SCRIPTED
-// CARRIER (`$272AAC` + its init body `$272A4A`, types $20/$21/$23).
+// CARRIER (`$272AAC` + its init body `$272A4A`, types $20/$21/$22/$23).
 //
 // The reaper is the wave's real defect fix: `$263762` marks a freed sub-record
 // with a ONE and only `$28AD54` turns that into the ZERO the allocator

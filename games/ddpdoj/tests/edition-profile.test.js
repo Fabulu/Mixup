@@ -219,6 +219,7 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$1668D4', len: 0x0008 },
     { base: '$16691C', len: 0x0008 },
     { base: '$166924', len: 0x0008 },
+    { base: '$16699C', len: 0x0020 },
     { base: '$1669D4', len: 0x0008 },
     { base: '$166FE8', len: 0x0008 },
     { base: '$167018', len: 0x0024 },
@@ -247,6 +248,8 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$16925A', len: 0x0008 },
     { base: '$169328', len: 0x0016 },
     { base: '$16933E', len: 0x001c },
+    { base: '$171A96', len: 0x0008 },
+    { base: '$171AE4', len: 0x001c },
     { base: '$171E4E', len: 0x0080 },
     { base: '$171FCE', len: 0x0080 },
     { base: '$1722CE', len: 0x0080 },
@@ -400,8 +403,8 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
   const g = game();
   const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
 
-  assert.equal(excluded.size, 847);
-  assert.equal(tables.rom.windows.length, 1800,
+  assert.equal(excluded.size, 850);
+  assert.equal(tables.rom.windows.length, 1803,
     'runtime projection does not mutate the complete exported table');
   assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [953, 457599]);
   for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);

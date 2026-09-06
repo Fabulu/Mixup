@@ -41,7 +41,7 @@ const W587_TABLE = SKIP ? null : tableBeforeW588(TABLE_JSON);
 const PRIOR_TABLE = SKIP ? null : tableBeforeW576(TABLE_JSON);
 const ROM = SKIP ? null : new RomWindows(TABLE_JSON.rom);
 const MT = SKIP ? null : new MoveTables(TABLE_JSON, ROM);
-const LIVE_TABLE_HASH = '938175b469a281751b5b597cc689f579395f460d30fbb371b8e6e5de7e6df862';
+const LIVE_TABLE_HASH = '9dc911b15a5639dec488741f9234f7cc6b89e764744f94dcf6ecc46d826550ba';
 const W587_TABLE_HASH = 'a410f3af26547bb3122e54b18d2d11c294d432a264a490ee6936865bcb43cd99';
 const STORED_CHECKPOINT_TABLE_HASH = '3197bb23300fac664979cb898e81e1a68c89b3386e3d393fb789c77a0b04b41f';
 const PRIOR_HASH = 'bc4c8b3e47ebbd93dab351d9a6cfe9e6f091c0489e29ca337cd2f9790cdf5ce3';
@@ -110,9 +110,9 @@ test('W577 pins the exact id-2 pair, boundary, registrations, and unchanged tabl
     assert.ok(registered.has(HIBACHI_A0.s2Init));
     assert.ok(registered.has(HIBACHI_A0.s2Step));
 
-    assert.equal(ROM_WINDOW_COUNT, 1800);
-    assert.equal(TABLE_JSON.rom.windows.length, 1800);
-    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 659729);
+    assert.equal(ROM_WINDOW_COUNT, 1803);
+    assert.equal(TABLE_JSON.rom.windows.length, 1803);
+    assert.equal(TABLE_JSON.rom.windows.reduce((n, w) => n + w.len, 0), 659797);
     assert.equal(canonicalHash(TABLE_JSON), LIVE_TABLE_HASH);
     assert.equal(canonicalHash(PRIOR_TABLE), PRIOR_HASH);
     assert.deepEqual(TABLE_JSON.rom.windows.filter((w) => w.why.startsWith('W577:')), []);

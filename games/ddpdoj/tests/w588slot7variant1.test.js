@@ -32,7 +32,7 @@ const ROM = SKIP ? null : new RomWindows(W588_TABLE.rom);
 const SCRIPT = 0x291040;
 const SCRIPT_END = 0x29109c;
 const VARIANT_1_LIST = 0x290f36;
-const LIVE_TABLE_HASH = '938175b469a281751b5b597cc689f579395f460d30fbb371b8e6e5de7e6df862';
+const LIVE_TABLE_HASH = '9dc911b15a5639dec488741f9234f7cc6b89e764744f94dcf6ecc46d826550ba';
 const TABLE_HASH = '6ba6ed93f3b995ed1baf60fc757808379e548adb2919e040ac95f8d0e17081aa';
 const PRIOR_HASH = 'a410f3af26547bb3122e54b18d2d11c294d432a264a490ee6936865bcb43cd99';
 const SCRIPT_HASH = '0d1653d2d5d777820678bfd8178688498ca9b3aa68370b8bef0a022a8a32443a';
@@ -92,7 +92,7 @@ test('W588 exports the exact script and two previously absent spawn pointers',
       ROM_WINDOW_COUNT, ROM_OVERLAP_PAIRS, TABLE_JSON.rom.windows.length,
       TABLE_JSON.rom.windows.reduce((total, window) => total + window.len, 0),
       canonicalHash(TABLE_JSON),
-    ], [1800, 79, 1800, 659729, LIVE_TABLE_HASH]);
+    ], [1803, 79, 1803, 659797, LIVE_TABLE_HASH]);
     assert.deepEqual([
       W588_TABLE.rom.windows.length,
       W588_TABLE.rom.windows.reduce((total, window) => total + window.len, 0),

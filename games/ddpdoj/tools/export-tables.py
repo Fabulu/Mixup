@@ -10752,6 +10752,8 @@ def verify(t: dict) -> list[str]:
         bad.append("embedded Version A Stage 1 Type $8A executable identity manifest drifted")
     if white.get("stage1Type8B") != WHITE_STAGE1_TYPE8B_EXECUTABLE_IDENTITY:
         bad.append("embedded Version A Stage 1 Type $8B executable identity manifest drifted")
+    if white.get("stage1Type20") != WHITE_STAGE1_TYPE20_EXECUTABLE_IDENTITY:
+        bad.append("embedded Version A Stage 1 Type $20 executable identity manifest drifted")
     if any(address < 0 or address + length > 0x200000
            for address, length, _ in WHITE_BUTTON2_RUNTIME_WINDOWS):
         bad.append("embedded Version A Button 2 authority escaped the Build A cartridge region")
@@ -11466,6 +11468,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x1668D4, 0x0008, "White A low type-table entry $07"),
     (0x16691C, 0x0008, "White A low type-table entry $10"),
     (0x166924, 0x0008, "White A low type-table entry $11"),
+    (0x16699C, 0x0020, "White A low type-table entries $20 through $23"),
     (0x1669D4, 0x0008, "White A low type-table entry $27"),
     (0x166FE8, 0x0008, "White A type-$10/$11 initial emitter pair"),
     (0x167018, 0x0024, "White A type-$10/$11 death, hit, and secondary remap rows"),
@@ -11494,6 +11497,8 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x16925A, 0x0008, "White A type-$27 run-length init stub"),
     (0x169328, 0x0016, "White A type-$27 enemy-record prototype"),
     (0x16933E, 0x001C, "White A type-$27 sub-record prototype"),
+    (0x171A96, 0x0008, "White A type-$20 family run-length init stub"),
+    (0x171AE4, 0x001C, "White A type-$20 family sub-record prototype"),
     (0x171E4E, 0x0080, "White A type-$85 aim sprite table"),
     (0x171FCE, 0x0080, "White A type-$80 aim sprite table"),
     (0x1722CE, 0x0080, "White A type-$85 muzzle table"),
@@ -11614,6 +11619,17 @@ WHITE_STAGE1_TYPE8B_EXECUTABLE_IDENTITY = {
     "handler": {
         "start": "$175920", "end": "$1759E0",
         "sha256": "9b78e8e623df459e8ff7a3ab4d0948d59dd199c37b60a4f70219bba6c189bc6b",
+    },
+}
+
+WHITE_STAGE1_TYPE20_EXECUTABLE_IDENTITY = {
+    "init": {
+        "start": "$171A96", "end": "$171B00",
+        "sha256": "9746e0503c757eb8ae8120c0f4ea54692cc10ab084cc06d85fb7724a6562cb5b",
+    },
+    "handler": {
+        "start": "$171B00", "end": "$171B9C",
+        "sha256": "972f09ee88d4efaafdb3c7f4b92206cc8fc4caf9522d23174d26439bdb1dd",
     },
 }
 
@@ -12081,6 +12097,7 @@ def white_label_tables(d: bytes) -> dict:
         "button2": WHITE_BUTTON2_EXECUTABLE_IDENTITY,
         "stage1Type8A": WHITE_STAGE1_TYPE8A_EXECUTABLE_IDENTITY,
         "stage1Type8B": WHITE_STAGE1_TYPE8B_EXECUTABLE_IDENTITY,
+        "stage1Type20": WHITE_STAGE1_TYPE20_EXECUTABLE_IDENTITY,
         "playerWindows": [{"base": f"${address:06X}", "len": length}
                           for address, length, _ in WHITE_PLAYER_WINDOWS],
         "shotProducerWindows": [{"base": f"${address:06X}", "len": length}

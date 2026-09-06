@@ -192,6 +192,26 @@ const white27 = {
   retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
 };
 
+const black20 = {
+  edition: 'black',
+  type: 0x20, types: [0x20, 0x21, 0x22, 0x23], algorithm: 'type20',
+  initStub: 0x272a42, initBody: 0x272a4a,
+  handler: 0x272aac, subPrototype: 0x272a90,
+  scrollCompensation: 0x24179e,
+  enqueue: { entry: 0x263690, d1: 'caller' },
+  retirement: { entry: 0x263762, semantic: 'freeEnemy' },
+};
+
+const white20 = {
+  edition: 'white',
+  type: 0x20, types: [0x20, 0x21, 0x22, 0x23], algorithm: 'type20',
+  initStub: 0x171a96, initBody: 0x171a9e,
+  handler: 0x171b00, subPrototype: 0x171ae4,
+  scrollCompensation: 0x141ad8,
+  enqueue: { entry: 0x16270a, d1: 'caller' },
+  retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
+};
+
 const black80 = {
   type: 0x80, algorithm: 'type80', initStub: 0x2737fa, initBody: 0x273802,
   handler: 0x2739c0, palette: 0x273922,
@@ -384,7 +404,8 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
   movement: { entry: 0x241812, speedPointers: 0x200920, fold: 0x2418b4 },
   enemyTypes: {
     0x05: black05, 0x07: black27, 0x10: black10, 0x11: black11,
-    0x27: black27, 0x80: black80, 0x85: black85, 0x8a: black8A, 0x8b: black8B,
+    0x20: black20, 0x21: black20, 0x22: black20, 0x23: black20, 0x27: black27,
+    0x80: black80, 0x85: black85, 0x8a: black8A, 0x8b: black8B,
   },
   displayList: { filler: [0xfc00, 0x3800, 0, 0, 0x0201], coordinates: 'black' },
 });
@@ -413,7 +434,8 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
   movement: { entry: 0x141b60, speedPointers: 0x100920, fold: 0x141bee },
   enemyTypes: {
     0x05: white05, 0x07: white27, 0x10: white10, 0x11: white11,
-    0x27: white27, 0x80: white80, 0x85: white85, 0x8a: white8A, 0x8b: white8B,
+    0x20: white20, 0x21: white20, 0x22: white20, 0x23: white20, 0x27: white27,
+    0x80: white80, 0x85: white85, 0x8a: white8A, 0x8b: white8B,
   },
   displayList: { filler: [0xfbff, 0xfc00, 0, 0, 0x0201], coordinates: 'direct' },
 });
