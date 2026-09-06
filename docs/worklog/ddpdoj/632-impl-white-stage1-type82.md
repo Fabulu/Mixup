@@ -18,7 +18,7 @@ Type `$82` now has canonical, recursively frozen Black and White descriptors. In
 | Death sound | `$28C274` | `$18AD9A` |
 | Free-enemy entry | `$263762` | `$1627DC` |
 
-The implementation remains one shared Type `$82` algorithm. Only cartridge addresses, call sites, and edition-owned resource tables differ.
+The implemented paths remain one shared Type `$82` algorithm selected by edition-owned resources. Cartridge addresses and call sites differ. The still-counted primary fan also has a genuine parameter deviation: White uses D0 immediates `$0005000C` and `$FFFF000D`, while Black uses `$0003000C` and `$FFFD000D`. Those speed biases must become descriptor-owned when that unresolved fan is translated; this slice does not claim to port it.
 
 ## Natural White route
 
