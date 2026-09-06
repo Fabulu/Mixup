@@ -134,7 +134,8 @@ import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType08Resources,
-  requireType82Resources, requireType88Resources, requireType89Resources,
+  requireType0BResources, requireType82Resources, requireType88Resources,
+  requireType89Resources,
 } from './world-resources.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
 import { handler83 } from './stage3type83.js';
@@ -5027,11 +5028,13 @@ function handler09(ram, rom, a5, ctx) {
  * aim result -- one byte of difference that changes which way every bullet in
  * the salvo leaves.
  */
-function handler0B(ram, rom, a5, ctx) {
+function handler0B(ram, rom, a5, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x0b]) {
+  const resources = requireType0BResources(descriptor);
   const a6 = ram.u32(a5 + 0x06);
-  if (damageFirstHead(ram, rom, a5, a6, ctx, 0x08) === null) return;
+  if (damageFirstHead(ram, rom, a5, a6, ctx, 0x08, resources) === null) return;
   if (ram.u8(a5 + 0x26) !== 0) {                       // $26ADC6 tst.b ($26,A5) / bne
-    state0B26AE86(ram, rom, a5, a6, ctx);
+    state0B26AE86(ram, rom, a5, a6, ctx, resources);
     return;
   }
   // $26ADCE: the fire cooldown on ($28,A5), reloaded from ($29,A5).
@@ -5039,12 +5042,13 @@ function handler0B(ram, rom, a5, ctx) {
   ram.setU8(a5 + R.fireCtr, (c - 1) & 0xff);
   if (((c - 1) & 0xff) === 0) {                        // $26ADD2 bne $26AE10
     ram.setU8(a5 + R.fireCtr, ram.u8(a5 + 0x29));      // $26ADD6
-    if (!boxTest2425B2(ram, rom, a6).carry) {          // $26ADDC jsr $2425B2 / bcs
-      const r = aim64AtTarget(aimTables(rom), ram, a5, a6);  // $26ADE4 jsr $24202C
+    if (!boxTest2425B2(ram, rom, a6, resources.fireGate).carry) { // $26ADDC jsr $2425B2 / bcs
+      const r = aim64AtTarget(aimTables(rom, resources), ram, a5, a6); // $26ADE4 jsr $24202C
       if (!r.carry) {                                  // $26ADEA bcs $26AE10
         // $26ADF2 `move.b ($23,A5),D2` -- the RECORD's facing, NOT the aim.
         fireFamily2814AC(ram, rom, a5, a6, ctx,
-          ram.u8(a5 + R.rec23), r.dir, 0x0d, 0x26ae0a);
+          ram.u8(a5 + R.rec23), r.dir, 0x0d, resources.bullet.sites.aimed,
+          resources, resources.bullet);
       }
     }
   }
@@ -5072,32 +5076,35 @@ function handler0B(ram, rom, a5, ctx) {
   // $26AE5C: the per-frame slew, then the shared tail.
   let d1 = ram.u8(a5 + R.rec23);                       // $26AE5C move.b ($23,A5),D1
   if (ram.u16(0x803910) !== 0) {                       // $26AE60 tst.w $803910 / bne
-    drawFamily269E20(ram, rom, a5, a6, d1); return;
+    drawFamily269E20(ram, rom, a5, a6, d1, resources); return;
   }
-  const r = aim64AtTarget(aimTables(rom), ram, a5, a6);     // $26AE6A jsr $24202C
-  if (r.carry) { drawFamily269E20(ram, rom, a5, a6, d1); return; }   // $26AE70 bcs
+  const r = aim64AtTarget(aimTables(rom, resources), ram, a5, a6); // $26AE6A jsr $24202C
+  if (r.carry) {
+    drawFamily269E20(ram, rom, a5, a6, d1, resources); return;
+  }  // $26AE70 bcs
   d1 = slew64(ram.u8(a5 + R.rec23), r.dir);            // $26AE74/$26AE78 jsr $242190
   ram.setU8(a5 + R.rec23, d1 & 0xff);                  // $26AE7E
-  drawFamily269E20(ram, rom, a5, a6, d1);              // $26AE82 bra.w $269E20
+  drawFamily269E20(ram, rom, a5, a6, d1, resources);  // $26AE82 bra.w $269E20
 }
 
 /** `$26AE86..$26AF22` -- type `$0B`'s SECOND phase: a timed salvo on `($27,A5)`
  *  and then a heading walk toward `($22,A5)`. */
-function state0B26AE86(ram, rom, a5, a6, ctx) {
+function state0B26AE86(ram, rom, a5, a6, ctx, resources) {
   if (ram.u8(a5 + 0x27) !== 0) {                       // $26AE86 tst.b ($27,A5) / beq
     const c = ram.u8(a5 + R.cooldown);                 // $26AE8E subq.b #$1,($18,A5)
     ram.setU8(a5 + R.cooldown, (c - 1) & 0xff);
     if (((c - 1) & 0xff) === 0) {                      // $26AE92 bne $26AF1E
       ram.setU8(a5 + R.cooldown, ram.u8(a5 + R.cooldownReload));  // $26AE96
       ram.setU8(a5 + 0x27, (ram.u8(a5 + 0x27) - 1) & 0xff);       // $26AE9C
-      if (!boxTest2425B2(ram, rom, a6).carry) {        // $26AEA0 jsr $2425B2 / bcs
+      if (!boxTest2425B2(ram, rom, a6, resources.fireGate).carry) { // $26AEA0 jsr $2425B2 / bcs
         // $26AEAA move.b ($23,A5),D2 / move.b D2,D1 -- BOTH the index and the
         // generator's D1 come from the record here; there is no aim at all.
         const f = ram.u8(a5 + R.rec23);
-        fireFamily2814AC(ram, rom, a5, a6, ctx, f, f, 0x0d, 0x26aecc);
+        fireFamily2814AC(ram, rom, a5, a6, ctx, f, f, 0x0d,
+          resources.bullet.sites.facing, resources, resources.bullet);
       }
     }
-    drawFamily269E20(ram, rom, a5, a6, ram.u8(a6 + S.heading));   // $26AF1E/$26AF22
+    drawFamily269E20(ram, rom, a5, a6, ram.u8(a6 + S.heading), resources);   // $26AF1E/$26AF22
     return;
   }
   if (ram.u8(a6 + S.speed) !== 0x1c) {                   // $26AED6 cmpi.b #$1C / beq
@@ -5116,12 +5123,13 @@ function state0B26AE86(ram, rom, a5, a6, ctx) {
       const d1 = (ram.u8(a6 + S.heading) + ram.u8(a5 + 0x1f)) & 0x3c;  // $26AF00..
       ram.setU8(a6 + S.heading, d1);                   // $26AF0C
       if (d1 !== ram.u8(a5 + 0x22)) {                  // $26AF10 cmp.b / bne $269E20
-        drawFamily269E20(ram, rom, a5, a6, d1); return;
+        drawFamily269E20(ram, rom, a5, a6, d1, resources); return;
       }
       ram.setU16(a5 + 0x1c, 1);                        // $26AF18
     }
   }
-  drawFamily269E20(ram, rom, a5, a6, ram.u8(a6 + S.heading));     // $26AF1E/$26AF22
+  drawFamily269E20(ram, rom, a5, a6,
+    ram.u8(a6 + S.heading), resources);                // $26AF1E/$26AF22
 }
 
 // ------------------------------------------------------------------------
@@ -9328,7 +9336,8 @@ const HANDLERS = new Map([
   [0x26a5e4, (ram, rom, a5, ctx) =>
     handler08(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x08])],
   [0x26a860, handler09],
-  [0x26ad28, handler0B],
+  [0x26ad28, (ram, rom, a5, ctx) =>
+    handler0B(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x0b])],
   [0x27733e, handler89],
   [0x275f30, (ram, rom, a5, ctx) =>
     handler88(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x88])],
@@ -11616,6 +11625,11 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x26a5e4);
       handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
         handler08(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type0B') {
+      const canonical = requireType0BResources(descriptor, resources.edition);
+      handlers.delete(0x26ad28);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handler0B(ram, rom, a5, ctx, canonical));
     } else if (descriptor.algorithm === 'type82') {
       const canonical = requireType82Resources(descriptor, resources.edition);
       handlers.delete(0x2747c6);

@@ -239,6 +239,51 @@ const white08 = {
   retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
 };
 
+const black0B = {
+  edition: 'black',
+  type: 0x0b, algorithm: 'type0B',
+  initStub: 0x26ab98, initBody: 0x26aba0, handler: 0x26ad28,
+  recordPrototype: 0x26acf6, subPrototype: 0x26ad0c,
+  animation: 0x269bb6, sprite: 0x269e48, armBArt: 0x269ec8, muzzle: 0x269f48,
+  emitters: { record: 0x23d852, armA: 0x23df86, armB: 0x23df58 },
+  effectSite: 0x26ad5c,
+  initAim: { typeBit5: 0x242a80, target: 0x24202c, translated: false },
+  aim64: BLACK_AIM64_RESOURCES,
+  bullet: {
+    ...BLACK_BULLET_SPAWN_RESOURCES,
+    entry: 0x2814ac, semantic: 'bank-a-adaptive',
+    sites: { aimed: 0x26ae0a, facing: 0x26aecc },
+  },
+  score: black11.score,
+  effects: black11.effects,
+  fireGate: black11.fireGate,
+  sound: { death: 0x28c2a8 },
+  retirement: { entry: 0x263762, semantic: 'freeEnemy' },
+};
+
+const white0B = {
+  edition: 'white',
+  type: 0x0b, algorithm: 'type0B',
+  initStub: 0x169c10, initBody: 0x169c18, handler: 0x169da0,
+  recordPrototype: 0x169d6e, subPrototype: 0x169d84,
+  animation: 0x168c2e, sprite: 0x168ec0, armBArt: 0x168f40, muzzle: 0x168fc0,
+  emitters: { record: 0x13dba0, armA: 0x13e2d4, armB: 0x13e2a6 },
+  effectSite: 0x169dd4,
+  initAim: { typeBit5: 0x142dd0, target: 0x142366, translated: true },
+  aim64: white11.aim64,
+  bullet: {
+    ...WHITE_BULLET_SPAWN_RESOURCES,
+    supportedKinds: WHITE_STANDARD_BULLET_KINDS,
+    entry: 0x1804f8, semantic: 'bank-a-adaptive',
+    sites: { aimed: 0x169e82, facing: 0x169f44 },
+  },
+  score: white11.score,
+  effects: white11.effects,
+  fireGate: white11.fireGate,
+  sound: { death: 0x18adce },
+  retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
+};
+
 const black20 = {
   edition: 'black',
   type: 0x20, types: [0x20, 0x21, 0x22, 0x23], algorithm: 'type20',
@@ -607,7 +652,8 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
   enemyFrame: { entry: 0x2634f4, walker: 0x2633be, driver: 0x263502 },
   movement: { entry: 0x241812, speedPointers: 0x200920, fold: 0x2418b4 },
   enemyTypes: {
-    0x05: black05, 0x07: black27, 0x08: black08, 0x0d: BLACK_TYPE0D_RESOURCES,
+    0x05: black05, 0x07: black27, 0x08: black08, 0x0b: black0B,
+    0x0d: BLACK_TYPE0D_RESOURCES,
     0x10: black10, 0x11: black11, 0x1c: BLACK_TYPE1C_RESOURCES,
     0x20: black20, 0x21: black20, 0x22: black20, 0x23: black20, 0x27: black27,
     0x80: black80, 0x82: black82, 0x85: black85, 0x88: black88, 0x89: black89,
@@ -639,7 +685,8 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
   enemyFrame: { entry: 0x16256e, walker: 0x162438, driver: 0x162670 },
   movement: { entry: 0x141b60, speedPointers: 0x100920, fold: 0x141bee },
   enemyTypes: {
-    0x05: white05, 0x07: white27, 0x08: white08, 0x0d: WHITE_TYPE0D_RESOURCES,
+    0x05: white05, 0x07: white27, 0x08: white08, 0x0b: white0B,
+    0x0d: WHITE_TYPE0D_RESOURCES,
     0x10: white10, 0x11: white11, 0x1c: WHITE_TYPE1C_RESOURCES,
     0x20: white20, 0x21: white20, 0x22: white20, 0x23: white20, 0x27: white27,
     0x80: white80, 0x82: white82, 0x85: white85, 0x88: white88, 0x89: white89,
@@ -658,6 +705,20 @@ export function requireType08Resources(
       || resources.algorithm !== 'type08'
       || (edition !== null && resources.edition !== edition)) {
     throw new TypeError('type $08 needs its canonical frozen edition descriptor');
+  }
+  return resources;
+}
+
+export function requireType0BResources(
+  resources = BLACK_WORLD_RESOURCES.enemyTypes[0x0b], edition = null,
+) {
+  const canonical = resources?.edition === 'black'
+    ? BLACK_WORLD_RESOURCES.enemyTypes[0x0b]
+    : resources?.edition === 'white' ? WHITE_WORLD_RESOURCES.enemyTypes[0x0b] : null;
+  if (resources !== canonical || resources.type !== 0x0b
+      || resources.algorithm !== 'type0B'
+      || (edition !== null && resources.edition !== edition)) {
+    throw new TypeError('type $0B needs its canonical frozen edition descriptor');
   }
   return resources;
 }

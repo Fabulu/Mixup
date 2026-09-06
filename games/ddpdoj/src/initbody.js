@@ -46,7 +46,8 @@ import { loadAnimObjects246410 } from './animobjects.js';
 import { initType99_29E580 } from './boss3type99.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType08Resources,
-  requireType82Resources, requireType88Resources, requireType89Resources,
+  requireType0BResources, requireType82Resources, requireType88Resources,
+  requireType89Resources,
 } from './world-resources.js';
 
 // ----------------------------------------------------------- the record layout
@@ -423,6 +424,50 @@ function init08(ram, rom, a5, a6, unported,
   });
 }
 
+function init0B(ram, rom, a5, a6, unported,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x0b]) {
+  const resources = requireType0BResources(descriptor);
+  return damageFirstFamily(ram, rom, a5, a6, unported, {
+    subTab: resources.subPrototype,
+    recTab: resources.recordPrototype,
+    recD0: 0x0a,
+    initBody: resources.initBody,
+    sprite: resources.sprite,
+    armBArt: resources.armBArt,
+    initAim: resources.initAim,
+    killStages: [[1, G.d8], [2, G.f6]],
+    tail(ram, rom, a5, a6, unported, stage) {
+      dmgTailFacing(ram, a5, a6);
+      if (resources.initAim.translated) {
+        const aimed = aim64AtTarget(
+          () => type07AimTables(rom, resources), ram, a5, a6,
+        );
+        ram.setU8(a5 + R.rec23, aimed.carry ? 0x20 : aimed.dir);
+      } else {
+        ram.setU8(a5 + R.rec23, 0x20);
+      }
+      hpAdjustBA(ram, a5);
+      if (stage === 4) {
+        const clk = i16(ram.u16(G.scrollClock));
+        if (clk >= 0x290 && ram.u16(G.e6) !== 0) {
+          freeEnemy(ram, a5); return FREED;
+        }
+        if (clk > 0x1fc) {
+          if ((clk < 0x240 || clk > 0x274) && ram.u16(G.e0) !== 0) {
+            freeEnemy(ram, a5); return FREED;
+          }
+          if (ram.u16(G.e2) !== 0 && clk > 0x228) {
+            freeEnemy(ram, a5); return FREED;
+          }
+          for (const gate of [G.e4, G.e6]) {
+            if (ram.u16(gate) !== 0) { freeEnemy(ram, a5); return FREED; }
+          }
+        }
+      }
+    },
+  });
+}
+
 function init80(ram, rom, a5, a6, unported, descriptor) {
   // Both builds' run-length stub loads two long-form sub-records. The loader's
   // returned cursor is therefore the cue script, at Black $273986 or White
@@ -540,28 +585,8 @@ BODY.set(0x26A794, (ram, rom, a5, a6, unported) => damageFirstFamily(ram, rom, a
   },
 }));
 // --- type $0B ($26ABA0): killStages [(1,d8),(2,f6)]; a long stage-4 clock ladder.
-BODY.set(0x26ABA0, (ram, rom, a5, a6, unported) => damageFirstFamily(ram, rom, a5, a6, unported, {
-  subTab: 0x26AD0C, recTab: 0x26ACF6, recD0: 0x0a, initBody: 0x26ABA0,
-  killStages: [[1, G.d8], [2, G.f6]],
-  tail(ram, rom, a5, a6, unported, stage) {
-    dmgTailFacing(ram, a5, a6);
-    ram.setU8(a5 + R.rec23, 0x20);
-    hpAdjustBA(ram, a5);
-    if (stage === 4) {
-      const clk = i16(ram.u16(G.scrollClock));
-      // $26AC5E: clk >= $290 && $8130E6 -> free; the $1FC..$240 window ladder.
-      if (clk >= 0x290 && ram.u16(G.e6) !== 0) { freeEnemy(ram, a5); return FREED; }
-      if (clk > 0x1fc) {
-        if (clk < 0x240 || clk > 0x274) {
-          if (ram.u16(G.e0) !== 0) { freeEnemy(ram, a5); return FREED; }
-        }
-        if (ram.u16(G.e2) !== 0 && clk > 0x228) { freeEnemy(ram, a5); return FREED; }
-        if (ram.u16(G.e4) !== 0) { freeEnemy(ram, a5); return FREED; }
-        if (ram.u16(G.e6) !== 0) { freeEnemy(ram, a5); return FREED; }
-      }
-    }
-  },
-}));
+BODY.set(0x26ABA0, (ram, rom, a5, a6, unported) =>
+  init0B(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x0b]));
 
 // --- type $11 / $10 (defined above as named functions).
 BODY.set(0x26871C, (ram, rom, a5, a6, unported) =>
@@ -2654,6 +2679,10 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
       const canonical = requireType08Resources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>
         init08(ram, rom, a5, a6, unported, canonical));
+    } else if (descriptor.algorithm === 'type0B') {
+      const canonical = requireType0BResources(descriptor, edition);
+      map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>
+        init0B(ram, rom, a5, a6, unported, canonical));
     } else if (descriptor.algorithm === 'type82') {
       const canonical = requireType82Resources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>
