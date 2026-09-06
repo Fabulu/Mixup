@@ -46,8 +46,8 @@ import { loadAnimObjects246410 } from './animobjects.js';
 import { initType99_29E580 } from './boss3type99.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType08Resources,
-  requireType0BResources, requireType82Resources, requireType88Resources,
-  requireType89Resources,
+  requireType09Resources, requireType0BResources, requireType82Resources,
+  requireType88Resources, requireType89Resources,
 } from './world-resources.js';
 
 // ----------------------------------------------------------- the record layout
@@ -424,6 +424,33 @@ function init08(ram, rom, a5, a6, unported,
   });
 }
 
+function init09(ram, rom, a5, a6, unported,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x09]) {
+  const resources = requireType09Resources(descriptor);
+  return damageFirstFamily(ram, rom, a5, a6, unported, {
+    subTab: resources.subPrototype,
+    recTab: resources.recordPrototype,
+    recD0: 0x0a,
+    initBody: resources.initBody,
+    sprite: resources.sprite,
+    armBArt: resources.armBArt,
+    initAim: resources.initAim,
+    killStages: [[1, G.d8]],
+    tail(ram, rom, a5, a6, unported) {
+      dmgTailFacing(ram, a5, a6);
+      if (resources.initAim.translated) {
+        const aimed = aim64AtTarget(
+          () => type07AimTables(rom, resources), ram, a5, a6,
+        );
+        ram.setU8(a5 + R.rec23, aimed.carry ? 0x20 : aimed.dir);
+      } else {
+        ram.setU8(a5 + R.rec23, 0x20);
+      }
+      hpAdjustBA(ram, a5);
+    },
+  });
+}
+
 function init0B(ram, rom, a5, a6, unported,
   descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x0b]) {
   const resources = requireType0BResources(descriptor);
@@ -575,15 +602,8 @@ BODY.set(0x26A1EA, (ram, rom, a5, a6, unported) =>
 BODY.set(0x26A4BC, (ram, rom, a5, a6, unported) =>
   init08(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x08]));
 // --- type $09 ($26A794): killStages [(1,d8)].
-BODY.set(0x26A794, (ram, rom, a5, a6, unported) => damageFirstFamily(ram, rom, a5, a6, unported, {
-  subTab: 0x26A844, recTab: 0x26A82E, recD0: 0x0a, initBody: 0x26A794,
-  killStages: [[1, G.d8]],
-  tail(ram, rom, a5, a6, unported) {
-    dmgTailFacing(ram, a5, a6);
-    ram.setU8(a5 + R.rec23, 0x20);
-    hpAdjustBA(ram, a5);
-  },
-}));
+BODY.set(0x26A794, (ram, rom, a5, a6, unported) =>
+  init09(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x09]));
 // --- type $0B ($26ABA0): killStages [(1,d8),(2,f6)]; a long stage-4 clock ladder.
 BODY.set(0x26ABA0, (ram, rom, a5, a6, unported) =>
   init0B(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x0b]));
@@ -2679,6 +2699,10 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
       const canonical = requireType08Resources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>
         init08(ram, rom, a5, a6, unported, canonical));
+    } else if (descriptor.algorithm === 'type09') {
+      const canonical = requireType09Resources(descriptor, edition);
+      map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>
+        init09(ram, rom, a5, a6, unported, canonical));
     } else if (descriptor.algorithm === 'type0B') {
       const canonical = requireType0BResources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>

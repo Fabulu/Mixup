@@ -134,8 +134,8 @@ import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
 import {
   BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType08Resources,
-  requireType0BResources, requireType82Resources, requireType88Resources,
-  requireType89Resources,
+  requireType09Resources, requireType0BResources, requireType82Resources,
+  requireType88Resources, requireType89Resources,
 } from './world-resources.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
 import { handler83 } from './stage3type83.js';
@@ -4967,19 +4967,24 @@ function fireFamily2814AC(ram, rom, a5, a6, ctx, dIdx, dDir, d0, site,
  * `$26A860` -- TYPE `$09`, 7 records, first trigger clk 420.
  * Span `$26A860..$26A9C4` plus the shared tail.
  */
-function handler09(ram, rom, a5, ctx) {
+function handler09(ram, rom, a5, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x09]) {
+  const resources = requireType09Resources(descriptor);
   const a6 = ram.u32(a5 + 0x06);
-  if (damageFirstHead(ram, rom, a5, a6, ctx, 0x08) === null) return;
+  if (damageFirstHead(ram, rom, a5, a6, ctx, 0x08, resources) === null) return;
   // $26A8FE: the FIRE first (this one has no `($26,A5)` fork before it).
   const cd = ram.u8(a5 + R.cooldown);                  // $26A8FE subq.b #$1,($18,A5)
   ram.setU8(a5 + R.cooldown, (cd - 1) & 0xff);
   if (((cd - 1) & 0xff) === 0) {                       // $26A902 bne $26A944
     ram.setU8(a5 + R.cooldown,
       u16(0x58 - ram.u16(G.b4) + 2) & 0xff);           // $26A904/$26A906/$26A90E
-    if (!boxTest2425B2(ram, rom, a6).carry) {          // $26A912 jsr $2425B2 / bcs
-      const r = aim64AtTarget(aimTables(rom), ram, a5, a6);  // $26A91A jsr $24202C
+    if (!boxTest2425B2(ram, rom, a6, resources.fireGate).carry) { // $26A912 jsr $2425B2 / bcs
+      const r = aim64AtTarget(aimTables(rom, resources), ram, a5, a6); // $26A91A jsr $24202C
       if (!r.carry) {                                  // $26A920 bcs $26A944
-        fireFamily2814AC(ram, rom, a5, a6, ctx, r.dir, r.dir, 0x0d, 0x26a93e);
+        fireFamily2814AC(
+          ram, rom, a5, a6, ctx, r.dir, r.dir, 0x0d,
+          resources.bullet.site, resources, resources.bullet,
+        );
       }
     }
   }
@@ -5012,12 +5017,12 @@ function handler09(ram, rom, a5, ctx) {
   // $26A9A2: the per-frame slew, then the shared tail.
   let d1 = ram.u8(a5 + R.rec23);                       // $26A9A2 move.b ($23,A5),D1
   if (ram.u16(0x803910) === 0) {                       // $26A9A6 tst.w $803910 / bne
-    const r = aim64AtTarget(aimTables(rom), ram, a5, a6);   // $26A9B0 jsr $24202C
+    const r = aim64AtTarget(aimTables(rom, resources), ram, a5, a6); // $26A9B0 jsr $24202C
     const tgt = r.carry ? d1 : r.dir;                  // (no `bcs` -- see $26A6CE)
     d1 = slew64(ram.u8(a5 + R.rec23), tgt);            // $26A9B6/$26A9BA jsr $242190
     ram.setU8(a5 + R.rec23, d1 & 0xff);                // $26A9C0
   }
-  drawFamily269E20(ram, rom, a5, a6, d1);              // $26A9C4 bra.w $269E20
+  drawFamily269E20(ram, rom, a5, a6, d1, resources);    // $26A9C4 bra.w $269E20
 }
 
 /**
@@ -9335,7 +9340,8 @@ const HANDLERS = new Map([
   // which stays a loud named throw -- see the W36 block's header.
   [0x26a5e4, (ram, rom, a5, ctx) =>
     handler08(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x08])],
-  [0x26a860, handler09],
+  [0x26a860, (ram, rom, a5, ctx) =>
+    handler09(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x09])],
   [0x26ad28, (ram, rom, a5, ctx) =>
     handler0B(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x0b])],
   [0x27733e, handler89],
@@ -11625,6 +11631,11 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x26a5e4);
       handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
         handler08(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type09') {
+      const canonical = requireType09Resources(descriptor, resources.edition);
+      handlers.delete(0x26a860);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handler09(ram, rom, a5, ctx, canonical));
     } else if (descriptor.algorithm === 'type0B') {
       const canonical = requireType0BResources(descriptor, resources.edition);
       handlers.delete(0x26ad28);

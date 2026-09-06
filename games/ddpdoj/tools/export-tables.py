@@ -10764,6 +10764,8 @@ def verify(t: dict) -> list[str]:
         bad.append("embedded Version A Stage 1 Type $0D/$1C executable identity manifest drifted")
     if white.get("stage1Type08") != WHITE_STAGE1_TYPE08_EXECUTABLE_IDENTITY:
         bad.append("embedded Version A Stage 1 Type $08 executable identity manifest drifted")
+    if white.get("stage1Type09") != WHITE_STAGE1_TYPE09_EXECUTABLE_IDENTITY:
+        bad.append("embedded Version A Stage 1 Type $09 executable identity manifest drifted")
     if white.get("stage1Type0B") != WHITE_STAGE1_TYPE0B_EXECUTABLE_IDENTITY:
         bad.append("embedded Version A Stage 1 Type $0B executable identity manifest drifted")
     if white.get("stage1Type82") != WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY:
@@ -11489,6 +11491,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x1668C4, 0x0008, "White A low type-table entry $05"),
     (0x1668D4, 0x0008, "White A low type-table entry $07"),
     (0x1668DC, 0x0008, "White A low type-table entry $08"),
+    (0x1668E4, 0x0008, "White A low type-table entry $09"),
     (0x1668F4, 0x0008, "White A low type-table entry $0B"),
     (0x166904, 0x0008, "White A low type-table entry $0D"),
     (0x16691C, 0x0008, "White A low type-table entry $10"),
@@ -11526,6 +11529,9 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x16952C, 0x0008, "White A type-$08 run-length init stub"),
     (0x16962A, 0x0016, "White A type-$08 enemy-record prototype"),
     (0x169640, 0x001C, "White A type-$08 sub-record prototype"),
+    (0x169804, 0x0008, "White A type-$09 run-length init stub"),
+    (0x1698A6, 0x0016, "White A type-$09 enemy-record prototype"),
+    (0x1698BC, 0x001C, "White A type-$09 sub-record prototype"),
     (0x169C10, 0x0008, "White A type-$0B run-length init stub"),
     (0x169D6E, 0x0016, "White A type-$0B enemy-record prototype"),
     (0x169D84, 0x001C, "White A type-$0B sub-record prototype"),
@@ -11729,6 +11735,18 @@ WHITE_STAGE1_TYPE08_EXECUTABLE_IDENTITY = {
     "handler": {
         "start": "$16965C", "end": "$169804",
         "sha256": "74c6e466a777e1bde99b104bf3273df03cdc9ad1761efb73675fa7ec8e4a93b3",
+    },
+}
+
+
+WHITE_STAGE1_TYPE09_EXECUTABLE_IDENTITY = {
+    "init": {
+        "start": "$169804", "end": "$1698D8",
+        "sha256": "fd0daf32b411dac85eb2581b6bb45f13ea969a800fb7ce9404397be837ea7f92",
+    },
+    "handler": {
+        "start": "$1698D8", "end": "$169A40",
+        "sha256": "1a3ebad7c89aacd72fed85ecaf740add68358e04016e4092b51776cb034659d2",
     },
 }
 
@@ -12248,6 +12266,7 @@ def white_label_tables(d: bytes) -> dict:
         "stage1Type20": WHITE_STAGE1_TYPE20_EXECUTABLE_IDENTITY,
         "stage1Type0D": WHITE_STAGE1_TYPE0D_EXECUTABLE_IDENTITY,
         "stage1Type08": WHITE_STAGE1_TYPE08_EXECUTABLE_IDENTITY,
+        "stage1Type09": WHITE_STAGE1_TYPE09_EXECUTABLE_IDENTITY,
         "stage1Type0B": WHITE_STAGE1_TYPE0B_EXECUTABLE_IDENTITY,
         "stage1Type82": WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY,
         "stage1Type88": WHITE_STAGE1_TYPE88_EXECUTABLE_IDENTITY,
