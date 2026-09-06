@@ -44,7 +44,9 @@ import { drawByte242B3C, drawByte242E24, drawByteWithResources, drawNegative242E
   drawLong243A9C } from './rng.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { initType99_29E580 } from './boss3type99.js';
-import { BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES } from './world-resources.js';
+import {
+  BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES, requireType82Resources,
+} from './world-resources.js';
 
 // ----------------------------------------------------------- the record layout
 // A5 = enemy record, A6 = sub-record (= ($6,A5)).  The offsets the init bodies
@@ -1004,44 +1006,60 @@ BODY.set(0x269754, (ram, rom, a5, a6, unported, tables, palette) => {
 BODY.set(0x273802, (ram, rom, a5, a6, unported) =>
   init80(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x80]));
 
-// type $82 ($27462A): runLen 1, sprite/bucket from $272DFA, palette $27474A.
-BODY.set(0x27462A, (ram, rom, a5, a6, unported) => {
-  if (ram.u16(G.stage) === 0 && ram.u16(G.d8) !== 0) { freeEnemy(ram, a5); return FREED; }
-  // W428: the same correction as type $80. Stub $274622 `move.w #$1,($4,A5)`,
-  // two long-form subs, so `$27464E move.l A0,($44,A5)` stores $274770 + 56 =
-  // $2747A8. `$274770 + 28` = $27478C was the second sub's flags word ($A000).
-  const cues82 = loadSubProto(ram, rom, a5, a6, 0x274770);   // jsr $2637A2
-  ram.setU32(a5 + R.rec44, cues82);                    // $27464E move.l A0,($44,A5)
-  loadRecordProto(ram, rom, a5, 0x274754, 0x0d);       // moveq #$d,D0; jsr $26377A
-  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
-  unported?.note(0x24200a, `$24200A aim in type $82 init -- bucket tracks W24 pos`);
+// Type $82 uses the same initializer algorithm in both editions. The descriptor
+// owns every cartridge address; Black remains the behavior oracle.
+function retireInit82(ram, a5, descriptor) {
+  if (descriptor.retirement.semantic !== 'freeEnemy') {
+    throw new TypeError('type $82 init retirement must preserve freeEnemy semantics');
+  }
+  freeEnemy(ram, a5);
+  return FREED;
+}
+
+function init82(ram, rom, a5, a6, unported,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x82]) {
+  const resources = requireType82Resources(descriptor);
+  if (ram.u16(G.stage) === 0 && ram.u16(G.d8) !== 0) {
+    return retireInit82(ram, a5, resources);
+  }
+  // Two long-form subs make the returned A0 the cue cursor after 56 bytes.
+  const cues82 = loadSubProto(ram, rom, a5, a6, resources.subPrototype);
+  ram.setU32(a5 + R.rec44, cues82);
+  loadRecordProto(ram, rom, a5, resources.recordPrototype, 0x0d);
+  readInitPosition(ram, rom, a5, unported);
+  unported?.note(resources.initAimSite,
+    `$${resources.initAimSite.toString(16).toUpperCase()} aim in type $82 init`);
   let d1 = ram.u8(a6 + S.heading);
   ram.setU8(a5 + R.rec2D, d1);
   d1 = (d1 & 0x3e) << 1;
-  ram.setU32(a5 + R.rec28, rom.u32(0x272DFA + d1));
-  ram.setU8(a5 + 0x2e, 0x04);                           // move.b #$4,($2e,A5)
-  ram.setU8(a5 + 0x2f, 0x05);                           // move.b #$5,($2f,A5)
+  ram.setU32(a5 + R.rec28, rom.u32(resources.aimSprite + d1));
+  ram.setU8(a5 + 0x2e, 0x04);
+  ram.setU8(a5 + 0x2f, 0x05);
   let d0 = ram.u16(G.b8) & 0xff;
-  ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);  // $8130B8 -> +$1E
+  ram.setU8(a5 + R.rec1E, (ram.u8(a5 + R.rec1E) - d0) & 0xff);
   d0 = ram.u16(G.b4) & 0xff;
-  ram.setU8(a5 + 0x1f, (ram.u8(a5 + 0x1f) - d0) & 0xff);        // $8130B4 -> +$1F
+  ram.setU8(a5 + 0x1f, (ram.u8(a5 + 0x1f) - d0) & 0xff);
   d0 = ram.u16(G.b8) & 0xff;
-  ram.setU8(a5 + R.rec22, (ram.u8(a5 + R.rec22) - d0) & 0xff);  // $8130B8 -> +$22
-  if (ram.u16(G.rank98) !== 0)                          // subi.b #$10,($22,A5)
+  ram.setU8(a5 + R.rec22, (ram.u8(a5 + R.rec22) - d0) & 0xff);
+  if (ram.u16(G.rank98) !== 0)
     ram.setU8(a5 + R.rec22, (ram.u8(a5 + R.rec22) - 0x10) & 0xff);
   d0 = ram.u16(G.b2) & 0xff;
-  ram.setU8(a5 + R.rec23, (ram.u8(a5 + R.rec23) - d0) & 0xff);  // $8130B2 -> +$23
-  const lp = ram.u16(G.stageX2);
-  const pal = 0x27474A + lp;
+  ram.setU8(a5 + R.rec23, (ram.u8(a5 + R.rec23) - d0) & 0xff);
+  const pal = resources.palette + ram.u16(G.stageX2);
   ram.setU8(a6 + S.palette, rom.u8(pal));
   ram.setU8(a5 + R.rec1C, rom.u8(pal));
   ram.setU8(a5 + R.rec1D, rom.u8(pal + 1));
   if (ram.u16(G.stage) === 4) {
-    for (const g of [G.da, G.dc, G.de]) {
-      if (ram.u16(g) !== 0) { freeEnemy(ram, a5); return FREED; }
+    for (const gate of [G.da, G.dc, G.de]) {
+      if (ram.u16(gate) !== 0) {
+        return retireInit82(ram, a5, resources);
+      }
     }
   }
-});
+}
+
+BODY.set(0x27462A, (ram, rom, a5, a6, unported) =>
+  init82(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x82]));
 
 // Types $85/$86 share both prototypes, the threshold-cue script and the aimed
 // heading-art table. Their only init-body difference is the five-pair palette
@@ -2606,6 +2624,10 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
       const canonical = requireType1CResources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6) =>
         init1C(ram, rom, a5, a6, canonical));
+    } else if (descriptor.algorithm === 'type82') {
+      const canonical = requireType82Resources(descriptor, edition);
+      map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>
+        init82(ram, rom, a5, a6, unported, canonical));
     } else if (descriptor.algorithm === 'type05') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init05(ram, rom, a5, a6, unported, descriptor));

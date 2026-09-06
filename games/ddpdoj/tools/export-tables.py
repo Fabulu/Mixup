@@ -10762,6 +10762,8 @@ def verify(t: dict) -> list[str]:
         bad.append("embedded Version A Stage 1 Type $20 executable identity manifest drifted")
     if white.get("stage1Type0D") != WHITE_STAGE1_TYPE0D_EXECUTABLE_IDENTITY:
         bad.append("embedded Version A Stage 1 Type $0D/$1C executable identity manifest drifted")
+    if white.get("stage1Type82") != WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY:
+        bad.append("embedded Version A Stage 1 Type $82 executable identity manifest drifted")
     if any(address < 0 or address + length > 0x200000
            for address, length, _ in WHITE_BUTTON2_RUNTIME_WINDOWS):
         bad.append("embedded Version A Button 2 authority escaped the Build A cartridge region")
@@ -11415,8 +11417,8 @@ WHITE_LABEL_WINDOWS = [
     (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
 ]
 
-# Task #253's private Stage 1 world slice, extended through Task #277 for Types
-# $27, $10, $85, $0D, and $1C. These are the bounded Build A data windows
+# Task #253's private Stage 1 world slice, extended through Task #279 for Types
+# $27, $10, $85, $0D, $1C, and $82. These are the bounded Build A data windows
 # read by the shared background, spawn, enemy, bullet, cue, item, and effect
 # algorithms.
 WHITE_WORLD_RUNTIME_WINDOWS = [
@@ -11527,6 +11529,9 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x17274E, 0x0100, "White A type-$80 narrow fan vectors"),
     (0x17284E, 0x0008, "White A type-$80 run-length init stub"),
     (0x172976, 0x009E, "White A type-$80 palette, prototypes, and cue thresholds"),
+    (0x173676, 0x0008, "White A type-$82 run-length init stub"),
+    (0x173794, 0x0070, "White A type-$82 palette and prototypes"),
+    (0x1737FC, 0x001E, "White A type-$82 cue thresholds"),
     (0x174866, 0x0008, "White A type-$85 run-length init stub"),
     (0x1748E4, 0x0084, "White A type-$85 palette, prototypes, and cue thresholds"),
     (0x175748, 0x0008, "White A type-$8A run-length init stub"),
@@ -11538,6 +11543,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x17733A, 0x0048, "White A type-$8A 18-entry emitter dispatch"),
     (0x1773BE, 0x000C, "White A type-$8A Pool-B bucket-remap row"),
     (0x17D4C4, 0x0008, "White A high type-table entry $80"),
+    (0x17D4D4, 0x0008, "White A high type-table entry $82"),
     (0x17D4EC, 0x0008, "White A high type-table entry $85"),
     (0x17D514, 0x0008, "White A high type-table entry $8A"),
     (0x17D51C, 0x0008, "White A high type-table entry $8B"),
@@ -11681,6 +11687,18 @@ WHITE_STAGE1_TYPE0D_EXECUTABLE_IDENTITY = {
     "type1CHandler": {
         "start": "$16B26E", "end": "$16B2C8",
         "sha256": "a842eba7976b281f1ffcd8dfb7abd52f8f38ec602b6377804ab071e21bbd7d21",
+    },
+}
+
+
+WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY = {
+    "init": {
+        "start": "$173676", "end": "$17381A",
+        "sha256": "32a2859d0e0c79a09c0e8e5569b516cea97470865a271800ff0a0f974d4b9f9b",
+    },
+    "handler": {
+        "start": "$17381A", "end": "$173BC0",
+        "sha256": "c871a325f02618695ad45556fb92121229d0220176cd9b0546495f14f6725b65",
     },
 }
 
@@ -12151,6 +12169,7 @@ def white_label_tables(d: bytes) -> dict:
         "stage1Type8B": WHITE_STAGE1_TYPE8B_EXECUTABLE_IDENTITY,
         "stage1Type20": WHITE_STAGE1_TYPE20_EXECUTABLE_IDENTITY,
         "stage1Type0D": WHITE_STAGE1_TYPE0D_EXECUTABLE_IDENTITY,
+        "stage1Type82": WHITE_STAGE1_TYPE82_EXECUTABLE_IDENTITY,
         "playerWindows": [{"base": f"${address:06X}", "len": length}
                           for address, length, _ in WHITE_PLAYER_WINDOWS],
         "shotProducerWindows": [{"base": f"${address:06X}", "len": length}

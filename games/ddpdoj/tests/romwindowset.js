@@ -818,10 +818,19 @@
 // Measured: 1803 -> 1820 windows, 659,797 -> 661,787 bytes, and 79 -> 79
 // overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1820;
+// ---------------------------------------------------------------------------
+// TASK #279 PRIVATE WHITE TYPE $82 ADDED FOUR WINDOWS.
+// ---------------------------------------------------------------------------
+// The Build A initializer stub, palette/prototypes, cue thresholds, and high
+// type-table row add 158 exact bytes below $200000. The cue window overlaps the
+// palette/prototype window by eight bytes.
+// Measured: 1820 -> 1824 windows, 661,787 -> 661,945 bytes, and 79 -> 80
+// overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 1824;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 661787;
+export const ROM_WINDOW_BYTES = 661945;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -847,8 +856,11 @@ export const WHITE_OPTION_OVERLAP_PAIRS = Object.freeze([
   Object.freeze([0x14eb62, 0x14eab4]),
 ]);
 
+/** Task #279's exact `[cue thresholds, palette/prototypes]` overlap. */
+export const WHITE_TYPE82_OVERLAP_PAIR = Object.freeze([0x1737fc, 0x173794]);
+
 /** The number of overlapping PAIRS over the whole window set. MEASURED. */
-export const ROM_OVERLAP_PAIRS = 79;
+export const ROM_OVERLAP_PAIRS = 80;
 
 /** The four pairs W428 added, `[cue script, the prototype window it straddles]`. */
 export const W428_OVERLAP_PAIRS = Object.freeze([
@@ -918,8 +930,8 @@ function removeTask277BlackAnimationWindow(tables, required = false) {
   return tables;
 }
 
-const WHITE_LABEL_WINDOW_COUNT = 866;
-const WHITE_LABEL_WINDOW_BYTES = 203990;
+const WHITE_LABEL_WINDOW_COUNT = 870;
+const WHITE_LABEL_WINDOW_BYTES = 204148;
 
 /** Remove the later embedded Version A family and Task #277's Black animation
  *  correction before reconstructing any earlier Black Label ledger. The

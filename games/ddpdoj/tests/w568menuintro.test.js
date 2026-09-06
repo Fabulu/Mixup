@@ -107,7 +107,7 @@ test('W568 keeps cursor and seqSel independent, exports the exact intro, and ent
     assert.equal(overlappingPairs(TABLE_JSON.rom.windows.map((w) => [
       Number.parseInt(w.base.slice(1), 16), w.len,
     ])), 77);
-    assert.equal(ROM_OVERLAP_PAIRS, 79);
+    assert.equal(ROM_OVERLAP_PAIRS, 80);
 
     for (let i = 0; i < WINDOW_SPECS.length; i++) {
       const [base, len, index, payload] = WINDOW_SPECS[i];

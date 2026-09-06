@@ -139,7 +139,7 @@ test('W563 adds only the strict $2A97B6+$1E template window', { skip: SKIP }, ()
   assert.equal(overlappingPairs(FUTURE_TABLE.rom.windows.map((w) => [
     Number.parseInt(w.base.slice(1), 16), w.len,
   ])), 77);
-  assert.equal(ROM_OVERLAP_PAIRS, 79);
+  assert.equal(ROM_OVERLAP_PAIRS, 80);
   assert.equal(caught(() => ROM.u8(0x2a97d3)), null);
   assert.equal(caught(() => ROM.u8(0x2a97d4))?.romAddress, 0x2a97d4,
     'the eight self-pointers are deliberately outside the strict window');

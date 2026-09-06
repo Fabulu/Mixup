@@ -270,6 +270,9 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$17274E', len: 0x0100 },
     { base: '$17284E', len: 0x0008 },
     { base: '$172976', len: 0x009e },
+    { base: '$173676', len: 0x0008 },
+    { base: '$173794', len: 0x0070 },
+    { base: '$1737FC', len: 0x001e },
     { base: '$174866', len: 0x0008 },
     { base: '$1748E4', len: 0x0084 },
     { base: '$175748', len: 0x0008 },
@@ -281,6 +284,7 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$17733A', len: 0x0048 },
     { base: '$1773BE', len: 0x000c },
     { base: '$17D4C4', len: 0x0008 },
+    { base: '$17D4D4', len: 0x0008 },
     { base: '$17D4EC', len: 0x0008 },
     { base: '$17D514', len: 0x0008 },
     { base: '$17D51C', len: 0x0008 },
@@ -358,6 +362,16 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     type1CHandler: {
       start: '$16B26E', end: '$16B2C8',
       sha256: 'a842eba7976b281f1ffcd8dfb7abd52f8f38ec602b6377804ab071e21bbd7d21',
+    },
+  });
+  assert.deepEqual(white.stage1Type82, {
+    init: {
+      start: '$173676', end: '$17381A',
+      sha256: '32a2859d0e0c79a09c0e8e5569b516cea97470865a271800ff0a0f974d4b9f9b',
+    },
+    handler: {
+      start: '$17381A', end: '$173BC0',
+      sha256: 'c871a325f02618695ad45556fb92121229d0220176cd9b0546495f14f6725b65',
     },
   });
   assert.deepEqual(white.stage1Type8B, {
@@ -451,8 +465,8 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
   const g = game();
   const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
 
-  assert.equal(excluded.size, 866);
-  assert.equal(tables.rom.windows.length, 1820,
+  assert.equal(excluded.size, 870);
+  assert.equal(tables.rom.windows.length, 1824,
     'runtime projection does not mutate the complete exported table');
   assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [954, 457797]);
   for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);

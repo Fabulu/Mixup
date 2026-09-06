@@ -77,7 +77,7 @@ import { runInitBodyAddr } from '../src/initbody.js';
 import {
   OVERLAP_PAIRS_BEFORE_W428, ROM_OVERLAP_PAIRS, ROM_WINDOW_COUNT,
   W428_OVERLAP_PAIRS, W497_OVERLAP_PAIR, W518_OVERLAP_PAIR,
-  WHITE_OPTION_OVERLAP_PAIRS, overlappingPairs,
+  WHITE_OPTION_OVERLAP_PAIRS, WHITE_TYPE82_OVERLAP_PAIR, overlappingPairs,
 } from './romwindowset.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -352,10 +352,11 @@ test('W428 still contributes exactly four overlaps after later forced pairs',
   }
 
   // W428 contributed four pairs to the historical 71. W497 and W518 later
-  // contributed one each, and task #238's White option closure contributed two.
-  // Removing only W428's four now leaves 75.
+  // contributed one each, task #238's White option closure contributed two,
+  // and task #279's White Type $82 cue window contributed one. Removing only
+  // W428's four now leaves 76.
   assert.equal(WHITE_OPTION_OVERLAP_PAIRS.length, 2, 'two White option pairs');
-  const laterPairs = 2 + WHITE_OPTION_OVERLAP_PAIRS.length;
+  const laterPairs = 3 + WHITE_OPTION_OVERLAP_PAIRS.length;
   const without = ws.filter(([a]) => !mine.has(a));
   assert.equal(without.length, ROM_WINDOW_COUNT - 4, 'four windows removed');
   assert.equal(overlappingPairs(without), OVERLAP_PAIRS_BEFORE_W428 + laterPairs,
@@ -374,6 +375,17 @@ test('W428 still contributes exactly four overlaps after later forced pairs',
   assert.equal(Math.min(glyphWindow[0] + glyphWindow[1], priorWindow[0] + priorWindow[1])
     - Math.max(glyphWindow[0], priorWindow[0]), 10,
   'W518 adds exactly one forced ten-byte overlap');
+
+  const [type82Cue, type82Proto] = WHITE_TYPE82_OVERLAP_PAIR;
+  const type82CueWindow = ws.find(([base]) => base === type82Cue);
+  const type82ProtoWindow = ws.find(([base]) => base === type82Proto);
+  assert.deepEqual([type82CueWindow, type82ProtoWindow], [
+    [0x1737fc, 0x001e], [0x173794, 0x0070],
+  ], 'Task #279 keeps both exact White Type $82 declarations');
+  assert.equal(Math.min(type82CueWindow[0] + type82CueWindow[1],
+    type82ProtoWindow[0] + type82ProtoWindow[1])
+    - Math.max(type82CueWindow[0], type82ProtoWindow[0]), 8,
+  'Task #279 adds exactly one eight-byte overlap');
 
   // ...and each new pair is the cue script against the PROTOTYPE window that
   // used to clip it, not against something unrelated.
