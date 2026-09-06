@@ -118,11 +118,12 @@ function createWhiteFixture() {
   world.resetSpawn(ram, cartridge.rom, machineCtx);
   ram.setU32(world.resources.spawn.liveCursor, SOURCE);
   ram.setU16(world.resources.spawn.distanceClock, 0x01e1);
+  const initSounds = [];
   assert.deepEqual(runSpawnWalker(
     ram, cartridge.rom, machineCtx.unportedLog, world.tables,
-    null, palette, null, world.resources,
+    null, palette, (address) => initSounds.push(address), world.resources,
   ), { script: 1, deferred: 0 });
-  return { ...cartridge, ram, palette, machineCtx, world };
+  return { ...cartridge, ram, palette, machineCtx, world, initSounds };
 }
 
 function handlerContext(fixture, extra = {}) {
@@ -213,7 +214,7 @@ test('White Type $31 follows its native spawn, palette, animation, sound, draw, 
   }
 
   const fixture = createWhiteFixture();
-  const { ram, rom, reads, palette, machineCtx, world } = fixture;
+  const { ram, rom, reads, palette, machineCtx, world, initSounds } = fixture;
   assert.deepEqual(Array.from(rom.bytes(SOURCE, 8)), [
     0x01, 0xe1, 0x00, 0x00, 0x31, 0x80, 0x00, 0x91,
   ]);
@@ -245,9 +246,9 @@ test('White Type $31 follows its native spawn, palette, animation, sound, draw, 
       Array.from(rom.bytes(block, 64)),
     );
   }
-  assert.deepEqual(machineCtx.unportedLog.report(), [
-    '      1 x $18B586 $18B586 in type $31 init: bespoke; not a stat',
-  ]);
+  assert.deepEqual(initSounds, [white.initHook]);
+  assert.equal(white.initHook, 0x18b586, 'the init cue uses the native White wrapper');
+  assert.deepEqual(machineCtx.unportedLog.report(), []);
   for (const address of [
     SOURCE, AUX, 0x166a24, white.initStub + 2,
     white.recordPrototype, white.subPrototype,

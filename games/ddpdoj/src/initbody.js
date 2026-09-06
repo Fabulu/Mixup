@@ -1052,14 +1052,16 @@ BODY.set(0x296fb0, (ram, rom, a5, a6, unported, tables, palette) =>
     BLACK_WORLD_RESOURCES.enemyTypes[0x24]));
 
 // --- type $31: boss-approach animation prop with loop-indexed palette banks.
-function init31(ram, rom, a5, a6, unported, palette,
+function init31(ram, rom, a5, a6, unported, palette, soundPost,
   descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x31]) {
   const resources = requireType31Resources(descriptor);
   loadSubProto(ram, rom, a5, a6, resources.subPrototype);
   loadRecordProto(ram, rom, a5, resources.recordPrototype, 0x05);
   ram.setU32(a6 + S.posX, 0x40001c00);
-  unported?.note(resources.initHook,
-    `$${resources.initHook.toString(16).toUpperCase()} in type $31 init: bespoke; not a stat`);
+  if (soundPost) soundPost(resources.initHook);
+  else unported?.note(resources.initHook,
+    `$${resources.initHook.toString(16).toUpperCase()} in type $31 init `
+    + '(no soundPost callback on this init-body call)');
   const lp = ram.u16(G.stageX2);
   const first = resources.palette.first;
   const bank1 = rom.u16(first.bankTable + lp);
@@ -1074,8 +1076,8 @@ function init31(ram, rom, a5, a6, unported, palette,
       .toString(16).toUpperCase()}[$813094]`, resources.palette.installer);
 }
 
-BODY.set(0x269754, (ram, rom, a5, a6, unported, tables, palette) =>
-  init31(ram, rom, a5, a6, unported, palette,
+BODY.set(0x269754, (ram, rom, a5, a6, unported, tables, palette, soundPost) =>
+  init31(ram, rom, a5, a6, unported, palette, soundPost,
     BLACK_WORLD_RESOURCES.enemyTypes[0x31]));
 
 // --- the aim-indexed types. Type $80 performs both authentic aim64 calls and
@@ -2772,8 +2774,9 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
         init24(ram, rom, a5, a6, unported, palette, canonical));
     } else if (descriptor.algorithm === 'type31') {
       const canonical = requireType31Resources(descriptor, edition);
-      map.set(canonical.initBody, (ram, rom, a5, a6, unported, tables, palette) =>
-        init31(ram, rom, a5, a6, unported, palette, canonical));
+      map.set(canonical.initBody,
+        (ram, rom, a5, a6, unported, tables, palette, soundPost) =>
+          init31(ram, rom, a5, a6, unported, palette, soundPost, canonical));
     } else if (descriptor.algorithm === 'type80') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init80(ram, rom, a5, a6, unported, descriptor));
