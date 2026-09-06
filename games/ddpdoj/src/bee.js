@@ -98,7 +98,9 @@ import { enqueueThroughStub, enqueueZoomedThroughStub, enqueueRegisters } from '
 import { scoreByMask } from './score.js';
 import { bcd242AC6 } from './items.js';
 import { grantHyperWithResources } from './hyper.js';
-import { BLACK_POOL_A_RESOURCES } from './pool-a-resources.js';
+import {
+  BLACK_POOL_A_RESOURCES, WHITE_POOL_A_ALLOCATION_IDENTITY,
+} from './pool-a-resources.js';
 export { BLACK_POOL_A_RESOURCES };
 import {
   drawByte242B3C, drawByte2431F4, drawByte242E24, drawSigned242FDE,
@@ -369,21 +371,48 @@ export function allocBee27F92A(
   return allocBeeWithResources(ram, rom, ctx, kind, layer, carrierA6, resources);
 }
 
-export function allocBeeWithResources(ram, rom, ctx, kind, layer, carrierA6, resources) {
+export function validateBeeAllocationResources(resources, kind) {
   const bee = resources?.bee;
-  if (!bee || !Object.isFrozen(bee) || resources.allocator !== bee.allocator
-      || bee.slots <= 0 || !Number.isInteger(bee.scanBase)) {
+  if (!resources || !Object.isFrozen(resources)
+      || !['black', 'white'].includes(resources.edition)
+      || !bee || !Object.isFrozen(bee)
+      || !Number.isInteger(bee.allocator) || !Number.isInteger(bee.scanBase)
+      || !Number.isInteger(bee.slots) || bee.slots <= 0
+      || !Array.isArray(bee.supportedKinds) || !Object.isFrozen(bee.supportedKinds)
+      || bee.supportedKinds.length !== 2
+      || !bee.supportedKinds.includes(KIND.bee)
+      || !bee.supportedKinds.includes(KIND.beeFlying)) {
     throw new TypeError('bee allocation needs a complete frozen edition Pool-A resource graph');
   }
-  if (resources === BLACK_POOL_A_RESOURCES) {
-    return allocBeeBlack(ram, rom, ctx, kind, layer, carrierA6);
+  if (resources.edition === 'black') {
+    if (resources !== BLACK_POOL_A_RESOURCES
+        || bee.allocator !== 0x27f92a || bee.allocation !== 'reserved-ten'
+        || bee.scanBase !== POOL_A.reservedBase || bee.slots !== POOL_A.reservedSlots) {
+      throw new TypeError('bee allocation needs the exact Black reserved-ten resource graph');
+    }
+    if (kind !== undefined && !bee.supportedKinds.includes(kind)) {
+      unreached(bee.allocator, `$27F92A reserved-ten bee allocation cannot accept D0 = $${
+        kind.toString(16).toUpperCase()}`);
+    }
+    return resources;
   }
-  if (!bee.supportedKinds?.includes(kind)) {
+  if (kind !== undefined && !bee.supportedKinds.includes(kind)) {
     throw new TypeError('bee allocation needs a complete frozen edition Pool-A resource graph');
+  }
+  for (const supportedKind of bee.supportedKinds) {
+    requireGeneralPoolAResources(resources, supportedKind);
   }
   if (bee.allocation !== 'general-seventy' || bee.scanBase !== resources.base
-      || bee.slots !== resources.generalSlots) {
-    unreached(bee.allocator, 'edition bee allocator does not match its general Pool-A scan');
+      || bee.slots !== resources.generalSlots || bee.allocator !== resources.allocator) {
+    throw new TypeError('bee allocation needs a complete frozen edition Pool-A resource graph');
+  }
+  return resources;
+}
+
+export function allocBeeWithResources(ram, rom, ctx, kind, layer, carrierA6, resources) {
+  validateBeeAllocationResources(resources, kind);
+  if (resources === BLACK_POOL_A_RESOURCES) {
+    return allocBeeBlack(ram, rom, ctx, kind, layer, carrierA6);
   }
   return allocPoolAEdition(ram, rom, ctx, kind, 0, layer, carrierA6, resources);
 }
@@ -619,6 +648,126 @@ const IMPACT_FINISH = Object.freeze({
 });
 const IMPACT_FINISH_DISPATCH = 0x280bce;
 
+function requireGeneralPoolAResources(resources, kind) {
+  if (!resources || !Object.isFrozen(resources)
+      || resources.allocation !== 'general-seventy'
+      || !Number.isInteger(resources.allocator) || !Number.isInteger(resources.alloc)
+      || !Number.isInteger(resources.base) || !Number.isInteger(resources.liveCount)
+      || !Number.isInteger(resources.scrollShort)
+      || resources.stride !== 0x2c || resources.generalSlots !== 70
+      || resources.totalSlots !== 80) {
+    throw new TypeError('Pool-A allocation needs a complete frozen general-seventy resource graph');
+  }
+  if (resources === BLACK_POOL_A_RESOURCES) {
+    if (resources.edition !== 'black'
+        || resources.allocator !== 0x27f8ee || resources.alloc !== 0x27f8f0) {
+      throw new TypeError('Pool-A allocation needs the exact Black general-seventy resource graph');
+    }
+    return;
+  }
+  if (resources.edition !== 'white'
+      || resources.allocator !== WHITE_POOL_A_ALLOCATION_IDENTITY.allocator
+      || resources.alloc !== WHITE_POOL_A_ALLOCATION_IDENTITY.alloc
+      || resources.base !== WHITE_POOL_A_ALLOCATION_IDENTITY.base
+      || resources.liveCount !== WHITE_POOL_A_ALLOCATION_IDENTITY.liveCount
+      || resources.scrollShort !== WHITE_POOL_A_ALLOCATION_IDENTITY.scrollShort
+      || resources.dispatch !== WHITE_POOL_A_ALLOCATION_IDENTITY.dispatch
+      || resources.dispatchEntries !== WHITE_POOL_A_ALLOCATION_IDENTITY.dispatchEntries
+      || resources.validateDispatch !== true
+      || resources.templateTable !== WHITE_POOL_A_ALLOCATION_IDENTITY.templateTable
+      || resources.templatePointers !== WHITE_POOL_A_ALLOCATION_IDENTITY.templatePointers
+      || resources.fillHookTable !== WHITE_POOL_A_ALLOCATION_IDENTITY.fillHookTable
+      || resources.fillHooks !== WHITE_POOL_A_ALLOCATION_IDENTITY.fillHooks
+      || resources.fillHookDispatch !== WHITE_POOL_A_ALLOCATION_IDENTITY.fillHookDispatch
+      || resources.layerTable !== WHITE_POOL_A_ALLOCATION_IDENTITY.layerTable
+      || resources.layerEntries !== WHITE_POOL_A_ALLOCATION_IDENTITY.layerEntries
+      || resources.layerEmitters !== WHITE_POOL_A_ALLOCATION_IDENTITY.layerEmitters
+      || resources.supportedKinds !== WHITE_POOL_A_ALLOCATION_IDENTITY.supportedKinds
+      || !Array.isArray(resources.supportedKinds) || !Object.isFrozen(resources.supportedKinds)) {
+    throw new TypeError('Pool-A allocation needs a complete frozen general-seventy resource graph');
+  }
+  if (!resources.supportedKinds.includes(kind)) {
+    unreached(resources.alloc, `Pool-A kind offset $${kind.toString(16)
+      .toUpperCase()} is outside this edition capability`);
+  }
+  const hook = resources.fillHooks?.[kind];
+  if (!Number.isInteger(resources.dispatch)
+      || !Array.isArray(resources.dispatchEntries) || !Object.isFrozen(resources.dispatchEntries)
+      || resources.dispatchEntries.length !== 20
+      || resources.dispatchEntries.some((entry) => !Number.isInteger(entry))
+      || typeof resources.validateDispatch !== 'boolean'
+      || !Number.isInteger(resources.templateTable)
+      || !Object.isFrozen(resources.templatePointers)
+      || !Number.isInteger(resources.templatePointers[kind])
+      || !Number.isInteger(resources.fillHookTable)
+      || !Object.isFrozen(resources.fillHooks) || !Number.isInteger(hook)
+      || !Object.isFrozen(resources.fillHookDispatch)
+      || !['kind0', 'bee', 'jitter', 'hyper'].includes(resources.fillHookDispatch[hook])
+      || !Number.isInteger(resources.layerTable)
+      || !Number.isInteger(resources.layerEntries) || resources.layerEntries <= 0
+      || !Array.isArray(resources.layerEmitters) || !Object.isFrozen(resources.layerEmitters)
+      || resources.layerEmitters.length !== resources.layerEntries
+      || resources.layerEmitters.some((entry) => !Number.isInteger(entry))) {
+    throw new TypeError('Pool-A allocation needs a complete frozen general-seventy resource graph');
+  }
+}
+
+function requireMedalResources(resources) {
+  const medal = resources?.medal;
+  const bee = resources?.bee;
+  const jitter = resources?.rng?.jitter;
+  const mappedBody = resources.bodyDispatch?.[medal?.body] ?? medal?.body;
+  const editionFill = resources === BLACK_POOL_A_RESOURCES
+    || (Object.isFrozen(resources.supportedKinds) && resources.supportedKinds.includes(0x08)
+      && Object.isFrozen(resources.templatePointers)
+      && Number.isInteger(resources.templatePointers[0x08])
+      && Object.isFrozen(resources.fillHooks)
+      && Number.isInteger(resources.fillHooks[0x08])
+      && Object.isFrozen(resources.fillHookDispatch)
+      && resources.fillHookDispatch[resources.fillHooks[0x08]] === 'jitter'
+      && Object.isFrozen(resources.bodyDispatch));
+  if (!medal || !Object.isFrozen(medal) || !editionFill
+      || mappedBody !== medal.canonicalBody
+      || medal.canonicalBody !== 0x27fe0e
+      || !Number.isInteger(medal.collectedBody)
+      || !Number.isInteger(medal.collectP1) || !Number.isInteger(medal.collectP2)
+      || !Number.isInteger(medal.collectAdd) || !Number.isInteger(medal.collectScore)
+      || !Number.isInteger(medal.collectCap) || !Number.isInteger(medal.collectSelector)
+      || !Number.isInteger(medal.step) || !Number.isInteger(medal.wrap)
+      || !Number.isInteger(medal.base) || !Number.isInteger(medal.wrapTimer)
+      || resources.collectedImpact !== true
+      || !Number.isInteger(resources.presentationStub)
+      || !Number.isInteger(resources.collectionWrapper)
+      || (resources.soundRequestMap && !Object.isFrozen(resources.soundRequestMap))
+      || !Number.isInteger(resources.bossFlags) || !Number.isInteger(resources.freeze)
+      || !Number.isInteger(resources.scrollLong)
+      || !Object.isFrozen(resources.rng)
+      || !jitter || !Object.isFrozen(jitter) || jitter.entries !== 128
+      || !Number.isInteger(jitter.routine) || !Number.isInteger(jitter.table)
+      || (resources !== BLACK_POOL_A_RESOURCES
+        && jitter !== WHITE_POOL_A_ALLOCATION_IDENTITY.jitter)
+      || !bee || !Object.isFrozen(bee) || !Number.isInteger(bee.transform)
+      || !Number.isInteger(bee.collectionTable) || !Number.isInteger(bee.collectedEmitter)
+      || !Number.isInteger(bee.zoomScaleTable) || !Object.isFrozen(bee.bounceRng)
+      || (bee.vector && !Object.isFrozen(bee.vector))) {
+    throw new TypeError('Pool-A medal needs a complete frozen edition collection resource graph');
+  }
+  return medal;
+}
+
+function drawPoolAJitter(ram, rom, resources) {
+  const jitter = resources.rng.jitter;
+  ram.setU8(0x803917, (ram.u8(0x803917) + 1) & 0xff);
+  const index = ram.u16(0x803916) & 0x7f;
+  return rom.u8(jitter.table + index);
+}
+
+export function validatePoolAAllocationResources(resources, kind) {
+  requireGeneralPoolAResources(resources, kind);
+  if (kind === 0x08) requireMedalResources(resources);
+  return resources;
+}
+
 export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) {
   return allocPoolAWithResources(
     ram, rom, ctx, kind, offset, layer, carrierA6, BLACK_POOL_A_RESOURCES,
@@ -628,6 +777,7 @@ export function allocPoolA27F8F0(ram, rom, ctx, kind, offset, layer, carrierA6) 
 export function allocPoolAWithResources(
   ram, rom, ctx, kind, offset, layer, carrierA6, resources,
 ) {
+  validatePoolAAllocationResources(resources, kind);
   if (resources === BLACK_POOL_A_RESOURCES) {
     return allocPoolABlack(ram, rom, ctx, kind, offset, layer, carrierA6);
   }
@@ -682,7 +832,7 @@ function allocPoolABlack(ram, rom, ctx, kind, offset, layer, carrierA6) {
       // fill, not a local of the scan, which is why it is threaded rather than derived.
       const d7 = (POOL_A.generalSlots - 1) - i;
       return fillGeneralImpact280B3E(ram, rom, ctx, slot, kind,
-        offset, d2, carrierA6, spec, d7);
+        offset, d2, carrierA6, spec, d7, BLACK_POOL_A_RESOURCES);
     }
   }
   note(ctx, 0x27f8f0, '$27F8F0 general Pool-A allocation dropped: all 70 slots full');
@@ -774,6 +924,12 @@ function fillPoolAEdition(
     ram.setU16(slot + B.hitCount, 0x9601);
     return slot;
   }
+  if (hookKind === 'jitter') {
+    ram.setU8(slot + B.blinkTimer,
+      (ram.u8(slot + B.blinkTimer) + (drawPoolAJitter(ram, rom, resources) & 0x1f)) & 0xff);
+    ram.setU16(slot + B.waypoint, 0);
+    return slot;
+  }
   if (hookKind === 'hyper') {
     ram.setU32(slot + resources.ownerAt, resources.ownerByKind[kind]);
     ram.setU8(slot + B.speed, d7 & 0x0f);
@@ -805,7 +961,7 @@ function fillPoolAEdition(
 }
 
 function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
-  carrierA6, spec, d7 = 0) {
+  carrierA6, spec, d7 = 0, resources = BLACK_POOL_A_RESOURCES) {
   ram.setU16(POOL_A.liveCount, u16(ram.u16(POOL_A.liveCount) + 1));
   ram.setU16(slot + B.status, kind | 0x8000);
 
@@ -853,10 +1009,10 @@ function fillGeneralImpact280B3E(ram, rom, ctx, slot, kind, offset, d2,
   // `move.l D0,D7` around `jsr $242E24` preserves the caller's D0; the port's D0 is a parameter,
   // so the save is structural rather than something to reproduce.
   if (spec.jitterBlink) {
-    ram.setU8(slot + B.blinkTimer,                        // $280D04 add.b D0,($18,A0)
-      (ram.u8(slot + B.blinkTimer) + (drawByte242E24(ram, rom) & 0x1f)) & 0xff);
-    ram.setU16(slot + B.waypoint, 0);                     // $280D08 clr.w ($20,A0)
-    return slot;                                          // $280D0E rts
+    ram.setU8(slot + B.blinkTimer,
+      (ram.u8(slot + B.blinkTimer) + (drawPoolAJitter(ram, rom, resources) & 0x1f)) & 0xff);
+    ram.setU16(slot + B.waypoint, 0);
+    return slot;
   }
 
   // W417 -- AND SO DO HOOKS 8..15, WHICH W287 DID NOT NOTICE.
@@ -1107,6 +1263,8 @@ export function runPoolADriverWithResources(ram, rom, ctx, resources) {
       || resources.dispatchEntries.length !== 20) {
     throw new TypeError('Pool-A driver needs its complete 20-entry edition dispatch graph');
   }
+  requireGeneralPoolAResources(resources, 0x08);
+  requireMedalResources(resources);
   preflightPoolADispatch(rom, resources);
   const scoped = ctx?.poolAResources === resources ? ctx : { ...(ctx ?? {}), poolAResources: resources };
   requireBeeResources(scoped);
@@ -1279,16 +1437,18 @@ function poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining) {
  * rts` -- the same five instructions as `$27FC7C`, which is why this reuses it.
  */
 function poolAKind2Body27FE0E(ram, rom, ctx, a6, d1) {
+  const resources = ctx.poolAResources ?? BLACK_POOL_A_RESOURCES;
+  const medal = requireMedalResources(resources);
   // $27FE0E tst.w $8130F8 / $27FE14 bmi. A WORD test, so it is bit 15 of the word =
   // bit 7 of the byte at $8130F8 -- `boss.js`'s `bset #$7`. Not the $242EC2 hazard
   // (docket D48): nothing was drawn here, the flag is read straight out of RAM.
-  if ((ram.u16(0x8130f8) & 0x8000) !== 0) {               // $27FE14 bmi $27FE5E
-    return offscreenFree27FC7C(ram, a6);
+  if ((ram.u16(resources.bossFlags) & 0x8000) !== 0) {       // $27FE14 bmi $27FE5E
+    return offscreenFree27FC7C(ram, a6, resources);
   }
   if ((d1 & 0x1800) !== 0) {                              // $27FE1A beq $27FE6E
-    return poolACollectArm(ram, rom, ctx, a6, d1, COLLECT_ARMS.medal27FE0E);
+    return poolACollectArm(ram, rom, ctx, a6, d1, medal, resources);
   }
-  return medalStep27FE6E(ram, rom, a6);
+  return medalStep27FE6E(ram, rom, ctx, a6, medal, resources);
 }
 
 /**
@@ -1302,10 +1462,10 @@ function poolAKind2Body27FE0E(ram, rom, ctx, a6, d1) {
  * `[$8000,$F7FF]` and lets `[$F800,$FFFF]` through, because the first `addi.w` wraps
  * it back down before the second one can carry.
  */
-function medalStep27FE6E(ram, rom, a6) {
-  if (ram.u16(POOL_A.freeze) === 0) {                     // $27FE6E tst.w / $27FE74 bne
-    ram.setU16(a6 + B.pos,                                // $27FE7C add.w D0,($2,A6)
-      u16(ram.u16(a6 + B.pos) + ram.u16(POOL_A.scrollLong))); // $27FE76 move.w $80B03C
+function medalStep27FE6E(ram, rom, ctx, a6, medal, resources) {
+  if (ram.u16(resources.freeze) === 0) {                    // $27FE6E tst.w / $27FE74 bne
+    ram.setU16(a6 + B.pos,                                 // $27FE7C add.w D0,($2,A6)
+      u16(ram.u16(a6 + B.pos) + ram.u16(resources.scrollLong))); // $27FE76 move.w $80B03C
   }
   const pos = ram.u32(a6 + B.pos);                        // $27FE80 move.l ($2,A6),D0
   let px = u16((pos & 0xffff) + 0x1c00);                  // $27FE84 addi.w #$1C00
@@ -1317,7 +1477,7 @@ function medalStep27FE6E(ram, rom, a6) {
     py = u16(py + 0x7800);                                // $27FE9A addi.w #$7800
     free = py < 0x7800;                                   // $27FE9E bcs $27FE5E
   }
-  if (free) return offscreenFree27FC7C(ram, a6);
+  if (free) return offscreenFree27FC7C(ram, a6, resources);
 
   // $27FEA0 subq.b #$1,($18,A6) / bcc -- the OLD-ZERO BORROW on the BYTE at +$18,
   // which is the HIGH byte of the word the fill's jitter hook ($280D04 add.b) seeded
@@ -1327,10 +1487,10 @@ function medalStep27FE6E(ram, rom, a6) {
     // $27FEB0 addi.l #$34,(A0) writes FIRST; the compare then replaces it, so the
     // record never holds $1BE60C.  On the wrap the timer is forced to 1, NOT to the
     // reload byte -- one instruction that makes the wrap frame a beat longer.
-    ram.setU32(a6 + B.sprite, (ram.u32(a6 + B.sprite) + 0x34) >>> 0); // $27FEB0
-    if (ram.u32(a6 + B.sprite) === 0x001be60c) {          // $27FEB6 cmpi.l / bne
-      ram.setU32(a6 + B.sprite, 0x001be2cc);              // $27FEBE move.l #$1BE2CC
-      ram.setU8(a6 + B.blinkTimer, 0x01);                 // $27FEC4 move.b #$1,($18,A6)
+    ram.setU32(a6 + B.sprite, (ram.u32(a6 + B.sprite) + medal.step) >>> 0); // $27FEB0
+    if (ram.u32(a6 + B.sprite) === medal.wrap) {           // $27FEB6 cmpi.l / bne
+      ram.setU32(a6 + B.sprite, medal.base);               // $27FEBE move.l #$1BE2CC
+      ram.setU8(a6 + B.blinkTimer, medal.wrapTimer);       // $27FEC4 move.b #$1,($18,A6)
     }
   }
   // $27FECA movea.l ($28,A6),A0 / $27FECE jmp (A0) -- the record's OWN layer emitter,
@@ -1731,11 +1891,12 @@ function hyperStarBody280252(ram, rom, ctx, a6, d1, spec, remaining) {
 }
 
 function runBody(ram, rom, ctx, a6, d1, body, remaining, authentic = body) {
+  const resources = ctx.poolAResources ?? BLACK_POOL_A_RESOURCES;
   if (body === POOL_A.body) return beeBody27FACC(ram, rom, ctx, a6, d1);
   // Kinds 0 and 4 share $27FA30 -- DISPATCH[0] and DISPATCH[4] are the same address.
   if (body === 0x27fa30)
     return poolAKind0Body27FA30(ram, rom, ctx, a6, d1, remaining);
-  if (body === POOL_A.kind2Body)
+  if (body === resources.medal?.canonicalBody)
     return poolAKind2Body27FE0E(ram, rom, ctx, a6, d1);
   if (body === POOL_A.kind3Body)                          // W417
     return poolAKind3Body27FED2(ram, rom, ctx, a6, d1);
@@ -1745,7 +1906,6 @@ function runBody(ram, rom, ctx, a6, d1, body, remaining, authentic = body) {
     return poolAKind5Body27FF9A(ram, rom, ctx, a6, d1, remaining);
   // W417: $27F99E's indices 8..15 are ONE routine over seven constants -- the
   // hyper-bank cancel stars, and the throw that stopped every full boot here.
-  const resources = ctx.poolAResources ?? BLACK_POOL_A_RESOURCES;
   const hyper = resources.hyperByBody?.[authentic] ?? HYPER_STAR_BY_BODY.get(body);
   if (hyper) return hyperStarBody280252(ram, rom, ctx, a6, d1, hyper, remaining);
   if (body === 0x280082)
@@ -1874,15 +2034,18 @@ function collectedTransform280FDC(ram, rom, ctx, a6) {
  * two `lea`s, which is what says the second is the first "on a different counter"
  * rather than a routine to read again.
  */
-function poolACollectArm(ram, rom, ctx, a6, d1, spec) {
+function poolACollectArm(ram, rom, ctx, a6, d1, spec, editionResources = null) {
   // $27FE24 btst #$C,D1 / bne -- bit 12 is P1, and the P2 counter is the FALL-THROUGH.
   const total = (d1 & 0x1000) !== 0 ? spec.collectP1 : spec.collectP2;
+  const cap = spec.collectCap ?? 0x03e7;
   let v = u16(ram.u16(total) + spec.collectAdd);          // $27FE1C moveq / $27FE30 add.w
-  if (v >= 0x03e8) v = 0x03e7;                            // $27FE32 cmpi / bcs / move.w
+  if (v > cap) v = cap;                                   // $27FE32 cmpi / bcs / move.w
   ram.setU16(total, v);
   ram.setU32(a6 + B.hitLongA, spec.collectSelector);      // $27FE3C move.l #...,($10,A6)
   scoreByMask(ram, spec.collectScore, ram.u8(a6 + B.status)); // $27FE44/$27FE46/$27FE48
-  ctx.soundPost?.(spec.collectSound);                     // $27FE4E jsr $28C5E4
+  const wrapper = editionResources?.collectionWrapper ?? spec.collectSound;
+  const request = editionResources?.soundRequestMap?.[wrapper] ?? wrapper;
+  ctx.soundPost?.(request);                               // $27FE4E jsr $28C5E4
   ram.setU8(a6 + 1, 0x84);                                // $27FE54 move.b #$84,($1,A6)
   collectedTransform280FDC(ram, rom, ctx, a6);            // $27FE5A bra $280FDC
   return { collected: true };

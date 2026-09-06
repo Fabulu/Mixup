@@ -15,9 +15,46 @@ const BASE_LADDER = Object.freeze([
   0x00000600, 0x00000700, 0x00000800, 0x00000900, 0x00001000,
 ]);
 
+export const WHITE_POOL_A_ALLOCATION_IDENTITY = Object.freeze({
+  allocator: 0x17e9a0,
+  alloc: 0x17e9aa,
+  dispatch: 0x17ea22,
+  dispatchEntries: Object.freeze([
+    0x17eab4, 0x17eb50, 0x17ee92, 0x17ef56, 0x17eab4,
+    0x17f01e, 0x17f106, 0x17f1ee, 0x17f2d6, 0x17f3ee,
+    0x17f50a, 0x17f626, 0x17f742, 0x17f85a, 0x17f976,
+    0x17fa92, 0x17eb50, 0x17f01e, 0x17f106, 0x17f1ee,
+  ]),
+  base: 0x8171be,
+  liveCount: 0x817f7e,
+  scrollShort: 0x813176,
+  supportedKinds: Object.freeze([0x00, 0x04, 0x08, 0x20, 0x2c, 0x30, 0x3c, 0x40]),
+  templateTable: 0x17fece,
+  templatePointers: Object.freeze({
+    0x00: 0x17ff1e, 0x04: 0x17ff34, 0x08: 0x17ff4a, 0x20: 0x17ff1e,
+    0x2c: 0x17ffa2, 0x30: 0x17ff1e, 0x3c: 0x17ffa2, 0x40: 0x17ff34,
+  }),
+  fillHookTable: 0x17fc52,
+  fillHooks: Object.freeze({
+    0x00: 0x17fce2, 0x04: 0x17fd72, 0x08: 0x17fd7c, 0x20: 0x17fdfa,
+    0x2c: 0x17fe0c, 0x30: 0x17fdc2, 0x3c: 0x17fdec, 0x40: 0x17fd72,
+  }),
+  fillHookDispatch: Object.freeze({
+    0x17fce2: 'kind0', 0x17fd72: 'bee', 0x17fd7c: 'jitter',
+    0x17fdfa: 'hyper', 0x17fe0c: 'hyper', 0x17fdc2: 'hyper', 0x17fdec: 'hyper',
+  }),
+  layerTable: 0x17fc3a,
+  layerEntries: 6,
+  layerEmitters: Object.freeze([
+    0x13dab0, 0x13dab0, 0x13daec, 0x13db28, 0x13db64, 0x13dba0,
+  ]),
+  jitter: Object.freeze({ routine: 0x143174, table: 0x143192, entries: 128 }),
+});
+
 export const BLACK_POOL_A_RESOURCES = Object.freeze({
-  allocator: 0x27f92a,
-  allocation: 'reserved-ten',
+  edition: 'black',
+  allocator: 0x27f8ee,
+  allocation: 'general-seventy',
   alloc: 0x27f8f0,
   driver: 0x27f95a,
   dispatch: 0x27f99e,
@@ -38,6 +75,20 @@ export const BLACK_POOL_A_RESOURCES = Object.freeze({
   hyperThreshold: 0x28,
   ownerDistance: 0x600,
   presentationStub: 0x23eba0,
+  bossFlags: 0x8130f8,
+  freeze: 0x8130d2,
+  scrollLong: 0x80b03c,
+  collectionWrapper: 0x28c5e4,
+  medal: Object.freeze({
+    body: 0x27fe0e, canonicalBody: 0x27fe0e, collectedBody: 0x2810ca,
+    collectP1: 0x817f84, collectP2: 0x817f88,
+    collectAdd: 1, collectScore: 0x50, collectCap: 0x03e7,
+    collectSelector: 0x00050000, collectSound: 0x28c5e4,
+    step: 0x34, wrap: 0x001be60c, base: 0x001be2cc, wrapTimer: 1,
+  }),
+  rng: Object.freeze({
+    jitter: Object.freeze({ routine: 0x242e24, table: 0x242e42, entries: 128 }),
+  }),
   aim: BLACK_AIM256_RESOURCES,
   hyperByBody: null,
   soundRequestMap: null,

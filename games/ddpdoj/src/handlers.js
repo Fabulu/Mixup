@@ -116,7 +116,10 @@ import { scoreByMask, scoreHit, scoreKill } from './score.js';
 import { spawnEffect, spawnPoolC289B50, spawnPoolC289AF4, remapBucket, REMAP, B,
   walkDeathSpawns270D92 } from './effects.js';
 import { spawnItem } from './items.js';
-import { allocBee27F92A, allocPoolA27F8F0 } from './bee.js';
+import {
+  allocBee27F92A, allocPoolA27F8F0, allocPoolAWithResources,
+  validateBeeAllocationResources, validatePoolAAllocationResources,
+} from './bee.js';
 import { drawByte242B3C, drawByte24311A, drawByte2431F4, drawSigned242FDE,
   drawSigned242FFC,
   drawWord242EC2 } from './rng.js';
@@ -126,7 +129,7 @@ import { spawnCues28AC72, spawnCues28AC86 } from './cues.js';
 import { pushExternalSpeed } from './background.js';
 import { loadAnimObjects246410, loadAnimObjects246520 } from './animobjects.js';
 import { handler12, handler13, handler14 } from './stage3carrier.js';
-import { BLACK_WORLD_RESOURCES } from './world-resources.js';
+import { BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES } from './world-resources.js';
 import { handler15, handler17, handler18 } from './stage3drop.js';
 import { handler83 } from './stage3type83.js';
 import { handler16 } from './stage3type16.js';
@@ -1597,75 +1600,178 @@ function draw82(ram, rom, a5, a6) {
 // scroll only), then a bounds test, a stage/clock gate, the damage branch, and
 // on death spawns effects + `$27F8EE` (W29) + free.  flow.py TRUE span
 // `$27687E..$276936` (190 B, 47 insns -- the smallest of the six).
-function handler8B(ram, rom, a5, ctx) {
+function isFrozenResourceGraph(value, seen = new Set()) {
+  if (value === null || typeof value !== 'object' || seen.has(value)) return true;
+  if (!Object.isFrozen(value)) return false;
+  seen.add(value);
+  return Object.values(value).every((child) => isFrozenResourceGraph(child, seen));
+}
+
+function canonicalWorldDescriptor(descriptor, type) {
+  if (descriptor?.edition === 'black') return BLACK_WORLD_RESOURCES.enemyTypes[type];
+  if (descriptor?.edition === 'white') return WHITE_WORLD_RESOURCES.enemyTypes[type];
+  return null;
+}
+
+function requireType8BResources(descriptor) {
+  const canonical = canonicalWorldDescriptor(descriptor, 0x8b);
+  const score = descriptor?.score;
+  const effects = descriptor?.effects;
+  const effect = descriptor?.effect;
+  const sound = descriptor?.sound;
+  const pool = descriptor?.poolA;
+  const medal = pool?.medal;
+  const bee = pool?.bee;
+  const jitter = pool?.rng?.jitter;
+  const mappedMedalBody = pool?.bodyDispatch?.[medal?.body] ?? medal?.body;
+  if (!descriptor || !isFrozenResourceGraph(descriptor)
+      || descriptor.type !== 0x8b || descriptor.algorithm !== 'type8B'
+      || !['black', 'white'].includes(descriptor.edition)
+      || !canonical
+      || descriptor.initStub !== canonical.initStub
+      || descriptor.initBody !== canonical.initBody
+      || descriptor.handler !== canonical.handler
+      || descriptor.recordPrototype !== canonical.recordPrototype
+      || descriptor.subPrototype !== canonical.subPrototype
+      || descriptor.scrollCompensation !== canonical.scrollCompensation
+      || score !== canonical.score || effects !== canonical.effects
+      || effect !== canonical.effect || sound !== canonical.sound
+      || pool !== canonical.poolA || descriptor.retirement !== canonical.retirement
+      || !Number.isInteger(descriptor.initStub) || !Number.isInteger(descriptor.initBody)
+      || !Number.isInteger(descriptor.handler) || !Number.isInteger(descriptor.recordPrototype)
+      || !Number.isInteger(descriptor.subPrototype)
+      || !Number.isInteger(descriptor.scrollCompensation)
+      || descriptor.retirement?.semantic !== 'freeEnemy'
+      || !Number.isInteger(descriptor.retirement?.entry)
+      || !score || !Number.isInteger(score.hit) || !Number.isInteger(score.kill)
+      || !Number.isInteger(score.capTable) || !Number.isInteger(score.refillTable)
+      || !effects || !Number.isInteger(effects.poolBClear)
+      || !Number.isInteger(effects.poolBWalker) || !Number.isInteger(effects.poolBDriver)
+      || !Number.isInteger(effects.poolBAllocator)
+      || !Number.isInteger(effects.poolBTableA) || !Number.isInteger(effects.poolBTableB)
+      || !Number.isInteger(effects.poolBEmitTable)
+      || !Number.isInteger(effects.poolBSubSpawnSite)
+      || !Number.isInteger(effects.poolBScrollCompensation)
+      || !Number.isInteger(effects.poolBVector)
+      || !Array.isArray(effects.poolBEmitters) || effects.poolBEmitters.length !== 5
+      || effects.poolBEmitters.some((entry) => !Number.isInteger(entry))
+      || !effect || effect.kind !== 1 || !Number.isInteger(effect.site)
+      || !Number.isInteger(effect.remap) || effect.rowBytes !== 0x0c
+      || effect.hook !== 1
+      || !sound || !Number.isInteger(sound.death)
+      || descriptor.poolAKind !== 0x08
+      || !pool || descriptor.edition !== pool.edition
+      || pool.allocation !== 'general-seventy'
+      || !Number.isInteger(pool.allocator) || !Number.isInteger(pool.alloc)
+      || !Number.isInteger(pool.base) || !Number.isInteger(pool.liveCount)
+      || pool.stride !== 0x2c || pool.generalSlots !== 70 || pool.totalSlots !== 80
+      || pool.collectedImpact !== true || !Number.isInteger(pool.presentationStub)
+      || !Number.isInteger(pool.collectionWrapper) || !Number.isInteger(pool.bossFlags)
+      || !Number.isInteger(pool.freeze) || !Number.isInteger(pool.scrollLong)
+      || (pool.soundRequestMap !== null && pool.soundRequestMap !== undefined
+        && !Object.isFrozen(pool.soundRequestMap))
+      || !medal || medal.canonicalBody !== 0x27fe0e
+      || mappedMedalBody !== medal.canonicalBody
+      || !Number.isInteger(medal.body) || !Number.isInteger(medal.collectedBody)
+      || !Number.isInteger(medal.collectP1) || !Number.isInteger(medal.collectP2)
+      || medal.collectAdd !== 1 || medal.collectScore !== 0x50
+      || medal.collectCap !== 0x03e7 || medal.collectSelector !== 0x00050000
+      || !Number.isInteger(medal.collectSound) || !Number.isInteger(medal.step)
+      || !Number.isInteger(medal.wrap) || !Number.isInteger(medal.base)
+      || !Number.isInteger(medal.wrapTimer)
+      || !bee || !Number.isInteger(bee.transform) || !Number.isInteger(bee.collectionTable)
+      || !Number.isInteger(bee.collectionSelectors)
+      || !Number.isInteger(bee.collectionSpriteEntries)
+      || !Number.isInteger(bee.collectedEmitter) || !Number.isInteger(bee.zoomScaleTable)
+      || !bee.bounceRng || !Number.isInteger(bee.bounceRng.table)
+      || !Number.isInteger(bee.bounceRng.entries)
+      || (bee.vector !== null && bee.vector !== undefined && !Object.isFrozen(bee.vector))
+      || !jitter || jitter.entries !== 128 || !Number.isInteger(jitter.routine)
+      || !Number.isInteger(jitter.table)) {
+    throw new TypeError('type $8B handler needs a complete frozen edition resource graph');
+  }
+  try {
+    validatePoolAAllocationResources(pool, descriptor.poolAKind);
+  } catch {
+    throw new TypeError('type $8B handler needs a complete frozen edition resource graph');
+  }
+  return descriptor;
+}
+
+function retire8B(ram, a5, descriptor) {
+  if (descriptor.retirement.semantic !== 'freeEnemy') {
+    throw new TypeError('type $8B retirement must preserve freeEnemy semantics');
+  }
+  freeEnemy(ram, a5);
+}
+
+function handler8B(ram, rom, a5, ctx,
+  descriptor = BLACK_WORLD_RESOURCES.enemyTypes[0x8b]) {
+  const resources = requireType8BResources(descriptor);
   const a6 = ram.u32(a5 + 0x06);
   // $27687E: a stage-kill gate.  $8130F8 bit 7 set -> free immediately.
-  if ((ram.u8(0x8130f8) & 0x80) !== 0) { freeEnemy(ram, a5); return; } // tst.b $8130F8 / bmi
+  if ((ram.u8(0x8130f8) & 0x80) !== 0) {
+    retire8B(ram, a5, resources);
+    return;
+  }
+  if ((ram.u8(a6) & 0x5c) !== 0
+      && (ram.u16(a6 + S.hp) & 0x8000) !== 0
+      && ram.u16(a5 + 0x18) !== resources.poolAKind) {
+    const kind = ram.u16(a5 + 0x18);
+    const site = resources.effect.site - 8;
+    unreached(site, `$${site.toString(16).toUpperCase()} jsr $${
+      resources.poolA.allocator.toString(16).toUpperCase()} with D0 = $${
+      kind.toString(16).toUpperCase()}: descriptor kind is $${
+      resources.poolAKind.toString(16).toUpperCase()}`);
+  }
   // $276886: scroll compensation (the position driver -- NOT stepMovement).
-  scrollCompensate(ram, a5);                            // jsr $24179E (W24)
+  scrollCompensate(ram, a5);                            // jsr edition scroll compensation
   // $27688C..$2768C2: bounds test.  X += $400 + $8c00; Y += $400 + (scroll-$f800)
   //  + $c000.  Off-screen-after-on-screen -> free.
   const pos = ram.u32(a6 + 0x02);
-  let x = u16((pos >>> 16) + 0x400);                   // $27688C/$276890
+  const x = u16((pos >>> 16) + 0x400);                  // $27688C/$276890
   let off = u16(x) + 0x8c00 > 0xffff;                  // $276894 addi.w #$8c00
   if (!off) {                                          // $276898 bcs $2768B4
-    let sc = u16(ram.u16(G.scroll) - 0xf800);          // $27689A/$2768A0 subi.w
-    let y = u16(u16((pos & 0xffff) + 0x400) + sc);     // $2768A4/$2768A8/$2768AC
+    const sc = u16(ram.u16(G.scroll) - 0xf800);         // $27689A/$2768A0 subi.w
+    const y = u16(u16((pos & 0xffff) + 0x400) + sc);    // $2768A4/$2768A8/$2768AC
     off = u16(y) + 0xc000 > 0xffff;                    // $2768AE addi.w #$c000
   }
   if (off) {                                           // $2768B2 bcc $2768C2
-    if (ram.u16(a5 + R.onScreen) !== 0) { freeEnemy(ram, a5); return; } // jmp $263762
+    if (ram.u16(a5 + R.onScreen) !== 0) {
+      retire8B(ram, a5, resources);
+      return;
+    }
   } else {
     ram.setU16(a5 + R.onScreen, 1);                    // move.b #$1,$16(A5)
   }
   // $2768C8: stage-1 && clock >= 4 -> set sub-flags bit 5 (a fire-enable).
-  if (ram.u16(G.stage) === 1 && i16(ram.u16(G.clock)) >= 4) { // cmpi #$1,$813092
+  if (ram.u16(G.stage) === 1 && i16(ram.u16(G.clock)) >= 4) {
     ram.bset8(a6, 5);                                  // $2768DC bset #5,(A6)
   }
   // $2768E0: the damage/hit branch.  flags & $5c -> clear, HP check -> death.
-  if ((ram.u8(a6) & 0x5c) !== 0) {                     // $2768E0 moveq #$5c / and.b
+  if ((ram.u8(a6) & 0x5c) !== 0) {
+    const lethal = (ram.u16(a6 + S.hp) & 0x8000) !== 0;
+    const kind = ram.u16(a5 + 0x18);
     const d1 = hitMask(ram, a6);
-    ram.setU8(a6, ram.u8(a6) & 0xa3);                  // $2768E6 andi.b #$a3,(A6)
+    ram.setU8(a6, ram.u8(a6) & 0xa3);
     // $8B is the ONE ported handler that never calls `$286096`: its damage
-    // branch goes straight from the flag clear to `$2768EA tst.w ($18,A6)`.
-    // So a hit that does not kill an $8B scores nothing at all.
-    if ((ram.u16(a6 + S.hp) & 0x8000) !== 0) {         // $2768EA tst.w $18 / bmi
-      scoreKill(ram, rom, ctx, 0x01, d1);              // $2768F2/$2768F4 jsr $28615E
-      ctx.soundPost?.(0x28c25a);                       // WAVE A: SFX id=0, death burst      // jsr $28C25A
-      // W411 (docket D49): THE DROP. `$276900 move.w ($18,A5),D0 / $276904 move.b
-      // ($1F,A6),D2 / $276908 jsr $27F8EE`, and `$27F8EE` is `moveq #$0,D1` falling
-      // into `$27F8F0` -- so D1 = 0 and the impact lands exactly on the carrier.
-      //
-      // D0 IS RANGE-CHECKED RATHER THAN ASSUMED. ($18,A5) is the SECOND word of the
-      // record prototype at $27685E (`00 00 00 08`, `loadRecordProto(.., 0x01)` in
-      // initbody.js:418 copying two words to ($16,A5)/($18,A5)), and a scan of
-      // $276600..$276A00 for a `move.b/move.w` to ($18,A5) finds exactly one, at
-      // $2769BA, which is past this handler's own end ($276936) and belongs to
-      // another type. So $0008 -- kind index 2, the gold disc -- is the only value
-      // this site can pass, and anything else is a measurement that changed.
-      const kindD0 = ram.u16(a5 + 0x18);               // $276900 move.w ($18,A5),D0
-      if (kindD0 !== 0x0008) {
-        unreached(0x276908, `$276908 jsr $27F8EE with D0 = $${
-          kindD0.toString(16).toUpperCase()} out of ($18,A5). The type $8B record `
-          + `prototype $27685E loads $0008 there and nothing in $276600..$276A00 `
-          + `writes ($18,A5) again, so a different kind index means the prototype `
-          + `or a new writer has been found -- read it before trusting this drop`);
-      }
-      allocPoolA27F8F0(ram, rom, ctx, kindD0, 0,
-        ram.u8(a6 + S.f1f), a6);                       // $276904/$276908
-      // W54: SPAWNED.  $27690E moveq #$1 / $276910 jsr $289004, then
-      // $276916..$276932 -- the $278320 remap and the $24179E hook.
-      {
-        const e = effectArmShared278320(ram, rom, ctx, a6, 0x01, 0x276910);
-        ram.setU16(e + B.hook, 1);                      // $27692E/$276932
-      }
-      freeEnemy(ram, a5);                              // jmp $263762
+    // branch goes straight from the flag clear to the HP sign test.
+    if (lethal) {
+      scoreKill(ram, rom, ctx, 0x01, d1, resources.score);
+      ctx.soundPost?.(resources.sound.death);
+      allocPoolAWithResources(ram, rom, ctx, kind, 0,
+        ram.u8(a6 + S.f1f), a6, resources.poolA);
+      const e = effectArmShared278320(
+        ram, rom, ctx, a6, resources.effect.kind, resources.effect.site,
+        resources.effect.remap, resources.effects,
+      );
+      ram.setU16(e + B.hook, resources.effect.hook);
+      retire8B(ram, a5, resources);
       return;
     }
-    return;                                           // $2768F0 rts (alive after hit)
+    return;
   }
-  // (no damage: the handler rts -- $8B has no per-frame fire in THIS arm; its
-  //  fire is gated by the stage/clock bit-5 set above and run elsewhere.)
+  // No damage: fire is gated by the stage/clock bit above and run elsewhere.
 }
 
 // ================================================= TYPES $85 AND $86 (W30)
@@ -4237,16 +4343,42 @@ function scrollCompensate8A(ram, a5, descriptor) {
 }
 
 function requireType8AResources(descriptor) {
-  const pool = descriptor.poolA;
+  const canonical = canonicalWorldDescriptor(descriptor, 0x8a);
+  const pool = descriptor?.poolA;
   const bee = pool?.bee;
-  if (descriptor.retirement?.semantic !== 'freeEnemy'
+  if (!descriptor || !isFrozenResourceGraph(descriptor)
+      || descriptor.type !== 0x8a || descriptor.algorithm !== 'type8A'
+      || !['black', 'white'].includes(descriptor.edition)
+      || !canonical
+      || descriptor.initStub !== canonical.initStub
+      || descriptor.initBody !== canonical.initBody
+      || descriptor.handler !== canonical.handler
+      || descriptor.recordPrototype !== canonical.recordPrototype
+      || descriptor.subPrototype !== canonical.subPrototype
+      || descriptor.scrollCompensation !== canonical.scrollCompensation
+      || descriptor.playersAlive !== canonical.playersAlive
+      || descriptor.emitter !== canonical.emitter
+      || descriptor.score !== canonical.score || descriptor.effects !== canonical.effects
+      || descriptor.effect !== canonical.effect || descriptor.sound !== canonical.sound
+      || pool !== canonical.poolA || descriptor.retirement !== canonical.retirement
+      || descriptor.edition !== pool?.edition
+      || descriptor.retirement?.semantic !== 'freeEnemy'
       || !descriptor.emitter || !descriptor.score || !descriptor.effects
       || !descriptor.effect || !pool || !bee
-      || !Object.isFrozen(pool) || !Object.isFrozen(bee)
-      || pool.allocator !== bee.allocator || !Object.isFrozen(bee.supportedKinds)
+      || pool.allocation !== 'general-seventy'
+      || !Number.isInteger(pool.allocator) || !Number.isInteger(pool.alloc)
+      || !Number.isInteger(bee.allocator)
+      || !['general-seventy', 'reserved-ten'].includes(bee.allocation)
+      || !Object.isFrozen(bee.supportedKinds)
       || !Object.isFrozen(bee.grant)) {
+    unreached(descriptor?.handler ?? 0, 'type-$8A requires complete edition-bound resources');
+  }
+  try {
+    validateBeeAllocationResources(pool);
+  } catch {
     unreached(descriptor.handler, 'type-$8A requires complete edition-bound resources');
   }
+  return descriptor;
 }
 
 function retire8A(ram, a5, descriptor) {
@@ -4262,6 +4394,9 @@ function handler8A(ram, rom, a5, ctx, descriptor) {
   if ((ram.u8(0x8130f8) & 0x80) !== 0) {
     retire8A(ram, a5, descriptor); return;
   } // $276736
+  if ((ram.u8(a6) & 0x5c) !== 0 && (ram.u16(a6 + S.hp) & 0x8000) !== 0) {
+    validateBeeAllocationResources(descriptor.poolA, ram.u16(a5 + 0x1a));
+  }
   scrollCompensate8A(ram, a5, descriptor);               // $27670A jsr scroll compensation
   // $276710..$27672E: bounds.  Y += $C00 + scroll + $B000; X += $400 + $8C00.
   const pos = ram.u32(a6 + 0x02);
@@ -4356,6 +4491,8 @@ function playersAlive242884(ram) {
 // field writes into the record `$289004` would have returned; all noted.
 function deathSeq8A(ram, rom, a5, ctx, d1, descriptor) {
   const a6 = ram.u32(a5 + 0x06);                       // the SUB-RECORD (A6)
+  const kind = ram.u16(a5 + 0x1a);                    // $2767DE D0 = ($1A,A5)
+  validateBeeAllocationResources(descriptor.poolA, kind);
   scoreKill(ram, rom, ctx, 0x01, d1, descriptor.score);
   ctx.soundPost?.(descriptor.sound.death);
   // $2767DE move.w ($1A,A5),D0 -- the bee kind index ($0004 = kind 1).
@@ -4363,7 +4500,6 @@ function deathSeq8A(ram, rom, a5, ctx, d1, descriptor) {
   // $2767E6 jsr $27F92A -- allocate one bee from the reserved ten and fill it.
   // W111: the allocator + fill + driver are now ported (src/bee.js).
   {
-    const kind = ram.u16(a5 + 0x1a);                   // $2767DE D0 = ($1A,A5)
     const layer = ram.u8(a6 + S.f1f);                  // $2767E2 D2 = ($1F,A6)
     allocBee27F92A(ram, rom, ctx, kind, layer, a6, descriptor.poolA);
   }
@@ -9080,7 +9216,8 @@ const HANDLERS = new Map([
   [0x26a2e2, (ram, rom, a5, ctx) =>
     handler07(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x27])],
   [0x2747c6, handler82],
-  [0x27687e, handler8B],
+  [0x27687e, (ram, rom, a5, ctx) =>
+    handler8B(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x8b])],
   [0x275914, (ram, rom, a5, ctx) =>
     handler85(ram, rom, a5, ctx, BLACK_WORLD_RESOURCES.enemyTypes[0x85])],
   [0x272424, handler55],   // W351: stage-5 burst-firing drifter, spec in T55
@@ -11407,6 +11544,10 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x276702);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
         handler8A(ram, rom, a5, ctx, descriptor));
+    } else if (descriptor.algorithm === 'type8B') {
+      handlers.delete(0x27687e);
+      handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
+        handler8B(ram, rom, a5, ctx, descriptor));
     } else if (descriptor.algorithm === 'type85') {
       handlers.delete(0x275914);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>

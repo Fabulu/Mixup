@@ -43,7 +43,7 @@ import { drawByte242B3C, drawByte242E24, drawByteWithResources, drawNegative242E
   drawLong243A9C } from './rng.js';
 import { loadAnimObjects246410 } from './animobjects.js';
 import { initType99_29E580 } from './boss3type99.js';
-import { BLACK_WORLD_RESOURCES } from './world-resources.js';
+import { BLACK_WORLD_RESOURCES, WHITE_WORLD_RESOURCES } from './world-resources.js';
 
 // ----------------------------------------------------------- the record layout
 // A5 = enemy record, A6 = sub-record (= ($6,A5)).  The offsets the init bodies
@@ -445,6 +445,38 @@ function init8A(ram, rom, a5, a6, unported, descriptor) {
   }
 }
 
+function requireType8BInitDescriptor(descriptor) {
+  const canonical = descriptor?.edition === 'black'
+    ? BLACK_WORLD_RESOURCES.enemyTypes[0x8b]
+    : descriptor?.edition === 'white'
+      ? WHITE_WORLD_RESOURCES.enemyTypes[0x8b]
+      : null;
+  if (!descriptor || !Object.isFrozen(descriptor)
+      || descriptor.type !== 0x8b || descriptor.algorithm !== 'type8B'
+      || !['black', 'white'].includes(descriptor.edition)
+      || !canonical
+      || descriptor.initStub !== canonical.initStub
+      || descriptor.initBody !== canonical.initBody
+      || descriptor.recordPrototype !== canonical.recordPrototype
+      || descriptor.subPrototype !== canonical.subPrototype
+      || !Number.isInteger(descriptor.initStub) || !Number.isInteger(descriptor.initBody)
+      || !Number.isInteger(descriptor.recordPrototype)
+      || !Number.isInteger(descriptor.subPrototype)) {
+    throw new TypeError('type $8B init needs a complete frozen edition descriptor');
+  }
+  return descriptor;
+}
+
+function init8B(ram, rom, a5, a6, unported, descriptor) {
+  const resources = requireType8BInitDescriptor(descriptor);
+  loadSubProto(ram, rom, a5, a6, resources.subPrototype);
+  loadRecordProto(ram, rom, a5, resources.recordPrototype, 0x01);
+  readInitPosition(ram, rom, a5, unported);
+  if (ram.u16(G.stage) === 1 && i16(ram.u16(G.scrollClock)) < 4) {
+    ram.setU16(a6, 0x8000);
+  }
+}
+
 // =========================================================== the dispatch table
 // init+8 address -> body function.  Built bottom-up; the damage-first family
 // shares `damageFirstFamily` with per-type parameters.
@@ -516,17 +548,9 @@ BODY.set(0x2680B8, (ram, rom, a5, a6, unported) =>
 BODY.set(0x2766AE, (ram, rom, a5, a6, unported) =>
   init8A(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x8a]));
 
-// --- type $8B ($276824): scroll-locked ground gun.  Stage/clock gate that may
-// clear the sub-record flags word (a draw disable).
-BODY.set(0x276824, (ram, rom, a5, a6, unported) => {
-  loadSubProto(ram, rom, a5, a6, 0x276862);            // jsr $2637A2
-  loadRecordProto(ram, rom, a5, 0x27685E, 0x01);       // moveq #$1,D0; jsr $26377A
-  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
-  // $276844: stage-1 && clock < 4 -> sub flags := $8000 (mark hidden).
-  if (ram.u16(G.stage) === 1 && i16(ram.u16(G.scrollClock)) < 4) {
-    ram.setU16(a6, 0x8000);                             // move.w #$8000,(A6)
-  }
-});
+// --- type $8B ($276824): scroll-locked ground gun with the early Stage 1 gate.
+BODY.set(0x276824, (ram, rom, a5, a6, unported) =>
+  init8B(ram, rom, a5, a6, unported, BLACK_WORLD_RESOURCES.enemyTypes[0x8b]));
 
 // --- type $20 / $21 / $23 ($272A4A, THE SCRIPTED CARRIER).
 //
@@ -2582,6 +2606,9 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
     } else if (descriptor.algorithm === 'type8A') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init8A(ram, rom, a5, a6, unported, descriptor));
+    } else if (descriptor.algorithm === 'type8B') {
+      map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
+        init8B(ram, rom, a5, a6, unported, descriptor));
     } else if (descriptor.algorithm === 'type85') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init85Or86(ram, rom, a5, a6, unported, descriptor));

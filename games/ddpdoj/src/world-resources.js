@@ -262,6 +262,7 @@ const white80 = {
 };
 
 const black8A = {
+  edition: 'black',
   type: 0x8a, algorithm: 'type8A', initStub: 0x2766a6, initBody: 0x2766ae,
   handler: 0x276702, recordPrototype: 0x2766e0, subPrototype: 0x2766e6,
   scrollCompensation: 0x24179e, playersAlive: 0x242884,
@@ -275,6 +276,7 @@ const black8A = {
 };
 
 const white8A = {
+  edition: 'white',
   type: 0x8a, algorithm: 'type8A', initStub: 0x175748, initBody: 0x175750,
   handler: 0x1757a4, recordPrototype: 0x175782, subPrototype: 0x175788,
   scrollCompensation: 0x141ad8, playersAlive: 0x142bbe,
@@ -284,6 +286,34 @@ const white8A = {
   effect: { kind: 0x0c, site: 0x175890, remap: 0x1773be, rowBytes: 0x0c, hook: 1 },
   sound: { death: 0x18ad80 },
   poolA: WHITE_POOL_A_RESOURCES,
+  retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
+};
+
+const black8B = {
+  edition: 'black',
+  type: 0x8b, algorithm: 'type8B', initStub: 0x27681c, initBody: 0x276824,
+  handler: 0x27687e, recordPrototype: 0x27685e, subPrototype: 0x276862,
+  scrollCompensation: 0x24179e,
+  score: black11.score,
+  effects: black11.effects,
+  effect: { kind: 1, site: 0x276910, remap: 0x278320, rowBytes: 0x0c, hook: 1 },
+  sound: { death: 0x28c25a },
+  poolA: BLACK_POOL_A_RESOURCES,
+  poolAKind: 0x08,
+  retirement: { entry: 0x263762, semantic: 'freeEnemy' },
+};
+
+const white8B = {
+  edition: 'white',
+  type: 0x8b, algorithm: 'type8B', initStub: 0x1758be, initBody: 0x1758c6,
+  handler: 0x175920, recordPrototype: 0x175900, subPrototype: 0x175904,
+  scrollCompensation: 0x141ad8,
+  score: white11.score,
+  effects: white11.effects,
+  effect: { kind: 1, site: 0x1759b2, remap: 0x1773be, rowBytes: 0x0c, hook: 1 },
+  sound: { death: 0x18ad80 },
+  poolA: WHITE_POOL_A_RESOURCES,
+  poolAKind: 0x08,
   retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
 };
 
@@ -354,7 +384,7 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
   movement: { entry: 0x241812, speedPointers: 0x200920, fold: 0x2418b4 },
   enemyTypes: {
     0x05: black05, 0x07: black27, 0x10: black10, 0x11: black11,
-    0x27: black27, 0x80: black80, 0x85: black85, 0x8a: black8A,
+    0x27: black27, 0x80: black80, 0x85: black85, 0x8a: black8A, 0x8b: black8B,
   },
   displayList: { filler: [0xfc00, 0x3800, 0, 0, 0x0201], coordinates: 'black' },
 });
@@ -383,7 +413,7 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
   movement: { entry: 0x141b60, speedPointers: 0x100920, fold: 0x141bee },
   enemyTypes: {
     0x05: white05, 0x07: white27, 0x10: white10, 0x11: white11,
-    0x27: white27, 0x80: white80, 0x85: white85, 0x8a: white8A,
+    0x27: white27, 0x80: white80, 0x85: white85, 0x8a: white8A, 0x8b: white8B,
   },
   displayList: { filler: [0xfbff, 0xfc00, 0, 0, 0x0201], coordinates: 'direct' },
 });

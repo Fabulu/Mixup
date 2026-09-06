@@ -5,6 +5,7 @@ import { requireRuntimeCapability, resolveGameRuntime } from './runtime-profile.
 import { runPoolADriverWithResources } from './bee.js';
 import { WHITE_HYPER_GRANT_RESOURCES } from './item-resources.js';
 import { BLACK_BULLET_SPAWN_RESOURCES } from './bullets.js';
+import { WHITE_POOL_A_ALLOCATION_IDENTITY } from './pool-a-resources.js';
 import {
   runBulletDriverWithResources, runClearTimerWithResources, runScreenClearWithResources,
 } from './bulletdriver.js';
@@ -47,41 +48,11 @@ export const WHITE_AIM256_RESOURCES = Object.freeze({
   opEntries: 8,
 });
 
-const WHITE_POOL_A_DISPATCH = Object.freeze([
-  0x17eab4, 0x17eb50, 0x17ee92, 0x17ef56, 0x17eab4,
-  0x17f01e, 0x17f106, 0x17f1ee, 0x17f2d6, 0x17f3ee,
-  0x17f50a, 0x17f626, 0x17f742, 0x17f85a, 0x17f976,
-  0x17fa92, 0x17eb50, 0x17f01e, 0x17f106, 0x17f1ee,
-]);
-const WHITE_LAYER_EMITTERS = Object.freeze([
-  0x13dab0, 0x13dab0, 0x13daec, 0x13db28, 0x13db64, 0x13dba0,
-]);
-const WHITE_TEMPLATE_POINTERS = Object.freeze({
-  0x00: 0x17ff1e,
-  0x04: 0x17ff34,
-  0x20: 0x17ff1e,
-  0x2c: 0x17ffa2,
-  0x30: 0x17ff1e,
-  0x3c: 0x17ffa2,
-  0x40: 0x17ff34,
-});
-const WHITE_FILL_HOOKS = Object.freeze({
-  0x00: 0x17fce2,
-  0x04: 0x17fd72,
-  0x20: 0x17fdfa,
-  0x2c: 0x17fe0c,
-  0x30: 0x17fdc2,
-  0x3c: 0x17fdec,
-  0x40: 0x17fd72,
-});
-const WHITE_FILL_HOOK_DISPATCH = Object.freeze({
-  0x17fce2: 'kind0',
-  0x17fd72: 'bee',
-  0x17fdfa: 'hyper',
-  0x17fe0c: 'hyper',
-  0x17fdc2: 'hyper',
-  0x17fdec: 'hyper',
-});
+const WHITE_POOL_A_DISPATCH = WHITE_POOL_A_ALLOCATION_IDENTITY.dispatchEntries;
+const WHITE_LAYER_EMITTERS = WHITE_POOL_A_ALLOCATION_IDENTITY.layerEmitters;
+const WHITE_TEMPLATE_POINTERS = WHITE_POOL_A_ALLOCATION_IDENTITY.templatePointers;
+const WHITE_FILL_HOOKS = WHITE_POOL_A_ALLOCATION_IDENTITY.fillHooks;
+const WHITE_FILL_HOOK_DISPATCH = WHITE_POOL_A_ALLOCATION_IDENTITY.fillHookDispatch;
 const WHITE_HOOK_DATA = Object.freeze({
   0x00: 0x17fcd2,
   0x20: 0x17fcd2,
@@ -92,6 +63,7 @@ const WHITE_HOOK_DATA = Object.freeze({
 const WHITE_BODY_DISPATCH = Object.freeze({
   0x17eab4: 0x27fa30,
   0x17eb50: 0x27facc,
+  0x17ee92: 0x27fe0e,
   0x17f2d6: 0x280252,
   0x17f626: 0x2805a2,
   0x17f742: 0x2806be,
@@ -113,49 +85,61 @@ const WHITE_HYPER_BY_BODY = Object.freeze({
 });
 
 export const WHITE_POOL_A_RESOURCES = Object.freeze({
-  allocator: 0x17e9a0,
+  edition: 'white',
+  allocator: WHITE_POOL_A_ALLOCATION_IDENTITY.allocator,
   allocation: 'general-seventy',
-  alloc: 0x17e9aa,
+  alloc: WHITE_POOL_A_ALLOCATION_IDENTITY.alloc,
   fill: 0x17fbc2,
   driver: 0x17e9de,
-  dispatch: 0x17ea22,
+  dispatch: WHITE_POOL_A_ALLOCATION_IDENTITY.dispatch,
   dispatchEntries: WHITE_POOL_A_DISPATCH,
   validateDispatch: true,
   bodyDispatch: WHITE_BODY_DISPATCH,
-  base: 0x8171be,
-  liveCount: 0x817f7e,
+  base: WHITE_POOL_A_ALLOCATION_IDENTITY.base,
+  liveCount: WHITE_POOL_A_ALLOCATION_IDENTITY.liveCount,
   stride: 0x2c,
   generalSlots: 70,
   totalSlots: 80,
-  scrollShort: 0x813176,
+  scrollShort: WHITE_POOL_A_ALLOCATION_IDENTITY.scrollShort,
   ownerAt: 0x24,
-  collectedImpact: false,
+  collectedImpact: true,
   kind0Collect: false,
   kind0Body: 0x17eab4,
   kind0Threshold: 0x34,
   hyperThreshold: 0x23,
   ownerDistance: 0x600,
   presentationStub: 0x13eeee,
+  bossFlags: 0x8130f8,
+  freeze: 0x8130d2,
+  scrollLong: 0x80b03c,
   collectionWrapper: 0x18b10a,
+  medal: Object.freeze({
+    body: 0x17ee92, canonicalBody: 0x27fe0e, collectedBody: 0x18014e,
+    collectP1: 0x817f84, collectP2: 0x817f88,
+    collectAdd: 1, collectScore: 0x50, collectCap: 0x03e7,
+    collectSelector: 0x00050000, collectSound: 0x18b10a,
+    step: 0x34, wrap: 0x001be60c, base: 0x001be2cc, wrapTimer: 1,
+  }),
   aim: WHITE_AIM256_RESOURCES,
   vectors: WHITE_VECTOR_RESOURCES,
   hyperByBody: WHITE_HYPER_BY_BODY,
   soundRequestMap: Object.freeze({ 0x18b10a: 0x28c5e4 }),
-  supportedKinds: Object.freeze([0x00, 0x04, 0x20, 0x2c, 0x30, 0x3c, 0x40]),
-  templateTable: 0x17fece,
+  supportedKinds: WHITE_POOL_A_ALLOCATION_IDENTITY.supportedKinds,
+  templateTable: WHITE_POOL_A_ALLOCATION_IDENTITY.templateTable,
   templatePointers: WHITE_TEMPLATE_POINTERS,
-  fillHookTable: 0x17fc52,
+  fillHookTable: WHITE_POOL_A_ALLOCATION_IDENTITY.fillHookTable,
   fillHooks: WHITE_FILL_HOOKS,
   fillHookDispatch: WHITE_FILL_HOOK_DISPATCH,
   hookData: WHITE_HOOK_DATA,
-  layerTable: 0x17fc3a,
-  layerEntries: 6,
+  layerTable: WHITE_POOL_A_ALLOCATION_IDENTITY.layerTable,
+  layerEntries: WHITE_POOL_A_ALLOCATION_IDENTITY.layerEntries,
   layerEmitters: WHITE_LAYER_EMITTERS,
   ownerByKind: Object.freeze({
     0x20: 0x8103e6, 0x2c: 0x8103e6,
     0x30: 0x810448, 0x3c: 0x810448,
   }),
   rng: Object.freeze({
+    jitter: WHITE_POOL_A_ALLOCATION_IDENTITY.jitter,
     phase: Object.freeze({ table: 0x14322e, entries: 256 }),
     spread: Object.freeze({ table: 0x14336a, entries: 256 }),
     speed: Object.freeze({ table: 0x14359e, entries: 64 }),

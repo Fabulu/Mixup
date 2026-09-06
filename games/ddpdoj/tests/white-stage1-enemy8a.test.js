@@ -137,10 +137,20 @@ test('Type $8A descriptors keep Black and White identities isolated and frozen',
     },
   });
 
+  assert.equal(black.edition, 'black');
+  assert.equal(white.edition, 'white');
+  assert.equal(black.poolA.edition, black.edition);
+  assert.equal(white.poolA.edition, white.edition);
   assert.deepEqual([
     black.initStub, black.initBody, black.handler, black.emitter.dispatch,
-    black.poolA.allocator, black.sound.death, black.retirement.entry,
-  ], [0x2766a6, 0x2766ae, 0x276702, 0x27829c, 0x27f92a, 0x28c25a, 0x263762]);
+    black.poolA.allocator, black.poolA.allocation,
+    black.poolA.bee.allocator, black.poolA.bee.allocation,
+    black.sound.death, black.retirement.entry,
+  ], [
+    0x2766a6, 0x2766ae, 0x276702, 0x27829c,
+    0x27f8ee, 'general-seventy', 0x27f92a, 'reserved-ten',
+    0x28c25a, 0x263762,
+  ]);
   assert.deepEqual([
     white.initStub, white.initBody, white.handler, white.recordPrototype,
     white.subPrototype, white.emitter.dispatch, white.effect.remap,
@@ -247,6 +257,59 @@ test('White Type $8A rejects incomplete edition resources before mutating the re
     fixture.ram, fixture.rom, REC, handlerContext(fixture), resources),
   /type-\$8A requires complete edition-bound resources/);
   assert.equal(fixture.ram.u16(REC), 0x8000);
+
+  const hybrid = Object.freeze({
+    ...descriptor, poolA: BLACK_WORLD_RESOURCES.enemyTypes[0x8a].poolA,
+  });
+  const hybridResources = Object.freeze({
+    ...WHITE_WORLD_RESOURCES,
+    enemyTypes: Object.freeze({ ...WHITE_WORLD_RESOURCES.enemyTypes, 0x8a: hybrid }),
+  });
+  const events = [];
+  const before = Array.from(fixture.ram.b);
+  assert.throws(() => runHandler(descriptor.handler,
+    fixture.ram, fixture.rom, REC, handlerContext(fixture, {
+      soundPost: (request) => events.push(request),
+    }), hybridResources),
+  /type-\$8A requires complete edition-bound resources/);
+  assert.deepEqual(Array.from(fixture.ram.b), before,
+    'a White Type $8A cannot mutate through the Black reserved allocator graph');
+  assert.deepEqual(events, []);
+
+  const soundHybrid = Object.freeze({
+    ...descriptor, sound: BLACK_WORLD_RESOURCES.enemyTypes[0x8a].sound,
+  });
+  const soundHybridResources = Object.freeze({
+    ...WHITE_WORLD_RESOURCES,
+    enemyTypes: Object.freeze({
+      ...WHITE_WORLD_RESOURCES.enemyTypes, 0x8a: soundHybrid,
+    }),
+  });
+  assert.throws(() => runHandler(descriptor.handler,
+    fixture.ram, fixture.rom, REC, handlerContext(fixture), soundHybridResources),
+  /type-\$8A requires complete edition-bound resources/);
+  assert.deepEqual(Array.from(fixture.ram.b), before,
+    'a White Type $8A cannot post Black sound resources');
+
+  const black = BLACK_WORLD_RESOURCES.enemyTypes[0x8a];
+  const blackRam = new Ram();
+  const blackRom = new RomWindows(tables.rom);
+  const blackEvents = [];
+  const blackUnported = new UnportedLog();
+  blackRam.setU16(REC, 0x8000);
+  blackRam.setU32(REC + 0x06, SUB);
+  blackRam.setU16(REC + 0x1a, 0x0c);
+  blackRam.setU32(SUB + BEE.pos, 0x40002000);
+  blackRam.setU8(SUB, 0x10);
+  blackRam.setU16(SUB + 0x18, 0xffff);
+  const blackBefore = Array.from(blackRam.b);
+  assert.throws(() => runHandler(black.handler, blackRam, blackRom, REC, {
+    ram: blackRam, rom: blackRom, unported: blackUnported, unportedLog: blackUnported,
+    soundPost: (request) => blackEvents.push(request),
+  }, BLACK_WORLD_RESOURCES), /27F92A/);
+  assert.deepEqual(Array.from(blackRam.b), blackBefore,
+    'Black Type $8A rejects a foreign bee kind before gameplay mutation');
+  assert.deepEqual(blackEvents, []);
   assertWhiteOnly(fixture.reads);
 });
 
