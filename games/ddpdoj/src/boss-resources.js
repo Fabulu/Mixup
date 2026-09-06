@@ -165,7 +165,10 @@ export const BLACK_TYPE0E_RESOURCES = deepFreeze({
     obj3Table: 0x292c2a, obj4Table: 0x292e32, obj5Table: 0x292eca,
   },
   main: {
-    m0: { animationObjects: 0x29337a, hpDisplayAtHandoff: true },
+    m0: {
+      animationObjects: { entry: 0x246410, table: 0x29337a },
+      hpDisplayAtHandoff: true,
+    },
     m2: { waypoints: 0x293482 }, m4: { waypoints: 0x293558 },
     m7: { waypoints: 0x293694 },
   },
@@ -265,7 +268,10 @@ export const WHITE_TYPE0E_RESOURCES = deepFreeze({
     obj3Table: 0x19161e, obj4Table: 0x191826, obj5Table: 0x1918be,
   },
   main: {
-    m0: { animationObjects: 0x191d66, hpDisplayAtHandoff: false },
+    m0: {
+      animationObjects: { entry: 0x145aee, table: 0x191d66 },
+      hpDisplayAtHandoff: false,
+    },
     m2: { waypoints: 0x191e6e }, m4: { waypoints: 0x191f44 },
     m7: { waypoints: 0x192080 },
   },

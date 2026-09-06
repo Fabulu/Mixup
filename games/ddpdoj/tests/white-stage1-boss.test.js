@@ -20,6 +20,8 @@ import { UnportedLog } from '../src/unported.js';
 import { B, POOL_B } from '../src/effects.js';
 import { BUL, REC as BULLET_REC } from '../src/bullets.js';
 import { BOSS, W425 } from '../src/boss.js';
+import { main0Step29321C } from '../src/bossarrival.js';
+import { ANIM_OBJECT } from '../src/animobjects.js';
 import { e12Step2966B8, W103 } from '../src/bossf23.js';
 import { RNG } from '../src/rng.js';
 import { SCHED, clearDispatched, dumpDispatched } from '../src/scheduler.js';
@@ -154,6 +156,10 @@ test('White Stage 1 boss follows its native Type $0E and Type $1E route', () => 
   assert.equal(BLACK_WORLD_RESOURCES.enemyTypes[0x1e], BLACK_TYPE1E_RESOURCES);
   assert.equal(WHITE_WORLD_RESOURCES.enemyTypes[0x0e], WHITE_TYPE0E_RESOURCES);
   assert.equal(WHITE_WORLD_RESOURCES.enemyTypes[0x1e], WHITE_TYPE1E_RESOURCES);
+  assert.deepEqual(BLACK_TYPE0E_RESOURCES.main.m0.animationObjects,
+    { entry: 0x246410, table: 0x29337a });
+  assert.deepEqual(WHITE_TYPE0E_RESOURCES.main.m0.animationObjects,
+    { entry: 0x145aee, table: 0x191d66 });
 
   assert.deepEqual(type0ERoute(BLACK_TYPE0E_RESOURCES), [
     'black', 0x0e, 'type0E',
@@ -437,4 +443,66 @@ test('White Stage 1 boss follows its native Type $0E and Type $1E route', () => 
     angles.map((angle) => [position, angle])));
 
   assertWholeWhiteReads(fixture);
+});
+
+test('White MAIN 0 handoff loads one root and five linked animation objects', () => {
+  const fixture = trackedWhiteCartridge();
+  const { rom, reads, windows } = fixture;
+  const ram = new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
+  const a4 = 0x81298c;
+  const a5 = BOSS_REC;
+  const a6 = BOSS_SUB;
+  const animation = WHITE_TYPE0E_RESOURCES.main.m0.animationObjects;
+  const unportedLog = new UnportedLog();
+
+  assert.equal(windows.some(({ base, len }) => {
+    const start = Number.parseInt(base.slice(1), 16);
+    return animation.entry >= start && animation.entry < start + len;
+  }), false, 'the White loader entry remains executable identity, not runtime data');
+
+  ram.setU32(a5 + BOSS.subRec, a6);
+  ram.setU16(a6 + 0x02, 0x5400);
+  ram.setU16(a6 + 0x04, 0x1c00);
+  ram.setU16(a6 + 0x11a, 0x0170);
+  ram.setU8(a6 + 0x3f, 1);
+  ram.setU8(a6 + 0x7f, 1);
+  ram.setU16(0x8130d2, 1);
+
+  const readStart = reads.length;
+  main0Step29321C(ram, rom, {
+    bossResources: WHITE_TYPE0E_RESOURCES,
+    tables: {},
+    unportedLog,
+  }, a4, a5, a6);
+  const handoffReads = reads.slice(readStart);
+
+  assert.equal(ram.u16(a6 + 0x11a), 0x0180);
+  assert.deepEqual(unportedLog.report(), []);
+  assert.equal(ANIM_OBJECT.roots, 0x810346);
+  assert.equal(ANIM_OBJECT.nodes, 0x80fa86);
+  const roots = Array.from({ length: ANIM_OBJECT.rootSlots }, (_, index) =>
+    ANIM_OBJECT.roots + index * ANIM_OBJECT.rootStride).filter((address) =>
+    (ram.u16(address) & 0x8000) !== 0);
+  const nodes = Array.from({ length: ANIM_OBJECT.nodeSlots }, (_, index) =>
+    ANIM_OBJECT.nodes + index * ANIM_OBJECT.nodeStride).filter((address) =>
+    (ram.u16(address) & 0x8000) !== 0);
+  assert.deepEqual(roots, [0x810346]);
+  assert.deepEqual(nodes, [0x80fa86, 0x80faf6, 0x80fb66, 0x80fbd6, 0x80fc46]);
+  assert.deepEqual([roots[0], ...nodes].map((address) => ram.u32(address + 0x2c)),
+    [...nodes, 0]);
+
+  const tableEnd = animation.table + 0x48;
+  const tableReads = handoffReads.filter(({ address, end }) =>
+    address < tableEnd && end > animation.table);
+  assert.ok(tableReads.length > 0);
+  assert.equal(tableReads.every(({ address, end }) =>
+    address >= animation.table && end <= tableEnd), true);
+  const covered = new Set();
+  for (const { address, end } of tableReads) {
+    for (let cursor = address; cursor < end; cursor++) covered.add(cursor);
+  }
+  assert.equal(covered.size, 0x48);
+  assert.equal(Math.min(...covered), animation.table);
+  assert.equal(Math.max(...covered), tableEnd - 1);
+  assertWholeWhiteReads({ ...fixture, reads: handoffReads });
 });

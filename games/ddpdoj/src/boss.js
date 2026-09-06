@@ -160,7 +160,7 @@ export const BOSS = {
  *
  *  What is left is genuinely deferred: the hit-stop driver `$243DD0` and the
  *  `$8039xx` pause block `$23C4D0`. `$246410` stays too, but read its entry:
- *  THE LOADER IS PORTED (`animobjects.js loadAnimObjects246410`, 19 call sites) --
+ *  THE LOADER IS PORTED (`animobjects.js loadAnimObjects246410`, 25 call sites) --
  *  what is deferred at those three sites is the TABLE each one passes, not the
  *  routine. Every key here has a live `note()` call above, and
  *  `w444deferrals.test.js` fails if one stops having one. */
@@ -168,7 +168,7 @@ export const BOSS_NOTED = Object.freeze({
   0x243dd0: '$292912/$294C68/$294D4C jsr $243DD0 -- the hit-stop / screen-shake '
     + 'driver (170 instructions, no reader in the stage-end chain)',
   0x246410: '$293F18 / $29407C / $28D770 jsr $246410 -- the loader ITSELF is '
-    + 'ported (animobjects.js loadAnimObjects246410, 19 call sites); what these '
+    + 'ported (animobjects.js loadAnimObjects246410, 25 call sites); what these '
     + 'three sites still defer is the animation TABLE each one passes',
   0x23c4d0: '$294DE4 jsr $23C4D0 -- the $8039xx pause/flag block',
   // W382 dropped $253564 and $242922 from this table: both were ALREADY ported

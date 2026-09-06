@@ -194,6 +194,7 @@ import {
 import { install24150A } from './palette.js';
 import { aim64, slew64, AimTables } from './aim.js';
 import { applyVelocity } from './movement.js';
+import { loadAnimObjects246410 } from './animobjects.js';
 import { drawWordByteWithResources } from './rng.js';
 import { BUCKETS, enqueueRegisters } from './spritequeue.js';
 import { BS, dist242494, bodyTail29314C } from './bossscripts.js';
@@ -203,10 +204,7 @@ import { type0EResourcesFromContext } from './boss-resources.js';
 /** A byte, the way every `.b` operation in this file truncates. */
 const u8 = (v) => v & 0xff;
 
-/** The two deferred subsystems this file reaches, counted the way `boss.js`
- *  counts its nine.  `$24150A` is the resource/banner install and `$246410` the
- *  ANIMATION-OBJECT loader; both are DATA-driven presentation and both were
- *  already counted from `$293EE6`/`$293F18` before this wave. */
+/** Record presentation work when its required runtime dependency is absent. */
 const note = (ctx, a, what) => ctx.unportedLog?.note(a, what);
 
 const AIM_TABLES = new WeakMap();
@@ -676,9 +674,7 @@ export function main0Step29321C(ram, rom, ctx, a4, a5, a6) {
   for (const d0 of [0, 1, 2, 3, 4, 5]) a2Run2598E6(ram, d0);  // $293332..$29335C
   if (W96_MUTATE.value === 'main0-arm-obj6') a2Run2598E6(ram, 6);
   else a2Stop25994A(ram, 6);                             // $293362 -- STOP, not arm
-  const animationObjects = resources.main.m0.animationObjects;
-  note(ctx, 0x246410, `MAIN 0's five ANIMATION OBJECTS ($${
-    animationObjects.toString(16).toUpperCase()}, data; the presentation tier, deferred whole since W53)`);
+  loadAnimObjects246410(ram, rom, resources.main.m0.animationObjects.table);
   tail(ram, ctx, a6);                                    // $293376 bra.w $29314C
 }
 

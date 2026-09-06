@@ -180,8 +180,8 @@ test('F 0 counts $C0 and the ARMING FRAME is one of them', { skip: SKIP }, () =>
   assert.equal(ram.u16(SCHED.seqPending ?? 0x812982), 0, 'MAIN not started yet');
   f0Step294FA6(ram, ctx, A4);
   assert.equal(ram.u16(A4), 0, '$294FC6 clr.w (a4) -- F 0 retires itself');
-  assert.ok([...ctx.unportedLog.calls.keys()].some((k) => k.startsWith('$24150A ')),
-    '$24150A is COUNTED, never silent');
+  assert.ok([...ctx.unportedLog.calls.keys()].some((k) => k.startsWith('$294FC0 ')),
+    '$294FC0 is COUNTED, never silent');
 });
 
 // ============================================ $294EFA -- THE SHOOTABLE FLAG

@@ -155,7 +155,7 @@ for (const [file, text] of SOURCES) {
 
 test('W444 the scan itself found something -- a broken regex must not pass as a clean sweep', () => {
   assert.ok(SOURCES.length > 90, `only ${SOURCES.length} sources scanned`);
-  assert.ok(DEFERRED.size > 150, `only ${DEFERRED.size} deferred addresses -- the scan is broken`);
+  assert.ok(DEFERRED.size > 140, `only ${DEFERRED.size} deferred addresses -- the scan is broken`);
   assert.ok(PORTED.size > 500, `only ${PORTED.size} ported addresses -- the scan is broken`);
 });
 
@@ -254,17 +254,12 @@ const OVERLAP_DECLARED = Object.freeze({
   0x2415e8: 'palette.js install2415E8: the ctx.palette-absent arm',
   0x241688: 'palette.js paletteSet241688: the ctx.palette-absent arm',
   // -- the ROUTINE is ported; what the site defers is genuinely something else --
-  0x246410: 'animobjects.js loadAnimObjects246410 has 20 call sites after W509 directly wired '
-    + 'the reached $290892 mode-0 call. The three boss/arrival/midboss sites defer the animation '
+  0x246410: 'animobjects.js loadAnimObjects246410 has 25 call sites after Task #294 wired '
+    + 'MAIN 0\'s reached handoff. The three remaining boss/arrival/midboss sites defer the '
     + 'TABLE each passes, NOT the loader. W444 rewrote BOSS_NOTED, which had called the loader '
     + 'itself "the presentation tier, genuinely deferred"',
-  0x28ac72: 'cues.js spawnCues28AC72 is ported; the midboss record selects descriptor $28B08E, '
-    + 'outside the kind-0/4/8 closure cues.js implements',
-  0x24200a: 'aim.js is ported; initbody defers because the SPAWN POSITION is W24-derived, so the '
-    + 'aim input is what is missing, not the aim',
-  0x24202c: 'aim.js is ported; same W24 spawn-position reason as $24200A',
-  0x244074: 'bullets.js `fire` merely NAMES $244074 in its doc; midboss.js counts the bullet-'
-    + 'cancel SCORE walk. Doc-convention false positive, kept declared so it stays looked at',
+  0x289b22: 'effects.js spawnPoolC289B22 is ported for Type $88; Hibachi\'s first-loop site '
+    + 'still defers its separate 21-row table-driven call contract',
   // W445 DELETED THE $2878CC ROW, per this file's own rule two tests down: the two
   // stale deferrals were WIRED, so the address is no longer both ported and deferred
   // and leaving the row would be the same rot one level up. What replaced it is

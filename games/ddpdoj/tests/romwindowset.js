@@ -912,10 +912,19 @@
 // Measured: 1924 -> 1927 windows, 668,741 -> 668,821 bytes, 970 -> 973 unique
 // White windows, 210,944 -> 211,024 White bytes, and 80 -> 80 overlap pairs.
 
-export const ROM_WINDOW_COUNT = 1927;
+// ---------------------------------------------------------------------------
+// TASK #294 BOSS ARRIVAL HANDOFF ADDED TWO DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The native Black and White five-record animation-object tables each add 72
+// exact bytes. Only the White table joins the edition-private manifest. The two
+// executable loader entries remain identities, not readable data.
+// Measured: 1927 -> 1929 windows, 668,821 -> 668,965 bytes, 973 -> 974 unique
+// White windows, 211,024 -> 211,096 White bytes, and 80 -> 80 overlap pairs.
+
+export const ROM_WINDOW_COUNT = 1929;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 668821;
+export const ROM_WINDOW_BYTES = 668965;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -1015,8 +1024,8 @@ function removeTask277BlackAnimationWindow(tables, required = false) {
   return tables;
 }
 
-const WHITE_LABEL_WINDOW_COUNT = 973;
-const WHITE_LABEL_WINDOW_BYTES = 211024;
+const WHITE_LABEL_WINDOW_COUNT = 974;
+const WHITE_LABEL_WINDOW_BYTES = 211096;
 
 /** Remove the later embedded Version A family and Task #277's Black animation
  *  correction before reconstructing any earlier Black Label ledger. The

@@ -2362,6 +2362,15 @@ SHOT_WINDOWS.extend([
 ])
 
 
+# Task #294: MAIN 0's arrival handoff passes this counted five-record table to
+# the already ported $246410 loader. The count word plus five fourteen-byte
+# records is exactly $48 bytes. The loader entry remains executable identity.
+SHOT_WINDOWS.extend([
+    (0x29337A, 0x0048, "Task #294: Black B Stage 1 boss MAIN 0 five-record "
+                       "animation-object table"),
+])
+
+
 # ============ W103: THE F 2/F 3 WAVE'S TABLES ================================
 #
 # Same rule as W95/W96 -- every constant `src/bossf23.js` uses is read at the
@@ -11437,7 +11446,7 @@ WHITE_LABEL_WINDOWS = [
     (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
 ]
 
-# Task #253's private Stage 1 world slice, extended through Task #292 for Types
+# Task #253's private Stage 1 world slice, extended through Task #294 for Types
 # $27, $10, $85, $0D, $1C, $82, $89, $88, $08, $0B, $09, $24, $31, $0E,
 # and $1E. These are the bounded Build A data windows read by the shared
 # background, spawn, enemy, bullet, cue, item, effect, and boss algorithms.
@@ -11675,6 +11684,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x1918BE, 0x0080, "White A Type-$0E object-5 sprite table"),
     (0x191978, 0x0180, "White A Type-$0E object-6 frame table"),
     (0x191AF8, 0x0048, "White A Type-$0E A0 main descriptor table"),
+    (0x191D66, 0x0048, "White A Stage 1 boss MAIN 0 five-record animation-object table"),
     (0x191E6E, 0x0020, "White A Type-$0E main-2 waypoint table"),
     (0x191F44, 0x0020, "White A Type-$0E main-4 waypoint table"),
     (0x192080, 0x0020, "White A Type-$0E main-7 waypoint table"),
