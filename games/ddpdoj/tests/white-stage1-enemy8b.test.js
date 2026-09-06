@@ -52,7 +52,7 @@ function whiteCartridgeWindows() {
   ];
   const key = ({ base, len }) => `${base}:${len}`;
   const allowed = new Set(descriptors.map(key));
-  assert.equal(allowed.size, 850,
+  assert.equal(allowed.size, 866,
     'the overlapping White runtime categories resolve to 850 unique windows');
   const windows = tables.rom.windows.filter((window) => allowed.has(key(window)));
   assert.equal(windows.length, allowed.size,

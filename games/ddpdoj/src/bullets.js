@@ -572,12 +572,12 @@ function spread3B(ctx, regs, resources = BLACK_BULLET_SPAWN_RESOURCES) {
 }
 
 /** $2816DE -- bank B's two-way spread. */
-function spread2B(ctx, regs) {
+function spread2B(ctx, regs, resources = BLACK_BULLET_SPAWN_RESOURCES) {
   const r = [];
   angMinus8(regs);
-  r.push(spawnCore(ctx, regs, 'B'));
+  r.push(spawnCoreWithResources(ctx, regs, 'B', resources));
   angPlus16(regs);
-  r.push(spawnCore(ctx, regs, 'B'));
+  r.push(spawnCoreWithResources(ctx, regs, 'B', resources));
   return r;
 }
 
@@ -642,6 +642,13 @@ function bankBAdaptive(ctx, regs, resources) {
   return restoreFan(regs, () => adaptive(ctx, regs, 'B', resources));
 }
 
+function bankBSpreadTwo(ctx, regs, resources) {
+  if (!fanWithResources(ctx, resources)) {
+    return [spawnCoreWithResources(ctx, regs, 'B', resources)];
+  }
+  return restoreFan(regs, () => spread2B(ctx, regs, resources));
+}
+
 function bankBSpreadThree(ctx, regs, resources) {
   if (!fanWithResources(ctx, resources)) {
     return [spawnCoreWithResources(ctx, regs, 'B', resources)];
@@ -669,6 +676,9 @@ export function fireWithResources(ctx, entry, regs, resources) {
   }
   if (resources.semantic === 'bank-b-adaptive') {
     return bankBAdaptive(ctx, regs, resources);
+  }
+  if (resources.semantic === 'bank-b-spread-two') {
+    return bankBSpreadTwo(ctx, regs, resources);
   }
   if (resources.semantic === 'bank-b-spread-three') {
     return bankBSpreadThree(ctx, regs, resources);

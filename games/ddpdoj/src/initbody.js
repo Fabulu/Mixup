@@ -31,6 +31,7 @@
 
 import { unreached } from './unported.js';
 import { initArms, stepArms } from './midboss.js';
+import { requireType0DResources, requireType1CResources } from './midboss-resources.js';
 import { u16, i16, u32 } from './ram.js';
 import { installScripts, a2Run2598E6, a2RunAll2598FE,
   a4Start25980C } from './scheduler.js';
@@ -150,9 +151,11 @@ function typeBit5SpawnMirror(ram, a5, a6) {
 // and the block, so "this bank is still the recording's" stays visible instead
 // of becoming a silent hole.  `install24150A` throws by address on a bank
 // outside 0..31 and on a short ROM read; neither is clamped here.
-function installBank(ram, rom, palette, unported, bank, block, site, what) {
+function installBank(ram, rom, palette, unported, bank, block, site, what,
+  installer = 0x24150a) {
   if (!palette) {
-    unported?.note(0x24150a, `$${site.toString(16).toUpperCase()} jsr $24150A `
+    unported?.note(installer, `$${site.toString(16).toUpperCase()} jsr $${installer
+      .toString(16).toUpperCase()} `
       + `-- ${what}: bank $${bank.toString(16).toUpperCase()} <- $${block
         .toString(16).toUpperCase()}. No PaletteState on this call chain, so `
       + `that bank stays whatever it was`);
@@ -1179,47 +1182,32 @@ BODY.set(0x277278, (ram, rom, a5, a6, unported) => {
   ram.setU8(a5 + 0x19, rom.u8(pal + 1));
 });
 
-// --- type $0D ($26B484): THE MIDBOSS (runLen 16).  Loaders, position, the two
-// bespoke midboss sub-routines are noted (they set up the midboss's multi-part
-// body, not done-when stats), and it SETS $8130D8/$8130DA -- the stage-kill
-// flags the regulars gate on.  Those writes ARE ported (semantically load-bearing
-// for which spawns land after the midboss).
-BODY.set(0x26B484, (ram, rom, a5, a6, unported, tables, palette) => {
-  loadSubProto(ram, rom, a5, a6, 0x26B50E);            // jsr $2637A2
-  ram.setU32(a5 + R.rec44, 0x26B50E + 28 * 17);        // move.l A0,($44,A5)
-  loadRecordProto(ram, rom, a5, 0x26B4FA, 0x09);       // move.w #$9,D0; jsr $26377A
-  readInitPosition(ram, rom, a5, unported);                  // jsr $263808 (W24)
-  ram.setU16(a6 + S.posX, u16(i16(ram.u16(a6 + S.posX)) + 0x0a40));  // addi.w #$a40,($2,A6)
-  // W31: BOTH `bsr`s are now RUN, and neither was "not a stat".
-  //   $26B4B0 bsr $26B286 -- writes ($1B,A4)/($29,A4) for all eight arms AND
-  //     ends `bsr $26B2AC`, which takes FOUR draws off the shared $803917
-  //     counter (3x $2431F4, 1x $242FDE).  Noting it left the port four draws
-  //     behind the board from the midboss's spawn frame onwards -- the `rng`
-  //     column, not a cosmetic.
-  //   $26B4B4 bsr $26B304 -- one step of the swing machine and the initial
-  //     PLACEMENT of all eight arms.  The board runs it TWICE on the spawn
-  //     frame (once here, once from the handler, which the driver reaches on
-  //     the same frame); running it once would leave ($1C,A5) a step behind
-  //     for the whole life of the boss.
-  initArms(ram, rom, a5, a6);                           // $26B4B0 bsr $26B286
-  if (!tables) {
-    unreached(0x26b4b4, `the MIDBOSS init body reached $26B4B4 bsr $26B304 `
-      + `without a MoveTables. Its arm placement reads $241D34 (speed level `
-      + `$70), so the caller must pass \`tables\` through runInitBodyAddr -- `
-      + `see src/enemyframe.js. Refusing to place the arms silently`);
-  }
-  stepArms(ram, rom, a5, a6, tables);                   // $26B4B4 bsr $26B304
-  ram.setU16(G.d8, 1);                                  // move.w #$1,$8130d8  (LOAD-BEARING)
-  ram.setU16(G.da, 0);                                  // move.w #$0,$8130da
-  // W92: the MIDBOSS's three colour banks.  $26B4CC/$26B4DC/$26B4EC each
-  // `lea <block>,A0 / move.w #<bank>,D0` and fall into $24150A.
-  installBank(ram, rom, palette, unported, 0x10, 0x223338, 0x26B4D2,
-    'the MIDBOSS, install 1 of 3');
-  installBank(ram, rom, palette, unported, 0x11, 0x223378, 0x26B4E2,
-    'the MIDBOSS, install 2 of 3');
-  installBank(ram, rom, palette, unported, 0x0F, 0x2233B8, 0x26B4F2,
-    'the MIDBOSS, install 3 of 3');
-});
+// --- type $0D ($26B484): THE MIDBOSS (runLen 16). The shared body executes
+// both bespoke arm routines, installs all three palettes, and sets
+// $8130D8/$8130DA, the stage-kill flags the regulars gate on.
+function init0D(ram, rom, a5, a6, unported, _tables, palette, descriptor) {
+  const resources = requireType0DResources(descriptor);
+  loadSubProto(ram, rom, a5, a6, resources.subPrototype);
+  ram.setU32(a5 + R.rec44, resources.cueCursor);
+  loadRecordProto(ram, rom, a5, resources.recordPrototype,
+    resources.recordPrototypeWordsMinusOne);
+  readInitPosition(ram, rom, a5, unported);
+  ram.setU16(a6 + S.posX,
+    u16(i16(ram.u16(a6 + S.posX)) + resources.positionBias));
+  initArms(ram, rom, a5, a6, resources);
+  stepArms(ram, rom, a5, a6, null, resources);
+  ram.setU16(G.d8, 1);
+  ram.setU16(G.da, 0);
+  resources.palettes.installs.forEach(({ bank, block, site }, index) => {
+    installBank(ram, rom, palette, unported, bank, block, site,
+      `the MIDBOSS, install ${index + 1} of ${resources.palettes.installs.length}`,
+      resources.palettes.installer);
+  });
+}
+
+BODY.set(0x26B484, (ram, rom, a5, a6, unported, tables, palette) =>
+  init0D(ram, rom, a5, a6, unported, tables, palette,
+    BLACK_WORLD_RESOURCES.enemyTypes[0x0d]));
 
 // --- type $1C ($26C1CA): WHAT THE MIDBOSS'S DEATH SPAWNS (runLen 0).  W57.
 //
@@ -1233,15 +1221,16 @@ BODY.set(0x26B484, (ram, rom, a5, a6, unported, tables, palette) => {
 // object's position is the LITERAL `$38001C00` written straight over
 // ($2,A6)/($4,A6), so it is pinned to one place on the screen and has no
 // movement script.  Every other stage-1 body in this file reads the stream.
-BODY.set(0x26C1CA, (ram, rom, a5, a6) => {
-  loadSubProto(ram, rom, a5, a6, 0x26C1F0);            // $26C1CA lea / $26C1D0 jsr $2637A2
-  loadRecordProto(ram, rom, a5, 0x26C1EE, 0x00);       // $26C1D6 lea / $26C1DC moveq #$0,D0
-  // $26C1E4 `move.l #$38001C00,$2(A6)` -- ONE longword over BOTH position
-  // words: ($2,A6) := $3800 and ($4,A6) := $1C00.  Written as a longword
-  // because that is the instruction; splitting it into two `move.w`s would be
-  // the same bytes today and a different routine to read.
-  ram.setU32(a6 + S.posX, 0x38001c00);                 // $26C1E4
-});                                                    // $26C1EC rts
+function init1C(ram, rom, a5, a6, descriptor) {
+  const resources = requireType1CResources(descriptor);
+  loadSubProto(ram, rom, a5, a6, resources.subPrototype);
+  loadRecordProto(ram, rom, a5, resources.recordPrototype,
+    resources.recordPrototypeWordsMinusOne);
+  ram.setU32(a6 + S.posX, resources.position);
+}
+
+BODY.set(0x26C1CA, (ram, rom, a5, a6) =>
+  init1C(ram, rom, a5, a6, BLACK_WORLD_RESOURCES.enemyTypes[0x1c]));
 
 // --- type $0E ($2926E2): THE BOSS (runLen 8).  Loaders, fixed entry position,
 // the bespoke boss state-machine install ($259554, W30) and resource installs
@@ -2593,7 +2582,8 @@ BODY.set(0x27d404, (ram, rom, a5, a6, unported) => {
 // which does `lea <64-byte block>,A0 / moveq #<bank>,D0 / jsr $24150A` and
 // carried a counted note from W23 to W91.  A caller that omits it gets that
 // note back rather than a silently missing colour install.
-export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyTypes) {
+export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyTypes,
+  edition = null) {
   const map = new Map(BODY);
   const descriptors = Object.values(typeDescriptors ?? {});
   const ownedAlgorithms = new Set(descriptors.map(({ algorithm }) => algorithm));
@@ -2607,7 +2597,16 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
     for (const foreignBody of descriptor.foreignInitBodies ?? []) {
       map.delete(foreignBody);
     }
-    if (descriptor.algorithm === 'type05') {
+    if (descriptor.algorithm === 'type0D') {
+      const canonical = requireType0DResources(descriptor, edition);
+      map.set(canonical.initBody,
+        (ram, rom, a5, a6, unported, tables, palette) =>
+          init0D(ram, rom, a5, a6, unported, tables, palette, canonical));
+    } else if (descriptor.algorithm === 'type1C') {
+      const canonical = requireType1CResources(descriptor, edition);
+      map.set(canonical.initBody, (ram, rom, a5, a6) =>
+        init1C(ram, rom, a5, a6, canonical));
+    } else if (descriptor.algorithm === 'type05') {
       map.set(descriptor.initBody, (ram, rom, a5, a6, unported) =>
         init05(ram, rom, a5, a6, unported, descriptor));
     } else if (descriptor.algorithm === 'type11') {

@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Ram } from '../src/ram.js';
+import { Game } from '../src/main.js';
 import { RomWindows } from '../src/rom.js';
 import { UnportedLog } from '../src/unported.js';
 import { MoveTables } from '../src/vectors.js';
@@ -30,6 +31,7 @@ import { resolveEmitStub, BUCKETS, NAMED_BUCKETS } from '../src/spritequeue.js';
 import { drawByte2431F4, drawSigned242FDE, RNG_2431F4, RNG_242FDE } from '../src/rng.js';
 import { pushExternalSpeed, BGRAM } from '../src/background.js';
 import { MIDBOSS, armScreenClear, initArms, rollSwing, stepArms } from '../src/midboss.js';
+import { ANIM_OBJECT } from '../src/animobjects.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TABLES = path.join(HERE, '..', 'rip', 'port', 'player.tables.json');
@@ -64,11 +66,11 @@ function fixture() {
   for (let n = 0; n < 8; n++) ram.setU16(arm(n) + A.flags, 0x8000);  // all dead
   return ram;
 }
-function ctxOf(ram) {
+function ctxOf(ram, rom = ROM, tables = MT) {
   const log = new UnportedLog();
   const spawns = [];
   return {
-    ctx: { ram, rom: ROM, tables: MT, unported: log, unportedLog: log, notes: log,
+    ctx: { ram, rom, tables, unported: log, unportedLog: log, notes: log,
       bulletSpawn: (site, res) => spawns.push([site, res]) },
     log, spawns,
   };
@@ -477,6 +479,39 @@ test('the death sequence draws the BODY and NOT the arms or the tail ($26BDFC)',
     'one request: $26BFC2. $26BDFC tst.b ($17,A5) / bne stops before $26BE0C');
 });
 
+test('Black profile-filtered death reads the native $26C0FC animation-object list',
+  { skip: SKIP }, () => {
+  const game = new Game(new Uint8Array(0x20000), TJ, { palCatchUp: false });
+  assert.equal(MIDBOSS.animationObjects.table, 0x26c0fc);
+  assert.throws(() => game.rom.u32(0x16b15e),
+    (error) => error?.romAddress === 0x16b15e,
+    'the Black profile excludes White-only animation data');
+  assert.equal(game.rom.u32(0x26c0fc + 8), ROM.u32(0x26c0fc + 8),
+    'the profile keeps the native Black target list');
+
+  const ram = fixture();
+  ram.setU32(SUB + S.posX, 0x40002000);
+  ram.setU16(SUB + S.anim, 1);
+  ram.setU16(SUB + S.hp, 0x8001);
+  ram.setU16(0x8130ce, 0x00f0);
+  ram.setU8(REC + R.hitFlags, 1);
+  ram.setU8(SUB, 0x40);
+  runHandler(0x26b6fa, ram, game.rom, REC,
+    ctxOf(ram, game.rom, game.tables).ctx);
+
+  let node = ram.u32(ANIM_OBJECT.roots + 0x2c);
+  let nodes = 0;
+  while (node !== 0) {
+    nodes++;
+    if (nodes === 1) {
+      assert.equal(ram.u32(node + 0x0a), game.rom.u32(0x26c0fc + 8),
+        'the first node receives the native Black target without rebasing');
+    }
+    node = ram.u32(node + 0x2c);
+  }
+  assert.equal(nodes, 14, 'the filtered Black runtime installs all fourteen nodes');
+});
+
 test('$26B184 walks the $26B214 list to its $FFFF and counts every allocation',
   { skip: SKIP }, () => {
   const ram = fixture();
@@ -525,6 +560,8 @@ test('$26B184 walks the $26B214 list to its $FFFF and counts every allocation',
     '$26B1A0 move.l ($2,A4),($2,A0) -- the per-arm effects take THE ARM (A4)');
   assert.ok(listRecs.every((a) => ram.u32(a + 0x02) >>> 0 === 0x40002000),
     '$26B1F2 move.l ($2,A6),($2,A0) -- while the LIST records take THE BODY');
-  assert.ok([...log.calls.keys()].some((k) => k.startsWith('$246410 ')),
-    'the ANIMATION-OBJECT install is counted BY ITS OWN ADDRESS');
+  assert.equal(ram.u16(ANIM_OBJECT.roots), 0x8000,
+    '$246410 allocates the animation root through the real loader');
+  assert.equal([...log.calls.keys()].some((k) => k.startsWith('$246410 ')), false,
+    'the obsolete animation-object note is gone');
 });

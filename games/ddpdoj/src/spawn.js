@@ -275,7 +275,7 @@ export function runInitBody(addr, ram, rom, rec, unported, tables, palette,
   const s = resources.spawn;
   if (addr === s.low.nullInit + 8 || addr === s.high.nullInit + 8) return;
   return runInitBodyAddr(addr, ram, rom, rec, unported, tables, palette, soundPost,
-    createInitBodyMap(resources.enemyTypes), resources);
+    createInitBodyMap(resources.enemyTypes, resources.edition), resources);
 }
 
 // ------------------------------------------- $28AD54: THE SUB-RECORD REAPER
@@ -440,7 +440,7 @@ export const DEFQ_D1 = { FIXED80: 0x80, FIXED00: 0x00, CALLER: -1 };
  */
 export function enqueueDeferred(ram, type, d1mode, callerD1 = 0,
   resources = BLACK_WORLD_RESOURCES) {
-  const s = resources.spawn;
+  const s = resources.spawn ?? resources;
   let count = ram.u16(s.deferredCount);            // $263694 move.w $815ea8,D2
   if (count === s.deferredCap) {                   // $26369a cmpi.w #$c80,D2 / beq
     return { addr: s.deferredDummy, dropped: true };

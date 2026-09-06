@@ -167,6 +167,7 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$121530', len: 0x0018 },
     { base: '$121548', len: 0x0008 },
     { base: '$121558', len: 0x0008 },
+    { base: '$121568', len: 0x0008 },
     { base: '$121580', len: 0x0008 },
     { base: '$121588', len: 0x0008 },
     { base: '$121650', len: 0x0008 },
@@ -181,9 +182,11 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$121D36', len: 0x0042 },
     { base: '$121D78', len: 0x00e4 },
     { base: '$121EFE', len: 0x00d2 },
+    { base: '$12208A', len: 0x00d8 },
     { base: '$1222D2', len: 0x009c },
     { base: '$12236E', len: 0x0040 },
     { base: '$1223AE', len: 0x00ea },
+    { base: '$123338', len: 0x00c0 },
     { base: '$129FE0', len: 0x0004 },
     { base: '$12A044', len: 0x0004 },
     { base: '$12A0A8', len: 0x0004 },
@@ -200,6 +203,7 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$13E21C', len: 0x003c },
     { base: '$13E2A6', len: 0x000e },
     { base: '$13E2D4', len: 0x000e },
+    { base: '$13E3A4', len: 0x0012 },
     { base: '$13EE54', len: 0x0016 },
     { base: '$141094', len: 0x0014 },
     { base: '$1423E8', len: 0x00f9 },
@@ -217,8 +221,10 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$1623B0', len: 0x0010 },
     { base: '$1668C4', len: 0x0008 },
     { base: '$1668D4', len: 0x0008 },
+    { base: '$166904', len: 0x0008 },
     { base: '$16691C', len: 0x0008 },
     { base: '$166924', len: 0x0008 },
+    { base: '$16697C', len: 0x0008 },
     { base: '$16699C', len: 0x0020 },
     { base: '$1669D4', len: 0x0008 },
     { base: '$166FE8', len: 0x0008 },
@@ -248,6 +254,12 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$16925A', len: 0x0008 },
     { base: '$169328', len: 0x0016 },
     { base: '$16933E', len: 0x001c },
+    { base: '$16A28C', len: 0x0072 },
+    { base: '$16A4F4', len: 0x0008 },
+    { base: '$16A572', len: 0x0200 },
+    { base: '$16AED2', len: 0x018c },
+    { base: '$16B15E', len: 0x00c6 },
+    { base: '$16B224', len: 0x004a },
     { base: '$171A96', len: 0x0008 },
     { base: '$171AE4', len: 0x001c },
     { base: '$171E4E', len: 0x0080 },
@@ -289,10 +301,14 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     { base: '$17FF4A', len: 0x0016 },
     { base: '$17FFB8', len: 0x00a8 },
     { base: '$180358', len: 0x0014 },
+    { base: '$18061E', len: 0x0004 },
     { base: '$180622', len: 0x0008 },
+    { base: '$18062E', len: 0x0004 },
     { base: '$18065E', len: 0x0004 },
+    { base: '$180A0C', len: 0x0010 },
     { base: '$180A20', len: 0x0010 },
     { base: '$180A34', len: 0x0010 },
+    { base: '$180A5C', len: 0x0010 },
     { base: '$180AC0', len: 0x0010 },
     { base: '$180B24', len: 0x0010 },
     { base: '$18692E', len: 0x0008 },
@@ -318,6 +334,32 @@ runtimeTest('generated tables retain the independent embedded Version A manifest
     assert.ok(exported.has(`${window.base}:${window.len}`));
     assert.ok(Number.parseInt(window.base.slice(1), 16) + window.len <= 0x200000);
   }
+  assert.deepEqual(white.stage1Type0D, {
+    helpers: {
+      start: '$16A1FC', end: '$16A4F4',
+      sha256: 'ba2987fd694cb37d4744bc6443417c54e354fc8f49954b818981aa4af3309510',
+    },
+    init: {
+      start: '$16A4F4', end: '$16A772',
+      sha256: '1707ab8741cdfa53a8a7024e9b59fa10c77b65c2fa2241e9334ae70fdfa61c50',
+    },
+    handler: {
+      start: '$16A772', end: '$16B05E',
+      sha256: '6d7f753fed5d621e96a8ba7b83121201dba62c114683a55025a6f9efac04e882',
+    },
+    animationList: {
+      start: '$16B15E', end: '$16B224',
+      sha256: '786e2d5bb3c62d497996e6ab2477d839ab184e927f2c78d2995e1d96cabf7102',
+    },
+    type1CInit: {
+      start: '$16B224', end: '$16B26E',
+      sha256: 'afad6a3cb03d91b2766bec3978c767ff06af1a11c1afa4da8b6eee029a764e00',
+    },
+    type1CHandler: {
+      start: '$16B26E', end: '$16B2C8',
+      sha256: 'a842eba7976b281f1ffcd8dfb7abd52f8f38ec602b6377804ab071e21bbd7d21',
+    },
+  });
   assert.deepEqual(white.stage1Type8B, {
     init: {
       start: '$1758BE', end: '$175920',
@@ -365,6 +407,12 @@ runtimeTest('embedded Version A projection reconstructs the exact legacy Black l
   assert.deepEqual(tableBeforeWhiteLabel(legacy), legacy,
     'the exact legacy projection is idempotent');
 
+  const missingBlackAnimation = JSON.parse(JSON.stringify(tables));
+  missingBlackAnimation.rom.windows = missingBlackAnimation.rom.windows.filter((window) =>
+    window.base !== '$26C0FC');
+  assert.throws(() => tableBeforeWhiteLabel(missingBlackAnimation),
+    /Task #277 Black animation window is missing/);
+
   const partial = JSON.parse(JSON.stringify(tables));
   const omitted = partial.editions.whiteLabel.playerWindows[0];
   partial.rom.windows = partial.rom.windows.filter((window) =>
@@ -403,10 +451,10 @@ runtimeTest('Black runtime excludes every embedded Version A-only ROM window', (
   const g = game();
   const live = new Set(g.rom.windows.map(({ base, len }) => `${base}:${len}`));
 
-  assert.equal(excluded.size, 850);
-  assert.equal(tables.rom.windows.length, 1803,
+  assert.equal(excluded.size, 866);
+  assert.equal(tables.rom.windows.length, 1820,
     'runtime projection does not mutate the complete exported table');
-  assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [953, 457599]);
+  assert.deepEqual([g.rom.windows.length, g.rom.byteCount], [954, 457797]);
   for (const key of excluded) assert.equal(live.has(key), false, `${key} stays edition-private`);
 
   for (const privateWindow of [

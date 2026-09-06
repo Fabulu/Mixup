@@ -12,6 +12,10 @@ import {
 } from './white-bullets.js';
 import { BLACK_CUE_RESOURCES, WHITE_CUE_RESOURCES } from './cues.js';
 import { BLACK_ITEM_RESOURCES, WHITE_ITEM_RESOURCES } from './item-resources.js';
+import {
+  BLACK_TYPE0D_RESOURCES, BLACK_TYPE1C_RESOURCES, WHITE_SCORE_RESOURCES,
+  WHITE_TYPE0D_RESOURCES, WHITE_TYPE1C_RESOURCES,
+} from './midboss-resources.js';
 
 const WHITE_STANDARD_BULLET_KINDS = Object.freeze([12, 13]);
 const WHITE_TYPE80_FAN_KINDS = Object.freeze([4, 5]);
@@ -65,9 +69,7 @@ const white11 = {
     site: 0x167b8c, ...WHITE_BULLET_SPAWN_RESOURCES,
     supportedKinds: WHITE_STANDARD_BULLET_KINDS,
   },
-  score: {
-    hit: 0x184cf0, kill: 0x184db8, capTable: 0x18692e, refillTable: 0x186932,
-  },
+  score: WHITE_SCORE_RESOURCES,
   effects: WHITE_TYPE11_EFFECT_RESOURCES,
   remaps: { death: 0x167018, hit: 0x167024, secondary: 0x167030 },
   sound: { death: 0x18ad80 },
@@ -403,7 +405,8 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
   enemyFrame: { entry: 0x2634f4, walker: 0x2633be, driver: 0x263502 },
   movement: { entry: 0x241812, speedPointers: 0x200920, fold: 0x2418b4 },
   enemyTypes: {
-    0x05: black05, 0x07: black27, 0x10: black10, 0x11: black11,
+    0x05: black05, 0x07: black27, 0x0d: BLACK_TYPE0D_RESOURCES,
+    0x10: black10, 0x11: black11, 0x1c: BLACK_TYPE1C_RESOURCES,
     0x20: black20, 0x21: black20, 0x22: black20, 0x23: black20, 0x27: black27,
     0x80: black80, 0x85: black85, 0x8a: black8A, 0x8b: black8B,
   },
@@ -433,7 +436,8 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
   enemyFrame: { entry: 0x16256e, walker: 0x162438, driver: 0x162670 },
   movement: { entry: 0x141b60, speedPointers: 0x100920, fold: 0x141bee },
   enemyTypes: {
-    0x05: white05, 0x07: white27, 0x10: white10, 0x11: white11,
+    0x05: white05, 0x07: white27, 0x0d: WHITE_TYPE0D_RESOURCES,
+    0x10: white10, 0x11: white11, 0x1c: WHITE_TYPE1C_RESOURCES,
     0x20: white20, 0x21: white20, 0x22: white20, 0x23: white20, 0x27: white27,
     0x80: white80, 0x85: white85, 0x8a: white8A, 0x8b: white8B,
   },

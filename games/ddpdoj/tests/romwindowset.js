@@ -807,10 +807,21 @@
 // Measured: 1800 -> 1803 windows, 659,729 -> 659,797 bytes, and 79 -> 79
 // overlapping pairs.
 
-export const ROM_WINDOW_COUNT = 1803;
+// ---------------------------------------------------------------------------
+// TASK #277 TYPE $0D/$1C ADDED SEVENTEEN DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// Sixteen Build A windows contain the type-table rows, midboss data, cue and
+// animation lists, Type $1C data, three bullet-kind families, palettes, and arm
+// emitter. They add 1,792 bytes below $200000. One 198-byte Build B window adds
+// the native Black death animation-object list required after edition filtering.
+// No new pair overlaps.
+// Measured: 1803 -> 1820 windows, 659,797 -> 661,787 bytes, and 79 -> 79
+// overlapping pairs.
+
+export const ROM_WINDOW_COUNT = 1820;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 659797;
+export const ROM_WINDOW_BYTES = 661787;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -886,12 +897,34 @@ const W630_WINDOWS = Object.freeze([
   Object.freeze(['$28FC96', 0x0014]),
 ]);
 
-const WHITE_LABEL_WINDOW_COUNT = 850;
-const WHITE_LABEL_WINDOW_BYTES = 202198;
+const TASK277_BLACK_ANIMATION_WINDOW = Object.freeze({
+  base: '$26C0FC', len: 0x00c6,
+});
 
-/** Remove the later embedded Version A window family before reconstructing any
- *  earlier Black Label ledger. The edition manifest is the identity list, so a
- *  partial, duplicated, or mislabeled family fails instead of being hidden. */
+function removeTask277BlackAnimationWindow(tables, required = false) {
+  const matches = tables.rom.windows.filter((window) =>
+    window.base === TASK277_BLACK_ANIMATION_WINDOW.base);
+  if (matches.length === 0) {
+    if (required) throw new Error('the Task #277 Black animation window is missing');
+    return tables;
+  }
+  if (matches.length !== 1 || matches[0].len !== TASK277_BLACK_ANIMATION_WINDOW.len
+      || matches[0].hex.length !== TASK277_BLACK_ANIMATION_WINDOW.len * 2
+      || !matches[0].why.startsWith('Task #277: Black B type-$0D')) {
+    throw new Error('$26C0FC is not the exact Task #277 Black animation window');
+  }
+  tables.rom.windows = tables.rom.windows.filter((window) =>
+    window.base !== TASK277_BLACK_ANIMATION_WINDOW.base);
+  return tables;
+}
+
+const WHITE_LABEL_WINDOW_COUNT = 866;
+const WHITE_LABEL_WINDOW_BYTES = 203990;
+
+/** Remove the later embedded Version A family and Task #277's Black animation
+ *  correction before reconstructing any earlier Black Label ledger. The
+ *  edition manifest is the Version A identity list, so a partial, duplicated,
+ *  or mislabeled family fails instead of being hidden. */
 export function tableBeforeWhiteLabel(tables) {
   const copy = tableBeforePlayableHibachi(tables);
   const edition = copy.editions?.whiteLabel;
@@ -915,7 +948,7 @@ export function tableBeforeWhiteLabel(tables) {
   const found = copy.rom.windows.filter((window) =>
     expected.has(`${window.base}:${window.len}`));
   if (found.length === 0) {
-    if (descriptors.length === 0) return copy;
+    if (descriptors.length === 0) return removeTask277BlackAnimationWindow(copy);
     throw new Error('the embedded Version A manifest exists without its windows');
   }
   if (descriptors.length !== WHITE_LABEL_WINDOW_COUNT
@@ -940,7 +973,7 @@ export function tableBeforeWhiteLabel(tables) {
   delete copy.profileId;
   delete copy.editions.whiteLabel;
   if (Object.keys(copy.editions).length === 0) delete copy.editions;
-  return copy;
+  return removeTask277BlackAnimationWindow(copy, true);
 }
 
 /** Reconstruct the exact pre-W630 table by removing its five additive windows. */

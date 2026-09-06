@@ -48,15 +48,12 @@
 // up to the band and then stop dead; that is what `fly-around` (which never
 // fires) exercises, and it is the direction the gate can check.
 //
-// ============================== WHAT NOTES =================================
+// =========================== SHARED SUBSYSTEMS ==============================
 //
-// Eight subsystems, and every one of them is already a counted note in some
-// other ported handler -- this body drags in NO new subsystem:
-//   `$286096` DAMAGE, `$28615E` effect/score, `$289004` the sprite-EFFECT
-//   allocator, `$28AC72` the sub-record spawn engine, `$28C25A`/`$28C310` the
-//   death bursts, `$246410` the ANIMATION-OBJECT installer (its own pool at
-//   `$810346`/`$80FA86`, argument list `$26C0FC`), and `$244074`, the score
-//   half of `$243E7C`.
+// This body reuses the translated damage, scoring, effect, cue, animation,
+// deferred-spawn, sound, and bullet-clear subsystems. Cue scripts execute through
+// `spawnCues28AC72`, and the death path installs all fourteen animation objects
+// through `loadAnimObjects246410`; neither path is represented by a proxy note.
 //
 // ============================== WHAT IS NEW ================================
 //
@@ -73,15 +70,20 @@ import { unreached } from './unported.js';
 import { u16, i16 } from './ram.js';
 import { freeEnemy } from './initbody.js';
 import { scrollCompensate } from './movement.js';
-import { fire as fireBulletFan, WriteLog, BUL } from './bullets.js';
-import { BULLET_DRIVER } from './bulletdriver.js';
-import { AimTables, AIM, aim256 } from './aim.js';
+import { fireWithResources, WriteLog, BUL } from './bullets.js';
+import { Aim256Tables, aim256 } from './aim.js';
+import { velocityWithResources } from './bulletmath.js';
 import { enqueueRegistersThroughStub } from './spritequeue.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
-import { drawByte2431F4, drawSigned242FDE } from './rng.js';
+import { drawByteWithResources, drawSignedByteWithResources } from './rng.js';
 import { scoreHit, scoreKill } from './score.js';
 import { pushExternalSpeed } from './background.js';
 import { spawnEffect, B } from './effects.js';
+import { spawnCues28AC72 } from './cues.js';
+import { loadAnimObjects246410 } from './animobjects.js';
+import {
+  BLACK_TYPE0D_RESOURCES, requireType0DResources,
+} from './midboss-resources.js';
 
 /** `addi.l` -- a 32-bit add whose low half CARRIES into the high half. */
 const u32 = (v) => (v >>> 0) % 0x100000000;
@@ -146,21 +148,16 @@ const G = {
   midbossDA: 0x8130da,    // $26B7D8
   scroll: 0x813172,
 };
-/** `$26B214` -- the death burst's 14 spawn records, 8 bytes each,
- *  `$FFFF`-terminated.  Walked at `$26B1D8 move.w (A4)+,D1`. */
-const BURST_LIST = 0x26b214;
-/** The four sprite tables.  See `tools/export-tables.py` for the extents and
- *  how each far end is pinned. */
-const TAB = { arm: 0x26be90, armAnim: 0x26be70, tail: 0x26bf42, body: 0x26bfe8 };
-/** `$26BA16 lea $2736FA,A0` -- type $80's NARROW fan table, reused verbatim by
- *  the midboss.  Already a declared window (W30's `$2735F0`). */
-const FAN_TABLE = 0x2736fa;
-
 const AIM_TABLES = new WeakMap();
-function aimTables(rom) {
-  let t = AIM_TABLES.get(rom);
-  if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
-  return t;
+function aimTables(rom, resources) {
+  let byResources = AIM_TABLES.get(rom);
+  if (!byResources) { byResources = new Map(); AIM_TABLES.set(rom, byResources); }
+  let tables = byResources.get(resources);
+  if (!tables) {
+    tables = new Aim256Tables(rom, resources.aim256);
+    byResources.set(resources, tables);
+  }
+  return tables;
 }
 
 function note(ctx, addr, what) {
@@ -197,8 +194,10 @@ function note(ctx, addr, what) {
 // W372: exported so HIBACHI's body can reach it. $243DD0 is a THIRD entry of this same routine --
 // same guard, same $81B410/$81B412 pair, differing only in the mode it arms ($FFFF) -- which is what
 // the handoff meant by calling it a one-liner. It is NOT a separate routine to port.
-export function armScreenClearMode(ram, ctx, d1, from, mode, entry) {
-  const ARM = BULLET_DRIVER.armWord, MODE = BULLET_DRIVER.modeWord;
+export function armScreenClearMode(ram, ctx, d1, from, mode, entry,
+  driver = BLACK_TYPE0D_RESOURCES.bulletDriver,
+  addresses = { scoreWalk: 0x244074, noOpArm: 0x2440ae }) {
+  const ARM = driver.armWord, MODE = driver.modeWord;
   if (ram.u16(ARM) !== 0                                // $243E02/$243E7C tst.w
       && ram.u16(MODE) >= 0x20                          // cmpi/bcs
       && ram.u16(MODE) <= 0x3c) {                       // cmpi/bhi
@@ -210,7 +209,7 @@ export function armScreenClearMode(ram, ctx, d1, from, mode, entry) {
     // $2440AE pushes the registers and immediately `bra.w $2440DA`s over its
     // own counting loop to the pop and the `rts`.  It really is a no-op, and
     // that is transcribed rather than smoothed into "the other arm".
-    note(ctx, 0x2440ae, `the $8130F8-bit-1 arm of $${entry.toString(16).toUpperCase()} `
+    note(ctx, addresses.noOpArm, `the $8130F8-bit-1 arm of $${entry.toString(16).toUpperCase()} `
       + `(${from}) -- its `
       + `loop at $2440B6 is jumped over by $2440B2 bra.w $2440DA, so it does `
       + `nothing but save and restore registers`);
@@ -218,18 +217,23 @@ export function armScreenClearMode(ram, ctx, d1, from, mode, entry) {
   }
   const flags = u16(d1) | 0x8000;                       // $243EBA ori.w #$8000
   let live = 0;                                         // $244074..$2440A4
-  for (let s = 0; s < BUL.slots; s++) {
-    if ((ram.u16(BUL.pool + s * BUL.stride) & 0x8000) !== 0) live += 1;
+  const slots = driver.mover?.slots ?? BUL.slots;
+  for (let s = 0; s < slots; s++) {
+    if ((ram.u16(driver.pool + s * driver.stride) & 0x8000) !== 0) live += 1;
   }
-  note(ctx, 0x244074, `the bullet-cancel SCORE walk (${from}) -- ${live} of `
-    + `${BUL.slots} pool slots live, D1 = $${flags.toString(16).toUpperCase()} `
+  note(ctx, addresses.scoreWalk, `the bullet-cancel SCORE walk (${from}) -- ${live} of `
+    + `${slots} pool slots live, D1 = $${flags.toString(16).toUpperCase()} `
     + `(bit 4 = P1 via $28614A, bit 3 = P2 via $286154, $46 each). The CANCEL `
     + `itself is $281CD6, gated on $81B410, which this call has just armed`);
   return true;
 }
 
-export function armScreenClear(ram, ctx, d1, from) {
-  return armScreenClearMode(ram, ctx, d1, from, 0, 0x243e7c);
+export function armScreenClear(ram, ctx, d1, from, resources = null) {
+  const driver = resources?.bulletDriver ?? BLACK_TYPE0D_RESOURCES.bulletDriver;
+  const clear = resources?.clear
+    ?? { entry: 0x243e7c, mode: 0, scoreWalk: 0x244074, noOpArm: 0x2440ae };
+  return armScreenClearMode(ram, ctx, d1, from, clear.mode, clear.entry,
+    driver, clear);
 }
 
 /** `$243E02`, type $96's death-tail screen clear. It has the same guarded
@@ -243,38 +247,40 @@ export function armScreenClear243E02(ram, ctx, d1, from) {
 // `$803917` counter: three `$2431F4` and one `$242FDE`.  Called from the INIT
 // (`$26B286` -> `$26B2A6`) and again from `$26B380` every time the swing
 // finishes a full retraction.
-export function rollSwing(ram, rom, a5) {
-  let d0 = drawByte2431F4(ram, rom);                   // $26B2AC
+export function rollSwing(ram, rom, a5, suppliedResources = BLACK_TYPE0D_RESOURCES) {
+  const resources = requireType0DResources(suppliedResources);
+  let d0 = drawByteWithResources(ram, rom, resources.rng.byte64); // $26B2AC
   d0 = i16(u16(d0 & 0xff) | ((d0 & 0x80) ? 0xff00 : 0)); // $26B2B2 ext.w
   d0 = u16(((d0 & 0xff00) | ((d0 + d0) & 0xff)) + 0x14); // $26B2B4 add.b / $26B2B6 addi.w
   ram.setU8(a5 + R.swingAmp, d0 & 0xff);               // $26B2BA
   ram.setU8(a5 + R.swingCur, 0);                       // $26B2BE
   ram.setU8(a5 + R.swingCad, 0);                       // $26B2C4
-  let d = drawByte2431F4(ram, rom);                    // $26B2CA
+  let d = drawByteWithResources(ram, rom, resources.rng.byte64); // $26B2CA
   d = ((d + d) & 0xff);                                // $26B2D0 add.b D0,D0
   ram.setU8(a5 + R.swingRel, (d + 0x10) & 0xff);       // $26B2D2 addi.b #$10
   ram.setU8(a5 + R.swingNeg, 0);                       // $26B2DA
-  if (drawSigned242FDE(ram, rom) !== 0) {              // $26B2E0 / $26B2E6 beq
+  if (drawSignedByteWithResources(ram, rom, resources.rng.signed) !== 0) {
     ram.setU8(a5 + R.swingNeg, 1);                     // $26B2EA
   }
-  let e = drawByte2431F4(ram, rom);                    // $26B2F0
+  let e = drawByteWithResources(ram, rom, resources.rng.byte64); // $26B2F0
   e = ((e + e) & 0xff); e = ((e + e) & 0xff);          // $26B2F6/$26B2F8
   ram.setU8(a5 + R.swingTgt, (e + 0x10) & 0xff);       // $26B2FA/$26B2FE
 }
 
-/** `$26B286` -- the 8-arm INIT.  Reached ONLY from the init body's
- *  `$26B4B0 bsr`, which `src/initbody.js` still notes; exported so the note
- *  can become a call without re-deriving it. */
-export function initArms(ram, rom, a5, a6) {
+/** `$26B286` -- the 8-arm INIT. Reached from the init body's
+ * `$26B4B0 bsr`; the shared Black/White init executes it directly. */
+export function initArms(ram, rom, a5, a6,
+  suppliedResources = BLACK_TYPE0D_RESOURCES) {
+  const resources = requireType0DResources(suppliedResources);
   let d6 = 0, d5 = 0;                                  // $26B286/$26B288
-  for (let n = 0; n < 8; n++) {                        // $26B28E moveq #$7,D7
-    const a4 = a6 + S.arms + n * 0x40;
+  for (let n = 0; n < resources.armCount; n++) {        // $26B28E moveq #$7,D7
+    const a4 = a6 + resources.armBase + n * resources.armStride;
     ram.setU8(a4 + A.facing, d6);                      // $26B290
     ram.setU8(a4 + A.spread, d5);                      // $26B294
     d6 = (d6 + 0x20) & 0xff;                           // $26B298 addi.b #$20
     d5 = (d5 + 8) & 0xff;                              // $26B29C addq.b #$8
   }
-  rollSwing(ram, rom, a5);                             // $26B2A6 bsr $26B2AC
+  rollSwing(ram, rom, a5, resources);                    // $26B2A6 bsr $26B2AC
 }
 
 // ===========================================================================
@@ -291,7 +297,9 @@ export function initArms(ram, rom, a5, a6) {
 // scaled x3 on the long axis and x4 on the short one; then an INNER LOOP walks
 // the arm towards the body in `$10`-unit steps of a signed residual carried in
 // `($1A,A4)`, adding `D4` (+1 or -1) to the arm's angle byte at each step.
-export function stepArms(ram, rom, a5, a6, tables) {
+export function stepArms(ram, rom, a5, a6, _tables = null,
+  suppliedResources = BLACK_TYPE0D_RESOURCES) {
+  const resources = requireType0DResources(suppliedResources);
   if (ram.u8(a5 + R.armsFired) === 0) {                // $26B304 tst.b / bne
     const amp = ram.u8(a5 + R.swingAmp);               // $26B30C
     if (amp !== 0 && amp !== ram.u8(a5 + R.swingCur)) { // $26B310 beq / $26B314 cmp/beq
@@ -299,10 +307,10 @@ export function stepArms(ram, rom, a5, a6, tables) {
       // step happens on the frame the byte goes past $00 into $FF.
       const c = (ram.u8(a5 + R.swingCad) - 1) & 0xff;
       ram.setU8(a5 + R.swingCad, c);
-      if (i16(c | (c & 0x80 ? 0xff00 : 0)) >= 0) return placeArms(ram, rom, a5, a6, tables);
+      if (i16(c | (c & 0x80 ? 0xff00 : 0)) >= 0) return placeArms(ram, rom, a5, a6, resources);
       ram.setU8(a5 + R.swingCad, ram.u8(a5 + R.swingRel));      // $26B324
       ram.setU8(a5 + R.swingCur, (ram.u8(a5 + R.swingCur) + 1) & 0xff); // $26B32A
-      return placeArms(ram, rom, a5, a6, tables);               // $26B32E
+      return placeArms(ram, rom, a5, a6, resources);               // $26B32E
     }
     if (ram.u8(a5 + R.swingTgt) !== 0) {               // $26B332 tst.b / bne $26B388
       // ---- HOLD.  $26B388 subq.b #1,($18,A5) / bne
@@ -312,17 +320,17 @@ export function stepArms(ram, rom, a5, a6, tables) {
         ram.setU8(a5 + R.swingAmp, 0);                 // $26B390
         ram.setU16(a5 + R.swingCad, 0x0404);           // $26B396 move.w #$404,($1C,A5)
       }
-      return placeArms(ram, rom, a5, a6, tables);
+      return placeArms(ram, rom, a5, a6, resources);
     }
     // ---- RETRACT.  $26B33A, the same signed cadence.
     const c = (ram.u8(a5 + R.swingCad) - 1) & 0xff;
     ram.setU8(a5 + R.swingCad, c);
-    if (i16(c | (c & 0x80 ? 0xff00 : 0)) >= 0) return placeArms(ram, rom, a5, a6, tables);
+    if (i16(c | (c & 0x80 ? 0xff00 : 0)) >= 0) return placeArms(ram, rom, a5, a6, resources);
     ram.setU8(a5 + R.swingCad, ram.u8(a5 + R.swingRel)); // $26B342
     const cur = (ram.u8(a5 + R.swingCur) - 1) & 0xff;   // $26B348 subq.b #1
     ram.setU8(a5 + R.swingCur, cur);
     if (i16(cur | (cur & 0x80 ? 0xff00 : 0)) > 0) {     // $26B34C bgt
-      return placeArms(ram, rom, a5, a6, tables);
+      return placeArms(ram, rom, a5, a6, resources);
     }
     // $26B350 tst.b ($21,A5) / ble $26B380 -- SIGNED, so both 0 and $FF skip
     // the arm launch and go straight to the re-roll.
@@ -330,26 +338,31 @@ export function stepArms(ram, rom, a5, a6, tables) {
       ram.setU8(a5 + R.armsFired, 1);                  // $26B358
       // $26B35E jsr $242FDE -- the ONLY draw the midboss makes on a live frame
       // once it is placed; every other one is behind the swing re-roll.
-      const d6 = (drawSigned242FDE(ram, rom) + 1) & 0xff;  // $26B364 addq.b #1
-      for (let n = 0; n < 8; n++) {                    // $26B36C moveq #$7,D7
-        const a4 = a6 + S.arms + n * 0x40;
+      const d6 = (drawSignedByteWithResources(ram, rom, resources.rng.signed) + 1) & 0xff;
+      for (let n = 0; n < resources.armCount; n++) {      // $26B36C moveq #$7,D7
+        const a4 = a6 + resources.armBase + n * resources.armStride;
         ram.setU8(a4 + A.state, 1);                    // $26B36E
         ram.setU8(a4 + A.burst, d6);                   // $26B374
       }
     }
-    rollSwing(ram, rom, a5);                           // $26B380 bsr $26B2AC
+    rollSwing(ram, rom, a5, resources);                  // $26B380 bsr $26B2AC
   }
-  return placeArms(ram, rom, a5, a6, tables);          // $26B39C
+  return placeArms(ram, rom, a5, a6, resources);          // $26B39C
 }
 
 /** `$26B39C..$26B47A` -- place all eight arms. */
-function placeArms(ram, rom, a5, a6, tables) {
+function placeArms(ram, rom, a5, a6, resources) {
+  const vector = (angle) => {
+    const { dA, dB } = velocityWithResources(rom, 0x70, angle,
+      resources.shotVector);
+    return { dy: dA, dx: dB };
+  };
   let d5 = ram.u8(a5 + R.swingCur);                    // $26B39C/$26B39E moveq #0 / move.b
   if (ram.u8(a5 + R.swingNeg) !== 0) d5 = u16(-d5);    // $26B3A2 tst.b / $26B3AA neg.w
-  for (let n = 0; n < 8; n++) {                        // $26B3B0 moveq #$7,D7
-    const a4 = a6 + S.arms + n * 0x40;
+  for (let n = 0; n < resources.armCount; n++) {          // $26B3B0 moveq #$7,D7
+    const a4 = a6 + resources.armBase + n * resources.armStride;
     // $26B3B2 move.w #$70,D0 -- an IN-CODE speed level, not a template byte.
-    let v = tables.shotVector(0x70, ram.u8(a4 + A.facing));  // $26B3BC jsr $241D34
+    let v = vector(ram.u8(a4 + A.facing));                // $26B3BC jsr $241D34
     // $26B3C2 move.l ($2,A6),D6 / addi.l #$2000000 -- a LONG add: the carry out
     // of the short axis reaches the long one.
     const base = u32(ram.u32(a6 + S.posX) + 0x02000000);
@@ -369,7 +382,7 @@ function placeArms(ram, rom, a5, a6, tables) {
     // $10, stepping the arm's angle byte by D4 each time round.
     for (;;) {
       const ang = (d4 + ram.u8(a4 + A.facing)) & 0xff; // $26B3FC/$26B3FE/$26B402
-      v = tables.shotVector(0x70, ang);                // $26B406 jsr $241D34
+      v = vector(ang);                                   // $26B406 jsr $241D34
       d2 = u16(u16(v.dy << 1) + v.dy);                 // $26B40C/$26B40E/$26B410
       d3 = u16(v.dx << 2);                             // $26B412
       d2 = u16(u16(d2 + ram.u16(a6 + S.posX)) + 0x200);  // $26B414/$26B418
@@ -403,17 +416,18 @@ function placeArms(ram, rom, a5, a6, tables) {
 // ===========================================================================
 // `$26B184` -- THE DEATH BURST.  Sets the death countdown to `$70`, marks every
 // arm dying, and walks `$26B214` spawning 14 effect records.
-function deathBurst(ram, rom, a5, a6, ctx) {
+function deathBurst(ram, rom, a5, a6, ctx, resources) {
   ram.setU8(a5 + R.deathCtr, 0x70);                    // $26B184
-  for (let n = 0; n < 8; n++) {                        // $26B18E moveq #$7,D7
-    const a4 = a6 + S.arms + n * 0x40;
+  for (let n = 0; n < resources.armCount; n++) {        // $26B18E moveq #$7,D7
+    const a4 = a6 + resources.armBase + n * resources.armStride;
     if (ram.u16(a4 + A.flags) === 0x8000) {            // $26B190 cmpi.w #$8000 / bne
       // W54: SPAWNED.  $26B198 moveq #$C / $26B19A jsr $289004, then the
       // five writes at $26B1A0..$26B1B8 -- and the POSITION comes from the
       // ARM (A4), not from the body (A6).  ($10,A0) = 2, not 1: the
       // $24179E hook is armed with a value $2440E0 also uses when
       // `$813092 == 4`, and the driver only tests it for zero.
-      const e = spawnEffect(ram, ctx, 0x0c, 0x26b19a);
+      const e = spawnEffect(ram, ctx, 0x0c, resources.effectSites.armBurst,
+        resources.effects);
       ram.setU32(e + B.pos, ram.u32(a4 + A.posX));     // $26B1A0
       ram.setU16(e + B.hook, 2);                       // $26B1A6
       ram.setU16(e + B.bucket, 0x0c);                  // $26B1AC
@@ -422,14 +436,15 @@ function deathBurst(ram, rom, a5, a6, ctx) {
     }
     ram.setU8(a4 + A.dying, 1);                        // $26B1BE (EVERY arm)
   }
-  ctx.soundPost?.(0x28c310);  // WAVE A: BGM id=7, midboss death burst ($26B1CC)
+  ctx.soundPost?.(resources.sound.deathBurst);
   // $26B1D2 lea $26B214(pc),A4 -- 14 records of (word D1, word D0, long).
   for (let i = 0; ; i++) {
-    const at = BURST_LIST + i * 8;
+    const at = resources.burstList + i * 8;
     const d1 = rom.u16(at);                            // $26B1D8 move.w (A4)+,D1
     if (d1 === 0xffff) break;                          // $26B1DA cmpi.w #$FFFF / beq
     if (i > 32) {
-      unreached(BURST_LIST, `the midboss death-burst list at $26B214 ran past 32 `
+      unreached(resources.burstList, `the midboss death-burst list at $${resources.burstList
+        .toString(16).toUpperCase()} ran past 32 `
         + `records without its $FFFF terminator. The ROM window or the stride `
         + `is wrong -- the list is 14 records of 8 bytes ending at $26B284`);
     }
@@ -438,7 +453,8 @@ function deathBurst(ram, rom, a5, a6, ctx) {
     // $C and $D -- and $9 is in NEITHER `50-recon` 2.4's measured eight nor
     // anywhere else in this port.  Enumerating the table found it; no run
     // could have (docs/knowledge/09).
-    const e = spawnEffect(ram, ctx, d0, 0x26b1e4);
+    const e = spawnEffect(ram, ctx, d0, resources.effectSites.listBurst,
+      resources.effects);
     ram.setU16(e + B.delay, d1);                       // $26B1EA move.w D1
     ram.setU32(e + B.nudge, rom.u32(at + 4));          // $26B1EE move.l (A4)+
     ram.setU32(e + B.pos, ram.u32(a6 + S.posX));       // $26B1F2
@@ -452,42 +468,43 @@ function deathBurst(ram, rom, a5, a6, ctx) {
 // ===========================================================================
 // `$26BE0C` -- the eight ARM sprites, two requests each, both bucket 3 via the
 // FOURTH stub shape `$23E056`.
-function drawArms(ram, rom, a6) {
-  for (let n = 0; n < 8; n++) {                        // $26BE10 moveq #$7,D7
-    const a0 = a6 + S.arms + n * 0x40;
+function drawArms(ram, rom, a6, resources) {
+  for (let n = 0; n < resources.armCount; n++) {          // $26BE10 moveq #$7,D7
+    const a0 = a6 + resources.armBase + n * resources.armStride;
     if (ram.u16(a0 + A.flags) === 0x8000) continue;    // $26BE14 cmpi.w #$8000 / beq
     // $26BE1C lea $26BE90(pc),A1 / adda.w ($30,A0),A1 / move.l (A1),D2
-    const d2a = rom.u32(TAB.arm + ram.u16(a0 + A.gfx));
+    const d2a = rom.u32(resources.tables.armGraphic + ram.u16(a0 + A.gfx));
     // $26BE28 move.l ($2,A0),D1 / addi.l #$FA00FC00 -- a LONG add.
     const d1a = u32(ram.u32(a0 + A.posX) + 0xfa00fc00);
-    enqueueRegistersThroughStub(ram, rom, 0x23e056, d1a, d2a,
+    enqueueRegistersThroughStub(ram, rom, resources.emitters.arm, d1a, d2a,
       0x620, ram.u16(a0 + A.f1c));                     // $26BE32/$26BE36/$26BE3A
     // $26BE40 lea $26BE70(pc),A1 / move.w ($A,A0),D2 / move.l (A1,D2.w),D2
-    const d2b = rom.u32(TAB.armAnim + ram.u16(a0 + A.anim));
+    const d2b = rom.u32(resources.tables.armAnimation + ram.u16(a0 + A.anim));
     const d1b = u32(ram.u32(a0 + A.posX) + 0xfc00fc00);  // $26BE52
-    enqueueRegistersThroughStub(ram, rom, 0x23e056, d1b, d2b,
+    enqueueRegistersThroughStub(ram, rom, resources.emitters.arm, d1b, d2b,
       0x420, ram.u16(a0 + A.f1c));                     // $26BE58/$26BE5C/$26BE60
   }
 }
 
 /** `$26BFC2` -- the BODY sprite, tail-calling `$23DF58` (bucket 3). */
-function drawBody(ram, rom, a5, a6) {
-  const d2 = rom.u32(TAB.body + ram.u16(a5 + R.bodyFrm));   // $26BFC8/$26BFCC
+function drawBody(ram, rom, a5, a6, resources) {
+  const d2 = rom.u32(resources.tables.body + ram.u16(a5 + R.bodyFrm));   // $26BFC8/$26BFCC
   const d1 = u32(ram.u32(a6 + S.posX) + 0xdc00e600);        // $26BFD2 addi.l -- LONG
-  enqueueRegistersThroughStub(ram, rom, 0x23df58, d1, d2, 0x24d0, 0x11);
+  enqueueRegistersThroughStub(ram, rom, resources.emitters.body, d1, d2, 0x24d0, 0x11);
 }
 
 /** `$26BF10` -- the TAIL sprite.  Its two `addi.w`s straddle a `swap`, so
  *  NEITHER carries into the other half -- unlike `drawBody`'s `addi.l`. */
-function drawTail(ram, rom, a6) {
-  const d2 = rom.u32(TAB.tail + ram.u16(a6 + S.anim));      // $26BF16/$26BF1A
+function drawTail(ram, rom, a6, resources) {
+  const d2 = rom.u32(resources.tables.tail + ram.u16(a6 + S.anim));      // $26BF16/$26BF1A
   const pos = ram.u32(a6 + S.posX);                         // $26BF1E
   const lo = u16((pos & 0xffff) + 0xf400);                  // $26BF22 addi.w #$F400
   // $26BF26 swap / $26BF28 addi.w #$1600 / $26BF2C addi.w #$E600 -- TWO adds on
   // the long axis, transcribed as two because that is what the listing does.
   let hi = u16((pos >>> 16) + 0x1600);
   hi = u16(hi + 0xe600);
-  enqueueRegistersThroughStub(ram, rom, 0x23df58, ((hi << 16) | lo) >>> 0,
+  enqueueRegistersThroughStub(ram, rom, resources.emitters.tail,
+    ((hi << 16) | lo) >>> 0,
     d2, 0x1a60, ram.u16(a6 + S.f1c));                       // $26BF32/$26BF36/$26BF3A
 }
 
@@ -510,29 +527,31 @@ function drawTail(ram, rom, a6) {
 // That is a RAM read of the player-record region, not a ROM table, and it is
 // transcribed as one.  A port that "fixed" it to `$2736FA` would be inventing
 // a different bullet.
-function bigFan(ram, rom, a5, a6, ctx) {
+function bigFan(ram, rom, a5, a6, ctx, resources) {
   // $26B9B8 cmpi.w #$1000,($2,A6) / bcs -- UNSIGNED, so a negative Y is "far".
   if (ram.u16(a6 + S.posX) < 0x1000) return;           // $26B9BE bcs $26BC16
   // $26B9C2 movem.w ($2,A6),D0-D1 / addi.w #$2700,D0 / jsr $24226E.
   // $24226E is `bsr $24270A` + `movem.w ($2,A0),D2-D3` + `bra $2422A2`; the
   // select is transcribed inline (as in aim85/fan80) because A0 is needed.
-  let p0 = AIM.selP1, p1 = AIM.selP2;                  // $24270A
-  if (ram.u8(a5 + 0x03) !== 0) { p0 = AIM.selP2; p1 = AIM.selP1; }
+  let p0 = resources.players.p1, p1 = resources.players.p2;  // $24270A
+  if (ram.u8(a5 + 0x03) !== 0) {
+    p0 = resources.players.p2; p1 = resources.players.p1;
+  }
   if ((ram.u16(p0) & 0x8000) === 0) {
     if ((ram.u16(p1) & 0x8000) === 0) return;          // $242726 ori #1,SR -> bcs
     const t = p0; p0 = p1; p1 = t;
   }
   const selfY = u16(ram.u16(a6 + S.posX) + 0x2700);    // $26B9C8
   const selfX = ram.u16(a6 + S.posY);
-  let d1 = aim256(aimTables(rom), selfY, selfX,
+  let d1 = aim256(aimTables(rom, resources), selfY, selfX,
     ram.u16(p0 + 2), ram.u16(p0 + 4));                 // $2422A2
   const d2 = ram.u32(a6 + S.posX);                     // $26B9D6 move.l ($2,A6),D2
   const d4 = 0;                                        // $26B9DA moveq #$0,D4
   const d6 = u16(d1);                                  // $26B9DC move.w D1,D6
   const odd = (ram.u8(a6 + S.fanCtr) & 1) !== 0;       // $26B9DE btst #$0,($D,A6)
-  const shoot = (entry, d0, d3, site) => {
-    const res = fireBulletFan({ ram, rom, log: new WriteLog(ram) }, entry,
-      { d0, d1, d2, d3, d4, d5: 0, a5 });
+  const shoot = (generator, d0, d3, site) => {
+    const res = fireWithResources({ ram, rom, log: new WriteLog(ram) },
+      generator.entry, { d0, d1, d2, d3, d4, d5: 0, a5 }, generator);
     ctx.bulletSpawn?.(site, res);
   };
   if (odd) {
@@ -541,7 +560,8 @@ function bigFan(ram, rom, a5, a6, ctx) {
     const d3 = u32(ram.u32(p0 + idx) + 0x27000000);    // $26B9F4 (A0 = the PLAYER) / $26B9F8
     d1 = u16(d1 - 0x0c);                               // $26B9FE subi.w #$C,D1
     for (let k = 0; k < 7; k++) {                      // $26BA02 moveq #$6,D7
-      shoot(0x2817b8, 0x00030003, d3, 0x26ba04);       // $26BA04
+      shoot(resources.bullet.bigAdaptive, 0x00030003, d3,
+        resources.bulletSites.bigPre);                    // $26BA04
       d1 = u16(d1 + 4);                                // $26BA0A addq.w #$4,D1
     }
   }
@@ -551,43 +571,46 @@ function bigFan(ram, rom, a5, a6, ctx) {
   // the `btst`.  The `jsr` addresses are the LOOP BODIES' sites, so
   // `Game.bulletSpawns` names the exact instruction that fired.
   const BLOCKS = [
-    [0x2817b8, 0x00050003, 0x12000000, false, 0x26ba3e],  // $26BA1C
-    [0x281764, 0x00050004, 0x27000000, true, 0x26ba6c],   // $26BA4A
-    [0x2817b8, 0x00050003, 0x12000000, false, 0x26ba9a],  // $26BA78
-    [0x281764, 0x00050004, 0x27000000, true, 0x26bac8],   // $26BAA6
-    [0x2817b8, 0x00050003, 0x12000000, false, 0x26baf6],  // $26BAD4
-    [0x281764, 0x00050004, 0x27000000, true, 0x26bb24],   // $26BB02
-    [0x2817b8, 0x00050003, 0x12000000, false, 0x26bb52],  // $26BB30
-    [0x281764, 0x00050004, 0x27000000, true, 0x26bb80],   // $26BB5E
-    [0x2817b8, 0x00050003, 0x12000000, false, 0x26bbae],  // $26BB8C
-    [0x281764, 0x00050004, 0x27000000, true, 0x26bbdc],   // $26BBBA
-    [0x2817b8, 0x00050003, 0x12000000, false, 0x26bc0a],  // $26BBE8
+    [resources.bullet.bigAdaptive, 0x00050003, 0x12000000, false],
+    [resources.bullet.bigSpreadTwo, 0x00050004, 0x27000000, true],
+    [resources.bullet.bigAdaptive, 0x00050003, 0x12000000, false],
+    [resources.bullet.bigSpreadTwo, 0x00050004, 0x27000000, true],
+    [resources.bullet.bigAdaptive, 0x00050003, 0x12000000, false],
+    [resources.bullet.bigSpreadTwo, 0x00050004, 0x27000000, true],
+    [resources.bullet.bigAdaptive, 0x00050003, 0x12000000, false],
+    [resources.bullet.bigSpreadTwo, 0x00050004, 0x27000000, true],
+    [resources.bullet.bigAdaptive, 0x00050003, 0x12000000, false],
+    [resources.bullet.bigSpreadTwo, 0x00050004, 0x27000000, true],
+    [resources.bullet.bigAdaptive, 0x00050003, 0x12000000, false],
   ];
-  for (const [entry, d0, bias, wantOdd, site] of BLOCKS) {
-    for (let k = 0; k < 4; k++) {                      // moveq #$3,D7 + dbra
+  BLOCKS.forEach(([generator, d0, bias, wantOdd], block) => {
+    for (let k = 0; k < 4; k++) {                        // moveq #$3,D7 + dbra
       const idx = u16((d1 + 2) & 0xfc);
-      const d3 = u32(rom.u32(FAN_TABLE + idx) + bias);
-      if (odd === wantOdd) shoot(entry, d0, d3, site);
+      const d3 = u32(rom.u32(resources.fanTable + idx) + bias);
+      if (odd === wantOdd) {
+        shoot(generator, d0, d3, resources.bulletSites.bigBlocks[block]);
+      }
       d1 = u16(d1 + 4);
     }
-  }
+  });
 }
 
 // ===========================================================================
 // `$26BC62..$26BDC4` -- THE PER-ARM FIRE, and the four-state machine each arm
 // runs.  Only the arm whose loop counter matches `($20,A5) & 3` may fire on a
 // given frame, so at most two of the eight arms fire per frame.
-function armFire(ram, rom, a5, a6, ctx) {
+function armFire(ram, rom, a5, a6, ctx, resources) {
   ram.setU8(a5 + R.phase, (ram.u8(a5 + R.phase) + 1) & 7);  // $26BC58/$26BC5C
   const phase = ram.u8(a5 + R.phase) & 3;              // $26BCA2/$26BCAC
   const shoot = (d0, d1, d2, d3, site) => {
-    const res = fireBulletFan({ ram, rom, log: new WriteLog(ram) }, 0x2817a8,
-      { d0, d1, d2, d3, d4: 0, d5: 0, a5 });
+    const generator = resources.bullet.armSpreadThree;
+    const res = fireWithResources({ ram, rom, log: new WriteLog(ram) },
+      generator.entry, { d0, d1, d2, d3, d4: 0, d5: 0, a5 }, generator);
     ctx.bulletSpawn?.(site, res);
   };
-  for (let n = 0; n < 8; n++) {                        // $26BC66 moveq #$7,D7
-    const a4 = a6 + S.arms + n * 0x40;
-    const d7 = 7 - n;                                  // the dbra counter, live in D7
+  for (let n = 0; n < resources.armCount; n++) {          // $26BC66 moveq #$7,D7
+    const a4 = a6 + resources.armBase + n * resources.armStride;
+    const d7 = resources.armCount - 1 - n;
     if (ram.u16(a4 + A.flags) === 0x8000) continue;    // $26BC68
     const st = ram.u8(a4 + A.state);
     if (st === 0) {                                    // $26BC70 tst.b ($8,A4) / bne
@@ -613,7 +636,8 @@ function armFire(ram, rom, a5, a6, ctx) {
       const d1 = (ram.u16(a4 + A.posY) & 0xff00) | facing;
       if (facing >= 0xe0) continue;                    // $26BCC0 cmpi.b #$E0 / bcc
       if (facing <= 0x20) continue;                    // $26BCCA cmpi.b #$20 / bls
-      shoot(0xfffe0007, d1, ram.u32(a4 + A.posX), 0x02000000, 0x26bce4);
+      shoot(0xfffe0007, d1, ram.u32(a4 + A.posX), 0x02000000,
+        resources.bulletSites.armIdle);
       ram.setU8(a4 + A.gateA, (ram.u8(a4 + A.gateA) - 1) & 0xff);  // $26BCEA
       continue;                                        // $26BCEE bra $26BDC0
     }
@@ -642,7 +666,8 @@ function armFire(ram, rom, a5, a6, ctx) {
         // all BYTE ops; D1's high half is whatever the previous arm left, and
         // the generator reads only the low byte.
         const d1 = (((ram.u8(a4 + A.burst) * 4) + facing) & 0xff);
-        shoot(0x00020007, d1, ram.u32(a4 + A.posX), 0x02000000, 0x26bd76);
+        shoot(0x00020007, d1, ram.u32(a4 + A.posX), 0x02000000,
+          resources.bulletSites.armBurst);
         ram.setU8(a4 + A.spread, (ram.u8(a4 + A.spread) + 2) & 0xff);  // $26BD7C
       }
       const b = (ram.u8(a4 + A.burst) - 1) & 0xff;     // $26BD80 subq.b #1 / bne
@@ -666,8 +691,8 @@ function armFire(ram, rom, a5, a6, ctx) {
   // $26BDC8: if EVERY live arm is back in state 0, clear ($1E,A5) so the swing
   // machine may launch them again.
   let d6 = 0;
-  for (let n = 0; n < 8; n++) {                        // $26BDCE moveq #$7,D7
-    const a4 = a6 + S.arms + n * 0x40;
+  for (let n = 0; n < resources.armCount; n++) {          // $26BDCE moveq #$7,D7
+    const a4 = a6 + resources.armBase + n * resources.armStride;
     if (ram.u16(a4 + A.flags) === 0x8000) continue;    // $26BDD0
     if (ram.u8(a4 + A.state) === 0) continue;          // $26BDD8
     d6 = 1;                                            // $26BDE2
@@ -677,14 +702,16 @@ function armFire(ram, rom, a5, a6, ctx) {
 
 // ===========================================================================
 // `$26B6FA` -- THE HANDLER.
-export function handlerMidboss(ram, rom, a5, ctx) {
-  const { tables } = ctx;
+export function handlerMidboss(ram, rom, a5, ctx,
+  suppliedResources = BLACK_TYPE0D_RESOURCES) {
+  const resources = requireType0DResources(suppliedResources);
   const a6 = ram.u32(a5 + 0x06);
 
   // ---------------------------------------------------- $26B6FA: THE DEATH ARM
   if (ram.u8(a5 + R.deathCtr) !== 0) {                 // $26B6FA tst.b / beq $26B74A
     scrollCompensate(ram, a5);                         // $26B702 jsr $24179E
-    armScreenClear(ram, ctx, ram.u16(a5 + R.fireD1), 'the midboss death arm $26B70C');
+    armScreenClear(ram, ctx, ram.u16(a5 + R.fireD1),
+      'the midboss death arm', resources);
     const c = (ram.u8(a5 + R.deathCtr) - 1) & 0xff;    // $26B712 subq.b #1
     ram.setU8(a5 + R.deathCtr, c);
     if (c === 0) { freeEnemy(ram, a5); return; }       // $26B716 beq / $26B742 jmp $263762
@@ -693,13 +720,14 @@ export function handlerMidboss(ram, rom, a5, ctx) {
       // ($17,A5) non-zero ONLY from here, which is what makes $26BDFC's
       // `bne $26BE0A` a live branch rather than decoration -- so the death
       // sequence must reach it through `drawAll` and not by an inlined copy.
-      drawAll(ram, rom, a5, a6);
+      drawAll(ram, rom, a5, a6, resources);
       return;
     }
     if (c !== 0x30) return;                            // $26B722 cmpi.b #$30 / bne
     // ---- THE SCROLL RELEASE.  See this file's header and W19 §2.
     ram.setU16(G.midbossD8, 0);                        // $26B72C clr.w $8130D8
-    pushExternalSpeed(ram, 0x20, 0x20);                // $26B732/$26B736/$26B73A
+    pushExternalSpeed(ram, resources.scrollRelease.d0,
+      resources.scrollRelease.d1);
     return;                                            // $26B740 rts
   }
 
@@ -717,7 +745,7 @@ export function handlerMidboss(ram, rom, a5, ctx) {
     // $26B7E8 stores it two instructions after the death branch, so it must
     // survive the call: src/score.js takes it as an argument rather than
     // relying on a register convention nobody can check.
-    scoreHit(ram, ctx, a6, dmg);
+    scoreHit(ram, ctx, a6, dmg, a6, resources.score);
     ram.setU8(a6 + S.palette,                          // $26B782..$26B78C eor.b
       (ram.u8(a6 + S.palette) ^ ram.u8(a6 + S.f1f)) & 0xff);
     if (ram.u8(a5 + R.hitFlags) === 0) {               // $26B790 tst.b / bne
@@ -734,26 +762,27 @@ export function handlerMidboss(ram, rom, a5, ctx) {
       // -> $26B81C, SKIPPING the $26B816 palette write.  Three of the five
       // arms of this branch land on $26B816 and two on $26B81C; that
       // difference is the whole reason the two labels are separate.
-    } else if (ram.u16(G.clock) < 0xe7) {              // $26B7C2 cmpi.w #$E7 / bcc
+    } else if (resources.deathGateClock !== null
+        && ram.u16(G.clock) < resources.deathGateClock) {
       ram.setU16(a6 + S.hp, 0x0200);                   // $26B7CE
       // $26B7D4 bra $26B81C -- also skipping $26B816.
     } else {
       // ---- $26B7D8: THE DEATH.  Everything the boss does when it dies.
       ram.setU16(G.midbossDA, 1);                      // $26B7D8
-      const q = enqueueDeferred(ram, 0x1c, DEFQ_D1.FIXED00);  // $26B7E0/$26B7E2
+      const q = enqueueDeferred(ram, resources.enqueue.type,
+        DEFQ_D1.FIXED00, 0, resources.enqueue);
       if (q.dropped) {
-        note(ctx, 0x263684, `the midboss's death spawn (type $1C) was DROPPED `
+        note(ctx, resources.enqueue.entry, `the midboss's death spawn (type $1C) was DROPPED `
           + `-- the deferred queue was full at $C80`);
       }
       // $26B7E8 move.w D1,($28,A5).  $263684 pops D0-D2, so D1 is still the hit
       // mask from $26B76E; it becomes $243E7C's player-select flags below.
       ram.setU16(a5 + R.fireD1, dmg);
-      scoreKill(ram, rom, ctx, 0x353, dmg);          // $26B7EC/$26B7F2
-      deathBurst(ram, rom, a5, a6, ctx);               // $26B7F8 bsr $26B184
-      note(ctx, 0x246410, `the midboss's ANIMATION-OBJECT install from the `
-        + `14-record list at $26C0FC ($26B7FC lea / $26B802 jsr) -- its own `
-        + `pool at $810346 / $80FA86, unported and unreferenced elsewhere`);
-      armScreenClear(ram, ctx, ram.u16(a5 + R.fireD1), 'the midboss death $26B80C');
+      scoreKill(ram, rom, ctx, 0x353, dmg, resources.score);
+      deathBurst(ram, rom, a5, a6, ctx, resources);
+      loadAnimObjects246410(ram, rom, resources.animationObjects.table);
+      armScreenClear(ram, ctx, ram.u16(a5 + R.fireD1),
+        'the midboss death', resources);
       ram.setU16(a6 + S.flags, 0x8080);                // $26B812
       ram.setU8(a6 + S.palette, ram.u8(a6 + S.f1e));   // $26B816
     }
@@ -763,8 +792,8 @@ export function handlerMidboss(ram, rom, a5, ctx) {
   ram.setU16(a5 + R.hpMirror, ram.u16(a6 + S.hp));     // $26B81C
 
   // ---------------------------------------------------- $26B822: the ARM damage
-  for (let n = 0; n < 8; n++) {                        // $26B826 moveq #$7,D7
-    const a4 = a6 + S.arms + n * 0x40;
+  for (let n = 0; n < resources.armCount; n++) {          // $26B826 moveq #$7,D7
+    const a4 = a6 + resources.armBase + n * resources.armStride;
     if (ram.u16(a4 + A.flags) === 0x8000) continue;    // $26B82A cmpi.w #$8000 / beq
     let kill = ram.u8(a4 + A.dying) !== 0;             // $26B832 tst.b ($9,A4) / bne
     if (!kill) {
@@ -778,21 +807,22 @@ export function handlerMidboss(ram, rom, a5, ctx) {
       // `lea $20(A6),A4` set up the arm pointer without touching A6, so
       // `$286096 btst #$1,(A6)` reads the BODY's flags byte and not the arm's.
       // Passing `a4` here would gate an arm's score on the arm's own bit 1.
-      scoreHit(ram, ctx, a6, d);                     // $26B848 jsr $286096
+      scoreHit(ram, ctx, a6, d, a6, resources.score);
       ram.setU8(a4 + A.f1d,                            // $26B84E..$26B858 eor.b
         (ram.u8(a4 + A.f1d) ^ ram.u8(a4 + A.f1f)) & 0xff);
       if (ram.u8(a5 + R.hitFlags) === 0) {             // $26B85C tst.b / bne
         ram.setU16(a4 + A.hp, 0x0400);                 // $26B864
       }
       if ((ram.u16(a4 + A.hp) & 0x8000) === 0) continue;   // $26B86A tst.w / bpl
-      scoreKill(ram, rom, ctx, 0x26, d);             // $26B872/$26B874
+      scoreKill(ram, rom, ctx, 0x26, d, resources.score);
       kill = true;                                     // fall through to $26B87A
     }
-    ctx.soundPost?.(0x28c25a);  // WAVE A: SFX id=0, midboss ARM death burst ($26B87A)
+    ctx.soundPost?.(resources.sound.armDeath);
     // W54: SPAWNED.  $26B880 move.w #$85 / $26B884 jsr $289004, then the
     // five writes at $26B88A..$26B8A2 -- position from THE ARM (A4).
     {
-      const e = spawnEffect(ram, ctx, 0x85, 0x26b884);
+      const e = spawnEffect(ram, ctx, 0x85, resources.effectSites.armDeath,
+        resources.effects);
       ram.setU32(e + B.pos, ram.u32(a4 + A.posX));     // $26B88A
       ram.setU16(e + B.hook, 2);                       // $26B890
       ram.setU16(e + B.bucket, 0x0c);                  // $26B896
@@ -811,33 +841,20 @@ export function handlerMidboss(ram, rom, a5, ctx) {
     freeEnemy(ram, a5);                                // $26B8E8 jmp $263762
     return;
   }
-  // W382 LOOKED AT THIS AND LEFT IT A NOTE, with a different reason than the one
-  // that stood here. [M] `$26B8F0  4e b9 00 28 ac 72` -- unconditional, $26B8EE is
-  // a `4E71 nop`, so the CALL is not the problem and neither is the "result unused
-  // by $26B8F6" the old note led with (true of the RETURN, irrelevant to the side
-  // effects). The problem is the DATA. Type $0D's init writes $26B50E + 28*17 =
-  // $26B6EA to ($44,A5), and [M] that list is exactly one record:
-  //     $26B6EA  thr $2E60  d2 $00000000  d3 $10FFBF  script $28AF98
-  //     $26B6F8  $FFFF                                  <- the terminator
-  // and `$28AF98`'s first word is $000C, so `$28AFD4 + $C` selects descriptor
-  // $28B08E -- a FOURTH descriptor kind. cues.js covers type $84's closure only
-  // ($28B024/$28B042/$28B060) and `descriptor()` refuses anything else, so wiring
-  // the call would `unreached` the frame the midboss's HP first reaches $2E60.
-  // That is the $246410 shape: a spawner whose consumer is not ported. The three
-  // sibling sites in handlers.js WERE wired this wave, because [M] types $80/$82/
-  // $88 open their lists with $A001/$A000/$8000 -- negative, so `$28AC78 bmi`
-  // exits before any descriptor is touched. Porting $28B08E is what unblocks this.
-  note(ctx, 0x28ac72, `$28AC72 in the MIDBOSS rec $${a5.toString(16)} -- its one `
-    + `cue record ($26B6EA, threshold $2E60) selects descriptor $28B08E, which is `
-    + `outside the kind-0/4/8 closure cues.js ports; the spawn is skipped rather `
-    + `than made to throw`);                            // $26B8F0
+  // Synthetic direct-handler fixtures predate the init body and can carry a
+  // zero cursor. Natural Type $0D records always carry the descriptor's list.
+  if (ram.u32(a5 + 0x44) !== 0) {
+    spawnCues28AC72(ram, rom, a5, a6, resources.cues);
+  }
 
   // $26B8F6 tst.w $8130D2 / bne $26BDF8 -- a WORD test here (type $85 uses a
   // LONG at $2759AC).  A paused frame draws and does nothing else.
-  if (ram.u16(G.freeze) !== 0) { drawAll(ram, rom, a5, a6); return; }
+  if (ram.u16(G.freeze) !== 0) {
+    drawAll(ram, rom, a5, a6, resources); return;
+  }
 
   scrollCompensate(ram, a5);                           // $26B900 jsr $24179E
-  stepArms(ram, rom, a5, a6, tables);                  // $26B906 bsr $26B304
+  stepArms(ram, rom, a5, a6, null, resources);
 
   // $26B90A: the BODY's own sprite frame, 0/4/8/$C/$10 into $26BFE8.
   const bc = ram.u8(a5 + R.bodyCad);                   // subq.b #1 / bcc
@@ -851,29 +868,29 @@ export function handlerMidboss(ram, rom, a5, ctx) {
   }
 
   // ---------------------------------------------------- $26B92A: the BODY state
-  bodyState(ram, rom, a5, a6, ctx);
+  bodyState(ram, rom, a5, a6, ctx, resources);
 
   // $26BC50 tst.b ($21,A5) / ble $26BDF8 -- SIGNED: 0 and $80..$FF skip the
   // whole per-arm fire block, so the arms only shoot in the aggressive phase.
   const hf = ram.u8(a5 + R.hitFlags);
   if (i16(hf | (hf & 0x80 ? 0xff00 : 0)) > 0) {
-    armFire(ram, rom, a5, a6, ctx);                    // $26BC58..$26BDF2
+    armFire(ram, rom, a5, a6, ctx, resources);
   }
-  drawAll(ram, rom, a5, a6);                           // $26BDF8
+  drawAll(ram, rom, a5, a6, resources);                  // $26BDF8
 }
 
 /** `$26BDF8..$26BE06` -- the three draws, in ROM order.  The `($17,A5)` test
  *  between them is why the death sequence shows a body and no arms. */
-function drawAll(ram, rom, a5, a6) {
-  drawBody(ram, rom, a5, a6);                          // $26BDF8 bsr $26BFC2
+function drawAll(ram, rom, a5, a6, resources) {
+  drawBody(ram, rom, a5, a6, resources);                // $26BDF8 bsr $26BFC2
   if (ram.u8(a5 + R.deathCtr) !== 0) return;           // $26BDFC tst.b / bne $26BE0A
-  drawArms(ram, rom, a6);                              // $26BE02 bsr $26BE0C
-  drawTail(ram, rom, a6);                              // $26BE06 bra $26BF10
+  drawArms(ram, rom, a6, resources);                    // $26BE02 bsr $26BE0C
+  drawTail(ram, rom, a6, resources);                    // $26BE06 bra $26BF10
 }
 
 /** `$26B92A..$26BC4E` -- the body's four-state machine.  States 0 and 1 wind
  *  the animation up; state 2 owns the fan; state 3 winds it back down. */
-function bodyState(ram, rom, a5, a6, ctx) {
+function bodyState(ram, rom, a5, a6, ctx, resources) {
   const st = ram.u8(a6 + S.state);
   if (st === 0) {                                      // $26B92A tst.b / bne
     // $26B932 tst.b ($21,A5) / ble -- SIGNED again.
@@ -907,7 +924,7 @@ function bodyState(ram, rom, a5, a6, ctx) {
     ram.setU8(a6 + S.fanCad, (c - 1) & 0xff);
     if (c !== 0) return;
     ram.setU8(a6 + S.fanCad, ram.u8(a6 + S.fanRel));   // $26B9B2
-    bigFan(ram, rom, a5, a6, ctx);                     // $26B9B8..$26BC14
+    bigFan(ram, rom, a5, a6, ctx, resources);
     // $26BC16 subq.b #1,($D,A6) / bne $26BC50 -- the fan's odd/even selector,
     // and the thing that ends state 2 when it reaches 0.
     const f = (ram.u8(a6 + S.fanCtr) - 1) & 0xff;
@@ -928,8 +945,12 @@ function bodyState(ram, rom, a5, a6, ctx) {
 }
 
 export const MIDBOSS = Object.freeze({
-  handler: 0x26b6fa, init: 0x26b484, initBody: 0x26b48c, type: 0x0d,
-  armCount: 8, armStride: 0x40, armBase: S.arms,
-  burstList: BURST_LIST, tables: TAB, fanTable: FAN_TABLE,
+  ...BLACK_TYPE0D_RESOURCES,
+  init: BLACK_TYPE0D_RESOURCES.initStub,
+  tables: Object.freeze({
+    ...BLACK_TYPE0D_RESOURCES.tables,
+    arm: BLACK_TYPE0D_RESOURCES.tables.armGraphic,
+    armAnim: BLACK_TYPE0D_RESOURCES.tables.armAnimation,
+  }),
   R, S, A,
 });

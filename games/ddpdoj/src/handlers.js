@@ -112,6 +112,9 @@ import { enqueueRequest, enqueueRegisters, enqueueThroughStub,
   enqueueRegistersThroughStub, enqueueZoomedRegisters, enqueueZoomedThroughStub,
   EMIT_TABLE } from './spritequeue.js';
 import { armScreenClear, armScreenClear243E02, handlerMidboss } from './midboss.js';
+import {
+  BLACK_TYPE1C_RESOURCES, requireType0DResources, requireType1CResources,
+} from './midboss-resources.js';
 import { scoreByMask, scoreHit, scoreKill } from './score.js';
 import { spawnEffect, spawnPoolC289B50, spawnPoolC289AF4, remapBucket, REMAP, B,
   walkDeathSpawns270D92 } from './effects.js';
@@ -5694,41 +5697,36 @@ function emit24(ram, rom, a5, a6) {
 // **$12**'s init stub ($267824 + 8*$12 == $2678B4 -> ($26C266, $26C3E2)), a
 // different type -- so there is nothing to fall through into.
 /** `$26C20C` -- type $1C's handler. `ctx.vram` is the `BgVram` this writes. */
-function handler1C(ram, rom, a5, ctx) {
-  if (ram.u16(G.clock) === 0x0105) {                   // $26C20C cmpi.w #$105,$8130CE
-    freeEnemy(ram, a5);                                // $26C218 jmp $263762
-    return;                                            // $26C214 bne is the OTHER arm
+export function handler1C(ram, rom, a5, ctx,
+  suppliedResources = BLACK_TYPE1C_RESOURCES) {
+  const resources = requireType1CResources(suppliedResources);
+  const painter = resources.painter;
+  if (ram.u16(G.clock) === painter.retireClock) {
+    freeEnemy(ram, a5);
+    return;
   }
   const vram = ctx?.vram;
   if (!vram) {
-    unreached(0x26c226, `type $1C's handler reached $26C226 lea $9000BC,A0 `
-      + `without a BgVram. Its 23x9 longwords ARE the background map -- the `
-      + `same array $240D9A writes -- so the caller must pass \`vram\` in ctx `
-      + `(src/main.js #ctx). Refusing to drop 207 map longwords silently`);
+    const site = resources.handler + 0x1a;
+    unreached(site, `type $1C's handler reached $${site.toString(16).toUpperCase()} `
+      + `without a BgVram. Its ${painter.columns}x${painter.rows} longwords ARE `
+      + `the background map, so the caller must pass \`vram\` in ctx. Refusing `
+      + `to drop ${painter.columns * painter.rows} map longwords silently`);
   }
-  let a1 = 0x227af8;                                   // $26C220 lea $227AF8,A1
-  // $26C22C tst.w $803926 / $26C232 beq $26C23C / $26C236 lea $9000A4,A0.
-  // [M] $803926's five build-B writers are $23BE6E (:=0 at boot), $25A7DE
-  // (clr), $25C598 (:=1), $25C7FE (:=0) and $25C8BC (:=0); it is 0 through
-  // stage-1 play, so the $9000A4 arm is transcribed and unexercised.
-  let a0 = ram.u16(0x803926) !== 0 ? 0x9000a4 : 0x9000bc;  // $26C226 / $26C236
-  for (let d6 = 0x16; d6 >= 0; d6--) {                 // $26C23C moveq #$16,D6 / dbra
-    // $26C23E movea.l A0,A2.  The column index is the low WORD of the address
-    // over four, NOT the low BYTE: taking the byte here would apply $26C25A's
-    // mask a second time and make dropping it unobservable, which is a check
-    // that cannot fail (`docs/knowledge/03`, and W31's own M22).  `setLong`'s
-    // `((row << 6) + col) & $3FF` is the address arithmetic, so an unmasked
-    // $900100 lands where the 68000 would put it -- row+1, column 0.
+  let a1 = painter.source;
+  let a0 = ram.u16(painter.alternateSelector) !== 0
+    ? painter.alternateDestination : painter.destination;
+  for (let column = 0; column < painter.columns; column++) {
     const col = (a0 & 0xffff) >>> 2;
-    for (let row = 0; row <= 8; row++) {               // $26C240 moveq #$8,D7 / dbra
-      const d4 = rom.u32(a1);                          // $26C242 move.l (A1)+,D4
+    for (let row = 0; row < painter.rows; row++) {
+      const d4 = rom.u32(a1);
       a1 += 4;
-      vram.setLong(row, col, u32(d4 + 0x32a90000));    // $26C244 addi.l / $26C24A move.l D4,(A2)
-    }                                                  // $26C24C adda.w #$100,A2
-    a0 += 4;                                           // $26C254 adda.w #$4,A0
-    a0 = (a0 & ~0xffff) | (a0 & 0xff);                 // $26C258/$26C25A/$26C25E
+      vram.setLong(row, col, u32(d4 + painter.tileBase));
+    }
+    a0 += painter.columnStride;
+    a0 = (a0 & ~0xffff) | (a0 & painter.lowWordMask);
   }
-}                                                      // $26C264 rts
+}
 
 // ############################################################################
 // #  W170: TYPE $95, THE FIRST STAGE-2-ONLY ENEMY                         #
@@ -11557,7 +11555,17 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
   if (handlers) return handlers;
   handlers = new Map(HANDLERS);
   for (const descriptor of Object.values(resources.enemyTypes ?? {})) {
-    if (descriptor.algorithm === 'type20') {
+    if (descriptor.algorithm === 'type0D') {
+      const canonical = requireType0DResources(descriptor, resources.edition);
+      handlers.delete(0x26b6fa);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handlerMidboss(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type1C') {
+      const canonical = requireType1CResources(descriptor, resources.edition);
+      handlers.delete(0x26c20c);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handler1C(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type20') {
       handlers.delete(0x272aac);
       handlers.set(descriptor.handler, (ram, rom, a5, ctx) =>
         handler20(ram, rom, a5, ctx, descriptor));

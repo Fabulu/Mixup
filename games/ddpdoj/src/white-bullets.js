@@ -30,8 +30,9 @@ export const WHITE_BULLET_SPAWN_RESOURCES = Object.freeze({
   templatePtrs: 0x18093e,
   spawnInitPtrs: 0x180612,
   kinds: 36,
-  supportedKinds: Object.freeze([4, 5, 12, 13, 19]),
+  supportedKinds: Object.freeze([3, 4, 5, 7, 12, 13, 19]),
   spawnInitDispatch: Object.freeze({
+    0x180894: 0x2818ac,
     0x18089c: 0x2818b4,
     0x1808c8: 0x2818e0,
   }),
