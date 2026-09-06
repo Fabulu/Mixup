@@ -32,6 +32,7 @@
 import { unreached } from './unported.js';
 import { initArms, stepArms } from './midboss.js';
 import { requireType0DResources, requireType1CResources } from './midboss-resources.js';
+import { requireType0EResources, requireType1EResources } from './boss-resources.js';
 import { u16, i16, u32 } from './ram.js';
 import { installScripts, a2Run2598E6, a2RunAll2598FE,
   a4Start25980C } from './scheduler.js';
@@ -1340,10 +1341,12 @@ BODY.set(0x26C1CA, (ram, rom, a5, a6) =>
 // are noted (they build RAM tables / scroll lock / the HP bar accumulator --
 // none are done-when SPAWN stats).  The boss's spawn hitbox/HP/speed/heading/
 // palette/anim come entirely from its prototype, which the loaders copy.
-BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
-  loadSubProto(ram, rom, a5, a6, 0x292806);            // jsr $2637A2
-  loadRecordProto(ram, rom, a5, 0x2927F6, 0x07);       // moveq #$7,D0; jsr $26377A
-  ram.setU32(a6 + S.posX, 0x97fffe00);                  // move.l #$97fffe00,($2,A6)
+function init0E(ram, rom, a5, a6, unported, palette, suppliedResources) {
+  const resources = requireType0EResources(suppliedResources);
+  loadSubProto(ram, rom, a5, a6, resources.subPrototype);            // jsr $2637A2
+  loadRecordProto(ram, rom, a5, resources.recordPrototype,
+    resources.recordPrototypeWordsMinusOne);
+  ram.setU32(a6 + S.posX, resources.position);
   ram.setU16(a6 + S.posY, u16(i16(ram.u16(a6 + S.posY)) - i16(ram.u16(G.scrollDelta))));
   // W62 (S1): $259554 IS NOW REAL, and it is the one of this body's five notes
   // that had to become a call.  It INSTALLS FIVE TABLE POINTERS and RUNS
@@ -1352,8 +1355,7 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
   // `$812A70` the A3 walk is skipped and D-script 6 -- the boss's death
   // animation, which is what fires `$2595E8` and ends the stage -- could never
   // step.
-  installScripts(ram, rom, { a0: 0x293104, a1: 0x295856, a2: 0x292932,
-    a3: 0x29370a, a4: 0x294f68 });                     // $29272E jsr $259554
+  installScripts(ram, rom, resources.scripts);
   // ============ THE TWO ACTIVATIONS -- REAL SINCE W96, AND HERE IS THE HISTORY
   //
   // `$292734 moveq #$6,D0 / jsr $2598E6` arms A2 slot 6 (OBJECT routine
@@ -1392,17 +1394,19 @@ BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
   a4Start25980C(ram, 0);                               // $29273C/$292740
   // W92: the BOSS's five.  Install 4 is $246BF8, the WHITE constant bank the
   // $24xxxx code segment holds as data -- comment ten's other half.
-  installBank(ram, rom, palette, unported, 0x15, 0x222B38, 0x29274E,
-    'the BOSS, install 1 of 5');
-  installBank(ram, rom, palette, unported, 0x16, 0x222B78, 0x29275E,
-    'the BOSS, install 2 of 5');
-  installBank(ram, rom, palette, unported, 0x17, 0x222BB8, 0x29276E,
-    'the BOSS, install 3 of 5');
-  installBank(ram, rom, palette, unported, 0x12, 0x246BF8, 0x29277E,
-    'the BOSS, install 4 of 5 -- the WHITE constant bank');
-  installBank(ram, rom, palette, unported, 0x11, 0x222C38, 0x29278E,
-    'the BOSS, install 5 of 5');
-  unported?.note(0x294ad6, `boss bespoke $294AD6/$294EEA/$294F0A -- W30`);
+  for (const install of resources.palettes.init) {
+    installBank(ram, rom, palette, unported, install.bank, install.source,
+      install.site, install.label);
+  }
+  if (resources.hpDisplayOnInit) ram.setU16(0x81b6e4, 1);
+  unported?.note(resources.sites.handler,
+    `boss bespoke handler at $${resources.handler.toString(16).toUpperCase()}`);
+}
+
+BODY.set(0x2926E2, (ram, rom, a5, a6, unported, tables, palette) => {
+  void tables;
+  init0E(ram, rom, a5, a6, unported, palette,
+    BLACK_WORLD_RESOURCES.enemyTypes[0x0e]);
 });
 
 // --- type $30 ($297120): THE STAGE-2 BOSS (runLen 11). W183.
@@ -1460,15 +1464,18 @@ BODY.set(0x297120, (ram, rom, a5, a6, unported, tables, palette) => {
 // the sub-record prototype (HP/hitbox from `$296DBC`), copies the position
 // and speed/facing from the record into the sub-record, and sets up the
 // lifetime/sprite-cursor fields the handler `$296DD6` reads.
-BODY.set(0x296d8a, (ram, rom, a5, a6) => {
-  loadSubProto(ram, rom, a5, a6, 0x296dbc);             // $296D8A lea / $296D90 jsr $2637A2
-  ram.setU32(a6 + S.posX, ram.u32(a5 + 0x16));          // $296D96 move.l $16(a5),$2(a6)
-  ram.setU16(a6 + S.speed, ram.u16(a5 + 0x1a));         // $296D9C move.w $1a(a5),$1a(a6)
-  ram.setU16(a5 + 0x24, ram.u16(a5 + 0x1e));            // $296DA2 move.w $1e(a5),$24(a5)
-  ram.setU16(a5 + 0x26, 0);                             // $296DA8 move.w #$0,$26(a5)
-  ram.setU16(a5 + 0x1e, 0x0101);                        // $296DAE move.w #$101,$1e(a5)
-  ram.setU16(a5 + 0x20, 0);                             // $296DB4 move.w #$0,$20(a5)
-});
+function init1E(ram, rom, a5, a6, resources) {
+  loadSubProto(ram, rom, a5, a6, resources.subPrototype);
+  ram.setU32(a6 + S.posX, ram.u32(a5 + 0x16));
+  ram.setU16(a6 + S.speed, ram.u16(a5 + 0x1a));
+  ram.setU16(a5 + 0x24, ram.u16(a5 + 0x1e));
+  ram.setU16(a5 + 0x26, 0);
+  ram.setU16(a5 + 0x1e, 0x0101);
+  ram.setU16(a5 + 0x20, 0);
+}
+
+BODY.set(0x296d8a, (ram, rom, a5, a6) =>
+  init1E(ram, rom, a5, a6, BLACK_WORLD_RESOURCES.enemyTypes[0x1e]));
 
 // --- type $4D ($29BB26): stage-2 boss satellite, queued by A3/D13. W185.
 // The 28-byte prototype at $29BB4A deliberately overlaps the handler's first
@@ -2709,6 +2716,17 @@ export function createInitBodyMap(typeDescriptors = BLACK_WORLD_RESOURCES.enemyT
       const canonical = requireType1CResources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6) =>
         init1C(ram, rom, a5, a6, canonical));
+    } else if (descriptor.algorithm === 'type0E') {
+      const canonical = requireType0EResources(descriptor, edition);
+      map.set(canonical.initBody,
+        (ram, rom, a5, a6, unported, tables, palette) => {
+          void tables;
+          init0E(ram, rom, a5, a6, unported, palette, canonical);
+        });
+    } else if (descriptor.algorithm === 'type1E') {
+      const canonical = requireType1EResources(descriptor, edition);
+      map.set(canonical.initBody, (ram, rom, a5, a6) =>
+        init1E(ram, rom, a5, a6, canonical));
     } else if (descriptor.algorithm === 'type08') {
       const canonical = requireType08Resources(descriptor, edition);
       map.set(canonical.initBody, (ram, rom, a5, a6, unported) =>

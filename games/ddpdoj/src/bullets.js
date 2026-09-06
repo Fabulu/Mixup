@@ -618,12 +618,12 @@ const fanWithResources = (ctx, resources) => (ctx.mut === 'fan-always' ? true
   : ctx.ram.u16(resources.rank) !== 0);
 const fan = (ctx) => fanWithResources(ctx, BLACK_BULLET_SPAWN_RESOURCES);
 
-function bankAPlus4(ctx, regs, resources) {
+function bankPlus4(ctx, regs, bank, resources) {
   if (!fanWithResources(ctx, resources)) {
-    return [spawnCoreWithResources(ctx, regs, 'A', resources)];
+    return [spawnCoreWithResources(ctx, regs, bank, resources)];
   }
   regs.d0 = (regs.d0 + S(4)) >>> 0;
-  const out = [spawnCoreWithResources(ctx, regs, 'A', resources)];
+  const out = [spawnCoreWithResources(ctx, regs, bank, resources)];
   regs.d0 = (regs.d0 - S(4)) >>> 0;
   return out;
 }
@@ -679,7 +679,13 @@ export function fireWithResources(ctx, entry, regs, resources) {
     return [spawnCoreWithResources(ctx, regs, 'A', resources)];
   }
   if (resources.semantic === 'bank-a-plus4') {
-    return bankAPlus4(ctx, regs, resources);
+    return bankPlus4(ctx, regs, 'A', resources);
+  }
+  if (resources.semantic === 'bank-b-direct') {
+    return [spawnCoreWithResources(ctx, regs, 'B', resources)];
+  }
+  if (resources.semantic === 'bank-b-plus4') {
+    return bankPlus4(ctx, regs, 'B', resources);
   }
   if (resources.semantic === 'bank-a-adaptive') {
     return bankAAdaptive(ctx, regs, resources);

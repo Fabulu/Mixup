@@ -16,6 +16,10 @@ import {
   BLACK_TYPE0D_RESOURCES, BLACK_TYPE1C_RESOURCES, WHITE_SCORE_RESOURCES,
   WHITE_TYPE0D_RESOURCES, WHITE_TYPE1C_RESOURCES,
 } from './midboss-resources.js';
+import {
+  BLACK_TYPE0E_RESOURCES, BLACK_TYPE1E_RESOURCES,
+  WHITE_TYPE0E_RESOURCES, WHITE_TYPE1E_RESOURCES,
+} from './boss-resources.js';
 
 const WHITE_STANDARD_BULLET_KINDS = Object.freeze([12, 13]);
 const WHITE_TYPE80_FAN_KINDS = Object.freeze([4, 5]);
@@ -756,8 +760,9 @@ export const BLACK_WORLD_RESOURCES = deepFreeze({
   movement: { entry: 0x241812, speedPointers: 0x200920, fold: 0x2418b4 },
   enemyTypes: {
     0x05: black05, 0x07: black27, 0x08: black08, 0x09: black09, 0x0b: black0B,
-    0x0d: BLACK_TYPE0D_RESOURCES,
+    0x0d: BLACK_TYPE0D_RESOURCES, 0x0e: BLACK_TYPE0E_RESOURCES,
     0x10: black10, 0x11: black11, 0x1c: BLACK_TYPE1C_RESOURCES,
+    0x1e: BLACK_TYPE1E_RESOURCES,
     0x20: black20, 0x21: black20, 0x22: black20, 0x23: black20, 0x24: black24,
     0x27: black27, 0x31: black31,
     0x80: black80, 0x82: black82, 0x85: black85, 0x88: black88, 0x89: black89,
@@ -786,12 +791,13 @@ export const WHITE_WORLD_RESOURCES = deepFreeze({
     high: { nullInit: 0x17d4b4, nullHandler: 0x17d4bc, table: 0x17d4c4 },
     typeStride: 8,
   },
-  enemyFrame: { entry: 0x16256e, walker: 0x162438, driver: 0x162670 },
+  enemyFrame: { entry: 0x16256e, walker: 0x162438, driver: 0x16257c },
   movement: { entry: 0x141b60, speedPointers: 0x100920, fold: 0x141bee },
   enemyTypes: {
     0x05: white05, 0x07: white27, 0x08: white08, 0x09: white09, 0x0b: white0B,
-    0x0d: WHITE_TYPE0D_RESOURCES,
+    0x0d: WHITE_TYPE0D_RESOURCES, 0x0e: WHITE_TYPE0E_RESOURCES,
     0x10: white10, 0x11: white11, 0x1c: WHITE_TYPE1C_RESOURCES,
+    0x1e: WHITE_TYPE1E_RESOURCES,
     0x20: white20, 0x21: white20, 0x22: white20, 0x23: white20, 0x24: white24,
     0x27: white27, 0x31: white31,
     0x80: white80, 0x82: white82, 0x85: white85, 0x88: white88, 0x89: white89,

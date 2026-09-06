@@ -115,6 +115,7 @@ import { armScreenClear, armScreenClear243E02, handlerMidboss } from './midboss.
 import {
   BLACK_TYPE1C_RESOURCES, requireType0DResources, requireType1CResources,
 } from './midboss-resources.js';
+import { requireType0EResources, requireType1EResources } from './boss-resources.js';
 import { scoreByMask, scoreHit, scoreKill } from './score.js';
 import { spawnEffect, spawnPoolC289B50, spawnPoolC289AF4, remapBucket, REMAP, B,
   walkDeathSpawns270D92 } from './effects.js';
@@ -11641,6 +11642,16 @@ export function handlerMap(resources = BLACK_WORLD_RESOURCES) {
       handlers.delete(0x26c20c);
       handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
         handler1C(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type0E') {
+      const canonical = requireType0EResources(descriptor, resources.edition);
+      handlers.delete(0x292902);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handlerBoss292902(ram, rom, a5, ctx, canonical));
+    } else if (descriptor.algorithm === 'type1E') {
+      const canonical = requireType1EResources(descriptor, resources.edition);
+      handlers.delete(0x296dd6);
+      handlers.set(canonical.handler, (ram, rom, a5, ctx) =>
+        handler1E_296DD6(ram, rom, a5, ctx, canonical));
     } else if (descriptor.algorithm === 'type08') {
       const canonical = requireType08Resources(descriptor, resources.edition);
       handlers.delete(0x26a5e4);

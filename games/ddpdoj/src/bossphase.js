@@ -66,12 +66,22 @@ import {
 } from './scheduler.js';
 import { aim64, slew64, aim64FromCaller, aim256AtTarget, AimTables } from './aim.js';
 import { applyVelocity } from './movement.js';
-import { drawByte242B3C, drawSigned242FDE } from './rng.js';
-import { fire as fireBulletFan, WriteLog } from './bullets.js';
+import {
+  drawSignedByteWithResources,
+  drawUnmaskedByteWithResources,
+} from './rng.js';
+import {
+  fireWithResources as fireBulletWithResources,
+  WriteLog,
+} from './bullets.js';
 import {
   BS, dist242494, bodyTail29314C, pickWaypoint2933DE, rampSpeed293400,
 } from './bossscripts.js';
 import { bossA5, bossA6 } from './boss.js';
+import {
+  BLACK_TYPE0E_RESOURCES,
+  type0EResourcesFromContext,
+} from './boss-resources.js';
 
 /** A byte, the way every `.b` operation in this file truncates. */
 const u8 = (v) => v & 0xff;
@@ -119,11 +129,33 @@ export const W95 = {
 };
 
 const AIM_TABLES = new WeakMap();
-function aimTables(rom) {
-  let t = AIM_TABLES.get(rom);
-  if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
-  return t;
+function aimTables(rom, resources) {
+  let byResources = AIM_TABLES.get(rom);
+  if (!byResources) {
+    byResources = new WeakMap();
+    AIM_TABLES.set(rom, byResources);
+  }
+  let tables = byResources.get(resources);
+  if (!tables) {
+    tables = new AimTables(rom, resources.aim64, resources.aim256);
+    byResources.set(resources, tables);
+  }
+  return tables;
 }
+
+const drawByte = (ram, rom, resources) =>
+  drawUnmaskedByteWithResources(ram, rom, resources.rng.byte);
+const drawSigned = (ram, rom, resources) =>
+  drawSignedByteWithResources(ram, rom, resources.rng.signed);
+const fireBossBullet = (ram, rom, resources, generator, regs) => {
+  const bullet = resources.bullets[generator];
+  return fireBulletWithResources(
+    { ram, rom, log: new WriteLog(ram) },
+    bullet.entry,
+    regs,
+    bullet
+  );
+};
 
 /** The 68000 `subq.b #1,<ea>` + `bcc`: BCC is taken while the OLD value was
  *  non-zero (a borrow out of 0 is what sets C).  Returns TRUE for "bcc taken",
@@ -164,7 +196,9 @@ function waypointAt(rom, ram, a4, base) {
 // instant it is made.  MAIN 7's init has the same pair and W94 transcribed it
 // there; here the dead store is louder because the value it saves is a zero the
 // same routine wrote two instructions earlier.
-export function main2Init293420(ram, rom, a4, a6) {
+export function main2Init293420(
+  ram, rom, a4, a6, resources = BLACK_TYPE0E_RESOURCES
+) {
   ram.setU16(a4, 0);                                    // $293420 move.w #$0,(a4)
   if (W95_MUTATE.value === 'main2-speed-20') {
     ram.setU8(a6 + BS.speed, 0x20);                     // the WRONG port
@@ -172,13 +206,22 @@ export function main2Init293420(ram, rom, a4, a6) {
     ram.setU16(a6 + BS.speed, 0x0020);                  // $293424 move.w #$20,$1a(a6)
   }
   ram.setU8(a4 + 2, ram.u8(a6 + BS.speed));             // $29342A -- DEAD, see above
-  pickWaypoint2933DE(ram, rom, a4);                     // $293430 bsr.b $2933DE
+  pickWaypoint2933DE(ram, rom, a4, resources);            // $293430 bsr.b $2933DE
 }
 
-export function main2Step293432(ram, rom, ctx, a4, a5, a6) {
-  let t = waypointAt(rom, ram, a4, W95.main2Waypoints); // $293432..$29343A
-  const want = aim64(aimTables(rom), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
-    t.y, t.x);                                          // $29343E/$293444 jsr $24203E
+export function main2Step293432(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
+  const waypoints = resources.main.m2.waypoints;
+  let t = waypointAt(rom, ram, a4, waypoints);           // $293432..$29343A
+  const want = aim64(
+    aimTables(rom, resources),
+    ram.u16(a6 + BS.posY),
+    ram.u16(a6 + BS.posX),
+    t.y,
+    t.x
+  );
   // **ONE STEP OF SLEW, exactly like MAIN 7 and unlike MAIN 5/6.**  `$29344A
   // move.b $1B(A6),D0 / $29344E jsr $242190` is the limiter; MAIN 5 and MAIN 6
   // store `$24203E`'s answer RAW.  The difference between a snap turn and a
@@ -190,9 +233,11 @@ export function main2Step293432(ram, rom, ctx, a4, a5, a6) {
   // instruction pair W94 §2.1 proved is a no-op for MAIN 7 and for the same
   // reason: nothing between the two reads writes `(A4)`.  It is transcribed
   // because the ROM executes it.
-  t = waypointAt(rom, ram, a4, W95.main2Waypoints);
+  t = waypointAt(rom, ram, a4, waypoints);
   const d0 = dist242494(ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX), t.y, t.x);
-  if (i16(d0) <= 0x100) pickWaypoint2933DE(ram, rom, a4);   // $293472/$29347A
+  if (i16(d0) <= 0x100) {
+    pickWaypoint2933DE(ram, rom, a4, resources);
+  }
   bodyTail29314C(ram, ctx, a6);                         // $29347E bra.w $29314C
 }
 
@@ -221,10 +266,18 @@ export function main5Init293578(ram, a4, a6) {
   }
 }
 
-export function main5Step29359E(ram, rom, ctx, a4, a5, a6) {
+export function main5Step29359E(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
   void a4;
-  const face = aim64(aimTables(rom), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
-    0x5c00, 0x1c00);                                    // $29359E..$2935AC
+  const face = aim64(
+    aimTables(rom, resources),
+    ram.u16(a6 + BS.posY),
+    ram.u16(a6 + BS.posX),
+    0x5c00,
+    0x1c00
+  );
   ram.setU8(a6 + BS.facing, face & 0xff);               // $2935B2 -- RAW, no slew
   // $2935B6/$2935BA reload the SAME two immediates before `$242494`.  They are
   // reloaded because `$24203E` clobbers D2/D3, not because the target moved.
@@ -281,24 +334,29 @@ export function d20Step294AC0(ram, a6) {
 // by the init.  They persist across every restart of F 1, which is how the
 // boss's guns get harder each time the phase comes round.  A port that put them
 // in the slot would reset the difficulty on every arm.
-export function f1Init295002(ram, rom, a4, a6) {
+export function f1Init295002(
+  ram, rom, a4, a6, resources = BLACK_TYPE0E_RESOURCES
+) {
+  const f1 = resources.f.f1;
   seqStart2598D0(ram, 5);                               // $295002 MAIN.start 5
   ram.setU8(a4 + 0x02, 0);                              // $29500A clr.b $2(a4)
   ram.setU16(a4 + 0x04, 0x1000);                        // $29500E -- $4=$10, $5=$00
   const d0 = spread2595F2();                            // $295014/$295018 -> 4
   // $29501E lea $294FD2(pc),A0 / move.b (A0,D0.w),D1 / add.b $10C(A6),D1,
   // clamped BELOW $80 by an UNSIGNED `bcs`.
-  let d1 = u8(rom.u8(W95.f1AngleTab + d0) + ram.u8(a6 + 0x10c));   // $295022/$295026
+  let d1 = u8(rom.u8(f1.angle + d0) + ram.u8(a6 + 0x10c));   // $295022/$295026
   if (d1 >= 0x80) d1 = 0x80;                            // $29502A cmpi.b/bcs/$295032
   ram.setU8(a4 + 0x08, d1);                             // $295036
   // $29503A lea $294FCA(pc),A0 -- the same index, a different table, and this
   // one SUBTRACTS its running counter and is floored at 3 by a SIGNED `bge`.
-  d1 = u8(rom.u8(W95.f1PeriodTab + d0) - ram.u8(a6 + 0x10b));      // $29503E/$295042
+  d1 = u8(rom.u8(f1.period + d0) - ram.u8(a6 + 0x10b));      // $29503E/$295042
   if (i8(d1) < 3) d1 = 3;                               // $295046 cmpi.b/bge/$29504E
   ram.setU8(a4 + 0x06, 0);                              // $295052 move.b #$0,$6(a4)
   // $295058 tst.w $813098 -- RANK.  One more frame of period at rank != 0, and
   // it is the ONLY place rank reaches this boss's guns.
-  if (ram.u16(0x813098) !== 0) d1 = u8(d1 + 1);         // $29505E beq/$295062 addq.b
+  if (f1.rankPeriodIncrement && ram.u16(0x813098) !== 0) {
+    d1 = u8(d1 + 1);
+  }
   ram.setU8(a4 + 0x07, d1);                             // $295064
   // $295068..$29508E -- the two byte counters STEP and CLAMP, in that order.
   ram.setU8(a6 + 0x10c, u8(ram.u8(a6 + 0x10c) + 2));    // $295068 addq.b #$2
@@ -309,16 +367,16 @@ export function f1Init295002(ram, rom, a4, a6) {
   ram.setU8(a4 + 0x0c, 1);                              // $295096
   ram.setU8(a4 + 0x0d, 4);                              // $29509C
   const d0b = spread2595F2();                           // $2950A2/$2950A6 -> 4 again
-  ram.setU8(a4 + 0x0b, rom.u8(W95.f1CadenceTab + d0b)); // $2950AC/$2950B4
+  ram.setU8(a4 + 0x0b, rom.u8(f1.cadence + d0b)); // $2950AC/$2950B4
   const w = d0b * 2;                                    // $2950B8 add.w d0,d0 -> 8
   // $2950BA lea $294FE2(pc),A0 -- WORD tables from here on, both ceilinged by a
   // SIGNED `ble` rather than floored, and both stepped afterwards.
-  let d1w = u16(rom.u16(W95.f1CountTab + w) + ram.u16(a6 + 0x10e));  // $2950BE/$2950C2
+  let d1w = u16(rom.u16(f1.count + w) + ram.u16(a6 + 0x10e));  // $2950BE/$2950C2
   if (i16(d1w) > 4) d1w = 4;                            // $2950C6 cmpi.w/ble
   ram.setU16(a4 + 0x0e, d1w);                           // $2950D2
   ram.setU16(a6 + 0x10e, u16(ram.u16(a6 + 0x10e) + 1)); // $2950D6 addq.w #$1
   if (i16(ram.u16(a6 + 0x10e)) > 4) ram.setU16(a6 + 0x10e, 4);      // $2950DA
-  d1w = u16(rom.u16(W95.f1SpreadTab + w) + ram.u16(a6 + 0x110));    // $2950EA/$2950F2
+  d1w = u16(rom.u16(f1.spread + w) + ram.u16(a6 + 0x110));    // $2950EA/$2950F2
   if (i16(d1w) > 0x20) d1w = 0x20;                      // $2950F6
   ram.setU16(a4 + 0x10, d1w);                           // $295102
   ram.setU16(a6 + 0x110, u16(ram.u16(a6 + 0x110) + 2)); // $295106 addq.w #$2
@@ -342,7 +400,10 @@ export function f1Init295002(ram, rom, a4, a6) {
  * that steps `$803917` for the whole game.  `f1-start-d7` is the port that
  * believed the computation.
  */
-export function f1Step295120(ram, rom, ctx, a4) {
+export function f1Step295120(
+  ram, rom, ctx, a4, resources = type0EResourcesFromContext(ctx)
+) {
+  const f1 = resources.f.f1;
   // ---- state 0 ($295120): wait for E 1 to be idle, then start it.
   if (ram.u8(a4 + 0x02) === 0) {                        // $295120 cmpi.b #$0
     if (!a1Running259A4A(ram, 1)                        // $29512A/$295132 bcs
@@ -369,7 +430,7 @@ export function f1Step295120(ram, rom, ctx, a4) {
       if (!a1Running259A4A(ram, 1)) {                   // $29519A/$2951A2 bcs
         // E 1 has finished -- arm the volley timer and go to state 2.
         ram.setU8(a4 + 0x02, 2);                        // $2951A6
-        ram.setU8(a4 + 0x14, u8(drawByte242B3C(ram, rom) + 0x20));   // $2951AC/$2951B2
+        ram.setU8(a4 + 0x14, u8(drawByte(ram, rom, resources) + 0x20));   // $2951AC/$2951B2
       } else if (!subqByteBcc(ram, a4 + 0x0a)) {        // $2951BE subq.b/bcc
         ram.setU8(a4 + 0x0a, ram.u8(a4 + 0x0b));        // $2951C6
         // $2951CC moveq #$3,D0 / tst.b $C(A4) / bpl -> keep 3; NEGATIVE -> 4.
@@ -399,7 +460,7 @@ export function f1Step295120(ram, rom, ctx, a4) {
     ram.setU8(a4 + 0x14, u8(t - 1));
     const fire = W95_MUTATE.value === 'f1-volley-bcc' ? t === 0 : u8(t - 1) === 0;
     if (fire && !a1Running259A4A(ram, 3) && !a1Running259A4A(ram, 4)) {
-      const d7 = u16(drawSigned242FDE(ram, rom) + 1);   // $295230/$295236/$295238
+      const d7 = u16(drawSigned(ram, rom, resources) + 1);   // $295230/$295236/$295238
       for (const id of [3, 4]) {                        // $29523A / $295252
         const a0 = a1Start259A18(ram, id);
         ram.setU8(a0 + 0x02, 8);                        // $295242 / $29525A
@@ -414,10 +475,10 @@ export function f1Step295120(ram, rom, ctx, a4) {
     if (!a1Running259A4A(ram, 1) && !a1Running259A4A(ram, 3)
       && !a1Running259A4A(ram, 4)) {                    // $29527A/$295286/$295292
       const cur = ram.u16(a6From(ctx) + 0x106);         // $2952A4 adda.w $106(a6),a0
-      const seq = rom.u16(W95.f1Sequence + cur);        // $2952A8 move.w (a0),d0
+      const seq = rom.u16(f1.sequence + cur);        // $2952A8 move.w (a0),d0
       let d7 = 3;                                       // $2952AE moveq #$3,d7
       if (i16(seq) < 0) {                               // $2952AA bpl
-        if (drawSigned242FDE(ram, rom) === 0) d7 = 2;   // $2952B0/$2952BA moveq #$2
+        if (drawSigned(ram, rom, resources) === 0) d7 = 2;   // $2952B0/$2952BA moveq #$2
       } else {
         ram.setU16(a6From(ctx) + 0x106, u16(cur + 2));  // $2952C2 addq.w #$2
       }
@@ -431,7 +492,9 @@ export function f1Step295120(ram, rom, ctx, a4) {
 /** F 1's three running counters live in the boss's SUB-RECORD, so the script
  *  needs A6 as well as its slot.  Published by `$292902`; a throw here means
  *  the scheduler ran outside the boss's frame. */
-function a6From(ctx) { return bossA6(ctx, 0x295120); }
+function a6From(ctx) {
+  return bossA6(ctx, ctx.bossScriptAddress ?? 0x295120);
+}
 
 // ===========================================================================
 // F 4 -- $29554A / $29556C.  ONE PART DESTROYED: E 11 and E 12, alternating.
@@ -531,7 +594,9 @@ export function f5Step295626(ram, a4) {
 //     that skipped the computation because its result is unused would
 //     desynchronise every later consumer of the RNG.  `f6-one-draw` is that
 //     port.
-export function f6Init295684(ram, rom, a4, a6) {
+export function f6Init295684(
+  ram, rom, a4, a6, resources = BLACK_TYPE0E_RESOURCES
+) {
   ram.setU8(a4 + 0x02, 0);                              // $295684 clr.b $2(a4)
   ram.setU16(a4 + 0x04, 0x0202);                        // $295688 -- $4=2, $5=2
   ram.setU8(a4 + 0x08, 0x0d);                           // $29568E
@@ -539,7 +604,7 @@ export function f6Init295684(ram, rom, a4, a6) {
   ram.setU16(a4 + 0x14, 0x2040);                        // $29569A
   ram.setU8(a4 + 0x10, 1);                              // $2956A0
   ram.setU8(a4 + 0x11, 1);                              // $2956A6
-  const at = W95.f6Tab + spread2595F2() * 4;            // $2956AC..$2956BE -> +$10
+  const at = resources.f.f6.table + spread2595F2() * 4;
   ram.setU16(a4 + 0x0e, rom.u16(at));                   // $2956C0 move.w (a0)+,$e(a4)
   let d1 = u16(rom.u16(at + 2) + ram.u16(a6 + 0x118));  // $2956C4/$2956C6
   if (i16(d1) > 5) d1 = 5;                              // $2956CA cmpi.w/ble
@@ -549,7 +614,10 @@ export function f6Init295684(ram, rom, a4, a6) {
   seqStart2598D0(ram, 6);                               // $2956EE MAIN.start 6
 }
 
-export function f6Step2956F6(ram, rom, ctx, a4, a5, a6) {
+export function f6Step2956F6(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
   // ---- state 0 ($2956F6): THE RENDEZVOUS.
   if (ram.u8(a4 + 0x02) === 0) {                        // $2956F6
     if (seqCurrent2598C8(ram) === 7) {                  // $295700/$295706 cmpi.w #$7
@@ -557,12 +625,12 @@ export function f6Step2956F6(ram, rom, ctx, a4, a5, a6) {
       a3Start259962(ram, 0x14);                         // $295716 D.start 20
       ram.setU16(a4 + 0x06, 1);                         // $29571E move.w #$1,$6(a4)
       let d1 = 0x25;                                    // $295724 moveq #$25,d1
-      if (drawSigned242FDE(ram, rom) !== 0) {           // $295726/$29572C beq
+      if (drawSigned(ram, rom, resources) !== 0) {           // $295726/$29572C beq
         d1 = 0x1c;                                      // $295730 moveq #$1C,d1
         ram.setU16(a4 + 0x06, u16(-ram.u16(a4 + 0x06)));  // $295732 neg.w $6(a4)
       }
       if (W95_MUTATE.value !== 'f6-one-draw') {
-        d1 = u8(d1 + (i8(drawByte242B3C(ram, rom)) >> 2));  // $295736/$29573C/$29573E
+        d1 = u8(d1 + (i8(drawByte(ram, rom, resources)) >> 2));  // $295736/$29573C/$29573E
       }
       ram.setU8(a4 + 0x03, u8(d1));                     // $295740 -- DEAD, see above
       ram.setU8(a4 + 0x02, 2);                          // $295744 -- 0 -> 2, no 1
@@ -576,8 +644,13 @@ export function f6Step2956F6(ram, rom, ctx, a4, a5, a6) {
     // shadow trails the body, so the arms aim at where the boss WAS.
     if (ram.u8(a4 + 0x10) !== 0 && !subqByteBcc(ram, a4 + 0x04)) {   // $295754/$29575C
       ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));          // $295764
-      const r = aim64FromCaller(aimTables(rom), ram, a5,
-        ram.u16(a6 + 0xa2), ram.u16(a6 + 0xa4));        // $29576A/$295770 jsr $24200A
+      const r = aim64FromCaller(
+        aimTables(rom, resources),
+        ram,
+        a5,
+        ram.u16(a6 + 0xa2),
+        ram.u16(a6 + 0xa4)
+      );
       if (!r.carry) {                                   // $295776 bcs
         // `$29577A cmpi.b #$27 / ble` and `$295784 cmpi.b #$19 / bge` clamp the
         // TARGET to [$19,$27]; the `+$20 / -$20` pair around `$242190` is what
@@ -642,7 +715,9 @@ export function f6Step2956F6(ram, rom, ctx, a4, a5, a6) {
 // read `$3(A4)` -- one register away, and the field every other script in this
 // file uses for its own state -- would leave the boss aiming at one player
 // forever and would corrupt a slot byte at the same time.
-export function e0Init2958F2(ram, rom, a4, a5, a6) {
+export function e0Init2958F2(
+  ram, rom, a4, a5, a6, resources = BLACK_TYPE0E_RESOURCES
+) {
   const at = W95_MUTATE.value === 'e0-bchg-slot' ? a4 + 0x03 : a5 + 0x03;
   ram.setU8(at, ram.u8(at) ^ 1);                        // $2958F2 bchg.b #$0,$3(a5)
   ram.setU16(a4 + 0x02, 0x1001);                        // $2958F8 -- $2=$10, $3=1
@@ -653,13 +728,14 @@ export function e0Init2958F2(ram, rom, a4, a5, a6) {
   // when it succeeds is the base angle replaced; both players dead leaves the
   // literal $80.  The RNG draw is INSIDE that arm, so a dead pair of players
   // costs one fewer step of `$803917`.
-  const r = aim256AtTarget(aimTables(rom), ram, a5, a6);
+  const r = aim256AtTarget(aimTables(rom, resources), ram, a5, a6);
   if (!r.carry) {                                       // $295916 bcs
-    ram.setU8(a4 + 0x0a, u8(r.dir + drawByte242B3C(ram, rom)));      // $29591A/$295920
+    ram.setU8(a4 + 0x0a, u8(r.dir + drawByte(ram, rom, resources)));      // $29591A/$295920
   }
+  const e0 = resources.e.e0;
   const w = spread2595F2() * 2;                         // $295926..$29592E -> 8
-  ram.setU16(a4 + 0x0c, rom.u16(W95.e0TabA + w));       // $295930/$295936
-  ram.setU16(a4 + 0x06, rom.u16(W95.e0TabB + w));       // $29593C/$295940
+  ram.setU16(a4 + 0x0c, rom.u16(e0.tables[0] + w));     // $295930/$295936
+  ram.setU16(a4 + 0x06, rom.u16(e0.tables[1] + w));     // $29593C/$295940
 }
 
 /**
@@ -676,8 +752,15 @@ export function e0Init2958F2(ram, rom, a4, a5, a6) {
  * net to ZERO (`+2 -4 +2`), so the angle that reaches the first shot is
  * `$A(A4) + $8(A4)` as a BYTE and the second is `$A(A4) - $8(A4)`.
  */
-export function e0Step295948(ram, rom, ctx, a4, a5, a6) {
-  if ((ram.u32(a5 + 0x16) >>> 0) >= W95.hpGate) return; // $295948/$295950 bcc
+export function e0Step295948(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
+  const e0 = resources.e.e0;
+  if (e0.hpGate !== null
+      && (ram.u32(a5 + 0x16) >>> 0) >= e0.hpGate) {
+    return;
+  }
   if (subqByteBcc(ram, a4 + 0x02)) return;              // $295954 subq.b/bcc
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));              // $29595C
   const base = ram.u8(a4 + 0x0a);                       // $295962/$295964
@@ -687,13 +770,27 @@ export function e0Step295948(ram, rom, ctx, a4, a5, a6) {
   const d6 = ram.u16(a4 + 0x08);                        // $295972 move.w $8(a4),d6
   const d2 = ram.u32(a6 + 0x02);                        // $29597E move.l $2(a6),d2
   const shoot = (d1, d3, site) => {
-    const res = fireBulletFan({ ram, rom, log: new WriteLog(ram) }, 0x281764,
-      { d0, d1, d2, d3, d4: 0, d5: 0, a5 });
+    const res = fireBossBullet(
+      ram,
+      rom,
+      resources,
+      'bankBSpreadTwo',
+      { d0, d1, d2, d3, d4: 0, d5: 0, a5 }
+    );
     ctx.bulletSpawn?.(site, res);
   };
-  shoot(u8(base + d6), rom.u32(W95.e0Muzzle), 0x295996);          // $295990/$295996
-  shoot(u8(base - d6), rom.u32(W95.e0Muzzle + 4), 0x2959a6);      // $2959A0/$2959A6
-  ram.setU16(a4 + 0x04, u16(ram.u16(a4 + 0x04) + 2));   // $2959AC addq.w #$2
+  const source = ctx.bossScriptAddress
+    ?? (resources.edition === 'white' ? 0x194394 : 0x295948);
+  if (e0.shots === 4) {
+    shoot(u8(base + 2), rom.u32(e0.muzzle + 8), source + 0x30);
+    shoot(u8(base - 2), rom.u32(e0.muzzle + 12), source + 0x3e);
+  }
+  shoot(u8(base + d6), rom.u32(e0.muzzle), source + 0x4e);
+  shoot(u8(base - d6), rom.u32(e0.muzzle + 4), source + 0x5e);
+  ram.setU16(
+    a4 + 0x04,
+    u16(ram.u16(a4 + 0x04) + e0.shots)
+  );
   ram.setU16(a4 + 0x08, u16(d6 + ram.u16(a4 + 0x0c)));  // $2959B0/$2959B4 add.w
   const n = u16(ram.u16(a4 + 0x06) - 1);                // $2959B8 subq.w #$1
   ram.setU16(a4 + 0x06, n);
@@ -715,10 +812,14 @@ export function e0Step295948(ram, rom, ctx, a4, a5, a6) {
 // by `$FFFB` (-5) per arm.  That is deliberate and it is why the port must not
 // "initialise" the slot: `e1-set-param` is the reading that assigns instead of
 // adding.
-export function e1Init295A7E(ram, rom, a4) {
+export function e1Init295A7E(
+  ram, rom, a4, resources = BLACK_TYPE0E_RESOURCES
+) {
   ram.setU8(a4 + 0x05, 0);                              // $295A7E clr.b $5(a4)
   ram.setU8(a4 + 0x06, 0);                              // $295A82 clr.b $6(a4)
-  const d0 = rom.u16(W95.e1Tab + spread2595F2() * 2);   // $295A86..$295A96 -> +8
+  const d0 = rom.u16(
+    resources.e.e1.table + spread2595F2() * 2
+  );
   if (W95_MUTATE.value === 'e1-set-param') ram.setU16(a4 + 0x0c, d0);
   else ram.setU16(a4 + 0x0c, u16(ram.u16(a4 + 0x0c) + d0));        // $295A9A add.w
   for (let i = 0; i < 4; i++) ram.setU8(a4 + 0x08 + i, 0x20);      // $295A9E..$295AB4
@@ -727,7 +828,7 @@ export function e1Init295A7E(ram, rom, a4) {
   // times is `e1-one-draw`.
   for (let i = 0; i < 4; i++) {                         // $295AB6..$295ADC
     const d = W95_MUTATE.value === 'e1-one-draw' && i > 0
-      ? ram.u8(a4 + 0x08) - 0x20 : drawByte242B3C(ram, rom);
+      ? ram.u8(a4 + 0x08) - 0x20 : drawByte(ram, rom, resources);
     ram.setU8(a4 + 0x08 + i, u8(ram.u8(a4 + 0x08 + i) + d));
   }
 }
@@ -735,7 +836,10 @@ export function e1Init295A7E(ram, rom, a4) {
 /** `$295AE0`.  Two halves: BEFORE `$6(A4)` is set, slew the four angles to the
  *  drawn targets and check for arrival; after it, sweep them between `$10` and
  *  `$30` and fire on a cadence. */
-export function e1Step295AE0(ram, rom, ctx, a4, a5, a6) {
+export function e1Step295AE0(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
   if (ram.u8(a4 + 0x06) === 0) {                        // $295AE0 tst.b/bne
     // ---- $295AE8: one slew step per turret, then the four-way compare.
     for (let i = 0; i < 4; i++) {                       // $295AE8..$295B2C
@@ -779,10 +883,15 @@ export function e1Step295AE0(ram, rom, ctx, a4, a5, a6) {
   const d2 = ram.u32(a6 + 0x02);                        // $295C62
   const SITES = [0x295c70, 0x295c7e, 0x295c8c, 0x295c9a];
   for (let i = 0; i < 4; i++) {
-    const d3 = rom.u32(W95.e1Muzzle + i * 4);           // $295C66/$295C76/$295C84/$295C92
+    const d3 = rom.u32(resources.e.e1.muzzle + i * 4);
     const d1 = ram.u8(a6 + 0xc6 + i);                   // $295C6C/$295C7A/$295C88/$295C96
-    const res = fireBulletFan({ ram, rom, log: new WriteLog(ram) }, 0x281484,
-      { d0, d1, d2, d3, d4: 0, d5: 0, a5 });            // $295C70 jsr $281484
+    const res = fireBossBullet(
+      ram,
+      rom,
+      resources,
+      'bankASpreadThree',
+      { d0, d1, d2, d3, d4: 0, d5: 0, a5 }
+    );
     ctx.bulletSpawn?.(SITES[i], res);
   }
   const n = u8(ram.u8(a4 + 0x04) - 1);                  // $295CA0 subq.b #$1
@@ -797,13 +906,25 @@ export function e1Step295AE0(ram, rom, ctx, a4, a5, a6) {
 // Same `$48CC` HP gate as E 0, and the same "the index is always 4" table read.
 // Four shots per volley from four fixed muzzle offsets, all at the constant
 // angle `$80` -- there is no aim in this gun at all.
-export function e11Init2965F8(ram, rom, a4) {
+export function e11Init2965F8(
+  ram, rom, a4, resources = BLACK_TYPE0E_RESOURCES
+) {
   ram.setU16(a4 + 0x02, 0x0008);                        // $2965F8 -- $2=0, $3=8
-  ram.setU16(a4 + 0x04, rom.u16(W95.e11Tab + spread2595F2() * 2));  // $2965FE..$29660E
+  ram.setU16(
+    a4 + 0x04,
+    rom.u16(resources.e.e11.table + spread2595F2() * 2)
+  );
 }
 
-export function e11Step296614(ram, rom, ctx, a4, a5, a6) {
-  if ((ram.u32(a5 + 0x16) >>> 0) >= W95.hpGate) return; // $296614/$29661C bcc
+export function e11Step296614(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
+  const e11 = resources.e.e11;
+  if (e11.hpGate !== null
+      && (ram.u32(a5 + 0x16) >>> 0) >= e11.hpGate) {
+    return;
+  }
   if (subqByteBcc(ram, a4 + 0x02)) return;              // $296620 subq.b/bcc
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));              // $296628
   const d2 = ram.u32(a6 + 0x02);                        // $29662E
@@ -817,8 +938,21 @@ export function e11Step296614(ram, rom, ctx, a4, a5, a6) {
   const SITES = [0x296646, 0x296652, 0x29665e, 0x29666a];
   for (let i = 0; i < 4; i++) {
     const off = W95_MUTATE.value === 'e11-muzzle-order' ? i * 4 : ORDER[i];
-    const res = fireBulletFan({ ram, rom, log: new WriteLog(ram) }, 0x2816f6,
-      { d0, d1, d2, d3: rom.u32(W95.e11Muzzle + off), d4: 0, d5: 0, a5 });
+    const res = fireBossBullet(
+      ram,
+      rom,
+      resources,
+      'bankBDirect',
+      {
+        d0,
+        d1,
+        d2,
+        d3: rom.u32(e11.muzzle + off),
+        d4: 0,
+        d5: 0,
+        a5,
+      }
+    );
     ctx.bulletSpawn?.(SITES[i], res);
   }
   const n = u16(ram.u16(a4 + 0x04) - 1);                // $296670 subq.w #$1
@@ -833,12 +967,14 @@ export function e11Step296614(ram, rom, ctx, a4, a5, a6) {
 // one by one rather than driven from a flag, so a reader can check each against
 // the listing without trusting a table.
 
-const A6 = (ctx, at) => bossA6(ctx, at);
-const A5 = (ctx, at) => bossA5(ctx, at);
+const at = (ctx, fallback) => ctx.bossScriptAddress ?? fallback;
+const A6 = (ctx, fallback) => bossA6(ctx, at(ctx, fallback));
+const A5 = (ctx, fallback) => bossA5(ctx, at(ctx, fallback));
+const R = (ctx) => type0EResourcesFromContext(ctx);
 
 registerScript(0x293420, (ram, rom, ctx, a4) => {       // MAIN 2 INIT
   const a6 = A6(ctx, 0x293420);
-  main2Init293420(ram, rom, a4, a6);
+  main2Init293420(ram, rom, a4, a6, R(ctx));
   main2Step293432(ram, rom, ctx, a4, A5(ctx, 0x293420), a6);   // the bsr's return
 });
 registerScript(0x293432, (ram, rom, ctx, a4) =>
@@ -863,7 +999,7 @@ registerScript(0x294ac0, (ram, rom, ctx, a4) => {
 });
 
 registerScript(0x295002, (ram, rom, ctx, a4) => {       // F 1 INIT
-  f1Init295002(ram, rom, a4, A6(ctx, 0x295002));
+  f1Init295002(ram, rom, a4, A6(ctx, 0x295002), R(ctx));
   f1Step295120(ram, rom, ctx, a4);                      // FALL-THROUGH
 });
 registerScript(0x295120, (ram, rom, ctx, a4) => f1Step295120(ram, rom, ctx, a4));
@@ -882,7 +1018,7 @@ registerScript(0x295626, (ram, rom, ctx, a4) => f5Step295626(ram, a4));
 
 registerScript(0x295684, (ram, rom, ctx, a4) => {       // F 6 INIT
   const a6 = A6(ctx, 0x295684);
-  f6Init295684(ram, rom, a4, a6);
+  f6Init295684(ram, rom, a4, a6, R(ctx));
   f6Step2956F6(ram, rom, ctx, a4, A5(ctx, 0x295684), a6);      // FALL-THROUGH
 });
 registerScript(0x2956f6, (ram, rom, ctx, a4) =>
@@ -890,16 +1026,19 @@ registerScript(0x2956f6, (ram, rom, ctx, a4) =>
 
 // E 0 and E 1 END IN `rts`.  Their INITs run alone on the arming frame.
 registerScript(0x2958f2, (ram, rom, ctx, a4) =>
-  e0Init2958F2(ram, rom, a4, A5(ctx, 0x2958f2), A6(ctx, 0x2958f2)));
+  e0Init2958F2(
+    ram, rom, a4, A5(ctx, 0x2958f2), A6(ctx, 0x2958f2), R(ctx)
+  ));
 registerScript(0x295948, (ram, rom, ctx, a4) =>
   e0Step295948(ram, rom, ctx, a4, A5(ctx, 0x295948), A6(ctx, 0x295948)));
 
-registerScript(0x295a7e, (ram, rom, ctx, a4) => e1Init295A7E(ram, rom, a4));
+registerScript(0x295a7e, (ram, rom, ctx, a4) =>
+  e1Init295A7E(ram, rom, a4, R(ctx)));
 registerScript(0x295ae0, (ram, rom, ctx, a4) =>
   e1Step295AE0(ram, rom, ctx, a4, A5(ctx, 0x295ae0), A6(ctx, 0x295ae0)));
 
 registerScript(0x2965f8, (ram, rom, ctx, a4) => {       // E 11 INIT
-  e11Init2965F8(ram, rom, a4);
+  e11Init2965F8(ram, rom, a4, R(ctx));
   e11Step296614(ram, rom, ctx, a4, A5(ctx, 0x2965f8), A6(ctx, 0x2965f8));
 });
 registerScript(0x296614, (ram, rom, ctx, a4) =>

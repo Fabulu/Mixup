@@ -194,10 +194,11 @@ import {
 import { install24150A } from './palette.js';
 import { aim64, slew64, AimTables } from './aim.js';
 import { applyVelocity } from './movement.js';
-import { drawWord242EC2 } from './rng.js';
+import { drawWordByteWithResources } from './rng.js';
 import { BUCKETS, enqueueRegisters } from './spritequeue.js';
 import { BS, dist242494, bodyTail29314C } from './bossscripts.js';
 import { bossA5, bossA6 } from './boss.js';
+import { type0EResourcesFromContext } from './boss-resources.js';
 
 /** A byte, the way every `.b` operation in this file truncates. */
 const u8 = (v) => v & 0xff;
@@ -209,10 +210,15 @@ const u8 = (v) => v & 0xff;
 const note = (ctx, a, what) => ctx.unportedLog?.note(a, what);
 
 const AIM_TABLES = new WeakMap();
-function aimTables(rom) {
-  let t = AIM_TABLES.get(rom);
-  if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
-  return t;
+function aimTables(rom, resources) {
+  let byResources = AIM_TABLES.get(rom);
+  if (!byResources) { byResources = new WeakMap(); AIM_TABLES.set(rom, byResources); }
+  let tables = byResources.get(resources);
+  if (!tables) {
+    tables = new AimTables(rom, resources.aim64, resources.aim256);
+    byResources.set(resources, tables);
+  }
+  return tables;
 }
 
 /**
@@ -315,19 +321,6 @@ function emit23E08C(ram, d1, d2, d3, d4) {
 // ===========================================================================
 // $23E78C -- THE SIZE MULTIPLIERS
 // ===========================================================================
-/** Routine address -> what it multiplies D7's low word by.  [M] simulated over
- *  all 64 table entries; see the header for the two that are not their index. */
-const SIZE_MULTIPLIER = new Map([
-  [0x23e88c, 1], [0x23e88e, 2], [0x23e892, 3], [0x23e89a, 4], [0x23e8a0, 5],
-  [0x23e8aa, 6], [0x23e8b4, 7], [0x23e8bc, 8], [0x23e8c0, 9], [0x23e8c8, 10],
-  [0x23e8d4, 11], [0x23e8e2, 12], [0x23e8ee, 13], [0x23e8fc, 14], [0x23e906, 15],
-  [0x23e90e, 16], [0x23e912, 17], [0x23e91a, 18], [0x23e924, 19], [0x23e930, 20],
-  [0x23e93e, 21], [0x23e94c, 22], [0x23e95c, 23], [0x23e968, 24],
-  [0x23e972, 21],                                  // entry 25, and it IS 21
-  [0x23e982, 26], [0x23e992, 27], [0x23e9a0, 28], [0x23e9b0, 29], [0x23e9bc, 30],
-  [0x23e9c6, 31], [0x23e9ce, 56],                  // entry 56, the only one > 31
-]);
-
 /**
  * `$23E3E8`/`$23E408` -- resolve one axis's scaling routine and apply it.
  * The ROUTINE ADDRESS comes out of the cartridge at the offset the instruction
@@ -335,12 +328,15 @@ const SIZE_MULTIPLIER = new Map([
  * does not name is a LOUD NAMED THROW rather than a silently unscaled sprite.
  * @param byteOff the BYTE offset `adda.w D4,A0` forms -- not an entry index.
  */
-function sizeScale23E78C(rom, byteOff, d7lo) {
-  const at = W96.sizeTable + (byteOff & 0xffff);
+function sizeScale23E78C(rom, byteOff, d7lo, resources = type0EResourcesFromContext()) {
+  const at = resources.render.sizeDispatch + (byteOff & 0xffff);
   const routine = rom.u32(at) & 0xffffff;
-  const m = SIZE_MULTIPLIER.get(routine);
+  const pair = resources.render.sizeMultipliers.find(([address]) => address === routine);
+  const m = pair?.[1];
   if (m === undefined) {
-    unreached(0x23e78c, `$23E78C+$${byteOff.toString(16)} holds $${
+    unreached(resources.render.sizeDispatch,
+      `$${resources.render.sizeDispatch.toString(16).toUpperCase()}+$${
+        byteOff.toString(16)} holds $${
       routine.toString(16).toUpperCase()}, which is not one of the 32 size `
       + 'routines W96 simulated. The table has moved or an entry this port has '
       + 'never seen was reached; scaling it by anything would put the sprite at '
@@ -392,22 +388,9 @@ function sizeScale23E78C(rom, byteOff, d7lo) {
 // sister.  The shared body is `emitScaled`; the three wrappers are the address
 // the ROM `jmp`s to.
 
-/** Emitter address -> sprite bucket index.  All three are the extent-scaled
- *  emit; only the target buffer differs. */
-const EMITTER_BUCKET = new Map([
-  [0x23e3e2, 2],                  // $805CC8 / $80AFC4
-  [0x23e36a, 1],                  // $805104 / $80AFC2
-  [0x23e45a, 3],                  // $80688C / $80AFC6
-  // W232: $23F82A is the FOURTH of the family and it is instruction-for-
-  // instruction the same body -- $23E78C on both axes, the same D7 assembly, the
-  // same `andi.l #$7FF03FF / or.l D6` -- writing $809274 / $80AFE0, which is
-  // BUCKET 22. The stage-clear banner's entry picture is its only caller
-  // ($28EE0E), which is why nothing needed it until the transition ran.
-  [0x23f82a, 22],                 // $809274 / $80AFE0
-]);
-
 /** Runs the shared extent-scaled emitter body for one sprite bucket. */
-function emitScaled(ram, rom, bucket, d1, d2, d3, d4, d6) {
+function emitScaled(ram, rom, bucket, d1, d2, d3, d4, d6,
+  resources = type0EResourcesFromContext()) {
   // `$23E3E2` / `$23E36A` / `$23E45A` are this routine with one difference:
   // which sprite bucket they write to.
   let d7 = (d6 >>> 8) >>> 0;                            // lsr.l #8
@@ -415,13 +398,13 @@ function emitScaled(ram, rom, bucket, d1, d2, d3, d4, d6) {
   // ---- axis A: D3's bits 8..0, halved -> a BYTE offset into $23E78C
   d7 = (d7 & 0xffff0000) | axis(d7 & 0xffff);
   const offA = (d3 & 0x1ff) >>> 1;
-  d7 = (d7 & 0xffff0000) | sizeScale23E78C(rom, offA, d7 & 0xffff);
+  d7 = (d7 & 0xffff0000) | sizeScale23E78C(rom, offA, d7 & 0xffff, resources);
   // ---- swap D7: the scaled half goes up, the untouched half comes down
   d7 = (((d7 << 16) | (d7 >>> 16)) >>> 0);
   d7 = (d7 & 0xffff0000) | axis(d7 & 0xffff);
   const offB = W96_MUTATE.value === 'emit-one-axis'
     ? offA : (d3 & 0x3e00) >>> 6;
-  d7 = (d7 & 0xffff0000) | sizeScale23E78C(rom, offB, d7 & 0xffff);
+  d7 = (d7 & 0xffff0000) | sizeScale23E78C(rom, offB, d7 & 0xffff, resources);
   // ---- D1's halves added, one to each of D7's
   d7 = (d7 & 0xffff0000) | u16((d7 & 0xffff) + (d1 >>> 16));
   d7 = (((d7 << 16) | (d7 >>> 16)) >>> 0);
@@ -477,9 +460,9 @@ function emit23E45A(ram, rom, d1, d2, d3, d4, d6) {
 // `(A2)` a long (the sprite), `$4(A2)` a long ADDED to the position, `$8(A2)` a
 // word (the size D3 the emitter scales by).  A port that read three longs, or
 // three words, gets a plausible picture for the first entry and nothing after.
-function obj6_292F4A(ram, rom, a6) {
-  const cur = ram.u16(a6 + AR.bodyFrame);                // $292F50 adda.w
-  const at = W96.obj6Frames + cur;
+function obj6_292F4A(ram, rom, a6, resources = type0EResourcesFromContext()) {
+  const cur = ram.u16(a6 + AR.bodyFrame);
+  const at = resources.render.obj6Frames + cur;
   const d2 = rom.u32(at);                                // $292F54 move.l (A2),D2
   let d1 = (ram.u32(a6 + BS.pos) + 0xf8000080) >>> 0;    // $292F56/$292F5A
   if (W96_MUTATE.value !== 'obj6-no-bias' && i16(cur) <= 0xb0) {   // $292F60
@@ -510,39 +493,36 @@ function obj6_292F4A(ram, rom, a6) {
 // part 1 takes the table's entry 2 and part 2 takes the short circuit -- and
 // **both land on `$23E3E2`**, which is why this wave needs one emitter and not
 // eight.
-function objPart(ram, rom, a6, o) {
-  const cur = ram.u16(a6 + o.anim);                      // $292978 move.w $2A(A6)
-  const d2 = rom.u32(o.frames + cur);                    // $29297C move.l (A2,D2.w)
+function objPart(ram, rom, a6, o, resources = type0EResourcesFromContext()) {
+  const cur = ram.u16(a6 + o.anim);
+  const frames = o.frameKey ? resources.render[o.frameKey] : o.frames;
+  const d2 = rom.u32(frames + cur);
   const d1 = (ram.u32(a6 + o.pos) + 0xec00f400) >>> 0;   // $292980/$292984
   const d3 = 0x1460;                                     // $29298A move.w #$1460
   const d4 = ram.u16(a6 + o.attr);                       // $29298E move.w $3C(A6)
   if (ram.u8(a6 + o.dead) === 0) {                       // $292992 tst.b/bne
     const sel = (ram.u8(a6 + o.ang) >>> 3) & 0xff;       // $29299C/$2929A0/$2929A2
-    ram.setU32(a6 + o.spr, rom.u32(W96.partSprites + sel * 4));  // $2929A6/$2929B0
+    ram.setU32(a6 + o.spr, rom.u32(resources.render.partSprites + sel * 4));
   }
   const d6 = ram.u32(a6 + o.spr);                        // $2929B6 move.l $46(A6),D6
   const ang = ram.u8(a6 + o.ang);                        // $2929BC move.b $4B(A6)
   if (ang === 0xc0) {                                    // $2929C0 cmpi.b #$C0/beq
-    emit23E3E2(ram, rom, d1, d2, d3, d4, d6);            // $2929E0 jmp $23E3E2
+    emitScaled(ram, rom, 2, d1, d2, d3, d4, d6, resources); // $2929E0 jmp
     return;
   }
   const which = (ang >>> 5) & 0xff;                      // $2929C8 lsr.b #$5
-  const target = rom.u32(W96.partEmitters + which * 4) & 0xffffff;  // $2929D8
-  // W104: the emitter table at $2929E8 names THREE extent-scaled emitters
-  // ($23E3E2 bucket 2, $23E36A bucket 1, $23E45A bucket 3).  D 14's facing
-  // rotation drives the facing byte into ranges that select each of them.
-  const bucket = EMITTER_BUCKET.get(target);
+  const target = rom.u32(resources.render.partEmitters + which * 4) & 0xffffff;  // $2929D8
+  const pair = resources.render.extentEmitters.find(([address]) => address === target);
+  const bucket = pair?.[1];
   if (bucket === undefined) {
-    unreached(target, `$2929E8[${which}] is $${target.toString(16).toUpperCase()
-      } and none of the three extent-scaled emitters ($23E3E2/$23E36A/$23E45A) `
-      + 'match. The facing byte left every range the boss produces');
+    unreached(target, `$${resources.render.partEmitters.toString(16).toUpperCase()}[${which}] is $${target.toString(16).toUpperCase()} and none of this edition's extent-scaled emitters match. The facing byte left every range the boss produces`);
   }
-  emitScaled(ram, rom, bucket, d1, d2, d3, d4, d6);     // $2929DC jmp (A0)
+  emitScaled(ram, rom, bucket, d1, d2, d3, d4, d6, resources); // $2929DC jmp (A0)
 }
 
-const OBJ0 = { anim: AR.p1Anim, frames: W96.obj0Frames, pos: AR.p1Pos,
+const OBJ0 = { anim: AR.p1Anim, frameKey: 'obj0Frames', pos: AR.p1Pos,
   attr: AR.p1Attr, dead: AR.p1Dead, ang: AR.p1Ang, spr: AR.p1Spr };
-const OBJ1 = { anim: AR.p2Anim, frames: W96.obj1Frames, pos: AR.p2Pos,
+const OBJ1 = { anim: AR.p2Anim, frameKey: 'obj1Frames', pos: AR.p2Pos,
   attr: AR.p2Attr, dead: AR.p2Dead, ang: AR.p2Ang, spr: AR.p2Spr };
 
 // ===========================================================================
@@ -578,6 +558,7 @@ export function f0Init294FA0(ram, a4) {
   ram.setU16(a4 + 2, 0xc0);                              // $294FA0
 }
 export function f0Step294FA6(ram, ctx, a4) {
+  const palette = type0EResourcesFromContext(ctx).f.f0.palette;
   const t = u16(ram.u16(a4 + 2) - 1);                    // $294FA6 subq.w #$1
   ram.setU16(a4 + 2, t);
   if (t !== 0) return;                                   // $294FAA bne.w
@@ -587,19 +568,16 @@ export function f0Step294FA6(ram, ctx, a4) {
   // 6, ctx.rom.bytes(src, 64), $260866, ..)`).  `Game#ctx()` carries `rom`, so the
   // driver path is served and the exported signature is unchanged.
   if (ctx.palette) {                                     // $294FB6/$294FBA
-    install24150A(ram, ctx.palette, F0_PAL.bank,
-      ctx.rom.bytes(F0_PAL.src, 64), 0x294fc0, "F 0's resource install");
+    install24150A(ram, ctx.palette, palette.bank,
+      ctx.rom.bytes(palette.source, 64), palette.site, "F 0's resource install");
   } else {
-    note(ctx, 0x24150a, `$294FC0 jsr $24150A -- F 0's resource install: bank $${
-      F0_PAL.bank.toString(16).toUpperCase()} <- $${F0_PAL.src.toString(16)
+    note(ctx, palette.site, `F 0's resource install: bank $${
+      palette.bank.toString(16).toUpperCase()} <- $${palette.source.toString(16)
       .toUpperCase()}. No PaletteState on this call chain, so that bank stays `
       + 'whatever it was');
   }
   ram.setU16(a4, 0);                                     // $294FC6 clr.w (a4)
 }
-
-/** `$294FB6`'s two operands. Named so the port and the note read the same numbers. */
-const F0_PAL = Object.freeze({ bank: 0x13, src: 0x222af8 });
 
 // ===========================================================================
 // $294EF2 and $294EFA -- MAIN 0's TWO HANDOFF HELPERS
@@ -638,9 +616,10 @@ function main0Target(ram) {
 }
 
 export function main0Step29321C(ram, rom, ctx, a4, a5, a6) {
+  const resources = type0EResourcesFromContext(ctx);
   const t1 = main0Target(ram);                           // $29321C..$293228
   // $29322A movem.w $2(A6),D0-D1 / $293230 jsr $24203E -- the angle to the target
-  const want = aim64(aimTables(rom), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
+  const want = aim64(aimTables(rom, resources), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
     t1.y, t1.x);
   // $293236 move.b $1B(A6),D0 / $29323A jsr $242190 -- one step toward it
   ram.setU8(a6 + BS.facing, slew64(ram.u8(a6 + BS.facing), want) & 0xff);  // $293240
@@ -686,7 +665,9 @@ export function main0Step29321C(ram, rom, ctx, a4, a5, a6) {
   // ---- $2932D6 -- THE HANDOFF.  The arrival ends here.
   ram.setU8(AR_RAM.flags, ram.u8(AR_RAM.flags) | 0x10);  // $2932D6 bset #$4
   ram.setU8(AR_RAM.flags, ram.u8(AR_RAM.flags) | 0x02);  // $2932DE bset #$1
-  ram.setU16(AR_RAM.hpShown, 1);                         // $2932E6 move.w #$1
+  if (resources.main.m0.hpDisplayAtHandoff) {
+    ram.setU16(AR_RAM.hpShown, 1);                         // $2932E6 move.w #$1
+  }
   seqStart2598D0(ram, 2);                                // $2932EE/$2932F0 MAIN 2
   a4Start25980C(ram, 1);                                 // $2932F6/$2932F8 F 1
   clear294EF2(ram, a6);                                  // $2932FE jsr $294EF2
@@ -695,9 +676,9 @@ export function main0Step29321C(ram, rom, ctx, a4, a5, a6) {
   for (const d0 of [0, 1, 2, 3, 4, 5]) a2Run2598E6(ram, d0);  // $293332..$29335C
   if (W96_MUTATE.value === 'main0-arm-obj6') a2Run2598E6(ram, 6);
   else a2Stop25994A(ram, 6);                             // $293362 -- STOP, not arm
-  note(ctx, 0x246410, '$293370 jsr $246410 -- MAIN 0\'s five ANIMATION OBJECTS '
-    + `($${W96.main0Cues.toString(16).toUpperCase()}, data; the presentation `
-    + 'tier, deferred whole since W53)');
+  const animationObjects = resources.main.m0.animationObjects;
+  note(ctx, 0x246410, `MAIN 0's five ANIMATION OBJECTS ($${
+    animationObjects.toString(16).toUpperCase()}, data; the presentation tier, deferred whole since W53)`);
   tail(ram, ctx, a6);                                    // $293376 bra.w $29314C
 }
 
@@ -725,10 +706,18 @@ const tail = (ram, ctx, a6) => bodyTail29314C(ram, ctx, a6);
 // **AND THE TWO SEEDS ARE TWO SEPARATE RNG DRAWS**, each stepping `$803917`,
 // which the whole game shares -- exactly the shape W94 Â§2 item 5 recorded for
 // `$2933DE`.  Collapsing them desynchronises every later consumer.
-function dWobbleInit(ram, rom, a4) {
-  ram.setU8(a4 + 4, u8(drawWord242EC2(ram, rom)));       // $2937B6/$2937BC
-  if (W96_MUTATE.value === 'd0-one-draw') { ram.setU8(a4 + 5, ram.u8(a4 + 4)); return; }
-  ram.setU8(a4 + 5, u8(drawWord242EC2(ram, rom)));       // $2937C0/$2937C6
+function dWobbleInit(ram, rom, a4,
+  resources = type0EResourcesFromContext()) {
+  ram.setU8(a4 + 4, u8(drawWordByteWithResources(
+    ram, rom, resources.rng.wordByte
+  )));                                                     // $2937B6/$2937BC
+  if (W96_MUTATE.value === 'd0-one-draw') {
+    ram.setU8(a4 + 5, ram.u8(a4 + 4));
+    return;
+  }
+  ram.setU8(a4 + 5, u8(drawWordByteWithResources(
+    ram, rom, resources.rng.wordByte
+  )));                                                     // $2937C0/$2937C6
 }
 function dWobbleStep(ram, ctx, a4, a6, o) {
   if (ram.u8(a6 + o.dead) !== 0) { ram.setU16(a4, 0); return; }   // $2937CC/$2937B2
@@ -787,17 +776,19 @@ const D3F = { dead: AR.p2Dead, anim: AR.p2Anim };
 // ===========================================================================
 // THE REGISTRY
 // ===========================================================================
-const A6 = (ctx, at) => bossA6(ctx, at);
-const A5 = (ctx, at) => bossA5(ctx, at);
+const at = (ctx, fallback) => ctx.bossScriptAddress ?? fallback;
+const A6 = (ctx, fallback) => bossA6(ctx, at(ctx, fallback));
+const A5 = (ctx, fallback) => bossA5(ctx, at(ctx, fallback));
+const R = (ctx) => type0EResourcesFromContext(ctx);
 
 registerScript(0x292972, (ram, rom, ctx, a4) => {
-  void a4; objPart(ram, rom, A6(ctx, 0x292972), OBJ0);
+  void a4; objPart(ram, rom, A6(ctx, 0x292972), OBJ0, R(ctx));
 });
 registerScript(0x292b08, (ram, rom, ctx, a4) => {
-  void a4; objPart(ram, rom, A6(ctx, 0x292b08), OBJ1);
+  void a4; objPart(ram, rom, A6(ctx, 0x292b08), OBJ1, R(ctx));
 });
 registerScript(0x292f4a, (ram, rom, ctx, a4) => {
-  void a4; obj6_292F4A(ram, rom, A6(ctx, 0x292f4a));
+  void a4; obj6_292F4A(ram, rom, A6(ctx, 0x292f4a), R(ctx));
 });
 
 registerScript(0x294fa0, (ram, rom, ctx, a4) => {       // F 0 INIT -- ONE insn
@@ -831,13 +822,13 @@ registerScript(0x29321c, (ram, rom, ctx, a4) =>
  *  named wrong port so the thing that found it can be seen finding it again. */
 const dInitFellThrough = () => W96_MUTATE.value === 'd-init-fallthrough';
 registerScript(0x2937b6, (ram, rom, ctx, a4) => {       // D 0 INIT -- `rts`
-  dWobbleInit(ram, rom, a4);
+  dWobbleInit(ram, rom, a4, R(ctx));
   if (dInitFellThrough()) dWobbleStep(ram, ctx, a4, A6(ctx, 0x2937b6), D0F);
 });
 registerScript(0x2937cc, (ram, rom, ctx, a4) =>
   dWobbleStep(ram, ctx, a4, A6(ctx, 0x2937cc), D0F));
 registerScript(0x293800, (ram, rom, ctx, a4) => {       // D 1 INIT -- `rts`
-  dWobbleInit(ram, rom, a4);
+  dWobbleInit(ram, rom, a4, R(ctx));
   if (dInitFellThrough()) dWobbleStep(ram, ctx, a4, A6(ctx, 0x293800), D1F);
 });
 registerScript(0x293816, (ram, rom, ctx, a4) =>

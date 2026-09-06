@@ -546,9 +546,19 @@ export function runScheduler25962E(ram, rom, ctx) {
 /** addr -> fn(ram, rom, ctx, a4, d7).  Filled by the modules that own the
  *  scripts (src/boss.js registers D-script 6). */
 const SCRIPTS = new Map();
+const SCRIPT_ALIASES = new Map();
 
 export function registerScript(addr, fn) { SCRIPTS.set(addr & 0xffffff, fn); }
+export function registerScriptAlias(alias, target) {
+  const source = alias & 0xffffff;
+  const destination = target & 0xffffff;
+  if (source === destination || SCRIPT_ALIASES.has(source)) {
+    throw new TypeError(`boss script alias $${source.toString(16).toUpperCase()} is duplicated or circular`);
+  }
+  SCRIPT_ALIASES.set(source, destination);
+}
 export function scriptAddresses() { return [...SCRIPTS.keys()]; }
+export function scriptAliases() { return [...SCRIPT_ALIASES.entries()]; }
 
 // W102: every dispatched script address, for the static/dynamic coverage join.
 // Populated as a side effect of runScript; dump it after a sweep with
@@ -560,15 +570,24 @@ export function dumpDispatched() { return [...dispatched].sort((x, y) => x - y);
 export function clearDispatched() { dispatched.clear(); }
 
 function runScript(ram, rom, ctx, addr, a4, d7) {
-  dispatched.add(addr & 0xffffff);
-  const fn = SCRIPTS.get(addr & 0xffffff);
+  const source = addr & 0xffffff;
+  const target = SCRIPT_ALIASES.get(source) ?? source;
+  dispatched.add(source);
+  const fn = SCRIPTS.get(target);
   if (!fn) {
-    unreached(addr & 0xffffff, `boss SCRIPT at $${(addr & 0xffffff).toString(16)
-      .toUpperCase()}, dispatched through a register by $25962E/$2596C6 for the `
-      + `slot at $${a4.toString(16).toUpperCase()}. W62 registered only the `
-      + `D-script the STAGE END rides on {`
+    unreached(source, `boss SCRIPT at $${source.toString(16).toUpperCase()}, `
+      + `dispatched through a register by $25962E/$2596C6 for the slot at `
+      + `$${a4.toString(16).toUpperCase()}${target === source ? '' : ` and aliased `
+        + `exactly to $${target.toString(16).toUpperCase()}`}. Registered bodies are {`
       + [...SCRIPTS.keys()].map((x) => `$${x.toString(16).toUpperCase()}`).join(' ')
-      + `}; the rest of the boss's five tables are recon 48's three waves`);
+      + '}; every other indirect target remains unported');
   }
-  fn(ram, rom, ctx, a4, d7);
+  const previous = ctx.bossScriptAddress;
+  ctx.bossScriptAddress = source;
+  try {
+    fn(ram, rom, ctx, a4, d7);
+  } finally {
+    if (previous === undefined) delete ctx.bossScriptAddress;
+    else ctx.bossScriptAddress = previous;
+  }
 }

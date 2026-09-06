@@ -47,7 +47,10 @@ import { u16, i16 } from './ram.js';
 import { registerScript, seqStart2598D0 } from './scheduler.js';
 import { aim64, slew64, AimTables } from './aim.js';
 import { applyVelocity } from './movement.js';
-import { drawByte242E24 } from './rng.js';
+import { drawByteWithResources } from './rng.js';
+import {
+  BLACK_TYPE0E_RESOURCES, type0EResourcesFromContext,
+} from './boss-resources.js';
 
 /** A byte, the way every `.b` operation in this file truncates. */
 const u8 = (v) => v & 0xff;
@@ -95,10 +98,18 @@ export const LIMB_RING = Object.freeze({
 });
 
 const AIM_TABLES = new WeakMap();
-function aimTables(rom) {
-  let t = AIM_TABLES.get(rom);
-  if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
-  return t;
+function aimTables(rom, resources) {
+  let byResources = AIM_TABLES.get(rom);
+  if (!byResources) {
+    byResources = new WeakMap();
+    AIM_TABLES.set(rom, byResources);
+  }
+  let tables = byResources.get(resources);
+  if (!tables) {
+    tables = new AimTables(rom, resources.aim64, resources.aim256);
+    byResources.set(resources, tables);
+  }
+  return tables;
 }
 
 // ===========================================================================
@@ -225,13 +236,15 @@ export function bodyTail29314C(ram, ctx, a6) {
 // **TWO DRAWS, NOT ONE**, and each one steps `$803917`.  That counter is shared
 // with the whole game (`src/rng.js`), so collapsing them does not merely pick a
 // different waypoint -- it desynchronises every later consumer of the same RNG.
-export function pickWaypoint2933DE(ram, rom, a4) {
-  const d0 = drawByte242E24(ram, rom);                  // $2933DE jsr $242E24
+export function pickWaypoint2933DE(
+  ram, rom, a4, resources = BLACK_TYPE0E_RESOURCES
+) {
+  const d0 = drawByteWithResources(ram, rom, resources.rng.waypoint);
   ram.setU16(a4, (d0 & 7) * 4);                         // $2933E4/$2933E8/$2933EA/$2933EC
   if (W94_MUTATE.value === 'pick-one-draw') {
     ram.setU8(a4 + 2, ((d0 & 3) + 2) & 0xff); return;
   }
-  const d1 = drawByte242E24(ram, rom);                  // $2933EE jsr $242E24
+  const d1 = drawByteWithResources(ram, rom, resources.rng.waypoint);
   ram.setU8(a4 + 2, ((d1 & 3) + 2) & 0xff);             // $2933F4/$2933F8/$2933FA
 }
 
@@ -285,14 +298,17 @@ export function main6Init2935DE(ram, a4, a6) {
   ram.setU8(a4 + 2, ram.u8(a6 + BS.speed));             // $2935E2 move.b $1a(a6)
 }
 
-export function main6Step2935E8(ram, rom, ctx, a4, a5, a6) {
+export function main6Step2935E8(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
   const selfY = ram.u16(a6 + BS.posY), selfX = ram.u16(a6 + BS.posX);
   // $2935F0 movem.w $2(a6),d0-d1 / $2935F6 jsr $24203E -- the 64-step aim CORE.
   // Its answer is stored RAW into the facing byte with **no slew**, which is
   // what makes MAIN 6 a snap-turn and MAIN 7 (`$29365E jsr $242190`) a smooth
   // one.  The two scripts are otherwise the same shape, so the missing slew is
   // the entire difference and it is one instruction.
-  const face = aim64(aimTables(rom), selfY, selfX,
+  const face = aim64(aimTables(rom, resources), selfY, selfX,
     W94.main6TargetY, W94.main6TargetX);                // $2935E8/$2935EC/$2935F6
   ram.setU8(a6 + BS.facing, face & 0xff);               // $2935FC move.b d1,$1b(a6)
   const d0 = dist242494(selfY, selfX, W94.main6TargetY, W94.main6TargetX);  // $293608
@@ -320,22 +336,32 @@ export function main6Step2935E8(ram, rom, ctx, a4, a5, a6) {
 // pushes `$293642` -- which IS the STEP -- so `$2933DE`'s own `rts` lands on the
 // first instruction of the STEP.  The arming frame therefore draws a waypoint
 // and immediately moves toward it.
-export function main7Init293634(ram, rom, a4, a6) {
+export function main7Init293634(
+  ram, rom, a4, a6, resources = BLACK_TYPE0E_RESOURCES
+) {
   ram.setU16(a4, 0);                                    // $293634 move.w #$0,(a4)
   ram.setU8(a4 + 2, ram.u8(a6 + BS.speed));             // $293638 move.b $1a(a6)
-  pickWaypoint2933DE(ram, rom, a4);                     // $29363E bsr.w $2933DE
+  pickWaypoint2933DE(ram, rom, a4, resources);           // $29363E bsr.w $2933DE
 }
 
 /** `$293642 lea $293694(pc),a0 / adda.w (a4),a0 / movem.w (a0),d2-d3`. */
-function waypoint(rom, ram, a4) {
-  const at = W94.waypoints293694 + u16(ram.u16(a4));    // $293648 adda.w (a4),a0
+function waypoint(rom, ram, a4, resources) {
+  const at = resources.main.m7.waypoints + u16(ram.u16(a4));
   return { y: rom.u16(at), x: rom.u16(at + 2) };        // $29364A movem.w (a0),d2-d3
 }
 
-export function main7Step293642(ram, rom, ctx, a4, a5, a6) {
-  let t = waypoint(rom, ram, a4);                       // $293642..$29364A
-  const want = aim64(aimTables(rom), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
-    t.y, t.x);                                          // $29364E/$293654 jsr $24203E
+export function main7Step293642(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
+  let t = waypoint(rom, ram, a4, resources);             // $293642..$29364A
+  const want = aim64(
+    aimTables(rom, resources),
+    ram.u16(a6 + BS.posY),
+    ram.u16(a6 + BS.posX),
+    t.y,
+    t.x
+  );
   // $29365A move.b $1b(a6),d0 / $29365E jsr $242190 -- ONE STEP of slew.
   ram.setU8(a6 + BS.facing, slew64(ram.u8(a6 + BS.facing), want) & 0xff);  // $293664
   rampSpeed293400(ram, a4, a6);                         // $293668 bsr.w $293400
@@ -360,14 +386,18 @@ export function main7Step293642(ram, rom, ctx, a4, a5, a6) {
   // merely "did not go red".  The instruction is still transcribed, because the
   // ROM executes it and a later wave reading this file should see the same shape
   // the listing has.
-  if (W94_MUTATE.value !== 'main7-stale-target') t = waypoint(rom, ram, a4);
+  if (W94_MUTATE.value !== 'main7-stale-target') {
+    t = waypoint(rom, ram, a4, resources);
+  }
   const d0 = dist242494(ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX), t.y, t.x);
   // `$293688 bgt.w $293554` -- and **`$293554` is ONE INSTRUCTION,
   // `bra.w $29314C`**.  It sits inside MAIN 5's address range but it is a
   // trampoline the assembler needed for reach, NOT a jump into MAIN 5.  Read as
   // a jump into another script it would look like a phase change that does not
   // exist.
-  if (i16(d0) <= W94.arriveDist) pickWaypoint2933DE(ram, rom, a4);  // $29368C bsr
+  if (i16(d0) <= W94.arriveDist) {
+    pickWaypoint2933DE(ram, rom, a4, resources);
+  }
   bodyTail29314C(ram, ctx, a6);                         // $293690 bra.w $29314C
 }
 
@@ -378,20 +408,50 @@ export function main7Step293642(ram, rom, ctx, a4, a5, a6) {
 // outside `$292902`'s frame would produce.
 import { bossA5, bossA6 } from './boss.js';
 
+const source = (ctx, fallback) => ctx.bossScriptAddress ?? fallback;
+
 registerScript(0x2935de, (ram, rom, ctx, a4) => {
-  const a6 = bossA6(ctx, 0x2935de);
+  const at = source(ctx, 0x2935de);
+  const resources = type0EResourcesFromContext(ctx);
+  const a6 = bossA6(ctx, at);
   main6Init2935DE(ram, a4, a6);
   // THE FALL-THROUGH, and it is not a convenience: `$2935E8` is the very next
   // address and nothing separates them.
-  main6Step2935E8(ram, rom, ctx, a4, bossA5(ctx, 0x2935de), a6);
+  main6Step2935E8(
+    ram, rom, ctx, a4, bossA5(ctx, at), a6, resources
+  );
 });
-registerScript(0x2935e8, (ram, rom, ctx, a4) =>
-  main6Step2935E8(ram, rom, ctx, a4, bossA5(ctx, 0x2935e8), bossA6(ctx, 0x2935e8)));
+registerScript(0x2935e8, (ram, rom, ctx, a4) => {
+  const at = source(ctx, 0x2935e8);
+  main6Step2935E8(
+    ram,
+    rom,
+    ctx,
+    a4,
+    bossA5(ctx, at),
+    bossA6(ctx, at),
+    type0EResourcesFromContext(ctx)
+  );
+});
 
 registerScript(0x293634, (ram, rom, ctx, a4) => {
-  const a6 = bossA6(ctx, 0x293634);
-  main7Init293634(ram, rom, a4, a6);
-  main7Step293642(ram, rom, ctx, a4, bossA5(ctx, 0x293634), a6);  // the bsr's return
+  const at = source(ctx, 0x293634);
+  const resources = type0EResourcesFromContext(ctx);
+  const a6 = bossA6(ctx, at);
+  main7Init293634(ram, rom, a4, a6, resources);
+  main7Step293642(
+    ram, rom, ctx, a4, bossA5(ctx, at), a6, resources
+  ); // the bsr's return
 });
-registerScript(0x293642, (ram, rom, ctx, a4) =>
-  main7Step293642(ram, rom, ctx, a4, bossA5(ctx, 0x293642), bossA6(ctx, 0x293642)));
+registerScript(0x293642, (ram, rom, ctx, a4) => {
+  const at = source(ctx, 0x293642);
+  main7Step293642(
+    ram,
+    rom,
+    ctx,
+    a4,
+    bossA5(ctx, at),
+    bossA6(ctx, at),
+    type0EResourcesFromContext(ctx)
+  );
+});

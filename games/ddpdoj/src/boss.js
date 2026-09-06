@@ -91,7 +91,14 @@ import { spawnEffect, B } from './effects.js';
 // hoisted and initialised before either module body runs, and it is only ever
 // read at call time.  The same cycle already exists through `./hibachiend.js`.
 import { finalBlast2440E0 } from './boss2.js';
-import { drawByte242B3C, drawWord242EC2 } from './rng.js';
+import {
+  drawUnmaskedByteWithResources, drawWordByteWithResources,
+} from './rng.js';
+import { postBossSound } from './boss-sound.js';
+import {
+  BLACK_TYPE0E_RESOURCES, requireType0EResources,
+  type0EResourcesFromContext,
+} from './boss-resources.js';
 
 /** The boss's record and sub-record fields, by the offset the ROM uses. */
 export const BOSS = {
@@ -174,6 +181,17 @@ export const BOSS_NOTED = Object.freeze({
 });
 
 const note = (ctx, a) => ctx.unportedLog?.note(a, BOSS_NOTED[a] ?? 'W62 boss');
+const bossResources = (ctx) => type0EResourcesFromContext(ctx);
+const bossSource = (ctx, fallback) => ctx.bossScriptAddress ?? fallback;
+const bossEffect = (ram, ctx, kind, site) => spawnEffect(
+  ram, ctx, kind, site, bossResources(ctx).effects
+);
+const bossDrawByte = (ram, rom, ctx) => drawUnmaskedByteWithResources(
+  ram, rom, bossResources(ctx).rng.byte
+);
+const bossDrawWordByte = (ram, rom, ctx) => drawWordByteWithResources(
+  ram, rom, bossResources(ctx).rng.wordByte
+);
 
 // ---------------------------------------------------------------- $2428A6
 /** `$2428A6` -- IS ANY PLAYER ALIVE?  `$10` for P1 and `+$8` for P2, and the
@@ -258,7 +276,7 @@ export function bossDeath294DD4(ram, rom, ctx, a5, a6) {
   ram.setU8(BOSS.bossFlags, ram.u8(BOSS.bossFlags) | 0x80);   // $294DDC bset #7
   note(ctx, 0x23c4d0);                                 // $294DE4
   clamp253564(ram);                                    // $294DEA jsr $253564 (UNCONDITIONAL)
-  bossClear242922(ram, ctx);                           // $294DF0 jsr $242922 (UNCONDITIONAL)
+  bossClear242922(ram, ctx, bossResources(ctx));          // $294DF0 jsr $242922 (UNCONDITIONAL)
   ram.setU16(a6 + BOSS.dying, 1);                      // $294DF6 bsr $294F2A
   part1Death294E3E(ram, a5, a6, ctx);                  // $294DFA
   part2Death294E94(ram, a5, a6, ctx);                  // $294DFE
@@ -291,7 +309,8 @@ export function bossTimeout294F32(ram, rom, ctx, a5, a6) {
   ram.setU16(a5 + BOSS.timeout, t);
   if (t !== 0) return;                                 // $294F40 bne
   if (livePlayers2428A6(ram) === 0) {                  // $294F44/$294F4A
-    ram.setU16(a5 + BOSS.timeout, 0x78);               // $294F50 -- the RE-FLOOR
+    ram.setU16(a5 + BOSS.timeout,
+      bossResources(ctx).lifecycle.timeoutFloor);          // $294F50
     return;
   }
   ram.setU16(a6 + BOSS.hitMask, 0);                    // $294F5A
@@ -314,13 +333,14 @@ export function bossTimeout294F32(ram, rom, ctx, a5, a6) {
  * gated on part 2's `$7F(a6)` byte and vice versa.
  */
 export function bossDamage294AD8(ram, rom, ctx, a5, a6) {
+  const resources = bossResources(ctx);
   if (ram.u16(a6 + BOSS.dying) !== 0) return;          // $294AD8 tst.w/beq
   // ---- PART 0
   let d1 = 0x5c & ram.u8(a6 + BOSS.st0);               // $294AE2/$294AE4
   if (d1 !== 0) {                                      // $294AE6 beq
     ram.setU8(a6 + BOSS.st0, ram.u8(a6 + BOSS.st0) & 0xa3);   // $294AEA/$294AEE
     ram.setU16(a6 + BOSS.hitMask, d1);                 // $294AF0
-    scoreHit(ram, ctx, a6, d1);                        // $294AF4 jsr $286096
+    scoreHit(ram, ctx, a6, d1, a6, resources.score);     // $294AF4
     if (ram.u8(a6 + BOSS.anim0) === 0x19) {            // $294AFA/$294AFE
       ram.setU8(a6 + BOSS.anim0, 0x13);                // $294B06
       ram.setU8(a6 + BOSS.anim3, 0x16);                // $294B0C
@@ -340,7 +360,7 @@ export function bossDamage294AD8(ram, rom, ctx, a5, a6) {
     ram.setU8(a6 + BOSS.anim3, 0x16);
     // $294B56 `move.l #$48CC,D2 / cmp.l $16(a5),D2 / bcs` -- UNSIGNED: the
     // "critical" animation only arms once HP has fallen below $48CC.
-    if ((ram.u32(a5 + BOSS.hp0) >>> 0) <= 0x48cc       // $294B5C cmp.l / $294B60 bcs
+    if ((ram.u32(a5 + BOSS.hp0) >>> 0) <= resources.damage.body       // $294B5C cmp.l / $294B60 bcs
       && ram.u16(BOSS.pauseFlag) === 0) {              // $294B64 tst.w/bne
       ram.setU8(a6 + BOSS.anim0, 0x19);                // $294B6E
       ram.setU8(a6 + BOSS.anim3, 0x19);                // $294B74
@@ -362,8 +382,8 @@ export function bossDamage294AD8(ram, rom, ctx, a5, a6) {
     if (d1 !== 0) {
       ram.setU8(a6 + BOSS.st1, ram.u8(a6 + BOSS.st1) & 0xa3);   // $294BBC/$294BC0
       ram.setU16(a6 + BOSS.hitMask, d1);               // $294BC4
-      scoreHit(ram, ctx, a6, d1, a6 + BOSS.st1);        // $294BC8 -- A6 IS STILL
-                                                       //   THE BASE, not +$20
+      scoreHit(ram, ctx, a6, d1, a6 + BOSS.st1,
+        resources.score);                                 // $294BC8
       if (ram.u8(a6 + BOSS.anim1) === 0x19) ram.setU8(a6 + BOSS.anim1, 0x15);
       ram.setU8(a6 + BOSS.anim1, ram.u8(a6 + BOSS.anim1) ^ 0x0a);   // $294BE4
       const d2 = (0x7fff - ram.u16(a6 + BOSS.snap1)) | 0;          // $294BEC
@@ -373,7 +393,7 @@ export function bossDamage294AD8(ram, rom, ctx, a5, a6) {
       ram.setU16(a6 + BOSS.snap1, 0x7fff);             // $294C00/$294C04
     } else {                                           // $294C0C
       ram.setU8(a6 + BOSS.anim1, 0x15);
-      if ((ram.u32(a5 + BOSS.hp1) >>> 0) <= 0x3000     // $294C12/$294C18 cmp.l/bcs
+      if ((ram.u32(a5 + BOSS.hp1) >>> 0) <= resources.damage.part1     // $294C12/$294C18 cmp.l/bcs
         && ram.u16(BOSS.pauseFlag) === 0) {            // $294C20
         ram.setU8(a6 + BOSS.anim1, 0x19);              // $294C2A
       }
@@ -396,7 +416,8 @@ export function bossDamage294AD8(ram, rom, ctx, a5, a6) {
     if (d1 !== 0) {
       ram.setU8(a6 + BOSS.st2, ram.u8(a6 + BOSS.st2) & 0xa3);
       ram.setU16(a6 + BOSS.hitMask, d1);
-      scoreHit(ram, ctx, a6, d1, a6 + BOSS.st2);        // $294CAC
+      scoreHit(ram, ctx, a6, d1, a6 + BOSS.st2,
+        resources.score);                                 // $294CAC
       if (ram.u8(a6 + BOSS.anim2) === 0x19) ram.setU8(a6 + BOSS.anim2, 0x15);
       ram.setU8(a6 + BOSS.anim2, ram.u8(a6 + BOSS.anim2) ^ 0x0a);
       const d2 = (0x7fff - ram.u16(a6 + BOSS.snap2)) | 0;
@@ -406,7 +427,7 @@ export function bossDamage294AD8(ram, rom, ctx, a5, a6) {
       ram.setU16(a6 + BOSS.snap2, 0x7fff);
     } else {
       ram.setU8(a6 + BOSS.anim2, 0x15);                // $294CF0
-      if ((ram.u32(a5 + BOSS.hp2) >>> 0) <= 0x3000
+      if ((ram.u32(a5 + BOSS.hp2) >>> 0) <= resources.damage.part2
         && ram.u16(BOSS.pauseFlag) === 0) {
         ram.setU8(a6 + BOSS.anim2, 0x19);              // $294D0E
       }
@@ -433,8 +454,11 @@ export function bossDamage294AD8(ram, rom, ctx, a5, a6) {
  *  negative: score `$1000`, drop a HYPER ITEM, hit-stop `$6E`, and if the
  *  OTHER part's `$114(A6)` gate is set, drop a second one from that part. */
 function partDeathDrop(ram, rom, ctx, a5, a6, mine, other) {
+  const resources = bossResources(ctx);
   let d1 = ram.u16(a6 + BOSS.hitMask);                   // $294C40
-  const ownership = scoreKill(ram, rom, ctx, 0x1000, d1); // $294C44/$294C4A
+  const ownership = scoreKill(
+    ram, rom, ctx, 0x1000, d1, resources.score
+  );                                                     // $294C44/$294C4A
   d1 = ownership.mask;
   // $294C50 `moveq #$C,D0 / btst #4,D1 / bne / moveq #$14,D0` -- the item kind
   // is P1's hyper ($C) when the killing hit was P1's, P2's ($14) otherwise.
@@ -455,13 +479,13 @@ function partDeathDrop(ram, rom, ctx, a5, a6, mine, other) {
   // `w283itemsources.test.js` pins both halves.
   const d0 = (d1 & 0x10) !== 0 ? 0x0c : 0x14;          // $294C50..$294C58
   if (!ownership.privateOnly) {
-    spawnItem(ram, rom, ctx, d0, a6 + mine, 0x294c5e); // $294C5A lea $20(A6),A6
+    spawnItem(ram, rom, ctx, d0, a6 + mine, 0x294c5e, resources.items);
   }
   note(ctx, 0x243dd0);                                 // $294C68
   ram.setU16(a5 + BOSS.hitStop, 0x6e);                 // $294C6E
   if (!ownership.privateOnly && ram.u16(a6 + BOSS.itemGate2) !== 0) {
     // $294C74 tst.w $114(A6)
-    spawnItem(ram, rom, ctx, d0, a6 + other, 0x294c7e);   // $294C7A/$294C7E
+    spawnItem(ram, rom, ctx, d0, a6 + other, 0x294c7e, resources.items);
   }
 }
 
@@ -515,9 +539,13 @@ const D6_TIMER_D_MASK = 0x1f;                          // $293F6C / $294012 andi
  *  `$293F68` -- and reversing it would play the whole rattle one bang out of
  *  step, starting on entry 1 and never playing entry 0 on the first lap. */
 function d6TimerDSound(ram, rom, ctx, a4) {
-  const cursor = ram.u16(a4 + D6.cursor14) & D6_TIMER_D_MASK;
-  ctx.soundPost?.(rom.u32(D6_TIMER_D_TABLE + cursor));  // $293F64 movea.l / $293F66 jsr (A0)
-  ram.setU16(a4 + D6.cursor14, u16(cursor + 4) & D6_TIMER_D_MASK);   // $293F68 / $293F6C
+  const resources = bossResources(ctx);
+  const d6Resources = resources.d.d6;
+  const cursor = ram.u16(a4 + D6.cursor14) & d6Resources.timerDMask;
+  postBossSound(ctx, resources,
+    rom.u32(d6Resources.timerD + cursor));                  // $293F64/$293F66
+  ram.setU16(a4 + D6.cursor14,
+    u16(cursor + 4) & d6Resources.timerDMask);              // $293F68/$293F6C
 }
 
 /** `$293DC6` -- D-script 6's INIT.  **`$2(a4) := 0`**, which is what makes the
@@ -577,7 +605,7 @@ function burst2938AE(ram, rom, ctx, a4, pos, tableAddr, site) {
         + `every measured table is at most 8 entries`);
     }
     const kind = rom.u16(a1); a1 += 2;                      // $2938B8 move.w (A1)+,D0
-    const a0 = spawnEffect(ram, ctx, kind, site);           // $2938BA jsr $289004
+    const a0 = bossEffect(ram, ctx, kind, site);           // $2938BA jsr $289004
     const f1c = rom.u16(a1); a1 += 2;                       // $2938C0 move.w (A1)+,D0
     ram.setU8(a0 + B.f1c, f1c & 0xff);                      // $2938C2 move.b D0,$1C(A0)
     ram.setU16(a0 + B.delay, delay);                        // $2938C6 move.w D1,$18(A0)
@@ -610,7 +638,7 @@ function burst2938F2(ram, rom, ctx, pos, tableAddr, site) {
         + `$FFFF terminator at table $${tableAddr.toString(16).toUpperCase()}`);
     }
     const kind = rom.u16(a1); a1 += 2;                      // $2938FC move.w (A1)+,D0
-    const a0 = spawnEffect(ram, ctx, kind, site);           // $2938FE jsr $289004
+    const a0 = bossEffect(ram, ctx, kind, site);           // $2938FE jsr $289004
     const f1c = rom.u16(a1); a1 += 2;                       // $293904 move.w (A1)+,D0
     ram.setU8(a0 + B.f1c, f1c & 0xff);                      // $293906 move.b D0,$1C(A0)
     ram.setU16(a0 + B.delay, delay);                        // $29390A move.w D1,$18(A0)
@@ -622,7 +650,7 @@ function burst2938F2(ram, rom, ctx, pos, tableAddr, site) {
     ram.setU16(a0 + B.sub14, 0x0400);                       // $293922 move.w #$400,$14(A0)
     const sa = rom.u16(a1); a1 += 2;                        // $293928 move.w (A1)+,$1A(A0)
     ram.setU16(a0 + B.speed, sa);
-    const r = drawByte242B3C(ram, rom);                     // $29392C jsr $242B3C -> D0
+    const r = bossDrawByte(ram, rom, ctx);                     // $29392C jsr $242B3C -> D0
     const signed = r >= 0x80 ? r - 0x100 : r;               // $293932 add.b D0,$1B(A0):
     ram.setU8(a0 + B.angle, (ram.u8(a0 + B.angle) + signed) & 0xff);  // ..(asr in caller;
   }                                                         //  $2938F2 adds the raw byte)
@@ -635,9 +663,10 @@ function burst2938F2(ram, rom, ctx, pos, tableAddr, site) {
  *  the CALLER's (they differ between state 2, wrap $80, and state 3, wrap
  *  $100). */
 function timerCSpawn293F8C(ram, rom, ctx, a4, pos, site) {
-  const a1 = 0x2941e8 + ram.u16(a4 + D6.cursorE);          // $293F80 lea / $293F86 adda.w $E(A4)
+  const table = bossResources(ctx).d.d6.timerC;
+  const a1 = table + ram.u16(a4 + D6.cursorE);
   const kind = rom.u16(a1);                                 // $293F8A move.w (A1)+,D0
-  const a0 = spawnEffect(ram, ctx, kind, site);             // $293F8C jsr $289004
+  const a0 = bossEffect(ram, ctx, kind, site);             // $293F8C jsr $289004
   const f1c = rom.u16(a1 + 2);                              // $293F92 move.w (A1)+,D0
   ram.setU8(a0 + B.f1c, f1c & 0xff);                        // $293F94 move.b D0,$1C(A0)
   const nudge = rom.u32(a1 + 4);                            // $293F98 move.l (A1)+,$26(A0)
@@ -661,12 +690,12 @@ export function bigBurst28B4BE(ram, rom, ctx, pos, rngByte, shift, bucket, site)
     [0x05, 0x0e, 3], [0x05, 0x12, 6],
   ];
   for (const [kind, spdConst, delay] of particles) {
-    const a0 = spawnEffect(ram, ctx, kind, site);           // $28B4C2/+ jsr $289004
+    const a0 = bossEffect(ram, ctx, kind, site);           // $28B4C2/+ jsr $289004
     ram.setU16(a0 + B.bucket, bucket);                      // $28B4C8 move.w D3,$1E(A0)
     ram.setU32(a0 + B.pos, pos);                            // $28B4CC move.l D2,$2(A0)
     ram.setU8(a0 + B.speed, (spdConst >> shift) & 0xff);    // $28B4D0/+ lsr.w D6,D0 / move.b
     ram.setU8(a0 + B.angle, rngByte & 0xff);                // $28B4D8 move.b D1,$1B(A0)
-    const r = drawByte242B3C(ram, rom);                     // $28B4DC jsr $242B3C
+    const r = bossDrawByte(ram, rom, ctx);                     // $28B4DC jsr $242B3C
     const adj = (r >= 0x80 ? r - 0x100 : r) >> 2;           // $28B4E2 asr.b #2,D0
     ram.setU8(a0 + B.angle, (ram.u8(a0 + B.angle) + adj) & 0xff); // $28B4E4 add.b D0,$1B
     ram.setU16(a0 + B.delay, delay);                        // $28B4E8 move.w #N,$18(A0)
@@ -681,20 +710,65 @@ export function bigBurst28B34A(ram, rom, ctx, pos, rngByte, bucket, site) {
     [0x05, 0x1c, 10], [0x05, 0x22, 12],
   ];
   for (const [kind, speed, delay] of particles) {
-    const a0 = spawnEffect(ram, ctx, kind, site);
+    const a0 = bossEffect(ram, ctx, kind, site);
     ram.setU16(a0 + B.bucket, bucket);
     ram.setU32(a0 + B.pos, pos);
     ram.setU8(a0 + B.speed, speed);
     ram.setU8(a0 + B.angle, rngByte);
-    const r = (drawByte242B3C(ram, rom) << 24) >> 24;
+    const r = (bossDrawByte(ram, rom, ctx) << 24) >> 24;
     ram.setU8(a0 + B.angle, ram.u8(a0 + B.angle) + (r >> 2));
     ram.setU16(a0 + B.delay, delay);
   }
 }
 
+const WHITE_D6_STATE5_PARTICLES = Object.freeze([
+  [0x07, 0x05, 0x00, 0x189c8c], [0x04, 0x07, 0x01, 0x189cba],
+  [0x07, 0x0a, 0x02, 0x189ce8], [0x04, 0x0e, 0x03, 0x189d16],
+  [0x07, 0x12, 0x06, 0x189d44], [0x04, 0x16, 0x08, 0x189d72],
+  [0x07, 0x1c, 0x0a, 0x189da0], [0x05, 0x22, 0x0c, 0x189dce],
+  [0x04, 0x28, 0x0e, 0x189dfc], [0x05, 0x2e, 0x10, 0x189e2a],
+  [0x05, 0x34, 0x12, 0x189e58],
+]);
+
+/** White `$189C88`: eleven positioned particles, continuing through pool exhaustion. */
+function whiteD6State5Particles(ram, rom, ctx, pos, angle) {
+  for (const [kind, speed, delay, site] of WHITE_D6_STATE5_PARTICLES) {
+    const a0 = bossEffect(ram, ctx, kind, site);
+    ram.setU16(a0 + B.bucket, 0x000c);
+    ram.setU32(a0 + B.pos, pos);
+    ram.setU8(a0 + B.speed, speed);
+    ram.setU8(a0 + B.angle, angle);
+    const jitter = (bossDrawByte(ram, rom, ctx) << 24) >> 24;
+    ram.setU8(a0 + B.angle, (angle + (jitter >> 2)) & 0xff);
+    ram.setU16(a0 + B.delay, delay);
+  }
+}
+
+/** White `$1928CA..$19295A`: the Build A state-5 burst replacing Black's final blast. */
+function whiteD6State5(ram, rom, ctx, a4, bossPos, resources) {
+  postBossSound(ctx, resources, resources.sound.d6.wrappers[0]); // $1928CA
+  burst2938F2(ram, rom, ctx, bossPos,
+    resources.d.d6.state5, 0x1922ea);                           // $1928D4/$1928DA
+  const groups = [
+    [0xf8000a00, 0x40],
+    [0xfffff800, 0xb0],
+    [0xf4000000, 0x80],
+  ];
+  for (const [offset, bias] of groups) {
+    const angle = (bossDrawByte(ram, rom, ctx) * 4 + bias) & 0xff;
+    whiteD6State5Particles(
+      ram, rom, ctx, (bossPos + offset) >>> 0, angle
+    );
+  }
+  ram.setU16(a4 + D6.wait, 0x80);                              // $192950
+  ram.setU8(a4 + D6.state, 6);                                 // $192956
+}
+
 /** `$293E04` -- D-script 6's STEP: the boss's death animation, and the last
  *  128 frames of it are the stage's. */
 function d6Step293E04(ram, rom, ctx, a4) {
+  const resources = bossResources(ctx);
+  const d6Resources = resources.d.d6;
   const st = () => ram.u8(a4 + D6.state);
   // ---- state 6 ($293E04) -- THE ARM.  `$293E1C clr.w (a4)` retires the slot,
   // so `$2595E8` fires EXACTLY ONCE.
@@ -717,10 +791,10 @@ function d6Step293E04(ram, rom, ctx, a4) {
     if (!decByteBcc(ram, a4 + D6.tB)) {                // $293E2A subq.b/bcc
       ram.setU8(a4 + D6.tB, ram.u8(a4 + D6.tBr));      // $293E32
       // $293E38 moveq #$5,D0 -- kind $05, bucket $0C, speed $14, rng angle
-      const e = spawnEffect(ram, ctx, 0x05, 0x293e3a); // $293E3A jsr $289004
+      const e = bossEffect(ram, ctx, 0x05, 0x293e3a); // $293E3A jsr $289004
       ram.setU16(e + B.bucket, 0x000c);                // $293E40
       ram.setU8(e + B.speed, 0x14);                    // $293E46 move.b #$14,$1A
-      ram.setU8(e + B.angle, drawByte242B3C(ram, rom));// $293E4C/$293E52 jsr $242B3C
+      ram.setU8(e + B.angle, bossDrawByte(ram, rom, ctx));// $293E4C/$293E52 jsr $242B3C
       ram.setU32(e + B.pos, bossPos);                  // $293E56
       ram.setU32(e + B.nudge, 0xf8000000);             // $293E5C
     }
@@ -729,45 +803,53 @@ function d6Step293E04(ram, rom, ctx, a4) {
     if (!decByteBcc(ram, a4 + D6.tA)) {                // $293E6E
       ram.setU8(a4 + D6.tA, ram.u8(a4 + D6.tAr));      // $293E76
       // $293E7C/$293EAA: TWO kind-$10 spawns, speeds $18/$14 -- no sub12/14
-      const e1 = spawnEffect(ram, ctx, 0x10, 0x293e7e);  // $293E7E
+      const e1 = bossEffect(ram, ctx, 0x10, 0x293e7e);  // $293E7E
       ram.setU16(e1 + B.bucket, 0x000c);               // $293E84
       ram.setU8(e1 + B.speed, 0x18);                   // $293E8A
-      ram.setU8(e1 + B.angle, drawByte242B3C(ram, rom));// $293E90/$293E96
+      ram.setU8(e1 + B.angle, bossDrawByte(ram, rom, ctx));// $293E90/$293E96
       ram.setU32(e1 + B.pos, bossPos);                 // $293E9A
       ram.setU32(e1 + B.nudge, 0xe8000400);            // $293EA0
-      const e2 = spawnEffect(ram, ctx, 0x10, 0x293eaa);  // $293EAA
+      const e2 = bossEffect(ram, ctx, 0x10, 0x293eaa);  // $293EAA
       ram.setU16(e2 + B.bucket, 0x000c);               // $293EB0
       ram.setU8(e2 + B.speed, 0x14);                   // $293EB6
-      ram.setU8(e2 + B.angle, drawByte242B3C(ram, rom));// $293EBC/$293EC2
+      ram.setU8(e2 + B.angle, bossDrawByte(ram, rom, ctx));// $293EBC/$293EC2
       ram.setU32(e2 + B.pos, bossPos);                 // $293EC6
       ram.setU32(e2 + B.nudge, 0xf3fff800);            // $293ECC
     }
   }
-  // ---- state 5 ($293ED4)
+  // ---- state 5 ($293ED4 / White $1928CA)
   if (st() === 5) {
-    const n = u16(ram.u16(a4 + D6.wait) - 1);          // $293EDE
-    ram.setU16(a4 + D6.wait, n);
-    if (n === 0) {
-      ctx.soundPost?.(0x28c392);                       // WAVE A: BGM id=6, SOUND ($293EE6)
-      // $293EEC jsr $2440E0 -- W433 (D64).  RUN, not counted.  This one call
-      // is the whole of the stage-1 boss death's SCREEN SHAKE: $2440E0's tail
-      // at $244ABA is `jsr $260E36`, which arms $813186 = 1 and zeroes the
-      // cursor $813188, and from the next frame on `$260EC8` walks the 42-pair
-      // table at $260F4C into $80B054/$80B056.  The board does it on
-      // lf9903..9944 of out/w69/stage1-laser-hold and the port left the column
-      // at 0 for all 42 frames from W52 until this wave -- a divergence on a
-      // CLAIMED column, because the routine was ported for the stage-2 and
-      // stage-3 deaths (W189) and this call site was never wired to it.
-      finalBlast2440E0(ram, rom, ctx, a6);             // $293EEC
-      ram.setU16(a4 + D6.wait, 0x80);                  // $293EF2
-      ram.setU8(a4 + D6.state, 6);                     // $293EF8
+    if (d6Resources.whiteState5) {
+      // Build A does not read or decrement `wait` here. It replaces Black's
+      // final blast and shake with one table burst and three 11-particle fans.
+      whiteD6State5(ram, rom, ctx, a4, bossPos, resources);
+    } else {
+      const n = u16(ram.u16(a4 + D6.wait) - 1);          // $293EDE
+      ram.setU16(a4 + D6.wait, n);
+      if (n === 0) {
+        postBossSound(ctx, resources, resources.sound.d6.wrappers[0]);
+        // $293EEC jsr $2440E0 -- W433 (D64).  RUN, not counted.  This one call
+        // is the whole of the stage-1 boss death's SCREEN SHAKE: $2440E0's tail
+        // at $244ABA is `jsr $260E36`, which arms $813186 = 1 and zeroes the
+        // cursor $813188, and from the next frame on `$260EC8` walks the 42-pair
+        // table at $260F4C into $80B054/$80B056.  The board does it on
+        // lf9903..9944 of out/w69/stage1-laser-hold and the port left the column
+        // at 0 for all 42 frames from W52 until this wave -- a divergence on a
+        // CLAIMED column, because the routine was ported for the stage-2 and
+        // stage-3 deaths (W189) and this call site was never wired to it.
+        finalBlast2440E0(ram, rom, ctx, a6);             // $293EEC
+        ram.setU16(a4 + D6.wait, 0x80);                  // $293EF2
+        ram.setU8(a4 + D6.state, 6);                     // $293EF8
+      }
     }
   }
   // ---- state 4 ($293EFE) -- waits on THE FADE
   if (st() === 4 && !fadeDone259B9E(ram)) {            // $293F08/$293F0E bcs
     note(ctx, 0x246410);                               // $293F18
     a2Stop25994A(ram, 2); a2Stop25994A(ram, 4); a2Stop25994A(ram, 5);  // $293F20..
-    ram.setU16(a4 + D6.wait, 8);                       // $293F36
+    if (d6Resources.state4Wait !== null) {
+      ram.setU16(a4 + D6.wait, d6Resources.state4Wait);   // $293F36
+    }
     ram.setU8(a4 + D6.state, 5);                       // $293F3C
   }
   // ---- state 3 ($293F42)
@@ -785,7 +867,7 @@ function d6Step293E04(ram, rom, ctx, a4) {
         ram.setU16(a4 + D6.cursorE, 0);                // $293FC8
         ram.setU8(a4 + D6.state, 4);                   // $293FCC
         fadeArm259B7E(ram, 0x12);                      // $293FD2/$293FD6
-        ctx.soundPost?.(0x28c2c2);                           // $293FDC
+        postBossSound(ctx, resources, resources.sound.d6.wrappers[1]); // $293FDC
       }
     }
   }
@@ -808,9 +890,9 @@ function d6Step293E04(ram, rom, ctx, a4) {
         if (t === 0) {
           note(ctx, 0x246410);                         // $29407C -- anim-object loader
           // $294082 jsr $242EC2 -> D0; $294088 move.b D0,D1 -- the base angle
-          const rngByte = drawWord242EC2(ram, rom) & 0xff;   // $294082
+          const rngByte = bossDrawWordByte(ram, rom, ctx) & 0xff;   // $294082
           bigBurst28B4BE(ram, rom, ctx, bossPos, rngByte, 0, 0x000c, 0x29409c); // $29409C
-          ctx.soundPost?.(0x28c2a8);                         // $2940A2 -- SOUND
+          postBossSound(ctx, resources, resources.sound.d6.wrappers[2]); // $2940A2
         }
         const e = u16(ram.u16(a4 + D6.cursorE) + 0x10);   // $2940A8
         ram.setU16(a4 + D6.cursorE, e);
@@ -830,7 +912,8 @@ function d6Step293E04(ram, rom, ctx, a4) {
     ram.setU16(a4 + D6.wait, n);
     if (n === 0) {
       // $2940E6 move.l $2(A6),D2 / lea $2941B6 / bsr $2938AE -- state-1-end burst
-      burst2938AE(ram, rom, ctx, a4, bossPos, 0x2941b6, 0x2940f0);  // $2940F0
+      burst2938AE(ram, rom, ctx, a4, bossPos,
+        d6Resources.state1, 0x2940f0);                    // $2940F0
       ram.setU8(a4 + D6.state, 2);                     // $2940F4
       ram.setU16(a4 + D6.wait, 0x80);                  // $2940FA -- **NOT 32**
       ram.setU8(a4 + D6.flags, ram.u8(a4 + D6.flags) | 2);   // $294100 bset #$1
@@ -840,10 +923,11 @@ function d6Step293E04(ram, rom, ctx, a4) {
   // ---- state 0 ($29410E)
   if (st() === 0) {
     ram.setU8(a4 + D6.state, 1);                       // $294118
-    ctx.soundPost?.(0x28c2c2);                               // $29411E -- SOUND
+    postBossSound(ctx, resources, resources.sound.d6.wrappers[1]); // $29411E
     // $294124 move.l $2(A6),D2 / lea $294154 / bsr $2938AE -- THE death burst.
     // Its last entry carries loopctl=$0001, which arms timer A ($3(a4) bit 0).
-    burst2938AE(ram, rom, ctx, a4, bossPos, 0x294154, 0x29412e);  // $29412E
+    burst2938AE(ram, rom, ctx, a4, bossPos,
+      d6Resources.state0, 0x29412e);                      // $29412E
   }
 }
 
@@ -893,10 +977,8 @@ function d6Step293E04(ram, rom, ctx, a4) {
 // 2 emits once and `clr.w (a4)` RETIRES THE SLOT.
 
 const PART = {   // the two parts' sub-record fields
-  4: { pos: 0x22, scrollY: 0x24, fallX: 0x46, fallY: 0x48, stopId: 0,
-       tState0: 0x293aee, tState2: 0x293b50 },   // W107: the part's burst tables
-  5: { pos: 0x62, scrollY: 0x64, fallX: 0x86, fallY: 0x88, stopId: 1,
-       tState0: 0x293d32, tState2: 0x293d94 },
+  4: { pos: 0x22, scrollY: 0x24, fallX: 0x46, fallY: 0x48, stopId: 0 },
+  5: { pos: 0x62, scrollY: 0x64, fallX: 0x86, fallY: 0x88, stopId: 1 },
 };
 
 function partScriptInit(ram, a4) {                     // $29393A / $293B82
@@ -940,10 +1022,10 @@ export function sparkBlocks293BB8(ram, rom, ctx, a4, a6) {
   if ((ram.u8(a4 + 0x03) & 0x04) !== 0) {              // $293BB8 btst #$2,($3,A4)
     if (!decByteBcc(ram, a4 + 0x08)) {                 // $293BC2 subq.b #1 / bcc
       ram.setU8(a4 + 0x08, ram.u8(a4 + 0x09));         // $293BCA move.b ($9,A4),($8,A4)
-      const a0 = spawnEffect(ram, ctx, 0x10, 0x293bd2);// $293BD0 moveq #$10 / $293BD2 jsr
+      const a0 = bossEffect(ram, ctx, 0x10, 0x293bd2);// $293BD0 moveq #$10 / $293BD2 jsr
       ram.setU16(a0 + B.bucket, 0x0004);               // $293BD8 move.w #$4,($1E,A0)
       ram.setU8(a0 + B.speed, 0x10);                   // $293BDE move.b #$10,($1A,A0)
-      ram.setU8(a0 + B.angle, drawByte242B3C(ram, rom));  // $293BE4/$293BEA -- NO add.b
+      ram.setU8(a0 + B.angle, bossDrawByte(ram, rom, ctx));  // $293BE4/$293BEA -- NO add.b
       ram.setU32(a0 + B.pos, pos);                     // $293BEE move.l ($62,A6),($2,A0)
       ram.setU32(a0 + B.nudge, 0xfdfffc00);            // $293BF4
     }
@@ -952,11 +1034,11 @@ export function sparkBlocks293BB8(ram, rom, ctx, a4, a6) {
   if ((ram.u8(a4 + 0x03) & 0x01) !== 0) {              // $293BFC btst #$0,($3,A4)
     if (!decByteBcc(ram, a4 + 0x04)) {                 // $293C06 subq.b #1 / bcc
       ram.setU8(a4 + 0x04, ram.u8(a4 + 0x05));         // $293C0E move.b ($5,A4),($4,A4)
-      const a0 = spawnEffect(ram, ctx, 0x10, 0x293c16);// $293C14 moveq #$10 / $293C16 jsr
+      const a0 = bossEffect(ram, ctx, 0x10, 0x293c16);// $293C14 moveq #$10 / $293C16 jsr
       ram.setU16(a0 + B.bucket, 0x0004);               // $293C1C move.w #$4,($1E,A0)
       ram.setU8(a0 + B.speed, 0x10);                   // $293C22 move.b #$10,($1A,A0)
       // $293C2E add.b D0,D0 -- the DOUBLED angle, byte-wide.
-      ram.setU8(a0 + B.angle, (drawByte242B3C(ram, rom) * 2) & 0xff);  // $293C28/$293C2E/$293C30
+      ram.setU8(a0 + B.angle, (bossDrawByte(ram, rom, ctx) * 2) & 0xff);  // $293C28/$293C2E/$293C30
       ram.setU32(a0 + B.pos, pos);                     // $293C34 move.l ($62,A6),($2,A0)
       ram.setU32(a0 + B.nudge, 0xf2000200);            // $293C3A
     }
@@ -965,10 +1047,10 @@ export function sparkBlocks293BB8(ram, rom, ctx, a4, a6) {
   if ((ram.u8(a4 + 0x03) & 0x02) !== 0) {              // $293C42 btst #$1,($3,A4)
     if (!decByteBcc(ram, a4 + 0x06)) {                 // $293C4C subq.b #1 / bcc
       ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));         // $293C54 move.b ($7,A4),($6,A4)
-      const a0 = spawnEffect(ram, ctx, 0x06, 0x293c5c);// $293C5A moveq #$6 / $293C5C jsr
+      const a0 = bossEffect(ram, ctx, 0x06, 0x293c5c);// $293C5A moveq #$6 / $293C5C jsr
       ram.setU16(a0 + B.bucket, 0x0008);               // $293C62 move.w #$8,($1E,A0)
       ram.setU8(a0 + B.speed, 0x0c);                   // $293C68 move.b #$C,($1A,A0)
-      ram.setU8(a0 + B.angle, (drawByte242B3C(ram, rom) * 2) & 0xff);  // $293C6E/$293C74/$293C76
+      ram.setU8(a0 + B.angle, (bossDrawByte(ram, rom, ctx) * 2) & 0xff);  // $293C6E/$293C74/$293C76
       ram.setU32(a0 + B.pos, pos);                     // $293C7A move.l ($62,A6),($2,A0)
       ram.setU32(a0 + B.nudge, 0xf5fffc00);            // $293C80
     }
@@ -977,6 +1059,8 @@ export function sparkBlocks293BB8(ram, rom, ctx, a4, a6) {
 
 function partScriptStep(ram, rom, ctx, a4, a6, id) {
   const f = PART[id];
+  const resources = bossResources(ctx);
+  const tables = id === 4 ? resources.d.part4 : resources.d.part5;
   ram.setU16(a6 + f.scrollY, u16(ram.u16(a6 + f.scrollY)
     - ram.u16(0x813176)));                             // $293966/$29396C
   // $293970 `bra.w $293A44` skips script 4's copy of the three blocks; script
@@ -985,10 +1069,11 @@ function partScriptStep(ram, rom, ctx, a4, a6, id) {
     sparkBlocks293BB8(ram, rom, ctx, a4, a6);          // $293BB8..$293C87
   }
   if (ram.u8(a4 + 0x02) === 2) {                       // $293A44 / $293C88
-    ctx.soundPost?.(0x28c2a8);                               // $293A4E -- SOUND
+    postBossSound(ctx, resources, resources.sound.part[0]); // $293A4E
     // $293A54 move.l $POS(A6),D2 / lea $tState2 / bsr $2938F2 -- the part's
     // off-screen retire burst (bucket $04, rng angle).  Usually off-screen.
-    burst2938F2(ram, rom, ctx, ram.u32(a6 + f.pos), f.tState2, 0x293a5e);  // $293A5E
+    burst2938F2(ram, rom, ctx, ram.u32(a6 + f.pos),
+      tables.state2, 0x293a5e);                            // $293A5E
     ram.setU16(a4, 0);                                 // $293A62 clr.w (a4)
     return;
   }
@@ -1013,10 +1098,11 @@ function partScriptStep(ram, rom, ctx, a4, a6, id) {
   }
   if (ram.u8(a4 + 0x02) === 0) {                       // $293AC0 / $293D04
     ram.setU8(a4 + 0x02, 1);                           // $293ACA
-    ctx.soundPost?.(0x28c2c2);                               // $293AD0 -- SOUND
+    postBossSound(ctx, resources, resources.sound.part[1]); // $293AD0
     // $293AD6 move.l $POS(A6),D2 / lea $tState0 / bsr $2938AE -- the part's
     // DETACH burst (the visible pop when the side part breaks off).
-    burst2938AE(ram, rom, ctx, a4, ram.u32(a6 + f.pos), f.tState0, 0x293ae0);  // $293AE0
+    burst2938AE(ram, rom, ctx, a4, ram.u32(a6 + f.pos),
+      tables.state0, 0x293ae0);                            // $293AE0
   }
   ram.setU16(a6 + f.pos, u16(ram.u16(a6 + f.pos)
     - ram.u16(a4 + 0x0c)));                            // $293AE4/$293AE8
@@ -1240,12 +1326,14 @@ function obj2_292952(ram, a6) {
  * transcribed as a JS literal, per W48's work-list item 4: a wrong extent then
  * shows up as a wrong sprite code, not as a silently truncated table.
  */
-function obj3_292BFA(ram, rom, a6) {
+function obj3_292BFA(ram, rom, a6,
+  resources = BLACK_TYPE0E_RESOURCES) {
   const M = W82_MUTATE.value;
   const ac = M === 'obj3-unsigned-ac' ? ram.u16(a6 + 0xac)
     : i16(ram.u16(a6 + 0xac));                         // $292C00 + $292C08 adda.w
   const row = ((M === 'obj3-no-bias' ? ac : ac + 7) << 5);  // $292C04/$292C06
-  const at = (0x292c2a + i16(u16(row)) + i16(ram.u16(a6 + 0xaa))) & 0xffffff;
+  const at = (resources.render.obj3Table + i16(u16(row))
+    + i16(ram.u16(a6 + 0xaa))) & 0xffffff;
   const d1 = (ram.u32(a6 + 0xa2) + 0xf600f800) >>> 0;  // $292C10/$292C14
   emit23E020(ram, d1, rom.u32(at),                     // $292C0E move.l (A2),D2
     0x0a40,                                            // $292C1A move.w #$A40
@@ -1263,13 +1351,14 @@ function obj3_292BFA(ram, rom, a6) {
  * and they do NOT collapse to one constant safely by hand: the sum wraps the
  * long, so it is written as the ROM writes it.
  */
-function obj4_292E0A(ram, rom, a6) {
+function obj4_292E0A(ram, rom, a6,
+  resources = BLACK_TYPE0E_RESOURCES) {
   let d1 = (ram.u32(a6 + 0x02) + 0xfc00fc00) >>> 0;    // $292E12/$292E16
   // `obj4-one-addi` is the transcription that folded the two `addi.l`s into one
   // by hand.  They do NOT collapse: the first sum carries out of the low word.
   if (W82_MUTATE.value !== 'obj4-one-addi') d1 = (d1 + 0xf2000000) >>> 0;  // $292E1C
-  emit23E020(ram, d1, rom.u32(0x292e32 + (W82_MUTATE.value === 'obj4-index-1'
-    ? 4 : 0)),                                         // $292E0A lea / $292E10
+  emit23E020(ram, d1, rom.u32(resources.render.obj4Table
+    + (W82_MUTATE.value === 'obj4-index-1' ? 4 : 0)),                                         // $292E0A lea / $292E10
     0x0420,                                            // $292E22 move.w #$420
     0x0015);                                           // $292E26 move.w #$15
 }
@@ -1300,7 +1389,8 @@ const OBJ5_LIMBS = [
   [0xc9, 0x0f3ff9c0],                                  // $292EAC / $292EBC
 ];
 
-function obj5_292E3E(ram, rom, a6) {
+function obj5_292E3E(ram, rom, a6,
+  resources = BLACK_TYPE0E_RESOURCES) {
   const M = W82_MUTATE.value;
   const d0 = (ram.u32(a6 + 0x02) + 0xfc00fd00) >>> 0;  // $292E56/$292E5A/$292E60
   let running = d0;
@@ -1312,7 +1402,7 @@ function obj5_292E3E(ram, rom, a6) {
     const base = M === 'obj5-d0-clobbered' ? running : d0;   // $292E7E move.l D0,D1
     running = (base + off) >>> 0;
     emit23E020(ram, running,
-      rom.u32(0x292eca + d2),                          // $292E4A move.l $292ECA(pc,D2.w)
+      rom.u32(resources.render.obj5Table + d2),
       0x0418,                                          // $292E4E move.w #$418
       0x0017);                                         // $292E52 move.w #$17
   }
@@ -1322,13 +1412,16 @@ registerScript(0x292952, (ram, rom, ctx, a4) => {
   void a4; obj2_292952(ram, bossA6(ctx, 0x292952));
 });
 registerScript(0x292bfa, (ram, rom, ctx, a4) => {
-  void a4; obj3_292BFA(ram, rom, bossA6(ctx, 0x292bfa));
+  void a4; obj3_292BFA(ram, rom,
+    bossA6(ctx, bossSource(ctx, 0x292bfa)), bossResources(ctx));
 });
 registerScript(0x292e0a, (ram, rom, ctx, a4) => {
-  void a4; obj4_292E0A(ram, rom, bossA6(ctx, 0x292e0a));
+  void a4; obj4_292E0A(ram, rom,
+    bossA6(ctx, bossSource(ctx, 0x292e0a)), bossResources(ctx));
 });
 registerScript(0x292e3e, (ram, rom, ctx, a4) => {
-  void a4; obj5_292E3E(ram, rom, bossA6(ctx, 0x292e3e));
+  void a4; obj5_292E3E(ram, rom,
+    bossA6(ctx, bossSource(ctx, 0x292e3e)), bossResources(ctx));
 });
 
 /** Exported for `tests/w82stageend.test.js`, which drives them against the
@@ -1352,25 +1445,52 @@ export const W425 = {
  * real, and the reason it is only ten lines here is that nine of the ten go
  * somewhere this file or `src/stageend.js` owns.
  */
-export function handlerBoss292902(ram, rom, a5, ctx) {
-  const a6 = ram.u32(a5 + BOSS.subRec);
-  // A6 IS LIVE ACROSS THE WHOLE FRAME on the board (`$2410D6`/`$2410E2` keep
-  // it), and every A3 script the scheduler dispatches reads `($22,A6)` or
-  // `($62,A6)` out of it.  The port has no register file, so the handler
-  // publishes it for the frame it owns and `bossA6` throws by address if a
-  // script is ever dispatched when nothing did.
-  ctx.bossSubRec = a6;
-  ctx.bossRec = a5;                                    // W94 -- see bossA5
-  bossDamage294AD8(ram, rom, ctx, a5, a6);             // $292902 jsr $294AD8
-  if (ram.u16(a5 + BOSS.hitStop) !== 0) {              // $292908 tst.w/beq
-    ram.setU16(a5 + BOSS.hitStop, u16(ram.u16(a5 + BOSS.hitStop) - 1));  // $29290E
-    note(ctx, 0x243dd0);                               // $292912
+/** Preserve the edition-native retirement identity while sharing its semantics. */
+function retireBoss(ram, a5, resources) {
+  const retirement = resources.lifecycle.retirement;
+  if (retirement.semantic !== 'freeEnemy') {
+    throw new TypeError(
+      'type $0E boss retirement must preserve freeEnemy semantics'
+    );
   }
-  const c = runScheduler25962E(ram, rom, ctx);         // $292918 jsr $25962E
-  if (!c) return;                                      // $29291E bcc.w $292930
-  ctx.bossEvent?.('advance', ram.u16(0x8130ce));
-  runStageAdvance242952(ram, rom, ctx);                // $292922 jsr $242952
-  freeEnemy(ram, a5);                                  // $292928 jmp $263762
+  freeEnemy(ram, a5);
+}
+
+export function handlerBoss292902(
+  ram, rom, a5, ctx, suppliedResources = BLACK_TYPE0E_RESOURCES
+) {
+  const resources = requireType0EResources(suppliedResources);
+  const a6 = ram.u32(a5 + BOSS.subRec);
+  const previous = {
+    resources: ctx.bossResources,
+    rec: ctx.bossRec,
+    subRec: ctx.bossSubRec,
+  };
+  ctx.bossResources = resources;
+  ctx.bossSubRec = a6;
+  ctx.bossRec = a5;
+  try {
+    bossDamage294AD8(ram, rom, ctx, a5, a6);             // $292902 jsr $294AD8
+    if (ram.u16(a5 + BOSS.hitStop) !== 0) {              // $292908 tst.w/beq
+      ram.setU16(
+        a5 + BOSS.hitStop,
+        u16(ram.u16(a5 + BOSS.hitStop) - 1)
+      );
+      note(ctx, 0x243dd0);                               // $292912
+    }
+    const c = runScheduler25962E(ram, rom, ctx);         // $292918 jsr $25962E
+    if (!c) return;                                      // $29291E bcc.w $292930
+    ctx.bossEvent?.('advance', ram.u16(0x8130ce));
+    runStageAdvance242952(ram, rom, ctx, resources);     // $292922 jsr $242952
+    retireBoss(ram, a5, resources);                        // $292928 jmp $263762
+  } finally {
+    if (previous.resources === undefined) delete ctx.bossResources;
+    else ctx.bossResources = previous.resources;
+    if (previous.rec === undefined) delete ctx.bossRec;
+    else ctx.bossRec = previous.rec;
+    if (previous.subRec === undefined) delete ctx.bossSubRec;
+    else ctx.bossSubRec = previous.subRec;
+  }
 }
 
 export { SCHED as BOSS_SCHED };
@@ -1406,6 +1526,9 @@ import './bossarrival.js';
 // `dist242494`, `bodyTail29314C` and `pickWaypoint2933DE` out of
 // `bossscripts.js`, and `bossA5`/`bossA6` back out of this file.
 import './bossf23.js';
+// Task #289 installs exact Build A scheduler aliases after every shared boss
+// implementation above has registered its mature Build B entry point.
+import './boss-script-aliases.js';
 // W399 -- HIBACHI's OWN A4 chain registers itself, the same way and for the same reason.
 // `bossEnding2A6D8C` below has ended in `a4Start25980C(ram, 1)` since W372 and every link it
 // reached threw by address, because nothing had registered `$2A5886`'s scripts. This import
@@ -1460,10 +1583,13 @@ import './hibachiguns.js';
  *  **THIS IS NOT THE WHOLE OF THE OWNER'S REPORT.** They said "explosion"; this cue is the boss
  *  CLEAR. The repeated explosion rattle of the death animation is the timer-D dispatch off
  *  `$294134` (`d6Step293E04`, states 2 and 3) -- see `BOSS_NOTED` and the note there. */
-export function bossClear242922(ram, ctx) {
+export function bossClear242922(
+  ram, ctx, suppliedResources = BLACK_TYPE0E_RESOURCES
+) {
+  const resources = requireType0EResources(suppliedResources);
   // $242922 jsr $28C170 -- the boss-clear BGM cue. $28C170 -> $28BBAC D0=$15, posted through
   // sound.js's second path (postBgmCommand), NOT through a WRAPPERS row. D58 / W425.
-  ctx.soundPost?.(0x28c170);                                 // $242922 jsr $28C170
+  postBossSound(ctx, resources, resources.sound.bossClear);     // $242922 jsr $28C170
   ram.setU16(0x81296e, 1);                                   // $242928 move.w #$1,$81296E
   for (const [rec, at] of [[0x8103e6, 0x810424], [0x810448, 0x810486]]) {
     if ((ram.u16(rec) & 0x8000) === 0) continue;             // $242930/$242940 tst.w / bpl SKIPS

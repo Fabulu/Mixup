@@ -48,9 +48,20 @@
 import { u16, i16 } from './ram.js';
 import { registerScript } from './scheduler.js';
 import { aim256FromCaller, AimTables } from './aim.js';
-import { drawSigned242FDE, drawWord242EC2, drawWord24328E } from './rng.js';
-import { fire as fireBulletFan, WriteLog } from './bullets.js';
+import {
+  drawMaskedWordWithResources,
+  drawSignedByteWithResources,
+  drawWordByteWithResources,
+} from './rng.js';
+import {
+  fireWithResources as fireBulletWithResources,
+  WriteLog,
+} from './bullets.js';
 import { bossA5, bossA6 } from './boss.js';
+import {
+  BLACK_TYPE0E_RESOURCES,
+  type0EResourcesFromContext,
+} from './boss-resources.js';
 
 const u8 = (v) => v & 0xff;
 const asrw = (v, n) => (i16(v) >> n) & 0xffff;
@@ -74,18 +85,37 @@ export const W95G = {
 };
 
 const AIM_TABLES = new WeakMap();
-function aimTables(rom) {
-  let t = AIM_TABLES.get(rom);
-  if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
-  return t;
+function aimTables(rom, resources) {
+  let byResources = AIM_TABLES.get(rom);
+  if (!byResources) {
+    byResources = new WeakMap();
+    AIM_TABLES.set(rom, byResources);
+  }
+  let tables = byResources.get(resources);
+  if (!tables) {
+    tables = new AimTables(rom, resources.aim64, resources.aim256);
+    byResources.set(resources, tables);
+  }
+  return tables;
 }
+
+const fireBossBullet = (ram, rom, resources, generator, regs) => {
+  const bullet = resources.bullets[generator];
+  return fireBulletWithResources(
+    { ram, rom, log: new WriteLog(ram) },
+    bullet.entry,
+    regs,
+    bullet
+  );
+};
 
 /** `lea $295DD2(pc),A0 / move.w $AC(A6),D2 / addq.w #$7,D2 / add.w D2,D2 /
  *  add.w D2,D2 / move.l (A0,D2.w),D2 / add.l $A2(A6),D2` -- the arm muzzle,
  *  taken off the SHADOW longword `$29314C` maintains, not off `$2(A6)`. */
-function armMuzzle(rom, ram, a6) {
+function armMuzzle(rom, ram, a6, resources) {
   const d2 = u16((i16(ram.u16(a6 + 0xac)) + 7) * 4);   // $29679E..$2967A6
-  return ((rom.u32(W95G.armTable + i16(d2)) + ram.u32(a6 + 0xa2)) >>> 0);
+  return ((rom.u32(resources.e.partGun.muzzles + i16(d2))
+    + ram.u32(a6 + 0xa2)) >>> 0);
 }
 
 // ===========================================================================
@@ -105,7 +135,10 @@ const PART_GUN = {
  * @returns {number} the STEP the init falls into: E 3's OWN for id 3, and
  *   **E 3's for id 4 as well when the aim declines** -- the ROM's copy bug.
  */
-export function partGunInit(ram, rom, ctx, a4, a5, a6, id) {
+export function partGunInit(
+  ram, rom, ctx, a4, a5, a6, id,
+  resources = type0EResourcesFromContext(ctx)
+) {
   const f = PART_GUN[id];
   ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);         // $295E0E bchg.b #$0,$3(a5)
   ram.setU16(a4 + 0x04, 0x0004);                       // $295E14 -- $4=0, $5=4
@@ -114,15 +147,20 @@ export function partGunInit(ram, rom, ctx, a4, a5, a6, id) {
   // jittered by a SIGNED table byte minus one, and `$7(A4)` is the reload, so
   // the jitter persists for the whole life of the gun rather than one shot.
   ram.setU8(a4 + 0x07, u8(ram.u8(a4 + 0x07)
-    + u8(drawSigned242FDE(ram, rom) - 1)));            // $295E26/$295E28
+    + u8(drawSignedByteWithResources(ram, rom, resources.rng.signed) - 1)));            // $295E26/$295E28
   const d0 = (ram.u32(a6 + f.pos) + f.bias) >>> 0;     // $295E2C/$295E30 addi.l
   ram.setU32(a4 + 0x08, d0);                           // $295E36
   ram.setU8(a4 + 0x0c, 0x80);                          // $295E3A
   // $295E40 movem.w $8(A4),D0-D1 -- SELF IS THE MUZZLE THE LINE ABOVE JUST
   // COMPUTED, read back out of the slot as two words.  So the gun aims from
   // where its bullets will appear, not from the boss's centre.
-  const r = aim256FromCaller(aimTables(rom), ram, a5,
-    ram.u16(a4 + 0x08), ram.u16(a4 + 0x0a));           // $295E46 jsr $24226E
+  const r = aim256FromCaller(
+    aimTables(rom, resources),
+    ram,
+    a5,
+    ram.u16(a4 + 0x08),
+    ram.u16(a4 + 0x0a)
+  );
   if (r.carry) {
     // THE ROM'S COPY BUG, §header.  E 4 branches into E 3's step.
     const into = (id === 4 && W95G_MUTATE.value !== 'e4-init-own-step') ? 3 : id;
@@ -133,7 +171,10 @@ export function partGunInit(ram, rom, ctx, a4, a5, a6, id) {
 }
 
 /** `$295E5E` / `$295F94`. */
-export function partGunStep(ram, rom, ctx, a4, a5, a6, id) {
+export function partGunStep(
+  ram, rom, ctx, a4, a5, a6, id,
+  resources = type0EResourcesFromContext(ctx)
+) {
   const f = PART_GUN[id];
   // `$295E62 bne.w $2958CE` -- the SHARED "script done" tail recon 48 §1.4
   // names as the landmark that bounds tables D and E.  A destroyed part retires
@@ -168,8 +209,13 @@ export function partGunStep(ram, rom, ctx, a4, a5, a6, id) {
       const d5 = hard ? 0x0a : 0x14;                   // $295ECC/$295EDC
       const n = (hard ? 6 : 2) + 1;                    // $295ED0/$295EE0 + dbra
       for (let k = 0; k < n; k++) {                    // $295EE4..$295EEC
-        const res = fireBulletFan({ ram, rom, log: new WriteLog(ram) }, 0x281708,
-          { d0, d1, d2, d3: 0, d4: 0, d5: 0, a5 });    // $295EE4 jsr $281708
+        const res = fireBossBullet(
+          ram,
+          rom,
+          resources,
+          'bankBPlusFour',
+          { d0, d1, d2, d3: 0, d4: 0, d5: 0, a5 }
+        );
         ctx.bulletSpawn?.(f.step === 0x295e5e ? 0x295ee4 : 0x29601a, res);
         d1 = u8(d1 + d5);                              // $295EEA add.b d5,d1
       }
@@ -203,7 +249,10 @@ export function partGunStep(ram, rom, ctx, a4, a5, a6, id) {
 // identically-placed `tst.w $8130D4` merely skips the volley.  Two scripts, one
 // gate word, opposite meanings -- and the difference is which label the branch
 // carries.
-export function e13Init296752(ram, rom, a4, a5, a6) {
+export function e13Init296752(
+  ram, rom, a4, a5, a6,
+  resources = BLACK_TYPE0E_RESOURCES
+) {
   ram.setU16(a4 + 0x08, 8);                            // $296752
   ram.setU16(a4 + 0x0a, 0);                            // $296758
   ram.setU16(a4 + 0x0c, 0);                            // $29675E
@@ -219,27 +268,44 @@ export function e13Init296752(ram, rom, a4, a5, a6) {
   // $296774 movem.w $A2(A6),D0-D1 / jsr $24226E -- self is THE SHADOW, the
   // five-frame-lagged position `$29314C` maintains, so the arms aim from where
   // the boss was and not from where it is.
-  const r = aim256FromCaller(aimTables(rom), ram, a5,
-    ram.u16(a6 + 0xa2), ram.u16(a6 + 0xa4));           // $29677A
+  const r = aim256FromCaller(
+    aimTables(rom, resources),
+    ram,
+    a5,
+    ram.u16(a6 + 0xa2),
+    ram.u16(a6 + 0xa4)
+  );
   if (!r.carry) ram.setU8(a4 + 0x10, r.dir & 0xff);    // $296780/$296784
   ram.setU8(a5 + 0x03, ram.u8(a5 + 0x03) ^ 1);         // $296788 bchg.b #$0,$3(a5)
 }
 
-export function e13Step296790(ram, rom, ctx, a4, a5, a6) {
+export function e13Step296790(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
   if (ram.u16(W95G.freeze) !== 0) { ram.setU16(a4, 0); return; }  // $296790/$296796
   // ---- $29679A: THE KIND-11 RING, sixteen pairs.
-  let d2 = armMuzzle(rom, ram, a6);                    // $29679A..$2967AC
-  let d1 = u8(drawWord242EC2(ram, rom));               // $2967B0/$2967B6 move.b d0,d1
+  let d2 = armMuzzle(rom, ram, a6, resources);                    // $29679A..$2967AC
+  let d1 = u8(drawWordByteWithResources(
+    ram, rom, resources.rng.wordByte
+  ));
   const d0k11 = 0xfff9000b >>> 0;                      // $2967BA -- KIND 11
   for (let k = 0; k < 16; k++) {                       // $2967C0 moveq #$F / dbra
     // `$2967C8 move.w D1,D3 / addq.w #$2,D3 / andi.w #$FC,D3 / move.l
     // (A0,D3.w),D3` -- the SAME `((angle+2) & $FC)` lookup into `$2736FA` the
     // midboss's big fan uses, so the two share a table and a rounding rule.
-    const look = (a) => rom.u32(W95G.fanTable + (u16(a + 2) & 0xfc));
+    const look = (a) => rom.u32(
+      resources.e.e13.fan + (u16(a + 2) & 0xfc)
+    );
     const d6 = u8(d1);                                 // $2967D4 move.b d1,d6
     for (const ang of [d6, u8(d6 + 4)]) {              // $2967D6 / $2967EA
-      const res = fireBulletFan({ ram, rom, log: new WriteLog(ram) }, 0x2817b8,
-        { d0: d0k11, d1: ang, d2, d3: look(ang), d4: 0, d5: 0, a5 });
+      const res = fireBossBullet(
+        ram,
+        rom,
+        resources,
+        'bankBAdaptive',
+        { d0: d0k11, d1: ang, d2, d3: look(ang), d4: 0, d5: 0, a5 }
+      );
       ctx.bulletSpawn?.(ang === d6 ? 0x2967d6 : 0x2967ea, res);
     }
     d1 = u8(d6 + 0x10);                                // $2967F0/$2967F2
@@ -250,14 +316,24 @@ export function e13Step296790(ram, rom, ctx, a4, a5, a6) {
   // which starts at 6 and only grows) and nothing else starts E 13.
   for (;;) {
     const shot = (sub, adj, site) => {
-      ram.setU16(a4 + 0x12, asrw(drawWord24328E(ram, rom), 3));  // $2967FA/$296800
+      ram.setU16(
+        a4 + 0x12,
+        asrw(drawMaskedWordWithResources(
+          ram, rom, resources.rng.muzzleJitter
+        ), 3)
+      );
       const p = u16(ram.u8(a4 + 0x04) - sub);          // $296806/$29680C subi.w
       const d0 = ((p << 16) | 0x0007) >>> 0;           // $296810/$296812 -- KIND 7
       const ang = u8(ram.u8(a4 + 0x10) + adj);         // $296816 (+3 / -3)
-      d2 = (armMuzzle(rom, ram, a6) + 0) >>> 0;        // $29681A..$29682C
+      d2 = (armMuzzle(rom, ram, a6, resources) + 0) >>> 0;        // $29681A..$29682C
       d2 = ((d2 & 0xffff0000) | u16(d2 + ram.u16(a4 + 0x12))) >>> 0;  // $296830 add.w
-      const res = fireBulletFan({ ram, rom, log: new WriteLog(ram) }, 0x281708,
-        { d0, d1: ang, d2, d3: 0, d4: 0, d5: 0, a5 });
+      const res = fireBossBullet(
+        ram,
+        rom,
+        resources,
+        'bankBPlusFour',
+        { d0, d1: ang, d2, d3: 0, d4: 0, d5: 0, a5 }
+      );
       ctx.bulletSpawn?.(site, res);
     };
     // **THE THREE SUBTRAHENDS ARE $14, $15, $16 AND THEY ARE NOT THREE
@@ -266,7 +342,10 @@ export function e13Step296790(ram, rom, ctx, a4, a5, a6) {
     // first two are equal.  Writing the constants as the ROM writes them keeps
     // that visible; folding them would hide the increment that causes it.
     shot(0x14, 0, 0x296838);                           // $296838
-    ram.setU8(a4 + 0x04, u8(ram.u8(a4 + 0x04) + 1));   // $29683E addq.b #$1
+    ram.setU8(
+      a4 + 0x04,
+      u8(ram.u8(a4 + 0x04) + resources.e.e13.slotIncrement)
+    );
     ram.setU16(a4 + 0x0a, u16(ram.u16(a4 + 0x0a) + 2));            // $296842
     ram.setU16(a4 + 0x0c, u16(ram.u16(a4 + 0x0c) + 2));            // $296846
     shot(0x15, 3, 0x29688c);                           // $29684A..$29688C
@@ -279,27 +358,53 @@ export function e13Step296790(ram, rom, ctx, a4, a5, a6) {
 }
 
 // ============================================================= REGISTRATION
+const source = (ctx, fallback) => ctx.bossScriptAddress ?? fallback;
+const A5 = (ctx, fallback) => bossA5(ctx, source(ctx, fallback));
+const A6 = (ctx, fallback) => bossA6(ctx, source(ctx, fallback));
+const R = (ctx) => type0EResourcesFromContext(ctx);
+
 registerScript(0x295e0e, (ram, rom, ctx, a4) => {      // E 3 INIT
-  const a5 = bossA5(ctx, 0x295e0e), a6 = bossA6(ctx, 0x295e0e);
-  const into = partGunInit(ram, rom, ctx, a4, a5, a6, 3);
-  partGunStep(ram, rom, ctx, a4, a5, a6, into);        // FALL-THROUGH
+  const resources = R(ctx);
+  const a5 = A5(ctx, 0x295e0e), a6 = A6(ctx, 0x295e0e);
+  const into = partGunInit(
+    ram, rom, ctx, a4, a5, a6, 3, resources
+  );
+  partGunStep(
+    ram, rom, ctx, a4, a5, a6, into, resources
+  ); // FALL-THROUGH
 });
 registerScript(0x295e5e, (ram, rom, ctx, a4) =>
-  partGunStep(ram, rom, ctx, a4, bossA5(ctx, 0x295e5e), bossA6(ctx, 0x295e5e), 3));
+  partGunStep(
+    ram, rom, ctx, a4,
+    A5(ctx, 0x295e5e), A6(ctx, 0x295e5e), 3, R(ctx)
+  ));
 
 registerScript(0x295f44, (ram, rom, ctx, a4) => {      // E 4 INIT
-  const a5 = bossA5(ctx, 0x295f44), a6 = bossA6(ctx, 0x295f44);
-  const into = partGunInit(ram, rom, ctx, a4, a5, a6, 4);
+  const resources = R(ctx);
+  const a5 = A5(ctx, 0x295f44), a6 = A6(ctx, 0x295f44);
+  const into = partGunInit(
+    ram, rom, ctx, a4, a5, a6, 4, resources
+  );
   // `into` is 3 when the aim declined -- the ROM's `bcs.w $295E5E`, §header.
-  partGunStep(ram, rom, ctx, a4, a5, a6, into);
+  partGunStep(
+    ram, rom, ctx, a4, a5, a6, into, resources
+  );
 });
 registerScript(0x295f94, (ram, rom, ctx, a4) =>
-  partGunStep(ram, rom, ctx, a4, bossA5(ctx, 0x295f94), bossA6(ctx, 0x295f94), 4));
+  partGunStep(
+    ram, rom, ctx, a4,
+    A5(ctx, 0x295f94), A6(ctx, 0x295f94), 4, R(ctx)
+  ));
 
 registerScript(0x296752, (ram, rom, ctx, a4) =>        // E 13 INIT -- `rts`
-  e13Init296752(ram, rom, a4, bossA5(ctx, 0x296752), bossA6(ctx, 0x296752)));
+  e13Init296752(
+    ram, rom, a4, A5(ctx, 0x296752), A6(ctx, 0x296752), R(ctx)
+  ));
 registerScript(0x296790, (ram, rom, ctx, a4) =>
-  e13Step296790(ram, rom, ctx, a4, bossA5(ctx, 0x296790), bossA6(ctx, 0x296790)));
+  e13Step296790(
+    ram, rom, ctx, a4,
+    A5(ctx, 0x296790), A6(ctx, 0x296790), R(ctx)
+  ));
 
 // NOTE, because it is the thing that makes these three legible: **NONE of them
 // initialises its own `$2(A4)`, `$3(A4)`, `$4(A4)` or `$6(A4)`.**  Those come

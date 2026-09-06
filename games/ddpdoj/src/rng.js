@@ -98,6 +98,21 @@ export function drawSignedByteWithResources(ram, rom, suppliedResources) {
   return value >= 0x80 ? value - 0x100 : value;
 }
 
+/** Resource-bound unmasked byte load that preserves the counter's high byte. */
+export function drawWordByteWithResources(ram, rom, suppliedResources) {
+  const resources = validateBoundedDraw(suppliedResources, 256);
+  const state = advanceSharedCounter(ram);
+  const index = state >= 0x8000 ? state - 0x10000 : state;
+  return (state & 0xff00) | rom.u8(resources.table + index);
+}
+
+/** Resource-bound 128-word member used by boss muzzle jitter. */
+export function drawMaskedWordWithResources(ram, rom, suppliedResources) {
+  const resources = validateBoundedDraw(suppliedResources, 128);
+  const index = advanceSharedCounter(ram) & 0x7f;
+  return rom.u16(resources.table + index * 2);
+}
+
 /** Resource-bound masked byte member used by the spark fill tail. */
 export function drawByteWithResources(ram, rom, suppliedResources) {
   const resources = suppliedResources;

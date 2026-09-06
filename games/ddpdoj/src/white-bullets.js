@@ -4,13 +4,15 @@ import { WHITE_LABEL_PROFILE, resolveGameProfile } from './profiles.js';
 import { requireRuntimeCapability, resolveGameRuntime } from './runtime-profile.js';
 import { runPoolADriverWithResources } from './bee.js';
 import { WHITE_HYPER_GRANT_RESOURCES } from './item-resources.js';
-import { BLACK_BULLET_SPAWN_RESOURCES } from './bullets.js';
+import {
+  WHITE_AIM256_RESOURCES, WHITE_BULLET_KINDS as SUPPORTED_KINDS,
+  WHITE_BULLET_SPAWN_RESOURCES,
+} from './white-bullet-resources.js';
+export { WHITE_AIM256_RESOURCES, WHITE_BULLET_SPAWN_RESOURCES };
 import { WHITE_POOL_A_ALLOCATION_IDENTITY } from './pool-a-resources.js';
 import {
   runBulletDriverWithResources, runClearTimerWithResources, runScreenClearWithResources,
 } from './bulletdriver.js';
-
-const SUPPORTED_KINDS = Object.freeze([3, 4, 5, 6, 7, 12, 13, 19]);
 
 export const WHITE_VECTOR_RESOURCES = Object.freeze({
   entry: 0x141d3e,
@@ -20,33 +22,6 @@ export const WHITE_VECTOR_RESOURCES = Object.freeze({
   quadStride: 0x0208,
   fold: 0x141e2e,
   foldEntries: 256,
-});
-
-export const WHITE_BULLET_SPAWN_RESOURCES = Object.freeze({
-  ...BLACK_BULLET_SPAWN_RESOURCES,
-  entry: 0x180486,
-  coreA: 0x180502,
-  coreB: 0x1807aa,
-  templatePtrs: 0x18093e,
-  spawnInitPtrs: 0x180612,
-  kinds: 36,
-  supportedKinds: SUPPORTED_KINDS,
-  spawnInitDispatch: Object.freeze({
-    0x180894: 0x2818ac,
-    0x18089c: 0x2818b4,
-    0x1808c8: 0x2818e0,
-  }),
-});
-
-export const WHITE_AIM256_RESOURCES = Object.freeze({
-  entry: 0x1425d0,
-  lut: 0x14269c,
-  lutEntries: 65,
-  base: 0x14268c,
-  baseEntries: 8,
-  ops: 0x14264c,
-  opStride: 8,
-  opEntries: 8,
 });
 
 const WHITE_POOL_A_DISPATCH = WHITE_POOL_A_ALLOCATION_IDENTITY.dispatchEntries;

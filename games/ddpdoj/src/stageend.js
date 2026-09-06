@@ -100,6 +100,7 @@ import { poolClear as clearBulletPool28131E, poolPark as parkBulletSlots281330 }
 // W381 -- `$28EAB8`/`$28EACE`'s callee, ported since W163 and counted here since W125.
 import { flushPendingHyper2875B4 } from './hyper.js';
 import { emit23F82A } from './bossarrival.js';
+import { postBossSound } from './boss-sound.js';
 // W389 -- `$24676A..$2467C3`, the per-node CONTENT seeding that lives INSIDE `$246710`'s
 // allocation loop. `animobjects.js` imports nothing from here, so this is not a cycle.
 import { buildChain246532, CHAIN_SPECS, loadAnimObjects24652A,
@@ -290,10 +291,13 @@ export function rebuildWorld25FD38(ram, ctx) {
  * `$25962E`'s DOUBLE PASS (`$259656 btst #$4`), so this instruction stops every
  * boss script being stepped twice a frame from here on.
  */
-export function runStageAdvance242952(ram, rom, ctx) {
-  // W152: `$28CB60 -> $28CB1A -> $28C146` is the real fixed-index streaming
-  // leaf, now handled by the same production sound post API as normal wrappers.
-  ctx.soundPost?.(0x28cb60);
+export function runStageAdvance242952(ram, rom, ctx, resources = null) {
+  const sound = resources?.sound?.stageAdvance ?? 0x28cb60;
+  const dispatch = resources?.lifecycle?.objectDispatch ?? SE.dispatch;
+  // W152: the real fixed-index streaming leaf is handled by the production
+  // sound-post API for both cartridge editions.
+  if (resources === null) ctx.soundPost?.(sound);
+  else postBossSound(ctx, resources, sound);
   ram.setU8(SE.bossFlags, ram.u8(SE.bossFlags) | 0x08);    // $242958 bset #3
   ram.setU8(SE.bossFlags, ram.u8(SE.bossFlags) & ~0x10);   // $242960 bclr #4
   ram.setU16(SE.clearing, 1);                              // $242968
@@ -303,7 +307,8 @@ export function runStageAdvance242952(ram, rom, ctx) {
   const d7 = ctx.stageAdvanceTransform
     ? u16(ctx.stageAdvanceTransform(authenticNext)) : authenticNext;
   // $242A30..$242A3E -- create OBJECT TYPE 6 and hand it the new stage number.
-  const r = stageCreate(ram, SE.type6, (t) => rom.u16(SE.dispatch + t * 8 + 4));
+  const r = stageCreate(ram, SE.type6,
+    (t) => rom.u16(dispatch + t * 8 + 4));
   ram.setU16(r.addr + 0x04, d7);                           // $242A3A move.w D7,$4(A0)
   ctx.stageEndEvent?.('stage-advance', d7, r.result);
   return { d7, result: r.result };

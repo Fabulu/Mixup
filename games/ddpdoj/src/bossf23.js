@@ -37,8 +37,12 @@ import { registerScript, seqStart2598D0, seqCurrent2598C8, spread2595F2,
 } from './scheduler.js';
 import { aim64, slew64, aim256FromCaller, AimTables } from './aim.js';
 import { applyVelocity } from './movement.js';
-import { drawByte242B3C, drawSigned242FDE, drawWord242EC2 } from './rng.js';
-import { fire as fireBulletFan, WriteLog } from './bullets.js';
+import {
+  drawSignedByteWithResources,
+  drawUnmaskedByteWithResources,
+  drawWordByteWithResources,
+} from './rng.js';
+import { fireWithResources as fireBulletWithResources, WriteLog } from './bullets.js';
 import { enqueueRegisters } from './spritequeue.js';
 import { enqueueDeferred, DEFQ_D1 } from './spawn.js';
 import { freeEnemy } from './initbody.js';
@@ -47,6 +51,11 @@ import {
 } from './bossscripts.js';
 import { bossA5, bossA6 } from './boss.js';
 import { spawnEffect, B } from './effects.js';
+import {
+  BLACK_TYPE0E_RESOURCES, BLACK_TYPE1E_RESOURCES,
+  requireType1EResources, type0EResourcesFromContext,
+  type1EResourcesForBoss,
+} from './boss-resources.js';
 
 /** A byte, the way every `.b` operation in this file truncates. */
 const u8 = (v) => v & 0xff;
@@ -77,11 +86,35 @@ export const W103 = {
 };
 
 const AIM_TABLES = new WeakMap();
-function aimTables(rom) {
-  let t = AIM_TABLES.get(rom);
-  if (!t) { t = new AimTables(rom); AIM_TABLES.set(rom, t); }
-  return t;
+function aimTables(rom, resources) {
+  let byResources = AIM_TABLES.get(rom);
+  if (!byResources) {
+    byResources = new WeakMap();
+    AIM_TABLES.set(rom, byResources);
+  }
+  let tables = byResources.get(resources);
+  if (!tables) {
+    tables = new AimTables(rom, resources.aim64, resources.aim256);
+    byResources.set(resources, tables);
+  }
+  return tables;
 }
+
+const drawByte = (ram, rom, resources) =>
+  drawUnmaskedByteWithResources(ram, rom, resources.rng.byte);
+
+const drawSigned = (ram, rom, resources) =>
+  drawSignedByteWithResources(ram, rom, resources.rng.signed);
+
+const drawWordByte = (ram, rom, resources) =>
+  drawWordByteWithResources(ram, rom, resources.rng.wordByte);
+
+const fireBossBullet = (ram, rom, resources, generator, regs) => {
+  const bullet = resources.bullets[generator];
+  return fireBulletWithResources(
+    { ram, rom, log: new WriteLog(ram) }, bullet.entry, regs, bullet
+  );
+};
 
 /** `subq.b #1,<ea>` + `bcc`: BCC taken while OLD value was non-zero.
  *  Returns TRUE for "bcc taken" == "not yet". */
@@ -101,8 +134,11 @@ export function main3Init2934A2(ram, a4, a6) {
   ram.setU16(a4, 0);                                    // $2934A2
   ram.setU8(a4 + 2, ram.u8(a6 + BS.speed));             // $2934A6
 }
-export function main3Step2934AC(ram, rom, ctx, a4, a5, a6) {
-  const face = aim64(aimTables(rom), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
+export function main3Step2934AC(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
+  const face = aim64(aimTables(rom, resources), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
     0x6a00, 0x1c00);                                    // $2934AC..$2934C0
   ram.setU8(a6 + BS.facing, face & 0xff);               // $2934C0 RAW, no slew
   const d0 = dist242494(ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
@@ -117,25 +153,30 @@ export function main3Step2934AC(ram, rom, ctx, a4, a5, a6) {
 // ===========================================================================
 // MAIN 4 -- $2934F8 / $293506.  MAIN 7 with waypoint table $293558.
 // ===========================================================================
-function main4Waypoint(rom, ram, a4) {
-  const at = W103.main4Waypoints + u16(ram.u16(a4));
+function main4Waypoint(rom, ram, a4, resources) {
+  const at = resources.main.m4.waypoints + u16(ram.u16(a4));
   return { y: rom.u16(at), x: rom.u16(at + 2) };
 }
-export function main4Init2934F8(ram, rom, a4, a6) {
+export function main4Init2934F8(
+  ram, rom, a4, a6, resources = BLACK_TYPE0E_RESOURCES
+) {
   ram.setU16(a4, 0);                                    // $2934F8
   ram.setU8(a4 + 2, ram.u8(a6 + BS.speed));             // $2934FC
-  pickWaypoint2933DE(ram, rom, a4);                     // $293502
+  pickWaypoint2933DE(ram, rom, a4, resources);          // $293502
 }
-export function main4Step293506(ram, rom, ctx, a4, a5, a6) {
-  let t = main4Waypoint(rom, ram, a4);                  // $293506..$29350E
-  const want = aim64(aimTables(rom), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
+export function main4Step293506(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
+  let t = main4Waypoint(rom, ram, a4, resources);       // $293506..$29350E
+  const want = aim64(aimTables(rom, resources), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
     t.y, t.x);                                          // $293512..$293518
   ram.setU8(a6 + BS.facing, slew64(ram.u8(a6 + BS.facing), want) & 0xff);  // $293528
   rampSpeed293400(ram, a4, a6);                         // $29352C
   applyVelocity(ram, ctx.tables, a5);                   // $293530
-  t = main4Waypoint(rom, ram, a4);                      // $293536 re-read (no-op, W94)
+  t = main4Waypoint(rom, ram, a4, resources);            // $293536 re-read (no-op, W94)
   const d0 = dist242494(ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX), t.y, t.x);
-  if (i16(d0) <= 0x100) pickWaypoint2933DE(ram, rom, a4);   // $293550
+  if (i16(d0) <= 0x100) pickWaypoint2933DE(ram, rom, a4, resources);   // $293550
   bodyTail29314C(ram, ctx, a6);                         // $293554
 }
 
@@ -146,8 +187,11 @@ export function main8Init2936B4(ram, a4, a6) {
   ram.setU16(a4, 0);                                    // $2936B4
   ram.setU8(a4 + 2, ram.u8(a6 + BS.speed));             // $2936B8
 }
-export function main8Step2936BE(ram, rom, ctx, a4, a5, a6) {
-  const face = aim64(aimTables(rom), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
+export function main8Step2936BE(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
+  const face = aim64(aimTables(rom, resources), ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
     0x7400, 0x1c00);                                    // $2936BE..$2936D2
   ram.setU8(a6 + BS.facing, face & 0xff);               // $2936D2
   const d0 = dist242494(ram.u16(a6 + BS.posY), ram.u16(a6 + BS.posX),
@@ -179,7 +223,7 @@ export function f2Init2952D8(ram, a4, a6) {
   seqStart2598D0(ram, 8);                               // $2952FC/$2952FE
 }
 export function f2Step295304(ram, rom, ctx, a4) {
-  const a6 = bossA6(ctx, 0x295304);
+  const a6 = bossA6(ctx, ctx.bossScriptAddress ?? 0x295304);
   if (bothPartsDead(ram, a6)) { a4Start25980C(ram, 1); ram.setU16(a4, 0); return; }
   if (ram.u8(a4 + 0x02) === 0                           // $295314
     && seqCurrent2598C8(ram) === 4) {                   // $29531E/$295324
@@ -233,8 +277,11 @@ export function f3Init29540C(ram, a4, a6) {
   ram.setU16(a4 + 0x06, 0x2020);                        // $295424
   seqStart2598D0(ram, 3);                               // $29542A/$29542C
 }
-export function f3Step295432(ram, rom, ctx, a4) {
-  const a6 = bossA6(ctx, 0x295432);
+export function f3Step295432(
+  ram, rom, ctx, a4,
+  resources = type0EResourcesFromContext(ctx)
+) {
+  const a6 = bossA6(ctx, ctx.bossScriptAddress ?? 0x295432);
   if (bothPartsDead(ram, a6)) { a4Start25980C(ram, 6); ram.setU16(a4, 0); return; }
   if (ram.u8(a4 + 0x02) === 0                           // $295442
     && seqCurrent2598C8(ram) === 4) {                   // $29544C/$295452
@@ -266,7 +313,7 @@ export function f3Step295432(ram, rom, ctx, a4) {
     if (n === 0) {                                      // $2954E8
       // $2954EC..$2954FA: vestigial 9-or-10 draw, discarded by moveq #5.
       let d7 = 9;                                       // $2954EC moveq #9,d7
-      if (drawSigned242FDE(ram, rom) === 0) d7 = 0x0a;  // $2954EE/$2954F4/$2954F8
+      if (drawSigned(ram, rom, resources) === 0) d7 = 0x0a;  // $2954EE/$2954F4/$2954F8
       void d7;                                          // $2954FA move.w d7,d0 -- DEAD
       ram.setU8(a4 + 0x02, 4);                          // $2954FC
       ram.setU8(a4 + 0x03, 0);                          // $295502
@@ -370,12 +417,15 @@ const CLOSE19 = { dead: 0x7f, anim: 0x6a, trim: 0x8c, ang: 0x8a, angStep: 2, sto
 // D 14 rotates both parts' facing bytes, starting E 5/E 6/E 14 and stopping
 // them when the rotation completes.  See W99 and the header comments of the
 // first draft for the full five-state machine.
-export function d14Init294566(ram, rom, a4, a6) {
+export function d14Init294566(
+  ram, rom, a4, a6, resources = BLACK_TYPE0E_RESOURCES
+) {
+  const d14 = resources.d.d14;
   ram.setU16(a6 + 0x114, 0);                            // $294566
   ram.setU8(a4 + 0x02, 1);                              // $29456A
   // $294570 jsr $242FDE -- draw -> bne keeps +1, else $FF (-1).
   let d2 = 1;
-  if (drawSigned242FDE(ram, rom) === 0) d2 = 0xff;      // $295576 bne / $29557A
+  if (drawSigned(ram, rom, resources) === 0) d2 = 0xff;  // $295576 bne / $29557A
   ram.setU8(a4 + 0x02, u8(d2));                         // $294570 stores the draw
   ram.setU8(a4 + 0x03, ram.u8(a4 + 0x02));              // $294580
   ram.setU16(a4 + 0x04, 0x4040);                        // $294586
@@ -386,17 +436,17 @@ export function d14Init294566(ram, rom, a4, a6) {
   ram.setU16(a4 + 0x12, 0);                             // $2945A8
   const d0 = spread2595F2();                            // $2945AE/$2945B2 -> 4
   // $2945B8: cadence byte from table, minus $112(a6), ceiling $4.
-  let cad = u8(rom.u8(W103.d14CadTab + d0) - ram.u8(a6 + 0x112));   // $2945BE/$2945C2
+  let cad = u8(rom.u8(d14.cadence + d0) - ram.u8(a6 + 0x112));   // $2945BE/$2945C2
   if (i8(cad) > 4) cad = 4;                             // $2945C6 cmpi/bgt
   ram.setU8(a6 + 0x112, u8(ram.u8(a6 + 0x112) + 1));    // $2945D2
   if (i8(ram.u8(a6 + 0x112)) > 4) ram.setU8(a6 + 0x112, 4);   // $2945D6/$2945DC
   // $2945E6: shot-count byte from table, minus $113(a6), ceiling $0F.
-  let cnt = u8(rom.u8(W103.d14CountTab + d0) - ram.u8(a6 + 0x113));   // $2945EC/$2945F0
+  let cnt = u8(rom.u8(d14.count + d0) - ram.u8(a6 + 0x113));   // $2945EC/$2945F0
   if (i8(cnt) > 0x0f) cnt = 0x0f;                       // $2945F4 cmpi/bgt
   ram.setU8(a6 + 0x113, u8(ram.u8(a6 + 0x113) + 1));    // $294600
   if (i8(ram.u8(a6 + 0x113)) > 0x10) ram.setU8(a6 + 0x113, 0x10);   // $294604/$29460A
   // $294614: fan parameter, WORD table.
-  const d4 = rom.u16(W103.d14FanTab + d0 * 2);          // $294616/$29461A
+  const d4 = rom.u16(d14.fan + d0 * 2);                  // $294616/$29461A
   // E.start 5, store slot at $A(A4).
   let a0 = a1Start259A18(ram, 5);                       // $29461E/$294620
   ram.setU16(a0 + 0x04, cad);                           // $294626
@@ -518,25 +568,32 @@ export function d15Step294878(ram, rom, ctx, a4, a6) {
 // ===========================================================================
 // E 5/E 6 fire kind 19 (bank B) from the part position, the angle advancing by
 // $0F (E 5) or -$0F (E 6) per tick.  Rank adds two kind-19 core shots.
-function rotationGunInit(ram, rom, a4, a6, o) {
+function rotationGunInit(ram, rom, a4, a6, o, resources) {
+  const e56 = resources.e.e56;
   ram.setU8(a4 + 0x02, o.tick);                         // $296082/$296188
   ram.setU16(a4 + 0x04, 0);                             // $296088/$29618E
   ram.setU16(a4 + 0x06, 0x0008);                        // $29608E/$296194
   ram.setU8(a4 + 0x0a, o.angle);                        // $296094/$2961A0
-  ram.setU8(a4 + 0x0a, u8(ram.u8(a4 + 0x0a) + u8(drawByte242B3C(ram, rom) << 2)));  // $29609A/$2961A6
+  ram.setU8(a4 + 0x0a, u8(ram.u8(a4 + 0x0a) + u8(drawByte(ram, rom, resources) << 2)));  // $29609A/$2961A6
   ram.setU16(a4 + 0x0e, 0x0404);                        // $2960A6/$2961B2
   ram.setU16(a4 + 0x10, 0x0505);                        // $2960AC/$2961B8
   ram.setU8(a4 + 0x12, 1);                              // $2960B2/$2961BE
   ram.setU8(a4 + 0x13, 0);                              // $2960B8/$2961C4
-  ram.setU8(a4 + 0x03, 8);                              // $2960BE/$2961CA
+  ram.setU8(a4 + 0x03, e56.cadence);                    // $2960BE/$2961CA
   ram.setU16(a4 + 0x14, 0xfffa);                        // $2960C4/$2961D0
   if (ram.u16(W103.rank) !== 0) {                       // $2960CA/$2961D6
-    ram.setU8(a4 + 0x03, 5);                            // $2960D4/$2961E0
-    ram.setU16(a4 + 0x14, 0xfff9);                      // $2960DA/$2961E6
+    ram.setU8(a4 + 0x03, e56.rankCadence);              // $2960D4/$2961E0
+    ram.setU16(a4 + 0x14, e56.rankSpeed);               // $2960DA/$2961E6
   }
-  ram.setU8(a4 + 0x11, rom.u8(W103.e5CadTab + spread2595F2()));   // $2960EA/$2961F6
+  ram.setU8(a4 + 0x11, rom.u8(resources.e.rotation.cadence + spread2595F2()));   // $2960EA/$2961F6
 }
-function rotationGunStep(ram, rom, ctx, a4, a5, a6, o) {
+function advanceRotation(ram, a4, o, resources) {
+  ram.setU8(a4 + 0x0a, u8(
+    ram.u8(a4 + 0x0a) + o.direction * resources.e.e56.step
+  ));
+}
+function rotationGunStep(ram, rom, ctx, a4, a5, a6, o,
+  resources = type0EResourcesFromContext(ctx)) {
   if (ram.u8(a6 + o.dead) !== 0) return;                // $2960F4/$296200
   const d2 = (ram.u32(a6 + o.pos) + o.bias) >>> 0;      // $2960FC/$296208
   // W440: `$29610E 64 00 00 76` and `$29621A 64 00 00 76` are `bcc.W`, and both
@@ -551,28 +608,27 @@ function rotationGunStep(ram, rom, ctx, a4, a5, a6, o) {
     // RED `rotgun-fallthrough`: the phantom arm the 8-bit reading created.
     if (W440_MUTATE.value !== 'rotgun-fallthrough') return;
     o.subTick(ram, a4);
-    o.advance(ram, a4);
+    advanceRotation(ram, a4, o, resources);
     return;
   }
   // Main cadence fired: tick the sub-cadences, then the volley.
   o.subTick(ram, a4);                                   // $296112..$29613C
   let d1 = ram.u8(a4 + 0x0a);                           // $296142/$296144/$296250
   const d0 = ((ram.u16(a4 + 0x14) << 16) | 0x0013) >>> 0;   // $296148/$296254
-  const log = new WriteLog(ram);
-  fireBulletFan({ ram, rom, log }, 0x281764,
+  fireBossBullet(ram, rom, resources, 'bankBSpreadTwo',
     { d0, d1, d2, d3: 0, d4: 0, d5: 0, a5 });           // $296152
   d1 = u8(d1 + 0x80);                                   // $296158
-  fireBulletFan({ ram, rom, log }, 0x281764,
+  fireBossBullet(ram, rom, resources, 'bankBSpreadTwo',
     { d0, d1, d2, d3: 0, d4: 0, d5: 0, a5 });           // $29615C
   if (ram.u16(W103.rank) !== 0) {                       // $296162
     d1 = u8(d1 + 0x40);                                 // $29616C
-    fireBulletFan({ ram, rom, log }, 0x2816f6,
+    fireBossBullet(ram, rom, resources, 'bankBDirect',
       { d0, d1, d2, d3: 0, d4: 0, d5: 0, a5 });         // $296170
     d1 = u8(d1 + 0x80);                                 // $296176
-    fireBulletFan({ ram, rom, log }, 0x2816f6,
+    fireBossBullet(ram, rom, resources, 'bankBDirect',
       { d0, d1, d2, d3: 0, d4: 0, d5: 0, a5 });         // $29617A
   }
-  o.advance(ram, a4);                                   // $296180/$29628C
+  advanceRotation(ram, a4, o, resources);               // $296180/$29628C
   void ctx;
 }
 // The sub-cadence tick: dec $e, on wrap reload and dec $3, copy $3->$2, dec $10.
@@ -597,41 +653,51 @@ const subTickFn = (ram, a4) => {
 };
 const ROT5 = {
   dead: 0x3f, pos: 0x22, bias: 0xf6c00140, tick: 0x38, angle: 0x40,
-  subTick: subTickFn,
-  advance: (ram, a4) => ram.setU8(a4 + 0x0a, u8(ram.u8(a4 + 0x0a) + 0x0f)),   // $296180
+  subTick: subTickFn, direction: 1,
 };
 const ROT6 = {
   dead: 0x7f, pos: 0x62, bias: 0xf6bffec0, tick: 0x20, angle: 0xc0,
-  subTick: subTickFn,
-  advance: (ram, a4) => ram.setU8(a4 + 0x0a, u8(ram.u8(a4 + 0x0a) - 0x0f)),   // $29628C
+  subTick: subTickFn, direction: -1,
 };
 
 // ===========================================================================
 // E 8 -- $296362 / $2963A2.  Type-$1E carrier spawner.
 // ===========================================================================
-export function e8Init296362(ram, rom, a4) {
+export function e8Init296362(
+  ram, rom, a4, resources = BLACK_TYPE0E_RESOURCES
+) {
+  const e8 = resources.e.e8;
   const d0 = spread2595F2() * 2;                        // $296362/$296366/$29636C
-  ram.setU16(a4 + 0x02, rom.u16(W103.e8CountTab + d0)); // $29636E/$296372
-  ram.setU16(a4 + 0x04, rom.u16(W103.e8CadTab + d0));   // $296378/$29637C
+  ram.setU16(a4 + 0x02, rom.u16(e8.count + d0));        // $29636E/$296372
+  ram.setU16(a4 + 0x04, rom.u16(e8.cadence + d0));      // $296378/$29637C
   ram.setU16(a4 + 0x06, 0x0018);                        // $296382
   ram.setU16(a4 + 0x08, 0);                             // $296388
   ram.setU16(a4 + 0x0a, 0x0002);                        // $29638E
-  ram.setU16(a4 + 0x08, drawWord242EC2(ram, rom) & 1);  // $296394/$29639A/$29639E
+  ram.setU16(a4 + 0x08, drawWordByte(ram, rom, resources) & 1);  // $296394/$29639A/$29639E
 }
-export function e8Step2963A2(ram, rom, ctx, a4, a5, a6) {
+export function e8Step2963A2(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
+  const e8 = resources.e.e8;
+  const childResources = type1EResourcesForBoss(resources);
   if (subqByteBcc(ram, a4 + 0x06)) return;              // $2963A2/$2963A6
   ram.setU8(a4 + 0x06, ram.u8(a4 + 0x07));              // $2963AA
   // Part 1: alive and alternation bit == 0
   if (ram.u8(a6 + 0x3f) === 0 && ram.u16(a4 + 0x08) === 0) {   // $2963B0/$2963B8
-    spawn1E(ram, a6 + 0x22, 0xf6c00140, 0x1c20, a4);    // $2963C0..$2963E2
+    spawn1E(ram, a6 + 0x22, 0xf6c00140, e8.normalSpeedFacing, a4,
+      childResources);                                  // $2963C0..$2963E2
     if (ram.u16(W103.rank) !== 0)                       // $2963E8
-      spawn1E(ram, a6 + 0x22, 0xf6c00140, 0x1a28, a4);  // $2963F2..$296414
+      spawn1E(ram, a6 + 0x22, 0xf6c00140, 0x1a28, a4,
+        childResources);                                // $2963F2..$296414
   }
   // Part 2: alive and alternation bit != 0
   if (ram.u8(a6 + 0x7f) === 0 && ram.u16(a4 + 0x08) !== 0) {   // $29641A/$296422
-    spawn1E(ram, a6 + 0x62, 0xf6bffec0, 0x1c20, a4);    // $29642A..$29644C
+    spawn1E(ram, a6 + 0x62, 0xf6bffec0, e8.normalSpeedFacing, a4,
+      childResources);                                  // $29642A..$29644C
     if (ram.u16(W103.rank) !== 0)                       // $296452
-      spawn1E(ram, a6 + 0x62, 0xf6bffec0, 0x1a18, a4);  // $29645C..$29647E
+      spawn1E(ram, a6 + 0x62, 0xf6bffec0, 0x1a18, a4,
+        childResources);                                // $29645C..$29647E
   }
   ram.setU16(a4 + 0x04, u16(ram.u16(a4 + 0x04) + 1));   // $29484
   ram.setU16(a4 + 0x08, u16(ram.u16(a4 + 0x08) + 1) & 1);   // $29488/$2948C
@@ -640,8 +706,9 @@ export function e8Step2963A2(ram, rom, ctx, a4, a5, a6) {
   if (n === 0) ram.setU16(a4, 0);                       // $29496/$2949A
   void rom; void ctx; void a5;
 }
-function spawn1E(ram, posOff, bias, speedFace, a4) {
-  const r = enqueueDeferred(ram, 0x1e, DEFQ_D1.FIXED00, 0);   // $2963C2
+function spawn1E(ram, posOff, bias, speedFace, a4, suppliedResources) {
+  const resources = requireType1EResources(suppliedResources);
+  const r = enqueueDeferred(ram, resources.type, DEFQ_D1.FIXED00, 0);   // $2963C2
   ram.setU32(r.addr + 0x16, (ram.u32(posOff) + bias) >>> 0);   // $2963C8/$2963CC/$2963D2
   ram.setU16(r.addr + 0x1a, speedFace);                 // $2963D6
   ram.setU16(r.addr + 0x1c, ram.u16(a4 + 0x04));        // $2963DC
@@ -651,40 +718,40 @@ function spawn1E(ram, posOff, bias, speedFace, a4) {
 // ===========================================================================
 // E 12 -- $29669C / $2966B8.  HP-gated 10-shot burst (kind 19).
 // ===========================================================================
-export function e12Init29669C(ram, rom, a4) {
+export function e12Init29669C(
+  ram, rom, a4, resources = BLACK_TYPE0E_RESOURCES
+) {
   const d0 = spread2595F2() * 2;
-  ram.setU16(a4 + 0x02, rom.u16(W103.e12CountTab + d0));  // $29669C..$2966AC
+  ram.setU16(a4 + 0x02, rom.u16(resources.e.e12.count + d0));  // $29669C..$2966AC
   ram.setU16(a4 + 0x04, 0x0002);                        // $2966B2
 }
-export function e12Step2966B8(ram, rom, ctx, a4, a5, a6) {
-  if ((ram.u32(a5 + 0x16) >>> 0) >= W103.hpGate) return;   // $2966B8/$2966C0
+export function e12Step2966B8(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
+  const e12 = resources.e.e12;
+  if (e12.hpGate !== null
+      && (ram.u32(a5 + 0x16) >>> 0) >= e12.hpGate) return;  // $2966B8/$2966C0
   if (subqByteBcc(ram, a4 + 0x02)) return;              // $2966C4
   ram.setU8(a4 + 0x02, ram.u8(a4 + 0x03));              // $2966CC
   const d2 = ram.u32(a6 + 0x02);                        // $2966D2
   const d0 = 0x00000013;                                // $2966D6 moveq #$13
-  const d3A = rom.u32(W103.e12MuzzleA);                 // $2966DE
-  const d3B = rom.u32(W103.e12MuzzleB);                 // $296714
-  const log = new WriteLog(ram);
-  // Five from muzzle A: $84, +$12, +$12, -$36, -$12
-  let d1 = 0x84;                                        // $2966DA
-  for (let i = 0; i < 5; i++) {
-    fireBulletFan({ ram, rom, log }, 0x281764, { d0, d1, d2, d3: d3A, d4: 0, d5: 0, a5 });
-    d1 = u8(d1 + 0x12);                                 // $2966E8/$2966F2
+  const angleOffsets = [0, 1, 2, -1, -2];
+  for (let muzzle = 0; muzzle < 2; muzzle++) {
+    const d3 = rom.u32(e12.muzzle + muzzle * 4);
+    const start = e12.angles[muzzle];
+    for (let i = 0; i < e12.callsPerMuzzle; i++) {
+      fireBossBullet(ram, rom, resources, 'bankBSpreadTwo', {
+        d0,
+        d1: u8(start + angleOffsets[i] * e12.increment),
+        d2,
+        d3,
+        d4: 0,
+        d5: 0,
+        a5,
+      });
+    }
   }
-  d1 = u8(d1 - 0x36);                                   // $2966FC
-  fireBulletFan({ ram, rom, log }, 0x281764, { d0, d1, d2, d3: d3A, d4: 0, d5: 0, a5 });
-  d1 = u8(d1 - 0x12);                                   // $296706
-  fireBulletFan({ ram, rom, log }, 0x281764, { d0, d1, d2, d3: d3A, d4: 0, d5: 0, a5 });
-  // Five from muzzle B: $7C, +$12, +$12, -$36, -$12
-  d1 = 0x7c;                                            // $296710
-  for (let i = 0; i < 5; i++) {
-    fireBulletFan({ ram, rom, log }, 0x281764, { d0, d1, d2, d3: d3B, d4: 0, d5: 0, a5 });
-    d1 = u8(d1 + 0x12);                                 // $29671E/$296728
-  }
-  d1 = u8(d1 - 0x36);                                   // $296732
-  fireBulletFan({ ram, rom, log }, 0x281764, { d0, d1, d2, d3: d3B, d4: 0, d5: 0, a5 });
-  d1 = u8(d1 - 0x12);                                   // $29673C
-  fireBulletFan({ ram, rom, log }, 0x281764, { d0, d1, d2, d3: d3B, d4: 0, d5: 0, a5 });
   const n = u16(ram.u16(a4 + 0x04) - 1);                // $296746
   ram.setU16(a4 + 0x04, n);
   if (n === 0) ram.setU16(a4, 0);                       // $29674A/$29674E
@@ -733,7 +800,10 @@ export function e14Init2968E6(ram, a4) {
   ram.setU16(a4 + 0x08, 0x0001);                        // $2968F2 -- $8=$00, $9=$01
   ram.setU16(a4 + 0x0a, 0x000c);                        // $2968F8 -- $a=$00, $b=$0C
 }
-export function e14Step2968FE(ram, rom, ctx, a4, a5, a6) {
+export function e14Step2968FE(
+  ram, rom, ctx, a4, a5, a6,
+  resources = type0EResourcesFromContext(ctx)
+) {
   // $2968FE: if $8 == 0 run the outer cadence, else jump straight to the fire
   // cadence.  `$296902 66 00 00 22` is a `bne.W`: the displacement lives in the
   // EXTENSION WORD and $296904 + $22 = $296926.
@@ -767,20 +837,20 @@ export function e14Step2968FE(ram, rom, ctx, a4, a5, a6) {
   if (ram.u8(a6 + 0x3f) === 0) {                        // $29693A
     const y = u16(ram.u16(a6 + 0x22) + 0xf6c0);         // $296942/$296948
     const x = u16(ram.u16(a6 + 0x24) + 0x0140);         // $29694C
-    const r = aim256FromCaller(aimTables(rom), ram, a5, y, x);   // $296950
+    const r = aim256FromCaller(aimTables(rom, resources), ram, a5, y, x);   // $296950
     if (!r.carry) {                                     // $296956
       const d2 = (ram.u32(a6 + 0x22) + 0xf6c00140) >>> 0;   // $29695A
-      fire14Fan(ram, rom, a5, r.dir & 0xff, d2);        // $296968..$29699C
+      fire14Fan(ram, rom, a5, r.dir & 0xff, d2, resources);  // $296968..$29699C
     }
   }
   // Part 2
   if (ram.u8(a6 + 0x7f) === 0) {                        // $2969A0
     const y = u16(ram.u16(a6 + 0x62) + 0xf6c0);         // $2969A8/$2969AE
     const x = u16(ram.u16(a6 + 0x64) + 0xfec0);         // $2969B2
-    const r = aim256FromCaller(aimTables(rom), ram, a5, y, x);   // $2969B6
+    const r = aim256FromCaller(aimTables(rom, resources), ram, a5, y, x);   // $2969B6
     if (!r.carry) {                                     // $2969BC
       const d2 = (ram.u32(a6 + 0x62) + 0xf6bffec0) >>> 0;   // $2969C0
-      fire14Fan(ram, rom, a5, r.dir & 0xff, d2);        // $2969CE..$296A02
+      fire14Fan(ram, rom, a5, r.dir & 0xff, d2, resources);  // $2969CE..$296A02
     }
   }
   // $296A06: dec $8; if it reaches exactly 0, toggle $6.
@@ -790,8 +860,8 @@ export function e14Step2968FE(ram, rom, ctx, a4, a5, a6) {
   ram.setU16(a4 + 0x06, u16(ram.u16(a4 + 0x06) + 1) & 1);   // $296A0E/$296A12
   void ctx;
 }
-function fire14Fan(ram, rom, a5, d1, d2) {
-  const log = new WriteLog(ram);
+function fire14Fan(ram, rom, a5, d1, d2, resources) {
+  const e14 = resources.e.e14;
   const hard = ram.u16(W103.rank) !== 0;                // $296968/$2969CE
   let d0, d5, d7, ang;
   if (!hard) {
@@ -799,12 +869,12 @@ function fire14Fan(ram, rom, a5, d1, d2) {
     ang = u8(d1 - 2);                                   // $296978
     d5 = 2; d7 = 2;                                     // $29697A/$29697E -> 3 shots
   } else {
-    d0 = 0x00000004;                                    // $296986
-    ang = u8(d1 - 9);                                   // $296988
-    d5 = 3; d7 = 6;                                     // $29698C/$296990 -> 7 shots
+    d0 = e14.hardSpeed;                                  // $296986
+    ang = u8(d1 - e14.hardBackoff);                      // $296988
+    d5 = e14.hardStep; d7 = 6;                           // $29698C/$296990 -> 7 shots
   }
   for (let k = 0; k <= d7; k++) {                       // $296994
-    fireBulletFan({ ram, rom, log }, 0x2816f6,
+    fireBossBullet(ram, rom, resources, 'bankBDirect',
       { d0, d1: ang, d2, d3: 0, d4: 0, d5: 0, a5 });
     ang = u8(ang + d5);                                 // $29699A
   }
@@ -812,8 +882,11 @@ function fire14Fan(ram, rom, a5, d1, d2) {
 
 // ===========================================================================
 // $23F7C6 -- BUCKET-22 register-convention enqueue (same as $23E020 bucket 2).
+// The canonical descriptor and generated executable ledger pin the native stub
+// identity. Runtime uses the already-decoded operation so sparse data authority
+// never has to expose executable bytes as an ordinary ROM window.
 // ===========================================================================
-function emit23F7C6(ram, d1, d2, d3, d4) {
+function emit1E(ram, d1, d2, d3, d4) {
   return enqueueRegisters(ram, 22, d1 >>> 0, d2 >>> 0, d3, d4);
 }
 
@@ -841,23 +914,32 @@ function emit23F7C6(ram, d1, d2, d3, d4) {
 // `setU16(e + B.speed, ...)` would destroy the angle it is about to store.
 // The angle is `add.b` TWICE, i.e. x4 truncated to a byte, not x2 and not a
 // 16-bit shift.
-function carrierExplode(ram, ctx, a6, siteAddr) {
-  const e = spawnEffect(ram, ctx, 0x01, siteAddr);        // moveq #$1,D0 / jsr $289004
+function carrierExplode(ram, ctx, a6, siteAddr, resources) {
+  const e = spawnEffect(ram, ctx, 0x01, siteAddr, resources.effects);
   ram.setU32(e + B.pos, ram.u32(a6 + 0x02));              // move.l ($2,A6),($2,A0)
   ram.setU8(e + B.speed, ram.u8(a6 + B.speed));           // move.b ($1A,A6),($1A,A0)
   ram.setU8(e + B.angle, u8(ram.u8(a6 + B.angle) * 4));   // 2x add.b D0,D0
   ram.setU16(e + B.bucket, 0x10);                         // move.w #$10,($1E,A0)
 }
 
+function retire1E(ram, a5, resources) {
+  if (resources.retirement.semantic !== 'freeEnemy') {
+    throw new TypeError('type $1E retirement must preserve freeEnemy semantics');
+  }
+  freeEnemy(ram, a5);
+}
+
 // ===========================================================================
 // TYPE-$1E HANDLER -- `$296DD6`.  The carrier object's per-frame routine.
 // ===========================================================================
-export function handler1E_296DD6(ram, rom, a5, ctx) {
+export function handler1E_296DD6(ram, rom, a5, ctx,
+  suppliedResources = BLACK_TYPE1E_RESOURCES) {
+  const resources = requireType1EResources(suppliedResources);
   const a6 = ram.u32(a5 + 0x06);
   // $296DD6: boss death flag -> explode and free immediately.
   if ((ram.u8(W103.bossFlags) & 0x40) !== 0) {          // $296DD6/$296DDE
-    carrierExplode(ram, ctx, a6, 0x296dfc);             // $296DFA/$296DFC
-    freeEnemy(ram, a5);                                 // $296E20 jmp $263762
+    carrierExplode(ram, ctx, a6, resources.sites.effects[0], resources);
+    retire1E(ram, a5, resources);                       // $296E20 jmp $263762
     return;
   }
   // $296DE2: hit test.  D1 = $5C & (a6); if non-zero, clear hit bits.
@@ -875,9 +957,9 @@ export function handler1E_296DD6(ram, rom, a5, ctx) {
     const life = u8(ram.u8(a6 + 0x1a) - 1);             // $296E3C
     ram.setU8(a6 + 0x1a, life);
     if (life === 0) {                                   // $296E40 tst.b/bne
-      carrierExplode(ram, ctx, a6, 0x296e4a);           // $296E48/$296E4A
-      fire1EDeathFan(ram, rom, a5, a6);                 // $296E82..$296F20
-      freeEnemy(ram, a5);                               // $296F24 jmp $263762
+      carrierExplode(ram, ctx, a6, resources.sites.effects[1], resources);
+      fire1EDeathFan(ram, rom, a5, a6, resources);
+      retire1E(ram, a5, resources);                     // $296F24 jmp $263762
       return;
     }
   }
@@ -888,18 +970,18 @@ export function handler1E_296DD6(ram, rom, a5, ctx) {
     ram.setU8(a5 + 0x1e, ram.u8(a5 + 0x1f));            // $296F34
     ram.setU16(a5 + 0x20, u16(ram.u16(a5 + 0x20) + 4) & 0x3f);   // $296F3A/$296F3E
   }
-  const d2 = rom.u32(W103.obj1ESprites + ram.u16(a5 + 0x20));   // $296F44..$296F4E
+  const d2 = rom.u32(resources.animationTable + ram.u16(a5 + 0x20));
   const d1 = (ram.u32(a6 + 0x02) + 0xfa00fd00) >>> 0;   // $296F50/$296F54
-  emit23F7C6(ram, d1, d2, 0x0618, 0x11);                // $296F5A/$296F5E/$296F60
+  emit1E(ram, d1, d2, 0x0618, 0x11);                     // $296F5A/$296F5E/$296F60
 }
 /** The three-volley kind 3/4/5 death fan, each 16 shots from a different
  *  fan table, counts N, N-4, N-7.  Skipped entirely when death-pause or
  *  freeze is active. */
-function fire1EDeathFan(ram, rom, a5, a6) {
+function fire1EDeathFan(ram, rom, a5, a6, resources) {
   if (ram.u16(W103.deathPause) !== 0) return;           // $296E92
   if (ram.u16(W103.freeze) !== 0) return;               // $296E9C
   const d2 = ram.u32(a6 + 0x02);                        // $296E7A
-  let d1 = u8(drawWord242EC2(ram, rom));                // $296E6E
+  let d1 = u8(drawWordByteWithResources(ram, rom, resources.rng));
   let count = i16(ram.u16(a5 + 0x1c));                  // $296E82/$296E86/$296E88
   const log = new WriteLog(ram);
   const volley = (kind, tab, cnt) => {
@@ -907,23 +989,25 @@ function fire1EDeathFan(ram, rom, a5, a6) {
     for (let k = 0; k < 16; k++) {                      // $296EA6/$296ED4/$296F02
       const idx = (u8(d1) & 0x3f) * 4;                  // $296EAE..$296EB8
       const d3 = rom.u32(tab + idx);                    // $296EBC
-      fireBulletFan({ ram, rom, log }, 0x2813f0,
-        { d0, d1: u8(d1), d2, d3, d4: 0, d5: 0, a5 });
+      fireBulletWithResources({ ram, rom, log }, resources.bullet.entry,
+        { d0, d1: u8(d1), d2, d3, d4: 0, d5: 0, a5 }, resources.bullet);
       d1 = u8(d1 + 4);                                  // $296EC2/$296EF0/$296F1E
     }
   };
-  volley(3, W103.fanTableA, count);                     // $296E8E
-  count = u16(count - 4);                               // $296EC8 subi.l #$40000
-  d1 = u8(d1 + 2);                                      // $296ED2
-  volley(4, W103.fanTableB, count);                     // $296ECE
-  count = u16(count - 3);                               // $296EF6 subi.l #$30000
-  d1 = u8(d1 + 2);                                      // $296F00
-  volley(5, W103.fanTableC, count);                     // $296EFC
+  volley(3, resources.fanTables[0], count);
+  count = u16(count - resources.countDeltas[0]);
+  d1 = u8(d1 + 2);
+  volley(4, resources.fanTables[1], count);
+  count = u16(count - resources.countDeltas[1]);
+  d1 = u8(d1 + 2);
+  volley(5, resources.fanTables[2], count);
 }
 
 // ============================================================= REGISTRATION
-const A6 = (ctx, at) => bossA6(ctx, at);
-const A5 = (ctx, at) => bossA5(ctx, at);
+const source = (ctx, fallback) => ctx.bossScriptAddress ?? fallback;
+const A6 = (ctx, fallback) => bossA6(ctx, source(ctx, fallback));
+const A5 = (ctx, fallback) => bossA5(ctx, source(ctx, fallback));
+const R = (ctx) => type0EResourcesFromContext(ctx);
 
 // MAIN 3 / 4 / 8 -- all three INITs fall through.
 registerScript(0x2934a2, (ram, rom, ctx, a4) => {
@@ -936,8 +1020,9 @@ registerScript(0x2934ac, (ram, rom, ctx, a4) =>
 
 registerScript(0x2934f8, (ram, rom, ctx, a4) => {
   const a6 = A6(ctx, 0x2934f8);
-  main4Init2934F8(ram, rom, a4, a6);
-  main4Step293506(ram, rom, ctx, a4, A5(ctx, 0x2934f8), a6);
+  const resources = R(ctx);
+  main4Init2934F8(ram, rom, a4, a6, resources);
+  main4Step293506(ram, rom, ctx, a4, A5(ctx, 0x2934f8), a6, resources);
 });
 registerScript(0x293506, (ram, rom, ctx, a4) =>
   main4Step293506(ram, rom, ctx, a4, A5(ctx, 0x293506), A6(ctx, 0x293506)));
@@ -991,7 +1076,7 @@ registerScript(0x294a44, (ram, rom, ctx, a4) => closeHatchStep(ram, a4, A6(ctx, 
 
 // D 14 / D 15.
 registerScript(0x294566, (ram, rom, ctx, a4) =>
-  d14Init294566(ram, rom, a4, A6(ctx, 0x294566)));
+  d14Init294566(ram, rom, a4, A6(ctx, 0x294566), R(ctx)));
 registerScript(0x294658, (ram, rom, ctx, a4) =>
   d14Step294658(ram, a4, A6(ctx, 0x294658)));
 
@@ -1002,32 +1087,40 @@ registerScript(0x294878, (ram, rom, ctx, a4) =>
 // E 5 / E 6 -- INITs fall through when the part is alive.
 registerScript(0x296082, (ram, rom, ctx, a4) => {
   const a5 = A5(ctx, 0x296082), a6 = A6(ctx, 0x296082);
-  rotationGunInit(ram, rom, a4, a6, ROT5);
-  rotationGunStep(ram, rom, ctx, a4, a5, a6, ROT5);
+  const resources = R(ctx);
+  rotationGunInit(ram, rom, a4, a6, ROT5, resources);
+  rotationGunStep(ram, rom, ctx, a4, a5, a6, ROT5, resources);
 });
 registerScript(0x2960f4, (ram, rom, ctx, a4) =>
   rotationGunStep(ram, rom, ctx, a4, A5(ctx, 0x2960f4), A6(ctx, 0x2960f4), ROT5));
 
 registerScript(0x296188, (ram, rom, ctx, a4) => {
   const a5 = A5(ctx, 0x296188), a6 = A6(ctx, 0x296188);
-  rotationGunInit(ram, rom, a4, a6, ROT6);
-  rotationGunStep(ram, rom, ctx, a4, a5, a6, ROT6);
+  const resources = R(ctx);
+  rotationGunInit(ram, rom, a4, a6, ROT6, resources);
+  rotationGunStep(ram, rom, ctx, a4, a5, a6, ROT6, resources);
 });
 registerScript(0x296200, (ram, rom, ctx, a4) =>
   rotationGunStep(ram, rom, ctx, a4, A5(ctx, 0x296200), A6(ctx, 0x296200), ROT6));
 
 // E 8 -- INIT falls through.
 registerScript(0x296362, (ram, rom, ctx, a4) => {
-  e8Init296362(ram, rom, a4);
-  e8Step2963A2(ram, rom, ctx, a4, A5(ctx, 0x296362), A6(ctx, 0x296362));
+  const resources = R(ctx);
+  e8Init296362(ram, rom, a4, resources);
+  e8Step2963A2(
+    ram, rom, ctx, a4, A5(ctx, 0x296362), A6(ctx, 0x296362), resources
+  );
 });
 registerScript(0x2963a2, (ram, rom, ctx, a4) =>
   e8Step2963A2(ram, rom, ctx, a4, A5(ctx, 0x2963a2), A6(ctx, 0x2963a2)));
 
 // E 12 -- INIT falls through.
 registerScript(0x29669c, (ram, rom, ctx, a4) => {
-  e12Init29669C(ram, rom, a4);
-  e12Step2966B8(ram, rom, ctx, a4, A5(ctx, 0x29669c), A6(ctx, 0x29669c));
+  const resources = R(ctx);
+  e12Init29669C(ram, rom, a4, resources);
+  e12Step2966B8(
+    ram, rom, ctx, a4, A5(ctx, 0x29669c), A6(ctx, 0x29669c), resources
+  );
 });
 registerScript(0x2966b8, (ram, rom, ctx, a4) =>
   e12Step2966B8(ram, rom, ctx, a4, A5(ctx, 0x2966b8), A6(ctx, 0x2966b8)));

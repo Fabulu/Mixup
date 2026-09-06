@@ -155,32 +155,49 @@ function deadEntry(addr, what) {
  * every angle into the wrong quadrant.
  */
 export class AimTables {
-  constructor(rom) {
-    this.lut64 = Uint8Array.from(rom.bytes(AIM.lut64, 129));
+  constructor(rom, resources64 = BLACK_AIM64_RESOURCES,
+    resources256 = BLACK_AIM256_RESOURCES) {
+    if (!resources64 || resources64.entries !== 129
+        || !Number.isSafeInteger(resources64.lut)
+        || !Number.isSafeInteger(resources64.base)
+        || !Number.isSafeInteger(resources64.ops)
+        || !Number.isSafeInteger(resources64.sub)
+        || !Number.isSafeInteger(resources64.add)) {
+      throw new TypeError('aim64 needs its 129-byte LUT and eight octant pointers');
+    }
+    if (!resources256 || resources256.lutEntries !== 65
+        || resources256.baseEntries !== 8 || resources256.opEntries !== 8
+        || resources256.opStride !== 8
+        || !Number.isSafeInteger(resources256.lut)
+        || !Number.isSafeInteger(resources256.base)
+        || !Number.isSafeInteger(resources256.ops)) {
+      throw new TypeError('aim256 needs its 65-byte LUT and eight octant stubs');
+    }
+    this.lut64 = Uint8Array.from(rom.bytes(resources64.lut, resources64.entries));
     this.base64 = [];
     this.sub64 = [];
     for (let i = 0; i < 8; i++) {
-      this.base64.push(rom.u16(AIM.base64 + 2 * i));       // $242098
-      const op = rom.u32(AIM.ops64 + 4 * i);               // $2420A4 movea.l
-      if (op !== AIM.opSub64 && op !== AIM.opAdd64) {
-        unreached(AIM.ops64 + 4 * i, `the octant-sign table $2420C6[${i}] holds `
-          + `$${op.toString(16).toUpperCase()}, which is neither $2420AE (sub.w `
-          + `D0,D1) nor $2420BA (add.w D0,D1) -- the only two routines $24209C `
-          + `can dispatch. The export is stale or the address is wrong`);
+      this.base64.push(rom.u16(resources64.base + 2 * i)); // $242098
+      const op = rom.u32(resources64.ops + 4 * i);         // $2420A4 movea.l
+      if (op !== resources64.sub && op !== resources64.add) {
+        unreached(resources64.ops + 4 * i, `the aim64 octant-sign table [${i}] holds `
+          + `$${op.toString(16).toUpperCase()}, which is neither its canonical `
+          + `subtract entry $${resources64.sub.toString(16).toUpperCase()} nor add `
+          + `entry $${resources64.add.toString(16).toUpperCase()}`);
       }
-      this.sub64.push(op === AIM.opSub64);
+      this.sub64.push(op === resources64.sub);
     }
-    this.lut256 = Uint8Array.from(rom.bytes(AIM.lut256, 65));
+    this.lut256 = Uint8Array.from(rom.bytes(resources256.lut, resources256.lutEntries));
     this.base256 = [];
     this.sub256 = [];
-    for (let i = 0; i < 8; i++) {
-      this.base256.push(rom.u16(AIM.base256 + 2 * i));     // $2422FC
-      const op = rom.u16(AIM.ops256 + 8 * i);              // $24230A jsr (A0,D4.w)
+    for (let i = 0; i < resources256.opEntries; i++) {
+      this.base256.push(rom.u16(resources256.base + 2 * i)); // $2422FC
+      const op = rom.u16(resources256.ops + resources256.opStride * i); // $24230A
       if (op !== 0x9240 && op !== 0xd240) {
-        unreached(AIM.ops256 + 8 * i, `the aim256 octant stub $242312[${i}] opens `
-          + `$${op.toString(16).toUpperCase()}, not $9240 (sub.w D0,D1) or $D240 `
-          + `(add.w D0,D1). Every one of the eight stubs is exactly `
-          + `<add|sub>.w D0,D1 / andi.w #$FF,D1 / rts`);
+        unreached(resources256.ops + resources256.opStride * i,
+          `the aim256 octant stub [${i}] opens $${op.toString(16).toUpperCase()}, `
+          + `not $9240 (sub.w D0,D1) or $D240 (add.w D0,D1). Every one of the `
+          + `eight stubs is exactly <add|sub>.w D0,D1 / andi.w #$FF,D1 / rts`);
       }
       this.sub256.push(op === 0x9240);
     }
