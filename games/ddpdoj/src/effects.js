@@ -237,6 +237,7 @@ function type11EffectResources(resources = BLACK_TYPE11_EFFECT_RESOURCES) {
   const byte128 = resources?.rng?.byte128;
   const byte64 = resources?.rng?.byte64;
   if (!Number.isSafeInteger(resources?.poolCEntry)
+      || !Number.isSafeInteger(resources?.poolCBurst)
       || !Number.isSafeInteger(resources?.poolCDriver)
       || !Number.isSafeInteger(resources?.poolCEmitTable)
       || !Array.isArray(resources?.poolCEmitters)
@@ -1017,7 +1018,8 @@ function poolCCollision289C54(ram, slot) {
  * more: `$264830` is the only `jsr $289B50` (moveq #$4); the other seven are
  * `jsr $289AF4` -- `$2673E6 $26821E $2688BA` (moveq #$4), `$27664E $2774BC
  * $2777D6` (moveq #$8) and `$267F62`, the clamped draw above. Kind $C also
- * arrives through the THIRD allocator `$289B22`, which is not ported.
+ * arrives through the THIRD allocator `$289B22`, whose caller-relative wrapper
+ * reuses this scan and fill below.
  */
 export function spawnPoolC289B50(ram, rom, ctx, kind, bucket, position,
   siteAddr = 0x289b50, resources = BLACK_TYPE11_EFFECT_RESOURCES) {
@@ -1070,6 +1072,18 @@ export function spawnPoolC289B50(ram, rom, ctx, kind, bucket, position,
   ram.setU16(POOL_C.count, u16(ram.u16(POOL_C.count) + 1));
   ctx?.poolCSpawn?.(slot, kind, bucket);
   return slot;
+}
+
+/** `$289B22`, add a packed position delta to the caller, then allocate pool C. */
+export function spawnPoolC289B22(
+  ram, rom, ctx, kind, bucket, delta, caller,
+  resources = BLACK_TYPE11_EFFECT_RESOURCES,
+) {
+  const effects = type11EffectResources(resources);
+  const position = (ram.u32(caller + C.pos) + (delta >>> 0)) >>> 0;
+  return spawnPoolC289B50(
+    ram, rom, ctx, kind, bucket, position, effects.poolCBurst, effects,
+  );
 }
 
 /**

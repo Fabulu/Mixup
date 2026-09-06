@@ -9,7 +9,7 @@ import { WHITE_LABEL_PROFILE } from '../src/profiles.js';
 import { ENEMY } from '../src/enemies.js';
 import { BUL, REC as BULLET_REC, TYPEBIT } from '../src/bullets.js';
 import { B as IMPACT } from '../src/bee.js';
-import { B, POOL_B } from '../src/effects.js';
+import { B, C, POOL_B, POOL_C } from '../src/effects.js';
 import { LEDGER } from '../src/score.js';
 import { createInitBodyMap } from '../src/initbody.js';
 import { handlerMap, runHandler } from '../src/handlers.js';
@@ -26,12 +26,17 @@ import {
 const tables = JSON.parse(readFileSync(fileURLToPath(
   new URL('../rip/port/player.tables.json', import.meta.url),
 ), 'utf8'));
+const NUMERIC_WINDOWS = tables.rom.windows.map(({ base, len }) => {
+  const start = Number.parseInt(base.slice(1), 16);
+  return { start, end: start + len };
+});
 
 const SOURCE = 0x131304;
 const MOVEMENT = 0x131eb0;
 const REC = ENEMY.bandCommon;
 const SUB = 0x81459c;
 const TYPE88_WINDOWS = Object.freeze([
+  Object.freeze({ base: '$1434C4', len: 0x0080 }),
   Object.freeze({ base: '$171DCE', len: 0x0080 }),
   Object.freeze({ base: '$17224E', len: 0x0080 }),
   Object.freeze({ base: '$174E3A', len: 0x0008 }),
@@ -39,6 +44,9 @@ const TYPE88_WINDOWS = Object.freeze([
   Object.freeze({ base: '$17547A', len: 0x002c }),
   Object.freeze({ base: '$177382', len: 0x0030 }),
   Object.freeze({ base: '$17D504', len: 0x0008 }),
+  Object.freeze({ base: '$188932', len: 0x0004 }),
+  Object.freeze({ base: '$18899A', len: 0x001c }),
+  Object.freeze({ base: '$188A46', len: 0x0030 }),
 ]);
 
 function trackedCartridge() {
@@ -62,9 +70,13 @@ function trackedCartridge() {
 }
 
 function assertWhiteOnly(reads) {
-  assert.deepEqual(reads.filter(({ address, end }) =>
-    address >= 0x200000 || end > 0x200000), [],
-  'every White Type $88 cartridge read stays below $200000');
+  for (const read of reads) {
+    assert.ok(read.address >= 0 && read.end <= 0x200000,
+      `White Type $88 ${read.method} escaped Build A at $${read.address.toString(16)}`);
+    assert.ok(NUMERIC_WINDOWS.some(({ start, end }) =>
+      read.address >= start && read.end <= end),
+    `White Type $88 ${read.method} at $${read.address.toString(16)} crossed a window seam`);
+  }
 }
 
 function assertRead(reads, address) {
@@ -176,6 +188,8 @@ test('White Type $88 owns its exact descriptors, windows, and natural $131304 ro
   assert.deepEqual(white.bullet.direct.supportedKinds, [4]);
   assert.deepEqual(white.bullet.spreadTwo.supportedKinds, [4]);
   assert.equal(white.poolAKind, 0x08);
+  assert.equal(black.secondaryBurst, black.effects.poolCBurst);
+  assert.equal(white.secondaryBurst, white.effects.poolCBurst);
   for (const value of [black, white, white.aim, white.aim64, white.emitter,
     white.bullet, white.bullet.direct, white.bullet.spreadTwo,
     white.bullet.direct.supportedKinds, white.score, white.cues, white.effects,
@@ -212,7 +226,7 @@ test('White Type $88 owns its exact descriptors, windows, and natural $131304 ro
     ...tables.editions.whiteLabel.worldRuntimeWindows,
     ...tables.editions.whiteLabel.bulletRuntimeWindows,
   ];
-  assert.equal(TYPE88_WINDOWS.reduce((sum, window) => sum + window.len, 0), 0x01fa);
+  assert.equal(TYPE88_WINDOWS.reduce((sum, window) => sum + window.len, 0), 0x02ca);
   for (const expected of TYPE88_WINDOWS) {
     assert.equal(manifest.filter((window) =>
       window.base === expected.base && window.len === expected.len).length, 1);
@@ -380,10 +394,12 @@ test('White Type $88 lethal P2 ownership scores $115 and uses native drops, effe
   const kills = [];
   const sounds = [];
   const effects = [];
+  const bursts = [];
   const ctx = handlerContext(fixture, {
     killEvent: (...args) => kills.push(args),
     soundPost: (address) => sounds.push(address),
     effectSpawn: (...args) => effects.push(args),
+    poolCSpawn: (...args) => bursts.push(args),
   });
 
   runHandler(descriptor.handler, ram, rom, REC, ctx, world.resources);
@@ -403,6 +419,35 @@ test('White Type $88 lethal P2 ownership scores $115 and uses native drops, effe
     [0x85, descriptor.effect.sites[3], POOL_B.base + 3 * POOL_B.stride,
       descriptor.effects.poolBAllocator],
   ]);
+  assert.deepEqual(bursts, [
+    [POOL_C.base, 0x0c, 0],
+    [POOL_C.base + POOL_C.stride, 0x0c, 0],
+  ]);
+  assert.equal(ram.u16(POOL_C.count), 2);
+  const poolC = [0, 1].map((i) => {
+    const slot = POOL_C.base + i * POOL_C.stride;
+    return [
+      ram.u16(slot + C.status), ram.u32(slot + C.pos), ram.u32(slot + C.offs),
+      ram.u32(slot + C.descriptor), ram.u16(slot + C.size),
+      ram.u16(slot + C.cursor), ram.u16(slot + C.wrap), ram.u32(slot + C.list),
+      ram.u16(slot + C.template18), ram.u8(slot + C.attr),
+      ram.u8(slot + C.palette), ram.u8(slot + C.bucket), ram.u8(slot + C.marker),
+      ram.u16(slot + C.cull),
+    ];
+  });
+  assert.deepEqual(poolC, [
+    [
+      0x800c, 0x40001a00, 0xf400f700, 0x00128544,
+      0x0c48, 0x0004, 0x000c, 0x00188a46,
+      0x0002, 0x20, 0x1e, 0x00, 0x00, 0xe800,
+    ],
+    [
+      0x800c, 0x40002600, 0xf400f700, 0x001292e4,
+      0x0c48, 0x0004, 0x000c, 0x00188a66,
+      0x0002, 0x00, 0x1e, 0x00, 0x00, 0xe800,
+    ],
+  ]);
+  assert.equal(ram.u8(0x803917), 0x0d);
 
   assert.equal(ram.u16(descriptor.poolA.liveCount), 7);
   for (let i = 0; i < 7; i++) {
@@ -427,9 +472,7 @@ test('White Type $88 lethal P2 ownership scores $115 and uses native drops, effe
   [0, 0x05c0, 0x0440, 0x0380]);
   assert.deepEqual([0, 1, 2, 3].map((i) =>
     ram.u16(POOL_B.base + i * POOL_B.stride + B.hook)), [1, 1, 1, 1]);
-  const notes = ctx.unported.report().join('\n');
-  assert.match(notes, /\$18865E.*D0=\$C, D2=\$FFFFFA00/);
-  assert.match(notes, /\$18865E.*D0=\$C, D2=\$00000600/);
+  assert.deepEqual(ctx.unported.report(), []);
   assert.deepEqual([ram.u16(REC), ram.u8(SUB)], [0, 1]);
   for (const address of [
     descriptor.score.capTable, descriptor.score.refillTable,
@@ -437,6 +480,8 @@ test('White Type $88 lethal P2 ownership scores $115 and uses native drops, effe
     descriptor.poolA.templateTable + descriptor.poolAKind,
     descriptor.poolAOffsets, descriptor.poolAOffsets + 6 * 4,
     descriptor.effect.remap + ram.u16(SUB + 0x1e) * 2,
+    descriptor.effects.poolCTemplateTable + 0x0c,
+    0x18899a, 0x1889aa, 0x1889b2, 0x188a4a, 0x188a6a,
   ]) assertRead(reads, address);
   assertWhiteOnly(reads);
 });

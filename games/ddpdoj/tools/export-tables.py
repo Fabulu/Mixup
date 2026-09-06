@@ -11437,7 +11437,7 @@ WHITE_LABEL_WINDOWS = [
     (0x146296, 0x0080, "White A zero and blank Stage 1 palettes"),
 ]
 
-# Task #253's private Stage 1 world slice, extended through Task #289 for Types
+# Task #253's private Stage 1 world slice, extended through Task #292 for Types
 # $27, $10, $85, $0D, $1C, $82, $89, $88, $08, $0B, $09, $24, $31, $0E,
 # and $1E. These are the bounded Build A data windows read by the shared
 # background, spawn, enemy, bullet, cue, item, effect, and boss algorithms.
@@ -11502,6 +11502,7 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x143192, 0x0080, "White A shared rank, item-launch, and Pool-D angle RNG table"),
     (0x14322E, 0x0100, "White A shared Pool-A and Pool-D unmasked RNG table"),
     (0x14336A, 0x0100, "White A shared Pool-A and Pool-D signed RNG table"),
+    (0x1434C4, 0x0080, "White A shared Pool-C and laser-bomb selector RNG table"),
     (0x14359E, 0x0040, "White A shared Pool-A and Pool-D masked RNG table"),
     (0x1435FE, 0x0100, "White A boss muzzle-jitter RNG table"),
     (0x1548D8, 0x000A, "White A bee-earned hyper grant mode table"),
@@ -11654,8 +11655,11 @@ WHITE_WORLD_RUNTIME_WINDOWS = [
     (0x18859C, 0x0080, "White A Pool-D template-$00 descriptor list three"),
     (0x188762, 0x0014, "White A Pool-C five-entry emitter pointer table"),
     (0x18892A, 0x0004, "White A Pool-C kind-$04 template pointer"),
+    (0x188932, 0x0004, "White A Pool-C kind-$0C template pointer"),
     (0x188962, 0x001C, "White A Pool-C kind-$04 template and list pointers"),
+    (0x18899A, 0x001C, "White A Pool-C kind-$0C template and list pointers"),
     (0x1889E6, 0x0030, "White A Pool-C kind-$04 reachable descriptor lists"),
+    (0x188A46, 0x0030, "White A Pool-C kind-$0C reachable descriptor lists"),
     (0x1897AE, 0x041C, "White A type-$85 cue spawner, driver, dispatch, and kinds $00/$04/$08"),
     (0x189BCA, 0x006A, "White A type-$85 remaining reachable cue kinds"),
     (0x1910C6, 0x0008, "White A Type-$0E run-length init stub"),
@@ -12277,7 +12281,13 @@ for _speed in WHITE_BULLET_SPEED_LEVELS:
 SHOT_WINDOWS.extend(WHITE_LABEL_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_WORLD_RUNTIME_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_HYPER_HUD_RUNTIME_WINDOWS)
-SHOT_WINDOWS.extend(WHITE_BUTTON2_RUNTIME_WINDOWS)
+_white_before_button2_window_keys = {
+    (address, length) for address, length, _ in SHOT_WINDOWS
+}
+SHOT_WINDOWS.extend(
+    row for row in WHITE_BUTTON2_RUNTIME_WINDOWS
+    if (row[0], row[1]) not in _white_before_button2_window_keys
+)
 SHOT_WINDOWS.extend(WHITE_PLAYER_WINDOWS)
 SHOT_WINDOWS.extend(WHITE_SHOT_PRODUCER_WINDOWS)
 WHITE_SHOT_SHARED_OPTION_WINDOW_KEYS = {(0x189042, 0x00A6)}

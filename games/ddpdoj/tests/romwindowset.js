@@ -893,10 +893,29 @@
 // Measured: 1857 -> 1865 windows, 663,301 -> 664,087 bytes, 903 -> 911 unique
 // White windows, 205,504 -> 206,290 White bytes, and 80 -> 80 overlap pairs.
 
-export const ROM_WINDOW_COUNT = 1865;
+// ---------------------------------------------------------------------------
+// TASK #289 WHITE STAGE 1 BOSS ADDED 59 DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// Build A boss palettes, dispatch and RNG tables, type rows, prototypes, and
+// reachable Type-$0E/$1E scripts add 4,654 exact bytes below $200000. No new
+// pair overlaps.
+// Measured: 1865 -> 1924 windows, 664,087 -> 668,741 bytes, 911 -> 970 unique
+// White windows, 206,290 -> 210,944 White bytes, and 80 -> 80 overlap pairs.
+
+// ---------------------------------------------------------------------------
+// TASK #292 WHITE TYPE $88 DEATH BURSTS ADDED THREE DISJOINT WINDOWS.
+// ---------------------------------------------------------------------------
+// The kind-$0C Pool-C template pointer, complete template, and three reachable
+// descriptor lists add 80 exact bytes below $200000. The shared 128-byte RNG
+// window was already globally exported for Button 2 and is now also owned by
+// the White world manifest. No new pair overlaps.
+// Measured: 1924 -> 1927 windows, 668,741 -> 668,821 bytes, 970 -> 973 unique
+// White windows, 210,944 -> 211,024 White bytes, and 80 -> 80 overlap pairs.
+
+export const ROM_WINDOW_COUNT = 1927;
 
 /** Total declared bytes over the current window set, with overlaps counted. */
-export const ROM_WINDOW_BYTES = 664087;
+export const ROM_WINDOW_BYTES = 668821;
 
 /** W497's forced `[authentic-style templates, prior pointed-struct window]`
  * overlap. `tests/w428cuescript.test.js` asserts its exact six-byte shape. */
@@ -996,8 +1015,8 @@ function removeTask277BlackAnimationWindow(tables, required = false) {
   return tables;
 }
 
-const WHITE_LABEL_WINDOW_COUNT = 911;
-const WHITE_LABEL_WINDOW_BYTES = 206290;
+const WHITE_LABEL_WINDOW_COUNT = 973;
+const WHITE_LABEL_WINDOW_BYTES = 211024;
 
 /** Remove the later embedded Version A family and Task #277's Black animation
  *  correction before reconstructing any earlier Black Label ledger. The

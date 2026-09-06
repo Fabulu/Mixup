@@ -117,8 +117,8 @@ import {
 } from './midboss-resources.js';
 import { requireType0EResources, requireType1EResources } from './boss-resources.js';
 import { scoreByMask, scoreHit, scoreKill } from './score.js';
-import { spawnEffect, spawnPoolC289B50, spawnPoolC289AF4, remapBucket, REMAP, B,
-  walkDeathSpawns270D92 } from './effects.js';
+import { spawnEffect, spawnPoolC289B22, spawnPoolC289B50, spawnPoolC289AF4,
+  remapBucket, REMAP, B, walkDeathSpawns270D92 } from './effects.js';
 import { spawnItem } from './items.js';
 import {
   allocBee27F92A, allocPoolA27F8F0, allocPoolAWithResources,
@@ -5592,12 +5592,15 @@ function fire88(ram, rom, a5, a6, ctx, descriptor) {
  *  `$2763E8` and FOUR `$289004` allocations, each with eight to ten field
  *  writes into the record the allocator would have returned. */
 function deathSeq88(ram, rom, a5, ctx, d1, descriptor) {
-  const u = ctx.unported;
   const a6 = ram.u32(a5 + 0x06);
   scoreKill(ram, rom, ctx, 0x115, d1, descriptor.score);
   ctx.soundPost?.(descriptor.sound.death);
-  noteEffect(u, descriptor.secondaryBurst, a5, 'D0=$C, D2=$FFFFFA00');
-  noteEffect(u, descriptor.secondaryBurst, a5, 'D0=$C, D2=$00000600');
+  spawnPoolC289B22(
+    ram, rom, ctx, 0x0c, 0, 0xfffffa00, a6, descriptor.effects,
+  );
+  spawnPoolC289B22(
+    ram, rom, ctx, 0x0c, 0, 0x00000600, a6, descriptor.effects,
+  );
   // The cartridge loops over seven edition-owned Pool-A displacement vectors.
   for (let i = 0; i < 7; i++) {
     allocPoolAWithResources(
