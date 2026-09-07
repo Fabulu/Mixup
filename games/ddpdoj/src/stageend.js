@@ -101,6 +101,7 @@ import { poolClear as clearBulletPool28131E, poolPark as parkBulletSlots281330 }
 import { flushPendingHyper2875B4 } from './hyper.js';
 import { emit23F82A } from './bossarrival.js';
 import { postBossSound } from './boss-sound.js';
+import { clearWhiteHardware13C814 } from './white-hardware.js';
 // W389 -- `$24676A..$2467C3`, the per-node CONTENT seeding that lives INSIDE `$246710`'s
 // allocation loop. `animobjects.js` imports nothing from here, so this is not a cycle.
 import { buildChain246532, CHAIN_SPECS, loadAnimObjects24652A,
@@ -292,6 +293,14 @@ export function rebuildWorld25FD38(ram, ctx) {
  * boss script being stepped twice a frame from here on.
  */
 export function runStageAdvance242952(ram, rom, ctx, resources = null) {
+  const advance = resources?.lifecycle?.stageAdvance ?? null;
+  const prelude = advance?.prelude ?? null;
+  if (prelude === 0x13c814) clearWhiteHardware13C814(ram);      // $142C8C jsr $13C814
+  else if (prelude !== null) {
+    throw new TypeError(
+      `unsupported stage-advance prelude $${prelude.toString(16).toUpperCase()}`
+    );
+  }
   const sound = resources?.sound?.stageAdvance ?? 0x28cb60;
   const dispatch = resources?.lifecycle?.objectDispatch ?? SE.dispatch;
   // W152: the real fixed-index streaming leaf is handled by the production
@@ -303,7 +312,11 @@ export function runStageAdvance242952(ram, rom, ctx, resources = null) {
   ram.setU16(SE.clearing, 1);                              // $242968
   playerBit5(ram, SE.p1);                                  // $242970..$242992
   playerBit5(ram, SE.p2);                                  // $242994..$2429B6
-  const authenticNext = u16(ram.u16(SE.stage) + 1);             // $2429B8/$2429BE
+  const wrapAt = advance?.wrapAt ?? null;
+  let authenticNext = u16(ram.u16(SE.stage) + 1);          // $2429B8/$2429BE
+  if (wrapAt !== null && authenticNext >= wrapAt) {
+    authenticNext = 0;                                     // $142D00 cmpi / bcs
+  }
   const d7 = ctx.stageAdvanceTransform
     ? u16(ctx.stageAdvanceTransform(authenticNext)) : authenticNext;
   // $242A30..$242A3E -- create OBJECT TYPE 6 and hand it the new stage number.

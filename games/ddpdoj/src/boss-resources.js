@@ -221,6 +221,9 @@ export const BLACK_TYPE0E_RESOURCES = deepFreeze({
   },
   lifecycle: {
     retirement: { entry: 0x263762, semantic: 'freeEnemy' },
+    stageAdvance: {
+      entry: 0x242952, body: 0x242952, prelude: null, wrapAt: null,
+    },
     objectDispatch: 0x240f62,
     timeoutFloor: 0x78, childType: 0x1e,
   },
@@ -325,6 +328,9 @@ export const WHITE_TYPE0E_RESOURCES = deepFreeze({
   },
   lifecycle: {
     retirement: { entry: 0x1627dc, semantic: 'freeEnemy' },
+    stageAdvance: {
+      entry: 0x142c8c, body: 0x142c92, prelude: 0x13c814, wrapAt: 5,
+    },
     objectDispatch: 0x141294,
     timeoutFloor: 0x78, childType: 0x1e,
   },

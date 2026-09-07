@@ -22,6 +22,8 @@ import { BUL, REC as BULLET_REC } from '../src/bullets.js';
 import { BOSS, W425 } from '../src/boss.js';
 import { main0Step29321C } from '../src/bossarrival.js';
 import { ANIM_OBJECT } from '../src/animobjects.js';
+import { ALLOC } from '../src/objalloc.js';
+import { SE, runStageAdvance242952 } from '../src/stageend.js';
 import { e12Step2966B8, W103 } from '../src/bossf23.js';
 import { RNG } from '../src/rng.js';
 import { SCHED, clearDispatched, dumpDispatched } from '../src/scheduler.js';
@@ -160,6 +162,12 @@ test('White Stage 1 boss follows its native Type $0E and Type $1E route', () => 
     { entry: 0x246410, table: 0x29337a });
   assert.deepEqual(WHITE_TYPE0E_RESOURCES.main.m0.animationObjects,
     { entry: 0x145aee, table: 0x191d66 });
+  assert.deepEqual(BLACK_TYPE0E_RESOURCES.lifecycle.stageAdvance, {
+    entry: 0x242952, body: 0x242952, prelude: null, wrapAt: null,
+  });
+  assert.deepEqual(WHITE_TYPE0E_RESOURCES.lifecycle.stageAdvance, {
+    entry: 0x142c8c, body: 0x142c92, prelude: 0x13c814, wrapAt: 5,
+  });
 
   assert.deepEqual(type0ERoute(BLACK_TYPE0E_RESOURCES), [
     'black', 0x0e, 'type0E',
@@ -505,4 +513,115 @@ test('White MAIN 0 handoff loads one root and five linked animation objects', ()
   assert.equal(Math.min(...covered), animation.table);
   assert.equal(Math.max(...covered), tableEnd - 1);
   assertWholeWhiteReads({ ...fixture, reads: handoffReads });
+});
+
+test('White boss naturally runs its native stage-advance prelude before the shared body', () => {
+  const fixture = trackedWhiteCartridge();
+  const { rom, reads, windows } = fixture;
+  const ram = new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
+  const palette = new PaletteState();
+  const machineCtx = {};
+  createWhiteStage1Machine(rom, palette, new BgVram()).step(ram, machineCtx);
+  const world = machineCtx.stage1WorldPrivate;
+  world.resetSpawn(ram, rom, machineCtx);
+  ram.setU32(world.resources.spawn.liveCursor, SOURCE);
+  ram.setU16(world.resources.spawn.distanceClock, 0x01e8);
+  assert.deepEqual(runSpawnWalker(
+    ram, rom, machineCtx.unportedLog, world.tables,
+    null, palette, null, world.resources,
+  ), { script: 1, deferred: 0 });
+  assert.equal(ram.u16(BOSS_REC), 0x8000, 'the fixture spawned the genuine White boss');
+
+  for (let index = 0; index <= SCHED.wipeWords; index++) {
+    ram.setU16(SCHED.wipeBase + index * 2, 0);
+  }
+  ram.setU32(SCHED.ptrA3, WHITE_TYPE0E_RESOURCES.scripts.a3);
+  ram.setU16(SCHED.seqCursor, 0xffff);
+  ram.setU16(SCHED.a3Base, 0x8106);
+  ram.setU8(SCHED.a3Base + W425.D6.state, 6);
+  ram.setU16(SCHED.a3Base + W425.D6.wait, 1);
+  ram.setU16(ALLOC.createSp, 0);
+  ram.setU16(SE.stage, 0);
+
+  const cleared = [0x80392e, 0x803932, 0x803934, 0x803936, 0x803938];
+  const preserved = [
+    [0x80392c, 0x1212], [0x803930, 0x3030], [0x80393a, 0x3a3a],
+  ];
+  cleared.forEach((address, index) => ram.setU16(address, 0x5100 + index));
+  for (const [address, value] of preserved) ram.setU16(address, value);
+  const soundSnapshots = [];
+  const unportedLog = new UnportedLog();
+  const handlerCtx = {
+    ...machineCtx, ram, rom, tables: world.tables,
+    palette, unported: unportedLog, unportedLog,
+    soundPost: (address) => soundSnapshots.push({
+      address,
+      cleared: cleared.map((target) => ram.u16(target)),
+      preserved: preserved.map(([target]) => ram.u16(target)),
+    }),
+  };
+
+  assert.equal(windows.some(({ base, len }) => {
+    const start = Number.parseInt(base.slice(1), 16);
+    return WHITE_TYPE0E_RESOURCES.lifecycle.stageAdvance.prelude >= start
+      && WHITE_TYPE0E_RESOURCES.lifecycle.stageAdvance.prelude < start + len;
+  }), false, 'the executable $13C814 prelude is not a runtime data window');
+
+  const readStart = reads.length;
+  runHandler(WHITE_TYPE0E_RESOURCES.handler, ram, rom, BOSS_REC,
+    handlerCtx, world.resources);
+  assert.equal(ram.u16(SCHED.suspend), 1,
+    'D-script 6 sets suspend on the first natural handler frame');
+  assert.equal(ram.u16(SCHED.a3Base), 0, 'D-script 6 retires its own slot');
+  assert.equal(ram.u16(BOSS_REC), 0x8000,
+    'the carry is observed only on the next handler frame');
+  assert.deepEqual(cleared.map((address) => ram.u16(address)),
+    [0x5100, 0x5101, 0x5102, 0x5103, 0x5104]);
+  assert.deepEqual(soundSnapshots, []);
+
+  runHandler(WHITE_TYPE0E_RESOURCES.handler, ram, rom, BOSS_REC,
+    handlerCtx, world.resources);
+  const advanceReads = reads.slice(readStart);
+  assert.deepEqual(cleared.map((address) => ram.u16(address)), [0, 0, 0, 0, 0]);
+  assert.deepEqual(preserved.map(([address]) => ram.u16(address)),
+    preserved.map(([, value]) => value),
+  '$803930 and both neighboring words survive the five-word prelude');
+  assert.deepEqual(soundSnapshots, [{
+    address: 0x28cb60,
+    cleared: [0, 0, 0, 0, 0],
+    preserved: preserved.map(([, value]) => value),
+  }], 'the shared body posts sound only after the White prelude has completed');
+  assert.equal(ram.u16(ALLOC.createStage), 0x8006);
+  assert.equal(ram.u16(ALLOC.createStage + ALLOC.priOff), 0x000a,
+    'White dispatch $141294 gives Type 6 its native priority');
+  assert.equal(ram.u16(ALLOC.createStage + 0x04), 1,
+    'the zero-based Stage 1 value advances to Stage 2');
+  assert.equal(ram.u16(BOSS_REC), 0, 'White retirement keeps freeEnemy semantics');
+  assert.equal(ram.u8(BOSS_SUB), 1, 'the first boss sub-record retires too');
+  assert.equal(advanceReads.some(({ address, end }) =>
+    address < 0x13c834 && end > 0x13c814), false,
+  'the executable prelude is invoked semantically, never read as cartridge data');
+  assertWholeWhiteReads({ ...fixture, reads: advanceReads });
+});
+
+test('White stage advance wraps at and above the native Stage 5 boundary', () => {
+  const fixture = trackedWhiteCartridge();
+  for (const currentStage of [4, 5]) {
+    const ram = new Ram(undefined, WHITE_LABEL_PROFILE.ramLayout);
+    const transformed = [];
+    ram.setU16(SE.stage, currentStage);
+    const result = runStageAdvance242952(ram, fixture.rom, {
+      stageAdvanceTransform: (stage) => {
+        transformed.push(stage);
+        return stage;
+      },
+    }, WHITE_TYPE0E_RESOURCES);
+
+    assert.deepEqual(transformed, [0],
+      `White wraps stage ${currentStage + 1} before the host hook`);
+    assert.equal(result.d7, 0);
+    assert.equal(ram.u16(ALLOC.createStage), 0x8006);
+    assert.equal(ram.u16(ALLOC.createStage + 0x04), 0);
+  }
+  assertWholeWhiteReads(fixture);
 });
